@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cairn — self-hosted artifact server</title>
+<meta name="description" content="Cairn is a self-hosted server for artifacts: single-page web apps with shared SQLite data. One Go binary: server, admin UI, agent-oriented CLI.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230B0E13'/%3E%3Crect x='11' y='7' width='10' height='4' rx='2' fill='%23C6F135'/%3E%3Crect x='8' y='14' width='16' height='4' rx='2' fill='%23C6F135' opacity='.7'/%3E%3Crect x='5' y='21' width='22' height='4' rx='2' fill='%23C6F135' opacity='.45'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:ital,wght@0,400..700;1,400..600&family=Fragment+Mono:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0B0E13;
+    --bg-raise: #10141C;
+    --bg-panel: #0E1219;
+    --line: rgba(148, 163, 184, .13);
+    --line-soft: rgba(148, 163, 184, .07);
+    --text: #E4E9F2;
+    --muted: #8C96A8;
+    --faint: #5A6476;
+    --accent: #C6F135;
+    --accent-dim: rgba(198, 241, 53, .55);
+    --accent-tint: rgba(198, 241, 53, .08);
+    --code-flag: #A8B6CC;
+    --code-str: #D6E3A6;
+    --sans: "Familjen Grotesk", sans-serif;
+    --mono: "Fragment Mono", monospace;
+    --bar-h: 58px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* decorative absolutes must never create page-level horizontal scroll */
+  html, body { overflow-x: clip; }
+
+  ::selection { background: var(--accent); color: #0B0E13; }
+
+  a { color: inherit; }
+
+  /* -------------------------------------------------------------- top bar */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    min-height: var(--bar-h);
+    padding: 0 clamp(20px, 5vw, 48px);
+    background: transparent;
+    border-bottom: 1px solid transparent;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transition: background-color .25s ease, border-color .25s ease;
+  }
+  .topbar.scrolled {
+    background: rgba(11, 14, 19, .74);
+    border-bottom-color: var(--line);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .topbar { transition: none; }
+  }
+
+  .progress {
+    position: absolute;
+    left: 0;
+    bottom: -1px;
+    width: 100%;
+    height: 2px;
+    background: var(--accent);
+    transform-origin: 0 50%;
+    transform: scaleX(0);
+    opacity: 0;
+    transition: opacity .25s ease;
+    pointer-events: none;
+  }
+  .topbar.scrolled .progress { opacity: .45; }
+
+  .wordmark {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    flex: none;
+  }
+  .wordmark svg { display: block; flex: none; }
+  .wordmark b {
+    font-weight: 600;
+    font-size: 17px;
+    letter-spacing: .01em;
+  }
+  .wordmark span {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--faint);
+    display: block;
+    margin-top: -2px;
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+  }
+
+  .topbar nav {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .topbar nav a {
+    display: inline-flex;
+    align-items: baseline;
+    padding: 6px 10px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted);
+    text-decoration: none;
+    border-radius: 6px;
+    white-space: nowrap;
+    transition: color .18s ease, background-color .18s ease;
+  }
+  .topbar nav a em {
+    position: relative;
+    font-style: normal;
+  }
+  .topbar nav a em::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 100%;
+    bottom: -3px;
+    height: 1px;
+    background: var(--accent);
+    transition: right .25s cubic-bezier(.25, .7, .25, 1);
+  }
+  .topbar nav a:hover { color: var(--text); }
+  .topbar nav a.active {
+    color: var(--text);
+    background: var(--accent-tint);
+  }
+  .topbar nav a.active em::after { right: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .topbar nav a em::after { transition: none; }
+  }
+
+  .rail-count { color: var(--accent); }
+
+  .gh-link {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 10px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    text-decoration: none;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    white-space: nowrap;
+    transition: color .18s ease, border-color .18s ease;
+  }
+  .gh-link:hover { color: var(--accent); border-color: var(--accent-dim); }
+  .gh-link svg { flex: none; }
+
+  /* ------------------------------------------------------------- content */
+  .content { padding: 0 clamp(24px, 6vw, 88px); }
+
+  .col { max-width: 760px; margin: 0 auto; }
+
+  section { padding: 72px 0 8px; scroll-margin-top: calc(var(--bar-h) + 14px); }
+  section:first-of-type { padding-top: 64px; }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity .55s ease, transform .55s ease;
+  }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; transition: none; }
+  }
+
+  .kicker {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: .08em;
+    color: var(--faint);
+    margin-bottom: 14px;
+  }
+  .kicker b { color: var(--accent); font-weight: 400; }
+
+  h1 {
+    font-size: clamp(34px, 5vw, 52px);
+    font-weight: 600;
+    line-height: 1.08;
+    letter-spacing: -.022em;
+    max-width: 16ch;
+  }
+  h2 {
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -.015em;
+    margin-bottom: 6px;
+  }
+  .sub {
+    color: var(--muted);
+    max-width: 58ch;
+    margin-top: 18px;
+    font-size: 17px;
+  }
+  .sub-s {
+    color: var(--muted);
+    max-width: 62ch;
+    margin-bottom: 26px;
+    font-size: 15.5px;
+  }
+  .sub code, .sub-s code, td code, .step p code {
+    font-family: var(--mono);
+    font-size: .86em;
+    color: var(--code-flag);
+    background: var(--bg-raise);
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    padding: 1px 5px;
+    white-space: nowrap;
+  }
+
+  /* hero */
+  .hero { position: relative; }
+  .hero::before {
+    content: "";
+    position: absolute;
+    top: -40px; left: -40px;
+    width: min(560px, 85vw); height: 380px;
+    background: radial-gradient(closest-side, rgba(198,241,53,.05), transparent);
+    pointer-events: none;
+  }
+  .hero > * { position: relative; }
+
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    margin-top: 30px;
+  }
+  .btn-gh {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text);
+    text-decoration: none;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    transition: border-color .18s ease, color .18s ease;
+  }
+  .btn-gh:hover { border-color: var(--accent-dim); color: var(--accent); }
+
+  .hero-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 22px;
+    margin-top: 34px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--faint);
+  }
+  .hero-meta span::before {
+    content: "· ";
+    color: var(--accent-dim);
+  }
+
+  /* code blocks */
+  .code {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg-panel);
+    overflow: hidden;
+    margin-top: 24px;
+  }
+  .code-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--line-soft);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--faint);
+    letter-spacing: .06em;
+  }
+  .code-head span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .copy {
+    flex: none;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: color .15s ease, border-color .15s ease;
+  }
+  .copy:hover, .copy:focus-visible { color: var(--accent); border-color: var(--accent-dim); }
+  .copy.done { color: var(--accent); border-color: var(--accent-dim); }
+  /* the pre scrolls on its own; the copy button lives in the header row above
+     the scroll area, so long one-liners can never slide under it */
+  .code pre {
+    display: block;
+    max-width: 100%;
+    padding: 16px 18px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.75;
+    color: #C7D0DF;
+  }
+  .code pre .p  { color: var(--faint); user-select: none; }      /* prompt glyph */
+  .code pre .c  { color: var(--faint); }                          /* comment */
+  .code pre .f  { color: var(--code-flag); }                      /* flag */
+  .code pre .s  { color: var(--code-str); }                       /* string */
+  .code pre .k  { color: var(--accent); }                         /* keyword */
+
+  /* how it works */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .step {
+    background: var(--bg-panel);
+    padding: 22px 20px 24px;
+  }
+  .step h3 {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 400;
+    margin-bottom: 10px;
+    color: var(--text);
+  }
+  .step h3 i { font-style: normal; color: var(--accent); margin-right: 8px; font-size: 11px; }
+  .step p { font-size: 14px; color: var(--muted); }
+
+  /* tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14.5px;
+  }
+  .tbl-wrap {
+    overflow-x: auto;
+    margin-top: 8px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  th, td {
+    text-align: left;
+    vertical-align: top;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  tr:last-child th, tr:last-child td { border-bottom: 0; }
+  thead th {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 400;
+    letter-spacing: .07em;
+    color: var(--faint);
+    background: var(--bg-raise);
+    border-bottom: 1px solid var(--line);
+  }
+  tbody { background: var(--bg-panel); }
+  tbody tr { transition: background-color .15s ease; }
+  tbody tr:hover { background: var(--bg-raise); }
+
+  .features th {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 400;
+    color: var(--accent);
+    white-space: nowrap;
+    width: 1%;
+    padding-right: 30px;
+  }
+  .features td { color: var(--muted); }
+  .features td b { color: var(--text); font-weight: 500; }
+
+  .compare td { color: var(--muted); width: 50%; }
+  .compare td:first-child, .compare thead th:first-child {
+    border-right: 1px solid var(--line-soft);
+  }
+  .compare td:first-child { color: var(--text); }
+
+  /* demo */
+  .demo {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg-panel);
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .demo-head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line-soft);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--faint);
+  }
+  .demo-head .mode { color: var(--muted); }
+  .demo-head .mode b {
+    font-weight: 400;
+    color: var(--accent);
+  }
+  .demo-body { padding: 18px; }
+
+  .demo form {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .demo input {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color .15s ease;
+  }
+  .demo input:focus { border-color: var(--accent-dim); }
+  .demo input::placeholder { color: var(--faint); }
+  #reg-name { width: 130px; }
+  #reg-note { flex: 1; min-width: 180px; }
+  .demo button[type=submit] {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: #0B0E13;
+    background: var(--accent);
+    border: 0;
+    border-radius: 7px;
+    padding: 9px 16px;
+    cursor: pointer;
+    transition: filter .15s ease;
+  }
+  .demo button[type=submit]:hover { filter: brightness(1.08); }
+  .demo button[type=submit]:disabled { filter: grayscale(1) brightness(.7); cursor: default; }
+
+  #reg-status {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--faint);
+    margin-top: 12px;
+    min-height: 1.4em;
+  }
+  #reg-status.err { color: #E0A46B; }
+
+  #reg-list {
+    list-style: none;
+    margin-top: 6px;
+    border-top: 1px solid var(--line-soft);
+  }
+  #reg-list li {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 9px 2px;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: 14px;
+  }
+  #reg-list .who {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    flex: none;
+  }
+  #reg-list .what { color: var(--text); overflow-wrap: anywhere; }
+  #reg-list .when {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--faint);
+    flex: none;
+  }
+  #reg-list .empty { color: var(--faint); font-size: 13.5px; border-bottom: 0; }
+
+  .demo-note {
+    font-size: 13px;
+    color: var(--faint);
+    padding: 12px 18px;
+    border-top: 1px solid var(--line-soft);
+  }
+  .demo-note b { color: var(--muted); font-weight: 500; }
+  .demo-note code {
+    font-family: var(--mono);
+    font-size: .9em;
+    color: var(--code-flag);
+  }
+
+  /* footer */
+  footer {
+    margin-top: 80px;
+    padding: 28px 0 40px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 28px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--faint);
+  }
+  footer a { color: var(--muted); text-decoration: none; }
+  footer a:hover { color: var(--accent); }
+
+  /* ------------------------------------------------------------ responsive */
+  @media (max-width: 940px) {
+    /* anchor links collapse away; wordmark + GitHub link always stay */
+    .topbar nav { display: none; }
+    .wordmark span { display: none; }
+  }
+  @media (max-width: 640px) {
+    /* long inline code (paths, env vars) must wrap, not widen the page */
+    .sub code, .sub-s code, td code, .step p code {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+  }
+  @media (max-width: 460px) {
+    #reg-name { width: 100%; }
+    .demo form button[type=submit] { width: 100%; }
+    #reg-list .when { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar" id="topbar">
+  <a class="wordmark" href="#overview" aria-label="Cairn — back to top">
+    <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
+      <rect x="11" y="7" width="10" height="4" rx="2" fill="#C6F135"/>
+      <rect x="8" y="14" width="16" height="4" rx="2" fill="#C6F135" opacity=".7"/>
+      <rect x="5" y="21" width="22" height="4" rx="2" fill="#C6F135" opacity=".45"/>
+    </svg>
+    <div>
+      <b>cairn</b>
+      <span>artifact server</span>
+    </div>
+  </a>
+  <div class="topbar-right">
+    <nav aria-label="Sections">
+      <a href="#how"><em>how it works</em></a>
+      <a href="#features"><em>features</em></a>
+      <a href="#register"><em>register<span class="rail-count" id="nav-count"></span></em></a>
+      <a href="#quickstart"><em>quick start</em></a>
+      <a href="#compare"><em>compare</em></a>
+    </nav>
+    <a class="gh-link" href="https://github.com/aloisdeniel/artifacts">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
+      </svg>
+      <span>GitHub</span>
+    </a>
+  </div>
+  <div class="progress" id="progress" aria-hidden="true"></div>
+</header>
+
+<main class="content">
+<div class="col">
+
+  <!-- ---------------------------------------------------------- overview -->
+  <section id="overview" class="hero reveal">
+    <p class="kicker"><b>cairn</b> / self-hosted artifact server / open source</p>
+    <h1>Push a web app. Get a versioned URL. Keep the data.</h1>
+    <p class="sub">
+      Cairn serves <em>artifacts</em> — single-page apps with an optional shared
+      SQLite database — from one Go binary: server, admin UI, and an
+      agent-oriented CLI. An open alternative to Claude Artifacts for small
+      trusted teams and AI-agent workflows.
+    </p>
+
+    <div class="code" style="margin-top:30px">
+      <div class="code-head"><span>install</span><button class="copy" type="button">copy</button></div>
+      <pre><span class="p">$ </span>curl <span class="f">-fsSL</span> <span class="s">https://aloisdeniel.github.io/artifacts/install.sh</span> | sh</pre>
+    </div>
+
+    <div class="hero-actions">
+      <a class="btn-gh" href="https://github.com/aloisdeniel/artifacts">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
+        </svg>
+        View on GitHub
+      </a>
+    </div>
+
+    <div class="hero-meta">
+      <span>one Go binary</span>
+      <span>zero external deps</span>
+      <span>pure-Go SQLite</span>
+      <span>data = a directory</span>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------ how it works -->
+  <section id="how" class="reveal">
+    <p class="kicker">01 / how it works</p>
+    <h2>Push, serve, share</h2>
+    <p class="sub-s">
+      A directory with an <code>index.html</code> becomes a versioned artifact.
+      Nothing else to configure.
+    </p>
+    <div class="steps">
+      <div class="step">
+        <h3><i>01</i>push</h3>
+        <p>The CLI zips your build directory and uploads it as a new version — or overwrites one in place while you iterate.</p>
+      </div>
+      <div class="step">
+        <h3><i>02</i>serve</h3>
+        <p>Every version gets a stable URL — <code>/artifacts/{id}/{versionId}/</code> — with a name and changelog. Re-uploads never touch the data.</p>
+      </div>
+      <div class="step">
+        <h3><i>03</i>share</h3>
+        <p>Each version owns a shared SQLite database, reached from the page over raw SQL via <code>cairn.js</code>. All visitors see the same data.</p>
+      </div>
+    </div>
+    <div class="code">
+      <div class="code-head"><span>terminal</span><button class="copy" type="button">copy</button></div>
+      <pre><span class="p">$ </span>cairn push ./dist <span class="f">--artifact</span> my-app <span class="f">--create</span> <span class="f">--public</span>
+<span class="p">$ </span>cairn push ./dist <span class="f">--artifact</span> my-app <span class="f">--overwrite</span> latest
+<span class="p">$ </span>cairn open my-app</pre>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- features -->
+  <section id="features" class="reveal">
+    <p class="kicker">02 / features</p>
+    <h2>What you get</h2>
+    <p class="sub-s">The terse version. The README has the rest.</p>
+    <div class="tbl-wrap">
+      <table class="features">
+        <tbody>
+          <tr>
+            <th scope="row">one binary</th>
+            <td><b>Server, admin UI, and CLI in a single Go executable.</b> Pure-Go SQLite, zero external dependencies. All state lives in one directory on disk (<code>--data-dir</code>).</td>
+          </tr>
+          <tr>
+            <th scope="row">versions</th>
+            <td><b>Explicit versions with names and changelogs.</b> Stable URLs per version; re-uploadable in place while iterating. The shared database survives re-uploads.</td>
+          </tr>
+          <tr>
+            <th scope="row">shared sqlite</th>
+            <td><b>Every version owns a lazily-created SQLite database</b> shared by all visitors — raw SQL over HTTP via <code>cairn.db.query</code> / <code>batch</code> / <code>migrate</code>. Cross-version read-only queries let you migrate data forward, and the <code>.db</code> file is downloadable.</td>
+          </tr>
+          <tr>
+            <th scope="row">agent cli</th>
+            <td><b>Set <code>CAIRN_HOST</code> + <code>CAIRN_API_KEY</code> and every command works headlessly</b>, all with <code>--json</code>. Attach a Claude session id as a resource and it works anywhere an artifact id does. A Claude Code skill ships in the repo.</td>
+          </tr>
+          <tr>
+            <th scope="row">cairn.js</th>
+            <td><b>One client API, two backends.</b> On a Cairn server it proxies to the HTTP APIs; on any static host it runs a local in-browser SQLite (debug mode, user <code>{id: 0, name: "Debug"}</code>) — you develop against the exact code you deploy.</td>
+          </tr>
+          <tr>
+            <th scope="row">trust model</th>
+            <td><b>Admin-invited users, no self-signup.</b> Every authenticated user can run raw SQL — built for a small circle of trusted people, not the open internet. Anonymous visitors get read-only access to public artifacts.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- register -->
+  <section id="register" class="reveal">
+    <p class="kicker">03 / live demo</p>
+    <h2>The register</h2>
+    <p class="sub-s">
+      This panel is <code>cairn.js</code> running on this static page in
+      debug mode: a real SQLite database in your browser, persisted to
+      IndexedDB — your entries stay on your machine. Publish this same file to
+      a Cairn server and the identical code becomes a shared, multi-user
+      register.
+    </p>
+    <div class="demo">
+      <div class="demo-head">
+        <span>register.db — <span id="reg-count-label">…</span></span>
+        <span class="mode" id="reg-mode">mode: <b>loading</b></span>
+      </div>
+      <div class="demo-body">
+        <form id="reg-form">
+          <input id="reg-name" name="name" maxlength="24" placeholder="name" autocomplete="off" aria-label="Name" required>
+          <input id="reg-note" name="note" maxlength="120" placeholder="leave a note" autocomplete="off" aria-label="Note" required>
+          <button type="submit" id="reg-submit" disabled>sign</button>
+        </form>
+        <p id="reg-status" role="status">starting local backend (loads sql.js on first visit)…</p>
+        <ul id="reg-list" aria-live="polite"></ul>
+      </div>
+      <p class="demo-note">
+        Under the hood: <b>cairn.ready()</b> → <b>cairn.db.migrate()</b> once
+        for the schema → <b>cairn.db.query()</b> with <code>?</code> placeholders
+        for insert and select. No SDK, no ORM — SQL.
+      </p>
+    </div>
+  </section>
+
+  <!-- -------------------------------------------------------- quick start -->
+  <section id="quickstart" class="reveal">
+    <p class="kicker">04 / quick start</p>
+    <h2>Server up in one minute</h2>
+    <div class="code" style="margin-top:18px">
+      <div class="code-head"><span>terminal</span><button class="copy" type="button">copy</button></div>
+      <pre><span class="c"># install (or: docker, or: go install github.com/aloisdeniel/artifacts/cmd/cairn@latest)</span>
+<span class="p">$ </span>curl <span class="f">-fsSL</span> <span class="s">https://aloisdeniel.github.io/artifacts/install.sh</span> | sh
+
+<span class="c"># run the server — data is just this directory</span>
+<span class="p">$ </span>cairn serve <span class="f">--data-dir</span> data <span class="f">--admin-email</span> you@example.com <span class="f">--admin-password</span> <span class="s">'...'</span>
+
+<span class="c"># log in, push, query — every command takes --json for agents</span>
+<span class="p">$ </span>cairn login <span class="f">--host</span> <span class="s">http://localhost:8787</span> <span class="f">--email</span> you@example.com
+<span class="p">$ </span>cairn push ./dist <span class="f">--artifact</span> my-app <span class="f">--create</span> <span class="f">--public</span>
+<span class="p">$ </span>cairn db query <span class="f">--artifact</span> my-app <span class="f">--json</span> <span class="s">"SELECT COUNT(*) FROM notes"</span></pre>
+    </div>
+    <div class="code">
+      <div class="code-head"><span>your artifact — index.html</span><button class="copy" type="button">copy</button></div>
+      <pre>&lt;script src=<span class="s">"./cairn.js"</span>&gt;&lt;/script&gt;
+&lt;script&gt;
+  <span class="k">await</span> cairn.ready();
+  <span class="k">const</span> me = <span class="k">await</span> cairn.me();               <span class="c">// null when anonymous</span>
+  <span class="k">await</span> cairn.db.migrate(<span class="s">'001-schema'</span>, [
+    {sql: <span class="s">'CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)'</span>}
+  ]);
+  <span class="k">await</span> cairn.db.query(<span class="s">'INSERT INTO notes (body) VALUES (?)'</span>, [<span class="s">'hi'</span>]);
+  <span class="k">const</span> res = <span class="k">await</span> cairn.db.query(<span class="s">'SELECT * FROM notes'</span>); <span class="c">// {columns, rows}</span>
+&lt;/script&gt;</pre>
+    </div>
+  </section>
+
+  <!-- ----------------------------------------------------------- compare -->
+  <section id="compare" class="reveal">
+    <p class="kicker">05 / compare</p>
+    <h2>vs. Claude Artifacts</h2>
+    <p class="sub-s">Different trade-offs, honestly stated.</p>
+    <div class="tbl-wrap">
+      <table class="compare">
+        <thead>
+          <tr><th scope="col">cairn</th><th scope="col">claude artifacts</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Self-hosted on your domain and disk</td><td>Hosted on claude.ai</td></tr>
+          <tr><td>Full multi-file SPAs, no CSP wall</td><td>Single-page sandbox</td></tr>
+          <tr><td>First-class SQLite: raw SQL, transactions, migrations, downloadable file</td><td>Capability-gated runtime</td></tr>
+          <tr><td>Explicit versions, changelogs, stable URLs</td><td>Product history</td></tr>
+          <tr><td>Any agent via CLI / API keys — model-agnostic</td><td>Claude only</td></tr>
+          <tr><td>Trust-based, for invited users</td><td>Sandboxed, for untrusted viewers</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="reveal">
+    <span>cairn — built for small trusted teams and AI agents</span>
+    <a href="https://github.com/aloisdeniel/artifacts">github.com/aloisdeniel/artifacts</a>
+  </footer>
+
+</div>
+</main>
+
+<script src="./cairn.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ------------------------------------------------------- section reveals */
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var reveals = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
+  if (reduced || !('IntersectionObserver' in window)) {
+    reveals.forEach(function (el) { el.classList.add('in'); });
+  } else {
+    var ro = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); ro.unobserve(e.target); }
+      });
+    }, { rootMargin: '0px 0px -8% 0px' });
+    reveals.forEach(function (el) { ro.observe(el); });
+  }
+
+  /* --------------------------------------- top bar: spy, backdrop, progress */
+  var bar = document.getElementById('topbar');
+  var progress = document.getElementById('progress');
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll('.topbar nav a'));
+  var sections = navLinks
+    .map(function (a) { return document.getElementById(a.getAttribute('href').slice(1)); })
+    .filter(Boolean);
+
+  function setActive(id) {
+    navLinks.forEach(function (a) {
+      a.classList.toggle('active', !!id && a.getAttribute('href') === '#' + id);
+    });
+  }
+
+  function onScroll() {
+    var y = window.scrollY || document.documentElement.scrollTop || 0;
+
+    bar.classList.toggle('scrolled', y > 8);
+
+    var max = document.documentElement.scrollHeight - window.innerHeight;
+    progress.style.transform = 'scaleX(' + (max > 0 ? Math.min(y / max, 1) : 0) + ')';
+
+    var probe = window.innerHeight * 0.3;
+    var currentId = null;   /* none active while the hero is in view */
+    for (var i = 0; i < sections.length; i++) {
+      if (sections[i].getBoundingClientRect().top <= probe) currentId = sections[i].id;
+    }
+    setActive(currentId);
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  onScroll();
+
+  /* ---------------------------------------------------------- copy buttons */
+  Array.prototype.forEach.call(document.querySelectorAll('.code'), function (block) {
+    var btn = block.querySelector('.copy');
+    var pre = block.querySelector('pre');
+    if (!btn || !pre) return;
+    btn.addEventListener('click', function () {
+      var clone = pre.cloneNode(true);
+      Array.prototype.forEach.call(clone.querySelectorAll('.p, .c'), function (n) {
+        n.parentNode.removeChild(n);
+      });
+      var text = clone.textContent.replace(/\n{2,}/g, '\n').replace(/^\s*\n/gm, '').trim();
+      var done = function () {
+        btn.textContent = 'copied';
+        btn.classList.add('done');
+        setTimeout(function () {
+          btn.textContent = 'copy';
+          btn.classList.remove('done');
+        }, 1600);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () { btn.textContent = 'failed'; });
+      } else {
+        btn.textContent = 'failed';
+      }
+    });
+  });
+
+  /* --------------------------------------------------------------- register */
+  var form = document.getElementById('reg-form');
+  var nameEl = document.getElementById('reg-name');
+  var noteEl = document.getElementById('reg-note');
+  var submitEl = document.getElementById('reg-submit');
+  var statusEl = document.getElementById('reg-status');
+  var listEl = document.getElementById('reg-list');
+  var modeEl = document.getElementById('reg-mode');
+  var countLabel = document.getElementById('reg-count-label');
+  var navCount = document.getElementById('nav-count');
+
+  function say(msg, isErr) {
+    statusEl.textContent = msg || '';
+    statusEl.classList.toggle('err', !!isErr);
+  }
+
+  function timeAgo(iso) {
+    var t = Date.parse(iso);
+    if (isNaN(t)) return '';
+    var s = Math.floor((Date.now() - t) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return new Date(t).toISOString().slice(0, 10);
+  }
+
+  function setCount(n) {
+    countLabel.textContent = n + (n === 1 ? ' row' : ' rows');
+    navCount.textContent = ' · ' + n;
+  }
+
+  function render(rows) {
+    listEl.textContent = '';
+    if (!rows.length) {
+      var li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = 'No entries yet. Be the first to sign.';
+      listEl.appendChild(li);
+      return;
+    }
+    rows.forEach(function (row) {
+      /* row = [id, name, note, created_at] — arrays, per cairn.db.query */
+      var li = document.createElement('li');
+      var who = document.createElement('span');
+      who.className = 'who';
+      who.textContent = String(row[1]);
+      var what = document.createElement('span');
+      what.className = 'what';
+      what.textContent = String(row[2]);
+      var when = document.createElement('span');
+      when.className = 'when';
+      when.textContent = timeAgo(String(row[3]));
+      li.appendChild(who);
+      li.appendChild(what);
+      li.appendChild(when);
+      listEl.appendChild(li);
+    });
+  }
+
+  function refresh() {
+    return cairn.db.query(
+      'SELECT id, name, note, created_at FROM register ORDER BY id DESC LIMIT 6'
+    ).then(function (res) {
+      render(res.rows);
+      return cairn.db.query('SELECT COUNT(*) FROM register');
+    }).then(function (res) {
+      setCount(Number(res.rows[0][0]) || 0);
+    });
+  }
+
+  function fail(err) {
+    submitEl.disabled = true;
+    countLabel.textContent = 'offline';
+    modeEl.textContent = 'mode: unavailable';
+    say('The demo backend could not start (offline, or the sql.js CDN is blocked). ' +
+        'Everything else on this page still works. (' + err.message + ')', true);
+  }
+
+  if (!window.cairn) {
+    fail(new Error('cairn.js did not load'));
+    return;
+  }
+
+  cairn.ready().then(function () {
+    modeEl.textContent = '';
+    modeEl.appendChild(document.createTextNode('mode: '));
+    var b = document.createElement('b');
+    b.textContent = cairn.mode;
+    modeEl.appendChild(b);
+    if (cairn.mode === 'debug') {
+      modeEl.appendChild(document.createTextNode(' (this browser only)'));
+    }
+    return cairn.db.migrate('001-register', [{
+      sql: 'CREATE TABLE register (' +
+           'id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
+           'name TEXT NOT NULL, ' +
+           'note TEXT NOT NULL, ' +
+           'created_at TEXT NOT NULL)'
+    }]);
+  }).then(function () {
+    return refresh();
+  }).then(function () {
+    submitEl.disabled = false;
+    say('');
+  }).catch(fail);
+
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var name = nameEl.value.trim();
+    var note = noteEl.value.trim();
+    if (!name || !note) return;
+    submitEl.disabled = true;
+    say('writing…');
+    cairn.db.query(
+      'INSERT INTO register (name, note, created_at) VALUES (?, ?, ?)',
+      [name, note, new Date().toISOString()]
+    ).then(function () {
+      noteEl.value = '';
+      return refresh();
+    }).then(function () {
+      submitEl.disabled = false;
+      say('');
+      noteEl.focus();
+    }).catch(function (err) {
+      submitEl.disabled = false;
+      say('write failed: ' + err.message, true);
+    });
+  });
+})();
+</script>
+</body>
+</html>
