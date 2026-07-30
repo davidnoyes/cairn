@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Cairn</title>
+<style>
+  :root{
+    --bg:#f2efe8; --panel:#fbf9f4; --ink:#28231b; --muted:#82796a;
+    --line:#ddd5c6; --accent:#a4502a; --accent-soft:#a4502a22; --ok:#4a6b43;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#16130f; --panel:#1e1a15; --ink:#eae3d4; --muted:#8f8676;
+           --line:#38322a; --accent:#cf7040; --accent-soft:#cf704026; }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100svh; display:grid; place-items:center;
+    background:var(--bg); color:var(--ink); font-family:var(--serif);
+    background-image:radial-gradient(ellipse 60% 40% at 50% 0%, var(--accent-soft), transparent 70%);
+  }
+  .card{
+    width:min(24rem, calc(100vw - 2.5rem));
+    background:var(--panel); border:1px solid var(--line); border-radius:.75rem;
+    padding:2.5rem 2.25rem 2.25rem; box-shadow:0 1.5rem 3rem -1.5rem rgb(30 20 5 / .35);
+  }
+  .mark{display:flex; justify-content:center; margin-bottom:1rem}
+  .mark svg{width:3.25rem; height:auto; display:block}
+  .stone{fill:var(--ink); opacity:.92}
+  h1{
+    margin:0; text-align:center; font-size:2rem; font-weight:600;
+    letter-spacing:.01em;
+  }
+  .sub{
+    text-align:center; font-family:var(--mono); font-size:.7rem; color:var(--muted);
+    letter-spacing:.28em; text-transform:uppercase; margin:.5rem 0 2rem;
+  }
+  label{
+    display:block; font-family:var(--mono); font-size:.68rem; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--muted); margin:1.1rem 0 .35rem;
+  }
+  input{
+    width:100%; padding:.65rem .75rem; font-size:1rem; font-family:var(--mono);
+    background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:.4rem;
+  }
+  input:focus{outline:2px solid var(--accent); outline-offset:-1px; border-color:transparent}
+  button{
+    width:100%; margin-top:1.6rem; padding:.7rem; font-size:.85rem; cursor:pointer;
+    font-family:var(--mono); letter-spacing:.18em; text-transform:uppercase;
+    background:var(--ink); color:var(--bg); border:0; border-radius:.4rem;
+  }
+  button:hover{background:var(--accent); color:#fff}
+  #confirmRow{display:none}
+  .claim #confirmRow{display:block}
+  .claim-note{
+    display:none; margin:1.2rem 0 0; padding:.7rem .8rem; border-radius:.4rem;
+    background:var(--accent-soft); border:1px solid var(--accent);
+    font-size:.85rem; line-height:1.45;
+  }
+  .claim .claim-note{display:block}
+  .error{
+    display:none; margin-top:1rem; font-family:var(--mono); font-size:.8rem;
+    color:var(--accent); text-align:center;
+  }
+</style>
+</head>
+<body>
+  <main class="card" id="card">
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 64 60">
+        <rect class="stone" x="20" y="2"  width="24" height="12" rx="6"/>
+        <rect class="stone" x="14" y="18" width="36" height="13" rx="6.5"/>
+        <rect class="stone" x="6"  y="35" width="52" height="15" rx="7.5"/>
+      </svg>
+    </div>
+    <h1>Cairn</h1>
+    <p class="sub">artifact server</p>
+    <form id="form" autocomplete="on">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" required autofocus>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required>
+      <div id="confirmRow">
+        <label for="confirm">Confirm password</label>
+        <input id="confirm" name="confirm" type="password">
+      </div>
+      <p class="claim-note">First sign-in — the password you enter now becomes
+      your account password. Type it twice.</p>
+      <button type="submit" id="submit">Sign in</button>
+      <p class="error" id="error"></p>
+    </form>
+  </main>
+<script>
+  const next = {{.Next}};
+  const form = document.getElementById('form');
+  const errEl = document.getElementById('error');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errEl.style.display = 'none';
+    const body = {
+      email: form.email.value.trim(),
+      password: form.password.value,
+      confirm: form.confirm.value,
+    };
+    try {
+      const resp = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      if (resp.ok) { location.href = next || '/'; return; }
+      if ((data.error || '').startsWith('first login')) {
+        document.getElementById('card').classList.add('claim');
+        document.getElementById('submit').textContent = 'Set password & sign in';
+        if (!body.confirm) { document.getElementById('confirm').focus(); }
+      }
+      errEl.textContent = data.error || ('sign-in failed (' + resp.status + ')');
+      errEl.style.display = 'block';
+    } catch (err) {
+      errEl.textContent = 'network error: ' + err.message;
+      errEl.style.display = 'block';
+    }
+  });
+</script>
+</body>
+</html>

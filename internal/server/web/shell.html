@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Artifact.Name}} · Cairn</title>
+<style>
+  :root{
+    --bg:#f2efe8; --panel:#fbf9f4; --ink:#28231b; --muted:#82796a;
+    --line:#ddd5c6; --accent:#a4502a; --accent-soft:#a4502a1c;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#16130f; --panel:#1e1a15; --ink:#eae3d4; --muted:#8f8676;
+           --line:#38322a; --accent:#cf7040; --accent-soft:#cf704024; }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; height:100svh; display:grid; grid-template-rows:auto auto 1fr;
+    background:var(--bg); color:var(--ink); font-family:var(--serif);
+  }
+  header{
+    display:flex; align-items:center; gap:.9rem; flex-wrap:wrap;
+    padding:.65rem 1.1rem; background:var(--panel); border-bottom:1px solid var(--line);
+  }
+  .mark svg{width:1.4rem; height:auto; display:block}
+  .stone{fill:var(--ink)}
+  .name{font-size:1.15rem; font-weight:600; margin:0}
+  .name a{color:inherit; text-decoration:none}
+  .desc{color:var(--muted); font-size:.9rem; margin:0;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:32ch}
+  .spacer{flex:1}
+  .chip{
+    font-family:var(--mono); font-size:.72rem; letter-spacing:.06em; color:var(--muted);
+  }
+  select{
+    font-family:var(--mono); font-size:.78rem; padding:.35rem .5rem;
+    background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:.35rem;
+  }
+  .btn{
+    font-family:var(--mono); font-size:.72rem; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--accent); border:1px solid var(--accent); border-radius:.35rem;
+    padding:.4rem .7rem; text-decoration:none; white-space:nowrap;
+  }
+  .btn:hover{background:var(--accent); color:#fff}
+  .meta{
+    display:flex; gap:1.25rem; align-items:baseline; flex-wrap:wrap;
+    padding:.4rem 1.1rem; font-family:var(--mono); font-size:.72rem;
+    color:var(--muted); background:var(--accent-soft); border-bottom:1px solid var(--line);
+  }
+  .meta b{color:var(--ink); font-weight:600}
+  iframe{border:0; width:100%; height:100%; background:#fff}
+</style>
+</head>
+<body>
+  <header>
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 64 60">
+        <rect class="stone" x="20" y="2"  width="24" height="12" rx="6"/>
+        <rect class="stone" x="14" y="18" width="36" height="13" rx="6.5"/>
+        <rect class="stone" x="6"  y="35" width="52" height="15" rx="7.5"/>
+      </svg>
+    </span>
+    <h1 class="name"><a href="/shared/{{.Artifact.ID}}" title="latest version">{{.Artifact.Name}}</a></h1>
+    {{if .Artifact.Description}}<p class="desc" title="{{.Artifact.Description}}">{{.Artifact.Description}}</p>{{end}}
+    <span class="spacer"></span>
+    <label class="chip" for="version">version</label>
+    <select id="version" onchange="location.href='/shared/{{.Artifact.ID}}/'+this.value">
+      {{range .Versions}}
+      <option value="{{.ID}}" {{if .Current}}selected{{end}}>
+        #{{.Seq}}{{if .Name}} · {{.Name}}{{end}} · {{printf "%.10s" .CreatedAt}}
+      </option>
+      {{end}}
+    </select>
+    <a class="btn" href="/artifacts/{{.Artifact.ID}}/{{.Version.ID}}/" target="_blank" rel="noopener">Full screen ↗</a>
+    {{if .User}}<span class="chip" title="{{.User.Email}}">{{if .User.Name}}{{.User.Name}}{{else}}{{.User.Email}}{{end}}</span>
+    {{else}}<a class="btn" href="/login?next=/shared/{{.Artifact.ID}}/{{.Version.ID}}">Sign in</a>{{end}}
+  </header>
+  <div class="meta">
+    {{if .Version.Changelog}}<span><b>changelog</b> {{.Version.Changelog}}</span>{{end}}
+    {{range .Artifact.Resources}}<span><b>{{.Type}}</b> {{.Value}}</span>{{end}}
+    <span><b>id</b> {{.Version.ID}}</span>
+  </div>
+  <iframe src="/artifacts/{{.Artifact.ID}}/{{.Version.ID}}/" title="{{.Artifact.Name}}"></iframe>
+</body>
+</html>
