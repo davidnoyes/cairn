@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/aloisdeniel/artifacts/internal/store"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 // errAmbiguousResource is returned when a resource reference matches several

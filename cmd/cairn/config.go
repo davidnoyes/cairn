@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/aloisdeniel/artifacts/internal/client"
+	"github.com/aloisdeniel/cairn/internal/client"
 )
 
 // cliConfig is stored at ~/.config/cairn/config.json after `cairn login`.

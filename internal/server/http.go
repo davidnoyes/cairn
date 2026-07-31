@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/aloisdeniel/artifacts/internal/store"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 // paginate applies optional ?limit= and ?offset= query parameters to a list

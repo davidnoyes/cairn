@@ -1,14 +1,14 @@
 #!/bin/sh
 # Cairn installer — downloads the latest release binary from GitHub.
 #
-#   curl -fsSL https://aloisdeniel.github.io/artifacts/install.sh | sh
+#   curl -fsSL https://aloisdeniel.github.io/cairn/install.sh | sh
 #
 # Options (environment variables):
 #   CAIRN_VERSION      install a specific tag (default: latest release)
 #   CAIRN_INSTALL_DIR  target directory (default: /usr/local/bin)
 set -eu
 
-REPO="aloisdeniel/artifacts"
+REPO="aloisdeniel/cairn"
 INSTALL_DIR="${CAIRN_INSTALL_DIR:-/usr/local/bin}"
 
 os=$(uname -s | tr '[:upper:]' '[:lower:]')

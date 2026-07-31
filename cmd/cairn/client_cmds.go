@@ -9,8 +9,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/aloisdeniel/artifacts/internal/client"
-	"github.com/aloisdeniel/artifacts/internal/versiondb"
+	"github.com/aloisdeniel/cairn/internal/client"
+	"github.com/aloisdeniel/cairn/internal/versiondb"
 	"golang.org/x/term"
 )
 

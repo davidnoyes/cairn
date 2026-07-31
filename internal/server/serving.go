@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/aloisdeniel/artifacts/internal/server/web"
-	"github.com/aloisdeniel/artifacts/internal/store"
+	"github.com/aloisdeniel/cairn/internal/server/web"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 // pageAuth gates artifact page loads: public artifacts are open, private ones

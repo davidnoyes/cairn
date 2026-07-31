@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/aloisdeniel/artifacts/internal/versiondb"
+	"github.com/aloisdeniel/cairn/internal/versiondb"
 )
 
 // resolveVersion validates the version exists before touching its database

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aloisdeniel/artifacts/internal/store"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 func testManager(t *testing.T) *Manager {

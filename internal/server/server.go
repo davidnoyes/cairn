@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aloisdeniel/artifacts/internal/auth"
-	"github.com/aloisdeniel/artifacts/internal/store"
-	"github.com/aloisdeniel/artifacts/internal/versiondb"
+	"github.com/aloisdeniel/cairn/internal/auth"
+	"github.com/aloisdeniel/cairn/internal/store"
+	"github.com/aloisdeniel/cairn/internal/versiondb"
 )
 
 // Config carries everything `cairn serve` resolves from flags and CAIRN_* env

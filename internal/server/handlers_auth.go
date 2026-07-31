@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aloisdeniel/artifacts/internal/auth"
-	"github.com/aloisdeniel/artifacts/internal/store"
+	"github.com/aloisdeniel/cairn/internal/auth"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 const minPasswordLen = 8

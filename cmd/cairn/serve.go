@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aloisdeniel/artifacts/internal/server"
+	"github.com/aloisdeniel/cairn/internal/server"
 )
 
 func runServe(args []string) error {

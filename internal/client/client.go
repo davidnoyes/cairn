@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/aloisdeniel/artifacts/internal/store"
-	"github.com/aloisdeniel/artifacts/internal/versiondb"
+	"github.com/aloisdeniel/cairn/internal/store"
+	"github.com/aloisdeniel/cairn/internal/versiondb"
 )
 
 type Client struct {

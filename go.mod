@@ -1,4 +1,4 @@
-module github.com/aloisdeniel/artifacts
+module github.com/aloisdeniel/cairn
 
 go 1.25.0
 
