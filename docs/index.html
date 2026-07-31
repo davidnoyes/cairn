@@ -533,6 +533,12 @@
     font-size: .9em;
     color: var(--code-flag);
   }
+  .src-cap {
+    font-size: 13px;
+    color: var(--faint);
+    max-width: 62ch;
+    margin-top: 12px;
+  }
 
   /* footer */
   footer {
@@ -607,7 +613,7 @@
   <!-- ---------------------------------------------------------- overview -->
   <section id="overview" class="hero reveal">
     <p class="kicker"><b>cairn</b> / self-hosted artifact server / open source</p>
-    <h1>Push a web app. Get a versioned URL. Keep the data.</h1>
+    <h1>Push a web app. Get a versioned URL. Share the database.</h1>
     <p class="sub">
       Cairn serves <em>artifacts</em> — single-page apps with an optional shared
       SQLite database — from one Go binary: server, admin UI, and an
@@ -735,6 +741,34 @@
         for insert and select. No SDK, no ORM — SQL.
       </p>
     </div>
+    <div class="code">
+      <div class="code-head"><span>register — source</span><button class="copy" type="button">copy</button></div>
+      <pre>&lt;script src=<span class="s">"./cairn.js"</span>&gt;&lt;/script&gt;
+&lt;script&gt;
+  <span class="k">await</span> cairn.ready();  <span class="c">// sql.js in the browser here; server APIs on Cairn</span>
+
+  <span class="c">// run-once schema — exactly what this page migrates</span>
+  <span class="k">await</span> cairn.db.migrate(<span class="s">'001-register'</span>, [{
+    sql: <span class="s">'CREATE TABLE register (id INTEGER PRIMARY KEY AUTOINCREMENT, '</span> +
+         <span class="s">'name TEXT NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL)'</span>
+  }]);
+
+  <span class="c">// sign the register</span>
+  <span class="k">await</span> cairn.db.query(
+    <span class="s">'INSERT INTO register (name, note, created_at) VALUES (?, ?, ?)'</span>,
+    [name, note, <span class="k">new</span> Date().toISOString()]);
+
+  <span class="c">// latest entries + the live count in the nav</span>
+  <span class="k">const</span> latest = <span class="k">await</span> cairn.db.query(
+    <span class="s">'SELECT id, name, note, created_at FROM register ORDER BY id DESC LIMIT 6'</span>);
+  <span class="k">const</span> count = <span class="k">await</span> cairn.db.query(<span class="s">'SELECT COUNT(*) FROM register'</span>);
+  <span class="c">// latest.rows → [[id, name, note, created_at], …]</span>
+&lt;/script&gt;</pre>
+    </div>
+    <p class="src-cap">
+      The rest of the panel is DOM plumbing. This exact code becomes a shared,
+      multi-user register the moment the directory is pushed to a Cairn server.
+    </p>
   </section>
 
   <!-- -------------------------------------------------------- quick start -->
