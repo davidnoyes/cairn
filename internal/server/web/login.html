@@ -4,86 +4,113 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in · Cairn</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230B0E13'/%3E%3Crect x='11' y='7' width='10' height='4' rx='2' fill='%23C6F135'/%3E%3Crect x='8' y='14' width='16' height='4' rx='2' fill='%23C6F135' opacity='.7'/%3E%3Crect x='5' y='21' width='22' height='4' rx='2' fill='%23C6F135' opacity='.45'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:ital,wght@0,400..700;1,400..600&family=Fragment+Mono:ital@0;1&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#f2efe8; --panel:#fbf9f4; --ink:#28231b; --muted:#82796a;
-    --line:#ddd5c6; --accent:#a4502a; --accent-soft:#a4502a22; --ok:#4a6b43;
-    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
-    --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --bg:#0B0E13;
+    --bg-raise:#10141C;
+    --bg-panel:#0E1219;
+    --line:rgba(148,163,184,.13);
+    --line-soft:rgba(148,163,184,.07);
+    --text:#E4E9F2;
+    --muted:#8C96A8;
+    --faint:#5A6476;
+    --accent:#C6F135;
+    --accent-dim:rgba(198,241,53,.55);
+    --accent-tint:rgba(198,241,53,.08);
+    --danger:#E08A7C;
+    /* generic fallbacks matter: this page is served by a self-hosted binary
+       that may run with no internet access to Google Fonts */
+    --sans:"Familjen Grotesk",-apple-system,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    --mono:"Fragment Mono",ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
   }
-  @media (prefers-color-scheme:dark){
-    :root{ --bg:#16130f; --panel:#1e1a15; --ink:#eae3d4; --muted:#8f8676;
-           --line:#38322a; --accent:#cf7040; --accent-soft:#cf704026; }
-  }
-  *{box-sizing:border-box}
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{overflow-x:clip}
   body{
-    margin:0; min-height:100svh; display:grid; place-items:center;
-    background:var(--bg); color:var(--ink); font-family:var(--serif);
-    background-image:radial-gradient(ellipse 60% 40% at 50% 0%, var(--accent-soft), transparent 70%);
+    min-height:100svh; display:grid; place-items:center;
+    background:var(--bg); color:var(--text); font-family:var(--sans);
+    line-height:1.6; -webkit-font-smoothing:antialiased;
+    padding:1.25rem;
+  }
+  ::selection{background:var(--accent); color:#0B0E13}
+
+  .wrap{position:relative; width:min(23rem, 100%)}
+  .wrap::before{
+    content:""; position:absolute; inset:-6rem -8rem auto;
+    height:24rem;
+    background:radial-gradient(closest-side, rgba(198,241,53,.05), transparent);
+    pointer-events:none;
   }
   .card{
-    width:min(24rem, calc(100vw - 2.5rem));
-    background:var(--panel); border:1px solid var(--line); border-radius:.75rem;
-    padding:2.5rem 2.25rem 2.25rem; box-shadow:0 1.5rem 3rem -1.5rem rgb(30 20 5 / .35);
+    position:relative;
+    background:var(--bg-panel); border:1px solid var(--line); border-radius:10px;
+    padding:2.2rem 2rem 2rem;
   }
-  .mark{display:flex; justify-content:center; margin-bottom:1rem}
-  .mark svg{width:3.25rem; height:auto; display:block}
-  .stone{fill:var(--ink); opacity:.92}
+  .mark{display:flex; justify-content:center; margin-bottom:.9rem}
+  .mark svg{width:44px; height:44px; display:block}
   h1{
-    margin:0; text-align:center; font-size:2rem; font-weight:600;
-    letter-spacing:.01em;
+    text-align:center; font-size:24px; font-weight:600; letter-spacing:-.015em;
   }
   .sub{
-    text-align:center; font-family:var(--mono); font-size:.7rem; color:var(--muted);
-    letter-spacing:.28em; text-transform:uppercase; margin:.5rem 0 2rem;
+    text-align:center; font-family:var(--mono); font-size:11.5px; letter-spacing:.08em;
+    color:var(--faint); margin-bottom:1.8rem;
   }
   label{
-    display:block; font-family:var(--mono); font-size:.68rem; letter-spacing:.14em;
-    text-transform:uppercase; color:var(--muted); margin:1.1rem 0 .35rem;
+    display:block; font-family:var(--mono); font-size:12px; color:var(--muted);
+    margin:1rem 0 .35rem;
   }
   input{
-    width:100%; padding:.65rem .75rem; font-size:1rem; font-family:var(--mono);
-    background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:.4rem;
+    width:100%; padding:8px 12px; font-family:var(--mono); font-size:13px;
+    background:var(--bg); color:var(--text);
+    border:1px solid var(--line); border-radius:7px; outline:none;
+    transition:border-color .15s ease;
   }
-  input:focus{outline:2px solid var(--accent); outline-offset:-1px; border-color:transparent}
+  input:focus{border-color:var(--accent-dim)}
+  input::placeholder{color:var(--faint)}
   button{
-    width:100%; margin-top:1.6rem; padding:.7rem; font-size:.85rem; cursor:pointer;
-    font-family:var(--mono); letter-spacing:.18em; text-transform:uppercase;
-    background:var(--ink); color:var(--bg); border:0; border-radius:.4rem;
+    width:100%; margin-top:1.5rem; cursor:pointer;
+    font-family:var(--mono); font-size:13px;
+    background:var(--accent); color:#0B0E13;
+    border:1px solid var(--accent); border-radius:7px; padding:8px 16px;
+    transition:filter .15s ease;
   }
-  button:hover{background:var(--accent); color:#fff}
+  button:hover, button:focus-visible{filter:brightness(1.08)}
   #confirmRow{display:none}
   .claim #confirmRow{display:block}
   .claim-note{
-    display:none; margin:1.2rem 0 0; padding:.7rem .8rem; border-radius:.4rem;
-    background:var(--accent-soft); border:1px solid var(--accent);
-    font-size:.85rem; line-height:1.45;
+    display:none; margin-top:1.2rem; padding:.7rem .8rem; border-radius:7px;
+    background:var(--accent-tint); border:1px solid var(--accent-dim);
+    color:var(--muted); font-size:13.5px; line-height:1.5;
   }
   .claim .claim-note{display:block}
   .error{
-    display:none; margin-top:1rem; font-family:var(--mono); font-size:.8rem;
-    color:var(--accent); text-align:center;
+    display:none; margin-top:1rem; font-family:var(--mono); font-size:12.5px;
+    color:var(--danger); text-align:center; overflow-wrap:anywhere;
   }
 </style>
 </head>
 <body>
+  <div class="wrap">
   <main class="card" id="card">
     <div class="mark" aria-hidden="true">
-      <svg viewBox="0 0 64 60">
-        <rect class="stone" x="20" y="2"  width="24" height="12" rx="6"/>
-        <rect class="stone" x="14" y="18" width="36" height="13" rx="6.5"/>
-        <rect class="stone" x="6"  y="35" width="52" height="15" rx="7.5"/>
+      <svg viewBox="0 0 32 32">
+        <rect x="11" y="7"  width="10" height="4" rx="2" fill="#C6F135"/>
+        <rect x="8"  y="14" width="16" height="4" rx="2" fill="#C6F135" opacity=".7"/>
+        <rect x="5"  y="21" width="22" height="4" rx="2" fill="#C6F135" opacity=".45"/>
       </svg>
     </div>
-    <h1>Cairn</h1>
+    <h1>cairn</h1>
     <p class="sub">artifact server</p>
     <form id="form" autocomplete="on">
-      <label for="email">Email</label>
+      <label for="email">email</label>
       <input id="email" name="email" type="email" required autofocus>
-      <label for="password">Password</label>
+      <label for="password">password</label>
       <input id="password" name="password" type="password" required>
       <div id="confirmRow">
-        <label for="confirm">Confirm password</label>
+        <label for="confirm">confirm password</label>
         <input id="confirm" name="confirm" type="password">
       </div>
       <p class="claim-note">First sign-in — the password you enter now becomes
@@ -92,6 +119,7 @@
       <p class="error" id="error"></p>
     </form>
   </main>
+  </div>
 <script>
   const next = {{.Next}};
   const form = document.getElementById('form');
