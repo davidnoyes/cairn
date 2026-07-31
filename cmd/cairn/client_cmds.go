@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -416,16 +418,9 @@ func runDB(args []string) error {
 	if err != nil {
 		return err
 	}
-	vid := *version
-	if vid == "" {
-		versions, err := c.ListVersions(a.ID)
-		if err != nil {
-			return err
-		}
-		if len(versions) == 0 {
-			return fmt.Errorf("artifact has no versions yet")
-		}
-		vid = versions[0].ID
+	vid, err := resolveVersionID(c, a.ID, *version)
+	if err != nil {
+		return err
 	}
 	res, err := c.Query(a.ID, vid, fs.Arg(0), params)
 	if err != nil {
@@ -436,6 +431,22 @@ func runDB(args []string) error {
 	}
 	printResult(res)
 	return nil
+}
+
+// resolveVersionID returns the given version id, or the artifact's latest
+// version when empty.
+func resolveVersionID(c *client.Client, artifactID, version string) (string, error) {
+	if version != "" {
+		return version, nil
+	}
+	versions, err := c.ListVersions(artifactID)
+	if err != nil {
+		return "", err
+	}
+	if len(versions) == 0 {
+		return "", fmt.Errorf("artifact has no versions yet")
+	}
+	return versions[0].ID, nil
 }
 
 func printResult(res *versiondb.Result) {
@@ -459,6 +470,166 @@ func printResult(res *versiondb.Result) {
 	if len(res.Rows) == 0 && res.RowsAffected > 0 {
 		fmt.Printf("%d row(s) affected\n", res.RowsAffected)
 	}
+}
+
+func runFiles(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: cairn files <list|put|get|delete> [flags]")
+	}
+	sub, rest := args[0], args[1:]
+	switch sub {
+	case "list":
+		return filesList(rest)
+	case "put":
+		return filesPut(rest)
+	case "get":
+		return filesGet(rest)
+	case "delete":
+		return filesDelete(rest)
+	default:
+		return fmt.Errorf("unknown files subcommand %q", sub)
+	}
+}
+
+// filesTarget parses the shared --artifact/--version flags and resolves them.
+func filesTarget(artifact, version string) (*client.Client, string, string, error) {
+	if artifact == "" {
+		return nil, "", "", fmt.Errorf("--artifact is required")
+	}
+	c, err := apiClient()
+	if err != nil {
+		return nil, "", "", err
+	}
+	a, err := c.ResolveArtifact(artifact)
+	if err != nil {
+		return nil, "", "", err
+	}
+	vid, err := resolveVersionID(c, a.ID, version)
+	if err != nil {
+		return nil, "", "", err
+	}
+	return c, a.ID, vid, nil
+}
+
+func filesList(args []string) error {
+	fs := flag.NewFlagSet("files list", flag.ExitOnError)
+	artifact := fs.String("artifact", "", "artifact id or name (required)")
+	version := fs.String("version", "", "version id (default: latest)")
+	jsonOut := fs.Bool("json", false, "JSON output")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	c, aid, vid, err := filesTarget(*artifact, *version)
+	if err != nil {
+		return err
+	}
+	files, err := c.ListFiles(aid, vid)
+	if err != nil {
+		return err
+	}
+	if *jsonOut {
+		return printJSON(files)
+	}
+	for _, f := range files {
+		fmt.Printf("%10d  %s  %s\n", f.Size, f.ModifiedAt, f.Path)
+	}
+	return nil
+}
+
+func filesPut(args []string) error {
+	fs := flag.NewFlagSet("files put", flag.ExitOnError)
+	artifact := fs.String("artifact", "", "artifact id or name (required)")
+	version := fs.String("version", "", "version id (default: latest)")
+	remote := fs.String("path", "", "storage path (default: the local file name)")
+	jsonOut := fs.Bool("json", false, "JSON output")
+	lead, rest := splitLeadingArg(args)
+	if err := fs.Parse(rest); err != nil {
+		return err
+	}
+	local := leadOrArg(lead, fs)
+	if local == "" {
+		return fmt.Errorf("usage: cairn files put <local-file> --artifact <id|name> [--version <vid>] [--path remote/path]")
+	}
+	f, err := os.Open(local)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	name := *remote
+	if name == "" {
+		name = filepath.Base(local)
+	}
+	c, aid, vid, err := filesTarget(*artifact, *version)
+	if err != nil {
+		return err
+	}
+	info, err := c.UploadFile(aid, vid, name, f)
+	if err != nil {
+		return err
+	}
+	if *jsonOut {
+		return printJSON(info)
+	}
+	fmt.Printf("uploaded %s (%d bytes)\n", info.Path, info.Size)
+	return nil
+}
+
+func filesGet(args []string) error {
+	fs := flag.NewFlagSet("files get", flag.ExitOnError)
+	artifact := fs.String("artifact", "", "artifact id or name (required)")
+	version := fs.String("version", "", "version id (default: latest)")
+	out := fs.String("out", "", "write to this local file (default: stdout)")
+	lead, rest := splitLeadingArg(args)
+	if err := fs.Parse(rest); err != nil {
+		return err
+	}
+	name := leadOrArg(lead, fs)
+	if name == "" {
+		return fmt.Errorf("usage: cairn files get <remote/path> --artifact <id|name> [--version <vid>] [--out local-file]")
+	}
+	c, aid, vid, err := filesTarget(*artifact, *version)
+	if err != nil {
+		return err
+	}
+	body, err := c.DownloadFile(aid, vid, name)
+	if err != nil {
+		return err
+	}
+	defer body.Close()
+	dst := io.Writer(os.Stdout)
+	if *out != "" {
+		f, err := os.Create(*out)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		dst = f
+	}
+	_, err = io.Copy(dst, body)
+	return err
+}
+
+func filesDelete(args []string) error {
+	fs := flag.NewFlagSet("files delete", flag.ExitOnError)
+	artifact := fs.String("artifact", "", "artifact id or name (required)")
+	version := fs.String("version", "", "version id (default: latest)")
+	lead, rest := splitLeadingArg(args)
+	if err := fs.Parse(rest); err != nil {
+		return err
+	}
+	name := leadOrArg(lead, fs)
+	if name == "" {
+		return fmt.Errorf("usage: cairn files delete <remote/path> --artifact <id|name> [--version <vid>]")
+	}
+	c, aid, vid, err := filesTarget(*artifact, *version)
+	if err != nil {
+		return err
+	}
+	if err := c.DeleteFile(aid, vid, name); err != nil {
+		return err
+	}
+	fmt.Printf("deleted %s\n", name)
+	return nil
 }
 
 func runOpen(args []string) error {

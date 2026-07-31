@@ -19,6 +19,7 @@ Client:
   cairn artifact         Manage artifacts (list|create|show|update|delete)
   cairn push             Upload a directory as a new (or replaced) version
   cairn db               Run SQL against a version's shared database
+  cairn files            Manage a version's file storage (list|put|get|delete)
   cairn open             Print (or open) an artifact URL
 
 Run 'cairn <command> -h' for command flags. Client commands honor
@@ -47,6 +48,8 @@ func main() {
 		err = runPush(args)
 	case "db":
 		err = runDB(args)
+	case "files":
+		err = runFiles(args)
 	case "open":
 		err = runOpen(args)
 	case "backup":

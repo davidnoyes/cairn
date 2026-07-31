@@ -7,9 +7,10 @@ description: Build and publish web artifacts (single-page apps with optional sha
 
 An artifact is a directory with an `index.html` (plus any relative assets),
 hosted at a stable URL by a Cairn server. Each published *version* owns a
-shared SQLite database that all viewers of that version read and write through
-`cairn.js`. Read `cairnjs-reference.md` in this skill directory before writing
-code that uses the shared database or user APIs.
+shared SQLite database and a file storage that all viewers of that version
+read and write through `cairn.js`. Read `cairnjs-reference.md` in this skill
+directory before writing code that uses the shared database, file storage or
+user APIs.
 
 ## Prerequisites
 
@@ -118,6 +119,15 @@ cairn db query --artifact <id> --params '["x"]' "INSERT INTO items (body) VALUES
 (For `db query`, flags must come before the SQL string — it is the final
 positional argument.)
 
+File storage (uploads/downloads target the latest version unless `--version`):
+
+```sh
+cairn files list --artifact <id> --json
+cairn files put ./local.png --artifact <id> --path images/local.png
+cairn files get images/local.png --artifact <id> --out ./local.png
+cairn files delete images/local.png --artifact <id>
+```
+
 ## Addressing artifacts
 
 Anywhere an artifact id is expected (`--artifact`, API paths, page URLs), you
@@ -130,6 +140,9 @@ back to the artifact id. So to find "the artifact from this session":
 
 - Never hand-build upload zips or POST multipart yourself; use `cairn push`.
 - One SQL statement per `query` call; use `batch`/`migrate` for scripts.
+- Store binary or large data (images, exports, attachments) in the file
+  storage (`cairn.files`, `cairn files`), never as base64 blobs in the shared
+  database; keep the database for structured rows that reference file paths.
 - Do not store secrets in artifact files or the shared database: everything is
   readable by all users of the server (and by anyone, if public).
 - On errors the CLI exits non-zero with a message on stderr; `--json` output

@@ -10,6 +10,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -272,4 +273,62 @@ func (c *Client) Batch(artifactID, versionID string, stmts []versiondb.Statement
 	err := c.doJSON("POST", "/api/artifacts/"+artifactID+"/versions/"+versionID+"/db/batch",
 		map[string]any{"statements": stmts}, &out)
 	return out, err
+}
+
+// File storage
+
+// FileInfo describes one file in a version's storage.
+type FileInfo struct {
+	Path       string `json:"path"`
+	Size       int64  `json:"size"`
+	ModifiedAt string `json:"modifiedAt"`
+}
+
+// filePath builds the API path for a stored file, escaping each segment.
+func filePath(artifactID, versionID, name string) string {
+	segs := strings.Split(name, "/")
+	for i, s := range segs {
+		segs[i] = url.PathEscape(s)
+	}
+	return "/api/artifacts/" + artifactID + "/versions/" + versionID + "/files/" + strings.Join(segs, "/")
+}
+
+func (c *Client) ListFiles(artifactID, versionID string) ([]FileInfo, error) {
+	var out []FileInfo
+	return out, c.doJSON("GET", "/api/artifacts/"+artifactID+"/versions/"+versionID+"/files", nil, &out)
+}
+
+func (c *Client) UploadFile(artifactID, versionID, name string, r io.Reader) (*FileInfo, error) {
+	var out FileInfo
+	return &out, c.do("PUT", filePath(artifactID, versionID, name), r, "application/octet-stream", &out)
+}
+
+// DownloadFile streams a stored file; the caller must close the reader.
+func (c *Client) DownloadFile(artifactID, versionID, name string) (io.ReadCloser, error) {
+	req, err := http.NewRequest("GET", c.Host+filePath(artifactID, versionID, name), nil)
+	if err != nil {
+		return nil, err
+	}
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
+		var apiErr apiError
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+		json.Unmarshal(data, &apiErr)
+		if apiErr.Error == "" {
+			apiErr.Error = "download " + name + " failed"
+		}
+		return nil, &APIError{Status: resp.StatusCode, Message: apiErr.Error}
+	}
+	return resp.Body, nil
+}
+
+func (c *Client) DeleteFile(artifactID, versionID, name string) error {
+	return c.doJSON("DELETE", filePath(artifactID, versionID, name), nil, nil)
 }

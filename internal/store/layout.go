@@ -12,17 +12,18 @@ import (
 //	  secret.key                              JWT signing secret
 //	  content/{artifactID}/{contentDir}/...   extracted version files
 //	  dbs/{artifactID}/{versionID}.db         per-version shared databases
+//	  files/{artifactID}/{versionID}/...      per-version file storage
 //	  tmp/                                    upload staging (same volume => atomic rename)
 //
-// Version databases live outside the content tree so re-uploading a version
-// never touches its data.
+// Version databases and file storage live outside the content tree so
+// re-uploading a version never touches its data.
 type Layout struct {
 	Root string
 }
 
 func NewLayout(root string) (Layout, error) {
 	l := Layout{Root: root}
-	for _, dir := range []string{root, l.ContentRoot(), l.DBRoot(), l.TmpRoot()} {
+	for _, dir := range []string{root, l.ContentRoot(), l.DBRoot(), l.FilesRoot(), l.TmpRoot()} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return Layout{}, err
 		}
@@ -50,4 +51,14 @@ func (l Layout) VersionDB(artifactID, versionID string) string {
 
 func (l Layout) ArtifactDBRoot(artifactID string) string {
 	return filepath.Join(l.DBRoot(), artifactID)
+}
+
+func (l Layout) FilesRoot() string { return filepath.Join(l.Root, "files") }
+
+func (l Layout) VersionFilesDir(artifactID, versionID string) string {
+	return filepath.Join(l.FilesRoot(), artifactID, versionID)
+}
+
+func (l Layout) ArtifactFilesRoot(artifactID string) string {
+	return filepath.Join(l.FilesRoot(), artifactID)
 }

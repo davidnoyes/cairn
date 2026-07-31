@@ -25,9 +25,10 @@ be driven by AI agents.
   *resources* (e.g. a Claude session id), and a sequence of versions.
 - **Version** — uuid, name, changelog, and a directory with at least an
   `index.html`. Each version also owns a lazily-created SQLite database shared
-  by everyone who uses that version, accessed through a raw-SQL HTTP API.
+  by everyone who uses that version, accessed through a raw-SQL HTTP API, and
+  a **file storage** where clients upload and download arbitrary files.
   Versions can be re-uploaded in place (work-in-progress iteration) — the
-  shared database survives re-uploads.
+  shared database and file storage survive re-uploads.
 - **Users** — created by admins; no email verification, no self-signup. A new
   account has no password: **the user chooses one at first sign-in**.
 - **API keys** — created by admins, tied to a user, revocable. For CLIs and
@@ -113,6 +114,22 @@ version's database (read-only) — use it to migrate data forward after
 publishing a new version. `cairn.db.batch([...])` runs statements in one
 transaction.
 
+Each version also has a **file storage** for binary data that does not belong
+in SQLite (images, exports, attachments):
+
+```js
+await cairn.files.upload('photos/cat.png', blob);   // Blob/File/string; auth required
+await cairn.files.list();                           // [{path, size, modifiedAt}]
+const blob = await cairn.files.download('photos/cat.png');  // null when absent
+img.src = cairn.files.url('photos/cat.png');        // direct URL (remote mode)
+await cairn.files.remove('photos/cat.png');
+```
+
+Like the database, file storage is per-version, survives re-uploads, and is
+readable anonymously on public artifacts while writes require authentication.
+`list`/`download`/`url` accept `{version: otherVersionId}` for read-only
+access to a sibling version's files.
+
 **Local debug mode.** Open the same directory without a Cairn server (any
 static file server, or `file://`) and `cairn.js` switches to an in-browser
 SQLite (sql.js/WebAssembly) persisted in browser storage; `cairn.me()` returns
@@ -121,7 +138,9 @@ for offline use; fully offline setups can drop `sql-wasm.js`/`sql-wasm.wasm`
 next to `index.html`. See `examples/guestbook`.
 
 More examples in [`examples/`](examples/): [`poll`](examples/poll/) — a
-multi-file artifact (CSS, JS, SVG assets, a fetched `config.json`) — and
+multi-file artifact (CSS, JS, SVG assets, a fetched `config.json`) —
+[`drive`](examples/drive/) — a shared file drive built entirely on the
+per-version file storage (uploads, folders, thumbnails, downloads) — and
 [`todo-react`](examples/todo-react/) — TypeScript + React bundled with esbuild,
 where a typed `TodoStore` hides every cairn.js detail from the UI.
 
@@ -152,6 +171,10 @@ PUT    /api/artifacts/{id}/versions/{vid}   re-upload (data survives)
 POST   /api/artifacts/{id}/versions/{vid}/db/query   {sql, params}
 POST   /api/artifacts/{id}/versions/{vid}/db/batch   {statements: [{sql, params}]}
 GET    /api/artifacts/{id}/versions/{vid}/db/download
+GET    /api/artifacts/{id}/versions/{vid}/files      list: [{path, size, modifiedAt}]
+GET    /api/artifacts/{id}/versions/{vid}/files/{path}   download (ranges supported)
+PUT    /api/artifacts/{id}/versions/{vid}/files/{path}   raw body upload (overwrites)
+DELETE /api/artifacts/{id}/versions/{vid}/files/{path}
 GET    /api/admin/users|keys ...            admin management
 ```
 
@@ -173,6 +196,9 @@ cairn artifact list --json
 cairn push ./dist --artifact my-app --create --json   # prints the URLs
 cairn push ./dist --artifact my-app --overwrite latest
 cairn db query --artifact my-app --json "SELECT COUNT(*) FROM notes"
+cairn files put ./report.pdf --artifact my-app --path exports/report.pdf
+cairn files list --artifact my-app --json
+cairn files get exports/report.pdf --artifact my-app --out ./report.pdf
 ```
 
 All commands accept `--json`; errors exit non-zero with a message on stderr.
@@ -196,8 +222,9 @@ there.
 ## Operations
 
 - **Data layout** — everything lives under `--data-dir`: `cairn.db`
-  (metadata), `secret.key` (JWT signing), `content/` (version files), `dbs/`
-  (per-version shared databases).
+  (metadata), `secret.key` (JWT signing), `content/` (extracted version
+  uploads), `dbs/` (per-version shared databases), `files/` (per-version file
+  storage).
 - **Backup** — `cairn backup --data-dir data --out backup/` snapshots live
   SQLite databases with `VACUUM INTO` and copies the rest. Safe while the
   server runs.
@@ -213,7 +240,7 @@ there.
 |---|---|---|
 | Hosting | claude.ai, Anthropic accounts | self-hosted, your domain, your disk |
 | Content | single-page, strict CSP | full multi-file SPA dirs, no CSP wall |
-| Shared data | capability-gated runtime | first-class SQLite: raw SQL, transactions, cross-version migration, downloadable file |
+| Shared data | capability-gated runtime | first-class SQLite (raw SQL, transactions, cross-version migration, downloadable file) + per-version file storage |
 | Versioning | product history | explicit versions + changelogs, stable URLs, re-upload |
 | Automation | Claude's Artifact tool | any agent via CLI/API keys — model-agnostic |
 | AI runtime | `window.claude` in page | none built in |

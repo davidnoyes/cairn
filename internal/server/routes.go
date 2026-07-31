@@ -50,6 +50,12 @@ func (s *Server) routes() {
 	mux.HandleFunc("POST /api/artifacts/{id}/versions/{vid}/db/batch", s.requireAuth(s.withArtifact(s.handleDBBatch)))
 	mux.HandleFunc("GET /api/artifacts/{id}/versions/{vid}/db/download", s.publicAware(s.handleDBDownload))
 
+	// Per-version file storage
+	mux.HandleFunc("GET /api/artifacts/{id}/versions/{vid}/files", s.publicAware(s.handleFileList))
+	mux.HandleFunc("GET /api/artifacts/{id}/versions/{vid}/files/{path...}", s.publicAware(s.handleFileDownload))
+	mux.HandleFunc("PUT /api/artifacts/{id}/versions/{vid}/files/{path...}", s.requireAuth(s.withArtifact(s.handleFileUpload)))
+	mux.HandleFunc("DELETE /api/artifacts/{id}/versions/{vid}/files/{path...}", s.requireAuth(s.withArtifact(s.handleFileDelete)))
+
 	// Pages
 	mux.HandleFunc("GET /", s.handleRoot)
 	mux.HandleFunc("GET /login", s.handleLoginPage)

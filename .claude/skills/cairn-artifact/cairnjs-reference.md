@@ -76,6 +76,30 @@ The claim insert and the statements run in one transaction, so concurrent
 viewers cannot double-apply. Use ascending prefixed names ('001-…', '002-…')
 and never edit a shipped migration — add a new one.
 
+## File storage
+
+Each version also owns a file storage for binary data that does not belong in
+SQLite (images, exports, attachments). Like the database it is per-version,
+survives re-uploads, is readable anonymously on public artifacts, and writes
+require authentication.
+
+```js
+await cairn.files.upload('photos/cat.png', blob);  // Blob/File/string
+                                                   // → {path, size, modifiedAt}
+await cairn.files.list();                          // [{path, size, modifiedAt}]
+const blob = await cairn.files.download('photos/cat.png');  // null when absent
+await cairn.files.remove('photos/cat.png');        // throws when absent
+
+img.src = cairn.files.url('photos/cat.png');
+// direct download URL — remote mode only, returns null in debug mode;
+// use download() + URL.createObjectURL(blob) to work in both.
+```
+
+Paths are relative slash-separated names (`a/b/c.png` — no leading `/`, no
+`..`); uploading to an existing path overwrites it. `list`, `download` and
+`url` accept `{version: otherVersionId}` for read-only access to a sibling
+version's files. In debug mode files persist to IndexedDB.
+
 Cross-version data migration pattern (new version pulling from the old).
 Read the old data first, then create schema and import in a single guarded
 migration so exactly one client performs the copy, atomically:

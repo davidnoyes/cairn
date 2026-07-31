@@ -20,9 +20,10 @@ gofmt -l . && go vet ./...
   `CAIRN_HOST` + `CAIRN_API_KEY`).
 - `internal/store/` — metadata SQLite (`modernc.org/sqlite`, pure Go).
   Embedded migrations in `migrations/*.sql` run at open. `layout.go` defines
-  the data dir: `content/{artifactID}/{contentDir}/` for files,
-  `dbs/{artifactID}/{versionID}.db` for shared databases — deliberately
-  separate so re-uploads never touch data.
+  the data dir: `content/{artifactID}/{contentDir}/` for extracted uploads,
+  `dbs/{artifactID}/{versionID}.db` for shared databases,
+  `files/{artifactID}/{versionID}/` for per-version file storage —
+  deliberately separate so re-uploads never touch data.
 - `internal/auth/` — bcrypt passwords, hand-rolled HS256 JWT (claims include
   `tkv` = token_version for instant revocation), API keys
   `cairn_<keyid>_<secret>` stored as SHA-256.
@@ -39,8 +40,9 @@ gofmt -l . && go vet ./...
   user `{id: 0, name: "Debug"}` when not served by Cairn).
 - `internal/client/` — Go API client used by the CLI (zips + multipart push).
 - `examples/` — reference artifacts: `guestbook` (single file, exercised by
-  e2e), `poll` (multi-file + assets + config fetch), `todo-react` (TypeScript +
-  React + esbuild; push its `dist/`, `src/store.ts` wraps cairn.js).
+  e2e), `poll` (multi-file + assets + config fetch), `drive` (file storage as
+  a shared drive; no database), `todo-react` (TypeScript + React + esbuild;
+  push its `dist/`, `src/store.ts` wraps cairn.js).
 - `.claude/skills/cairn-artifact/` — Claude Code skill for building and
   publishing artifacts with the CLI; keep it in sync when CLI flags or the
   cairn.js API change.

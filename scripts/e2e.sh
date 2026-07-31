@@ -93,6 +93,24 @@ STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$HOST/api/artifacts/$AI
 [[ "$STATUS" == "400" ]] || fail "anonymous write not rejected ($STATUS)"
 pass "anonymous write rejected"
 
+echo "== file storage"
+echo "hello file" > "$WORK/note.txt"
+"$BIN" files put "$WORK/note.txt" --artifact guestbook --path notes/hello.txt >/dev/null
+"$BIN" files list --artifact guestbook | grep -q "notes/hello.txt" || fail "file list"
+"$BIN" files get notes/hello.txt --artifact guestbook | grep -q "hello file" || fail "file get"
+pass "file put + list + get through CLI"
+curl -sf "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt" | grep -q "hello file" \
+  || fail "anonymous file read"
+pass "anonymous file read on public artifact"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+  "$HOST/api/artifacts/$AID/versions/$VID/files/evil.txt" --data-binary 'x')
+[[ "$STATUS" == "401" ]] || fail "anonymous file write not rejected ($STATUS)"
+pass "anonymous file write rejected"
+"$BIN" files delete notes/hello.txt --artifact guestbook >/dev/null
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt")
+[[ "$STATUS" == "404" ]] || fail "deleted file still served ($STATUS)"
+pass "file delete"
+
 echo "== re-upload + cross-version read"
 "$BIN" push "$ROOT/examples/guestbook" --artifact guestbook --name v2 --changelog "second" --json > "$WORK/push2.json"
 VID2=$(python3 -c "import json;print(json.load(open('$WORK/push2.json'))['version']['id'])")

@@ -200,6 +200,7 @@ func (s *Server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 	}
 	os.RemoveAll(s.layout.ArtifactContentRoot(a.ID))
 	os.RemoveAll(s.layout.ArtifactDBRoot(a.ID))
+	os.RemoveAll(s.layout.ArtifactFilesRoot(a.ID))
 	s.log.Info("artifact deleted", "id", a.ID, "by", requestUser(r).Email)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -304,5 +305,6 @@ func (s *Server) handleDeleteVersion(w http.ResponseWriter, r *http.Request) {
 		s.log.Warn("delete version db", "err", err)
 	}
 	os.RemoveAll(s.layout.ContentDir(v.ArtifactID, v.ContentDir))
+	os.RemoveAll(s.layout.VersionFilesDir(v.ArtifactID, v.ID))
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
