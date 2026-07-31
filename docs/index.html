@@ -704,6 +704,10 @@
             <td><b>One client API, two backends.</b> On a Cairn server it proxies to the HTTP APIs; on any static host it runs a local in-browser SQLite (debug mode, user <code>{id: 0, name: "Debug"}</code>) — you develop against the exact code you deploy.</td>
           </tr>
           <tr>
+            <th scope="row">authentication</th>
+            <td><b>No email verification, no invite tokens.</b> An admin creates the account; the user picks their password at first sign-in. Sessions use signed tokens, agents use revocable API keys, and a password reset or disable invalidates every token instantly.</td>
+          </tr>
+          <tr>
             <th scope="row">trust model</th>
             <td><b>Admin-invited users, no self-signup.</b> Every authenticated user can run raw SQL — built for a small circle of trusted people, not the open internet. Anonymous visitors get read-only access to public artifacts.</td>
           </tr>
