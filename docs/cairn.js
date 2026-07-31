@@ -21,6 +21,11 @@
  *   await cairn.db.query(sql, params?, {version}?)  → {columns,types,rows,...}
  *   await cairn.db.batch([{sql,params}...])         atomic transaction
  *   await cairn.db.migrate(name, [{sql,params}...]) run-once schema migration
+ *   await cairn.files.list({version}?)        [{path, size, modifiedAt}]
+ *   await cairn.files.upload(path, data)      store a file (Blob/File/string)
+ *   await cairn.files.download(path, {version}?)  → Blob, or null when absent
+ *   await cairn.files.remove(path)            delete a file
+ *   cairn.files.url(path, {version}?)         direct URL (remote; null in debug)
  *   cairn.login()                 redirect to the login page and back
  */
 (function (global) {
@@ -52,6 +57,12 @@
     });
   }
 
+  // fileURL builds the storage URL for a file path, encoding each segment.
+  function fileURL(path, vid) {
+    return '/api/artifacts/' + artifactId + '/versions/' + (vid || versionId) +
+      '/files/' + String(path).split('/').map(encodeURIComponent).join('/');
+  }
+
   var remote = {
     ready: function () { return Promise.resolve(); },
     me: function () { return api('/api/me'); },
@@ -66,6 +77,23 @@
     batch: function (statements) {
       return post('/api/artifacts/' + artifactId + '/versions/' + versionId + '/db/batch',
         { statements: statements });
+    },
+    listFiles: function (opts) {
+      var vid = (opts && opts.version) || versionId;
+      return api('/api/artifacts/' + artifactId + '/versions/' + vid + '/files');
+    },
+    downloadFile: function (path, opts) {
+      return fetch(fileURL(path, opts && opts.version)).then(function (resp) {
+        if (resp.status === 404) return null;
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.blob();
+      });
+    },
+    uploadFile: function (path, data) {
+      return api(fileURL(path), { method: 'PUT', body: data });
+    },
+    removeFile: function (path) {
+      return api(fileURL(path), { method: 'DELETE' }).then(function () { return true; });
     },
   };
 
@@ -97,6 +125,30 @@
         var tx = db.transaction('kv', 'readwrite').objectStore('kv').put(value, key);
         tx.onsuccess = function () { resolve(); };
         tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+  function idbDel(key) {
+    return idb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction('kv', 'readwrite').objectStore('kv').delete(key);
+        tx.onsuccess = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+  // idbPrefix lists keys and values under a key prefix (both in key order).
+  function idbPrefix(prefix) {
+    return idb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var store = db.transaction('kv').objectStore('kv');
+        var range = IDBKeyRange.bound(prefix, prefix + '\uffff');
+        var keysReq = store.getAllKeys(range);
+        var valsReq = store.getAll(range);
+        var done = 0;
+        function step() { if (++done === 2) resolve({ keys: keysReq.result, values: valsReq.result }); }
+        keysReq.onsuccess = valsReq.onsuccess = step;
+        keysReq.onerror = valsReq.onerror = function (e) { reject(e.target.error); };
       });
     });
   }
@@ -237,7 +289,62 @@
         }
       });
     },
+    listFiles: function () {
+      return idbPrefix(fileKeyPrefix).then(function (r) {
+        return r.keys.map(function (k, i) {
+          var v = r.values[i] || {};
+          return {
+            path: String(k).slice(fileKeyPrefix.length),
+            size: v.data ? v.data.byteLength : 0,
+            modifiedAt: v.modifiedAt || '',
+          };
+        });
+      });
+    },
+    downloadFile: function (path) {
+      return idbGet(fileKeyPrefix + path).then(function (v) {
+        return v ? new Blob([v.data], { type: v.type || '' }) : null;
+      });
+    },
+    uploadFile: function (path, data) {
+      if (!validFilePath(path)) return Promise.reject(new Error('invalid file path'));
+      return fileBytes(data).then(function (b) {
+        var entry = { data: b.buf, type: b.type, modifiedAt: new Date().toISOString() };
+        return idbSet(fileKeyPrefix + path, entry).then(function () {
+          return { path: path, size: b.buf.byteLength, modifiedAt: entry.modifiedAt };
+        });
+      });
+    },
+    removeFile: function (path) {
+      return idbGet(fileKeyPrefix + path).then(function (v) {
+        if (v === undefined) throw new Error('file not found');
+        return idbDel(fileKeyPrefix + path).then(function () { return true; });
+      });
+    },
   };
+
+  var fileKeyPrefix = 'file:' + location.pathname + ':';
+
+  // validFilePath mirrors the server rule: clean, relative, slash-separated.
+  function validFilePath(p) {
+    if (typeof p !== 'string' || !p || p.indexOf('\\') !== -1) return false;
+    var parts = p.split('/');
+    for (var i = 0; i < parts.length; i++) {
+      if (!parts[i] || parts[i] === '.' || parts[i] === '..') return false;
+    }
+    return true;
+  }
+
+  // fileBytes normalizes upload input (Blob/File/ArrayBuffer/string) to bytes.
+  function fileBytes(data) {
+    var blob = (data instanceof Blob) ? data : new Blob([data]);
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () { resolve({ buf: fr.result, type: blob.type }); };
+      fr.onerror = function () { reject(fr.error); };
+      fr.readAsArrayBuffer(blob);
+    });
+  }
 
   // ------------------------------------------------------------------ facade
   var backend = isRemote ? remote : debug;
@@ -280,6 +387,15 @@
       downloadURL: isRemote
         ? '/api/artifacts/' + artifactId + '/versions/' + versionId + '/db/download'
         : null,
+    },
+    files: {
+      list: function (opts) { return backend.listFiles(opts); },
+      download: function (path, opts) { return backend.downloadFile(path, opts); },
+      upload: function (path, data) { return backend.uploadFile(path, data); },
+      remove: function (path) { return backend.removeFile(path); },
+      url: function (path, opts) {
+        return isRemote ? fileURL(path, opts && opts.version) : null;
+      },
     },
   };
 })(window);

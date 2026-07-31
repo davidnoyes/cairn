@@ -225,6 +225,17 @@
     font-size: 17px;
   }
   .sub b { color: var(--text); font-weight: 500; }
+  .scope {
+    margin-top: 22px;
+    padding: 12px 16px;
+    max-width: 60ch;
+    font-size: 14.5px;
+    color: var(--muted);
+    background: var(--accent-tint);
+    border-left: 2px solid var(--accent-dim);
+    border-radius: 0 8px 8px 0;
+  }
+  .scope b { color: var(--text); font-weight: 500; }
   .sub-s {
     color: var(--muted);
     max-width: 62ch;
@@ -620,7 +631,15 @@
       and write the same SQLite database — from one Go binary: server, admin UI,
       and an agent-oriented CLI. <b>The perfect home for the small internal
       tools and personal apps you build with AI</b> — an open, self-hosted
-      alternative to Claude Artifacts for small trusted teams.
+      alternative to Claude Artifacts for small trusted teams. And because any
+      agent can drive the CLI, <b>Claude, Codex and the rest all contribute to
+      the same collection</b>.
+    </p>
+    <p class="scope">
+      <b>Not a public web host.</b> Cairn is an internal hosting platform:
+      tools your team signs into, backed by shared data — or simple demos you
+      make public to show off. It is not built to host dynamic websites for
+      the open internet.
     </p>
 
     <div class="code" style="margin-top:30px">
@@ -664,7 +683,7 @@
       </div>
       <div class="step">
         <h3><i>03</i>share</h3>
-        <p>Each version owns a shared SQLite database, reached from the page over raw SQL via <code>cairn.js</code>. All visitors see the same data.</p>
+        <p>Each version owns a shared SQLite database and a file storage, reached from the page via <code>cairn.js</code>. All visitors see the same data.</p>
       </div>
     </div>
     <div class="code">
@@ -696,8 +715,12 @@
             <td><b>Every version owns a lazily-created SQLite database</b> shared by all visitors — raw SQL over HTTP via <code>cairn.db.query</code> / <code>batch</code> / <code>migrate</code>. Cross-version read-only queries let you migrate data forward, and the <code>.db</code> file is downloadable.</td>
           </tr>
           <tr>
+            <th scope="row">file storage</th>
+            <td><b>Each version also has a file storage</b> for the binary data that doesn't belong in SQLite — images, exports, attachments. Upload, list, download and delete via <code>cairn.files</code> or the CLI; like the database, it survives re-uploads and is readable anonymously on public artifacts.</td>
+          </tr>
+          <tr>
             <th scope="row">agent cli</th>
-            <td><b>Set <code>CAIRN_HOST</code> + <code>CAIRN_API_KEY</code> and every command works headlessly</b>, all with <code>--json</code>. Attach a Claude session id as a resource and it works anywhere an artifact id does. A Claude Code skill ships in the repo.</td>
+            <td><b>Every AI agent contributes to the same collection.</b> Claude Code, Codex, Gemini CLI — anything that can run a command. Set <code>CAIRN_HOST</code> + <code>CAIRN_API_KEY</code> and every command works headlessly, all with <code>--json</code>; each agent gets its own revocable API key. Attach a session id as a resource and it works anywhere an artifact id does. A Claude Code skill ships in the repo.</td>
           </tr>
           <tr>
             <th scope="row">cairn.js</th>
@@ -792,7 +815,8 @@
 <span class="c"># log in, push, query — every command takes --json for agents</span>
 <span class="p">$ </span>cairn login <span class="f">--host</span> <span class="s">http://localhost:8787</span> <span class="f">--email</span> you@example.com
 <span class="p">$ </span>cairn push ./dist <span class="f">--artifact</span> my-app <span class="f">--create</span> <span class="f">--public</span>
-<span class="p">$ </span>cairn db query <span class="f">--artifact</span> my-app <span class="f">--json</span> <span class="s">"SELECT COUNT(*) FROM notes"</span></pre>
+<span class="p">$ </span>cairn db query <span class="f">--artifact</span> my-app <span class="f">--json</span> <span class="s">"SELECT COUNT(*) FROM notes"</span>
+<span class="p">$ </span>cairn files put ./report.pdf <span class="f">--artifact</span> my-app <span class="f">--path</span> exports/report.pdf</pre>
     </div>
     <div class="code">
       <div class="code-head"><span>docker — instead of the installer</span><button class="copy" type="button">copy</button></div>
@@ -815,6 +839,8 @@
   ]);
   <span class="k">await</span> cairn.db.query(<span class="s">'INSERT INTO notes (body) VALUES (?)'</span>, [<span class="s">'hi'</span>]);
   <span class="k">const</span> res = <span class="k">await</span> cairn.db.query(<span class="s">'SELECT * FROM notes'</span>); <span class="c">// {columns, rows}</span>
+  <span class="k">await</span> cairn.files.upload(<span class="s">'photos/cat.png'</span>, blob);       <span class="c">// per-version files</span>
+  img.src = cairn.files.url(<span class="s">'photos/cat.png'</span>);
 &lt;/script&gt;</pre>
     </div>
   </section>
@@ -832,7 +858,7 @@
         <tbody>
           <tr><td>Self-hosted on your domain and disk</td><td>Hosted on claude.ai</td></tr>
           <tr><td>Full multi-file SPAs, no CSP wall</td><td>Single-page sandbox</td></tr>
-          <tr><td>First-class SQLite: raw SQL, transactions, migrations, downloadable file</td><td>Capability-gated runtime</td></tr>
+          <tr><td>First-class SQLite (raw SQL, transactions, migrations) + per-version file storage</td><td>Capability-gated runtime</td></tr>
           <tr><td>Explicit versions, changelogs, stable URLs</td><td>Product history</td></tr>
           <tr><td>Any agent via CLI / API keys — model-agnostic</td><td>Claude only</td></tr>
           <tr><td>Trust-based, for invited users</td><td>Sandboxed, for untrusted viewers</td></tr>
