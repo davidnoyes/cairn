@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drive</title>
+<style>
+  :root{
+    --bg:#f4f6f8; --ink:#1c2430; --muted:#68758a; --line:#d8dfe8;
+    --accent:#0e7a5f; --accent-ink:#fff; --card:#ffffff; --hover:#eef2f6;
+    --danger:#b4423a;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#10141a; --ink:#dde4ee; --muted:#7d8aa0; --line:#2a3342;
+           --accent:#3fb695; --accent-ink:#06251c; --card:#171c25; --hover:#1d2431;
+           --danger:#e07a72; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+       max-width:46rem; padding:2.5rem 1.25rem 5rem; margin-inline:auto}
+  h1{font-size:1.6rem; margin:0; display:flex; align-items:center; gap:.55rem}
+  h1 svg{flex:none}
+  .status{font-family:var(--mono); font-size:.68rem; letter-spacing:.12em;
+          text-transform:uppercase; color:var(--muted); margin:.45rem 0 1.6rem}
+  .status b{color:var(--accent); font-weight:600}
+
+  .toolbar{display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin-bottom:.9rem}
+  .crumbs{flex:1; min-width:12rem; display:flex; flex-wrap:wrap; align-items:center;
+          gap:.15rem; font-family:var(--mono); font-size:.8rem}
+  .crumbs button{background:none; border:0; padding:.25rem .35rem; cursor:pointer;
+                 color:var(--accent); font:inherit; border-radius:.3rem}
+  .crumbs button:hover{background:var(--hover)}
+  .crumbs .here{color:var(--ink); padding:.25rem .35rem}
+  .crumbs .sep{color:var(--muted)}
+  .btn{padding:.5rem .9rem; font-family:var(--mono); font-size:.72rem; cursor:pointer;
+       letter-spacing:.08em; text-transform:uppercase; border-radius:.4rem;
+       background:var(--card); color:var(--ink); border:1px solid var(--line)}
+  .btn:hover{background:var(--hover)}
+  .btn.primary{background:var(--accent); color:var(--accent-ink); border-color:transparent}
+  .btn.primary:hover{filter:brightness(1.07)}
+
+  .drop{border:1.5px dashed var(--line); border-radius:.6rem; padding:1rem;
+        text-align:center; color:var(--muted); font-size:.85rem; margin-bottom:1rem;
+        transition:border-color .15s ease, background-color .15s ease}
+  .drop.over{border-color:var(--accent); background:var(--hover)}
+  .drop b{color:var(--ink); font-weight:600}
+
+  .list{background:var(--card); border:1px solid var(--line); border-radius:.6rem; overflow:hidden}
+  .row{display:flex; align-items:center; gap:.75rem; padding:.6rem .9rem;
+       border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:0}
+  .row:hover{background:var(--hover)}
+  .row .icon{flex:none; width:2.1rem; height:2.1rem; display:flex; align-items:center;
+             justify-content:center; border-radius:.4rem; background:var(--hover);
+             font-size:1.05rem; overflow:hidden}
+  .row .icon img{width:100%; height:100%; object-fit:cover; display:block}
+  .row .name{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .row .name button{background:none; border:0; padding:0; font:inherit; color:inherit;
+                    cursor:pointer; max-width:100%; overflow:hidden; text-overflow:ellipsis;
+                    white-space:nowrap}
+  .row .name button:hover{color:var(--accent)}
+  .row .meta{flex:none; font-family:var(--mono); font-size:.68rem; color:var(--muted);
+             text-align:right; line-height:1.5}
+  .row .act{flex:none; display:flex; gap:.25rem}
+  .row .act button{background:none; border:0; cursor:pointer; font-size:.95rem;
+                   padding:.3rem .4rem; border-radius:.35rem; color:var(--muted)}
+  .row .act button:hover{background:var(--bg); color:var(--ink)}
+  .row .act button.del:hover{color:var(--danger)}
+  .empty{padding:1.4rem .9rem; color:var(--muted); font-style:italic}
+
+  .note{font-size:.78rem; color:var(--muted); margin-top:1rem}
+  @media (max-width:520px){ .row .meta .when{display:none} }
+</style>
+</head>
+<body>
+  <h1>
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h4l2 2.5h7A2.5 2.5 0 0 1 21 10v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17V7.5Z"
+            stroke="currentColor" stroke-width="1.6"/>
+    </svg>
+    Drive
+  </h1>
+  <p class="status">mode <b id="mode">…</b> · <b id="who">…</b> · <span id="usage"></span></p>
+
+  <div class="toolbar">
+    <nav class="crumbs" id="crumbs" aria-label="Folder"></nav>
+    <button class="btn" id="mkdir" hidden>New folder</button>
+    <button class="btn primary" id="pick" hidden>Upload</button>
+    <input type="file" id="file-input" multiple hidden>
+  </div>
+
+  <div class="drop" id="drop" hidden><b>Drop files here</b> — they land in the current folder</div>
+  <div class="list" id="list"><p class="empty">Loading…</p></div>
+  <p class="note">Every visitor of this artifact version sees the same files —
+    they live in the version's file storage on the Cairn server
+    (<code>cairn.files</code>). Uploading an existing name overwrites it.</p>
+
+<script src="./cairn.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const IMG = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
+  const ICONS = [
+    [/\.(zip|gz|tar|7z|rar)$/i, '🗜️'], [/\.(pdf)$/i, '📕'],
+    [/\.(mp3|wav|ogg|flac|m4a)$/i, '🎵'], [/\.(mp4|mov|webm|mkv)$/i, '🎬'],
+    [/\.(csv|xlsx?|tsv)$/i, '📊'], [/\.(txt|md|json|js|css|html|xml|log)$/i, '📄'],
+  ];
+
+  let me = null;
+  let files = [];   // full listing: [{path, size, modifiedAt}]
+  let cwd = '';     // current folder prefix: '' or 'photos/reports/'
+  let thumbs = [];  // object URLs to revoke on re-render (debug mode)
+
+  const fmtSize = (n) => n < 1024 ? n + ' B'
+    : n < 1048576 ? (n / 1024).toFixed(1) + ' KB'
+    : (n / 1048576).toFixed(1) + ' MB';
+  const fmtWhen = (iso) => (iso || '').slice(0, 16).replace('T', ' ');
+
+  // Folders are implicit: they exist because file paths contain slashes.
+  function entriesFor(prefix) {
+    const dirs = new Map();
+    const leaves = [];
+    for (const f of files) {
+      if (!f.path.startsWith(prefix)) continue;
+      const rest = f.path.slice(prefix.length);
+      const slash = rest.indexOf('/');
+      if (slash === -1) { leaves.push(f); continue; }
+      const name = rest.slice(0, slash);
+      const d = dirs.get(name) || { name, count: 0, size: 0 };
+      d.count++; d.size += f.size;
+      dirs.set(name, d);
+    }
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    return {
+      dirs: [...dirs.values()].sort(byName),
+      files: leaves.sort((a, b) => a.path.localeCompare(b.path)),
+    };
+  }
+
+  async function thumbFor(img, path) {
+    const url = cairn.files.url(path);          // remote: direct URL
+    if (url) { img.src = url; return; }
+    const blob = await cairn.files.download(path);  // debug: object URL
+    if (blob) {
+      const obj = URL.createObjectURL(blob);
+      thumbs.push(obj);
+      img.src = obj;
+    }
+  }
+
+  async function saveAs(f) {
+    const a = document.createElement('a');
+    a.download = f.path.split('/').pop();
+    const url = cairn.files.url(f.path);
+    if (url) {
+      a.href = url;
+      a.click();
+      return;
+    }
+    const blob = await cairn.files.download(f.path);
+    if (!blob) return;
+    a.href = URL.createObjectURL(blob);
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function render() {
+    thumbs.forEach(URL.revokeObjectURL);
+    thumbs = [];
+
+    // breadcrumb
+    const crumbs = $('crumbs');
+    crumbs.innerHTML = '';
+    const root = document.createElement('button');
+    root.textContent = 'drive';
+    root.onclick = () => { cwd = ''; render(); };
+    crumbs.appendChild(root);
+    let prefix = '';
+    const parts = cwd ? cwd.slice(0, -1).split('/') : [];
+    parts.forEach((part, i) => {
+      prefix += part + '/';
+      const target = prefix;
+      const sep = document.createElement('span');
+      sep.className = 'sep';
+      sep.textContent = '/';
+      crumbs.appendChild(sep);
+      if (i === parts.length - 1) {
+        const here = document.createElement('span');
+        here.className = 'here';
+        here.textContent = part;
+        crumbs.appendChild(here);
+      } else {
+        const b = document.createElement('button');
+        b.textContent = part;
+        b.onclick = () => { cwd = target; render(); };
+        crumbs.appendChild(b);
+      }
+    });
+
+    const total = files.reduce((a, f) => a + f.size, 0);
+    $('usage').textContent = files.length + ' file' + (files.length === 1 ? '' : 's') +
+      ' · ' + fmtSize(total);
+
+    const { dirs, files: leaves } = entriesFor(cwd);
+    const list = $('list');
+    list.innerHTML = '';
+    if (!dirs.length && !leaves.length) {
+      const p = document.createElement('p');
+      p.className = 'empty';
+      p.textContent = me ? 'Empty folder — upload something.' : 'Nothing here yet.';
+      list.appendChild(p);
+      return;
+    }
+
+    for (const d of dirs) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML = '<span class="icon">📁</span>';
+      const name = document.createElement('span');
+      name.className = 'name';
+      const open = document.createElement('button');
+      open.textContent = d.name + '/';
+      open.onclick = () => { cwd += d.name + '/'; render(); };
+      name.appendChild(open);
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.textContent = d.count + ' file' + (d.count === 1 ? '' : 's') + ' · ' + fmtSize(d.size);
+      row.append(name, meta);
+      list.appendChild(row);
+    }
+
+    for (const f of leaves) {
+      const base = f.path.split('/').pop();
+      const row = document.createElement('div');
+      row.className = 'row';
+      const icon = document.createElement('span');
+      icon.className = 'icon';
+      if (IMG.test(base)) {
+        const img = document.createElement('img');
+        img.alt = '';
+        thumbFor(img, f.path).catch(() => { icon.textContent = '🖼️'; });
+        icon.appendChild(img);
+      } else {
+        icon.textContent = (ICONS.find(([re]) => re.test(base)) || [0, '📄'])[1];
+      }
+      const name = document.createElement('span');
+      name.className = 'name';
+      const dl = document.createElement('button');
+      dl.textContent = base;
+      dl.title = 'Download';
+      dl.onclick = () => saveAs(f);
+      name.appendChild(dl);
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.innerHTML = fmtSize(f.size) + '<br><span class="when">' + fmtWhen(f.modifiedAt) + '</span>';
+      const act = document.createElement('span');
+      act.className = 'act';
+      const save = document.createElement('button');
+      save.textContent = '⬇︎';
+      save.title = 'Download';
+      save.onclick = () => saveAs(f);
+      act.appendChild(save);
+      if (me) {
+        const del = document.createElement('button');
+        del.className = 'del';
+        del.textContent = '✕';
+        del.title = 'Delete';
+        del.onclick = async () => {
+          await cairn.files.remove(f.path);
+          await refresh();
+        };
+        act.appendChild(del);
+      }
+      row.append(icon, name, meta, act);
+      list.appendChild(row);
+    }
+  }
+
+  async function refresh() {
+    files = await cairn.files.list();
+    render();
+  }
+
+  async function uploadAll(fileList) {
+    if (!me) { cairn.login(); return; }
+    for (const file of fileList) {
+      await cairn.files.upload(cwd + file.name, file);
+    }
+    await refresh();
+  }
+
+  async function main() {
+    $('mode').textContent = cairn.mode;
+    await cairn.ready();
+    me = await cairn.me();
+    $('who').textContent = me ? (me.name || me.email) : 'anonymous (read-only)';
+
+    if (me) {
+      $('pick').hidden = false;
+      $('mkdir').hidden = false;
+      $('drop').hidden = false;
+      $('pick').onclick = () => $('file-input').click();
+      $('file-input').onchange = (e) => {
+        uploadAll([...e.target.files]);
+        e.target.value = '';
+      };
+      // A folder is just a path prefix: it shows up once a file lands in it.
+      $('mkdir').onclick = () => {
+        const name = (prompt('Folder name:') || '').trim().replace(/[\/\\]/g, '-');
+        if (name) { cwd += name + '/'; render(); }
+      };
+      const drop = $('drop');
+      ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => {
+        e.preventDefault();
+        drop.classList.add('over');
+      }));
+      ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => {
+        e.preventDefault();
+        drop.classList.remove('over');
+      }));
+      drop.addEventListener('drop', (e) => uploadAll([...e.dataTransfer.files]));
+    }
+
+    await refresh();
+    setInterval(() => refresh().catch(() => {}), 8000);
+  }
+  main().catch((err) => {
+    $('list').innerHTML = '<p class="empty">' + err.message + '</p>';
+  });
+</script>
+</body>
+</html>
