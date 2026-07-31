@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team Poll</title>
+<link rel="icon" href="./assets/mark.svg">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header>
+    <img src="./assets/mark.svg" alt="" width="28" height="28">
+    <h1 id="question">…</h1>
+    <p class="status">mode <b id="mode">…</b> · voting as <b id="who">…</b> · <b id="total">0</b> votes</p>
+  </header>
+
+  <main id="options"><p class="empty">Loading…</p></main>
+
+  <footer>
+    <p>A multi-file Cairn example: <code>index.html</code> + <code>style.css</code> +
+    <code>app.js</code> + <code>assets/</code> + <code>config.json</code>, all served
+    relative to the version URL. Votes live in the version's shared SQLite database.</p>
+  </footer>
+
+<script src="./cairn.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>

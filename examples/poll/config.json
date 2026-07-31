@@ -1,0 +1,9 @@
+{
+  "question": "What should our next internal tool be?",
+  "options": [
+    { "id": "deploy-board", "label": "A deploy status board" },
+    { "id": "oncall-roster", "label": "An on-call roster with handoff notes" },
+    { "id": "snippet-vault", "label": "A team snippet vault" },
+    { "id": "lunch-wheel", "label": "The lunch decision wheel" }
+  ]
+}
