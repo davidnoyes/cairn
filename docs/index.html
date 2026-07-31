@@ -795,6 +795,16 @@
 <span class="p">$ </span>cairn db query <span class="f">--artifact</span> my-app <span class="f">--json</span> <span class="s">"SELECT COUNT(*) FROM notes"</span></pre>
     </div>
     <div class="code">
+      <div class="code-head"><span>docker — instead of the installer</span><button class="copy" type="button">copy</button></div>
+      <pre><span class="c"># build the image from the repo — a multi-stage Dockerfile ships with it</span>
+<span class="p">$ </span>git clone <span class="s">https://github.com/aloisdeniel/cairn</span> &amp;&amp; cd cairn
+<span class="p">$ </span>docker build <span class="f">-t</span> cairn .
+
+<span class="c"># run — all state lives in the named volume</span>
+<span class="p">$ </span>docker run <span class="f">-p</span> 8787:8787 <span class="f">-v</span> cairn-data:/data \
+    <span class="f">-e</span> CAIRN_ADMIN_EMAIL=you@example.com <span class="f">-e</span> CAIRN_ADMIN_PASSWORD=<span class="s">'...'</span> cairn</pre>
+    </div>
+    <div class="code">
       <div class="code-head"><span>your artifact — index.html</span><button class="copy" type="button">copy</button></div>
       <pre>&lt;script src=<span class="s">"./cairn.js"</span>&gt;&lt;/script&gt;
 &lt;script&gt;
