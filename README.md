@@ -120,6 +120,11 @@ SQLite (sql.js/WebAssembly) persisted in browser storage; `cairn.me()` returns
 for offline use; fully offline setups can drop `sql-wasm.js`/`sql-wasm.wasm`
 next to `index.html`. See `examples/guestbook`.
 
+More examples in [`examples/`](examples/): [`poll`](examples/poll/) — a
+multi-file artifact (CSS, JS, SVG assets, a fetched `config.json`) — and
+[`todo-react`](examples/todo-react/) — TypeScript + React bundled with esbuild,
+where a typed `TodoStore` hides every cairn.js detail from the UI.
+
 ## HTTP API
 
 Authentication: `Authorization: Bearer <jwt>` (from `POST /api/auth/login`) or

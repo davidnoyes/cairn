@@ -38,7 +38,9 @@ gofmt -l . && go vet ./...
   JSON APIs), `cairn.js` (client lib; falls back to sql.js-in-browser with
   user `{id: 0, name: "Debug"}` when not served by Cairn).
 - `internal/client/` — Go API client used by the CLI (zips + multipart push).
-- `examples/guestbook/` — reference artifact; also exercised by e2e.
+- `examples/` — reference artifacts: `guestbook` (single file, exercised by
+  e2e), `poll` (multi-file + assets + config fetch), `todo-react` (TypeScript +
+  React + esbuild; push its `dist/`, `src/store.ts` wraps cairn.js).
 - `.claude/skills/cairn-artifact/` — Claude Code skill for building and
   publishing artifacts with the CLI; keep it in sync when CLI flags or the
   cairn.js API change.

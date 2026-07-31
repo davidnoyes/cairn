@@ -1,0 +1,95 @@
+:root {
+  --bg: #f7f6f2;
+  --ink: #22261f;
+  --muted: #7d8273;
+  --line: #dcdbd0;
+  --card: #ffffff;
+  --accent: #4a7a3a;
+  --accent-soft: #e4eddd;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #171a15; --ink: #e6e8e0; --muted: #8b9180; --line: #33382e;
+    --card: #1e221b; --accent: #8fbf7c; --accent-soft: #2a3325;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto;
+  max-width: 40rem;
+  padding: 3rem 1.25rem 4rem;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  line-height: 1.5;
+}
+
+header { margin-bottom: 2rem; }
+header img { display: block; margin-bottom: .9rem; }
+h1 { font-size: 1.7rem; margin: 0; letter-spacing: -.01em; }
+.status {
+  font-family: var(--mono);
+  font-size: .68rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: .5rem 0 0;
+}
+.status b { color: var(--accent); }
+
+.option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: .6rem;
+  padding: .85rem 1rem;
+  margin-bottom: .6rem;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color .15s ease;
+}
+.option:hover { border-color: var(--accent); }
+.option .bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent-soft);
+  transition: width .4s ease;
+}
+.option .row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+}
+.option .label { flex: 1; }
+.option .count {
+  font-family: var(--mono);
+  font-size: .75rem;
+  color: var(--muted);
+}
+.option img { width: 16px; height: 16px; opacity: 0; transition: opacity .2s; }
+.option.voted img { opacity: 1; }
+.option.voted { border-color: var(--accent); }
+
+.empty { color: var(--muted); font-style: italic; }
+.error { color: #b3502e; }
+
+footer {
+  margin-top: 2.5rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+  font-size: .8rem;
+  color: var(--muted);
+}
+footer code {
+  font-family: var(--mono);
+  font-size: .95em;
+}
