@@ -70,10 +70,14 @@ sign in at `/login` and choose their password on the spot.
 ### Docker
 
 ```sh
-docker build -t cairn .
 docker run -p 8787:8787 -v cairn-data:/data \
-  -e CAIRN_ADMIN_EMAIL=you@example.com -e CAIRN_ADMIN_PASSWORD=secret cairn
+  -e CAIRN_ADMIN_EMAIL=you@example.com -e CAIRN_ADMIN_PASSWORD=secret \
+  ghcr.io/aloisdeniel/cairn:latest
 ```
+
+Or `docker compose up -d` with the repo's [`docker-compose.yml`](docker-compose.yml)
+(hosted Docker managers can point straight at the GitHub repo). To build the
+image yourself instead: `docker build -t cairn .`
 
 ## URLs
 
