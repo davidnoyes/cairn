@@ -809,8 +809,9 @@
       <pre><span class="c"># install (or: docker, or: go install github.com/aloisdeniel/cairn/cmd/cairn@latest)</span>
 <span class="p">$ </span>curl <span class="f">-fsSL</span> <span class="s">https://aloisdeniel.github.io/cairn/install.sh</span> | sh
 
-<span class="c"># run the server — data is just this directory</span>
-<span class="p">$ </span>cairn serve <span class="f">--data-dir</span> data <span class="f">--admin-email</span> you@example.com <span class="f">--admin-password</span> <span class="s">'...'</span>
+<span class="c"># run the server — data is just this directory; no password on the CLI:</span>
+<span class="c"># you choose the admin password in the browser at first sign-in</span>
+<span class="p">$ </span>cairn serve <span class="f">--data-dir</span> data <span class="f">--admin-email</span> you@example.com
 
 <span class="c"># log in, push, query — every command takes --json for agents</span>
 <span class="p">$ </span>cairn login <span class="f">--host</span> <span class="s">http://localhost:8787</span> <span class="f">--email</span> you@example.com
@@ -822,8 +823,7 @@
       <div class="code-head"><span>docker — instead of the installer</span><button class="copy" type="button">copy</button></div>
       <pre><span class="c"># prebuilt multi-arch image on GHCR — all state lives in the named volume</span>
 <span class="p">$ </span>docker run <span class="f">-p</span> 8787:8787 <span class="f">-v</span> cairn-data:/data \
-    <span class="f">-e</span> CAIRN_ADMIN_EMAIL=you@example.com <span class="f">-e</span> CAIRN_ADMIN_PASSWORD=<span class="s">'...'</span> \
-    <span class="s">ghcr.io/aloisdeniel/cairn:latest</span>
+    <span class="f">-e</span> CAIRN_ADMIN_EMAIL=you@example.com <span class="s">ghcr.io/aloisdeniel/cairn:latest</span>
 
 <span class="c"># or: docker compose up -d — a docker-compose.yml ships in the repo</span></pre>
     </div>

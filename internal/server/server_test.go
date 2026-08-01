@@ -113,6 +113,52 @@ func TestBootstrapAndLogin(t *testing.T) {
 	}
 }
 
+// TestBootstrapUnclaimedAdmin covers the default bootstrap: no password is
+// passed at first launch, the admin claims the account in the UI at first
+// sign-in.
+func TestBootstrapUnclaimedAdmin(t *testing.T) {
+	s, err := New(Config{
+		DataDir:    t.TempDir(),
+		AdminEmail: "admin@example.com",
+		TokenTTL:   time.Hour,
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(s.Handler())
+	t.Cleanup(func() {
+		ts.Close()
+		s.dbs.Close()
+		s.store.Close()
+	})
+
+	// The unclaimed account rejects a login without confirmation…
+	c := &testClient{t: t, base: ts.URL}
+	resp := c.do("POST", "/api/auth/login", map[string]string{"email": "admin@example.com", "password": "chosen-in-ui"}, nil)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("claim without confirm: %d", resp.StatusCode)
+	}
+	// …and the first confirmed sign-in sets the password and grants admin.
+	var out struct {
+		Token      string `json:"token"`
+		FirstLogin bool   `json:"firstLogin"`
+		User       struct {
+			IsAdmin bool `json:"isAdmin"`
+		} `json:"user"`
+	}
+	c.mustDo("POST", "/api/auth/login", map[string]string{"email": "admin@example.com", "password": "chosen-in-ui", "confirm": "chosen-in-ui"}, &out, http.StatusOK)
+	if !out.FirstLogin || !out.User.IsAdmin || out.Token == "" {
+		t.Fatalf("claim response: %+v", out)
+	}
+	login(t, ts.URL, "admin@example.com", "chosen-in-ui")
+
+	// Without an admin email the server refuses to start on an empty table.
+	if _, err := New(Config{DataDir: t.TempDir(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}); err == nil {
+		t.Error("server started with no bootstrap admin email")
+	}
+}
+
 func TestFirstLoginClaim(t *testing.T) {
 	_, ts := testServer(t)
 	admin := login(t, ts.URL, "admin@example.com", "admin-password")

@@ -24,8 +24,8 @@ echo "== build"
 pass "built $BIN"
 
 echo "== serve"
-"$BIN" serve --addr ":$PORT" --data-dir "$WORK/data" \
-  --admin-email admin@e2e.test --admin-password admin-password-1 &
+# No bootstrap password: the admin account is claimed at first login below.
+"$BIN" serve --addr ":$PORT" --data-dir "$WORK/data" --admin-email admin@e2e.test &
 SERVER_PID=$!
 for i in $(seq 1 50); do
   curl -sf "$HOST/healthz" >/dev/null 2>&1 && break
@@ -35,9 +35,11 @@ curl -sf "$HOST/healthz" >/dev/null || fail "server did not start"
 pass "server healthy on $HOST"
 
 echo "== auth"
-"$BIN" login --host "$HOST" --email admin@e2e.test --password admin-password-1 >/dev/null
+# First login claims the unclaimed bootstrap admin (password chosen here).
+"$BIN" login --host "$HOST" --email admin@e2e.test \
+  --password admin-password-1 --confirm admin-password-1 >/dev/null
 "$BIN" whoami | grep -q admin@e2e.test || fail "whoami"
-pass "CLI login + whoami"
+pass "CLI first-login claim + whoami"
 
 # API key flow: create a key via the admin API, then use it via env vars.
 TOKEN_JSON=$(curl -sf -X POST "$HOST/api/admin/keys" \

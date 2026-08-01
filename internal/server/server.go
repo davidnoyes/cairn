@@ -110,7 +110,9 @@ func New(cfg Config) (*Server, error) {
 
 // bootstrapAdmin creates the first admin account when the user table is
 // empty. The server refuses to start without one: everything else requires an
-// authenticated admin.
+// authenticated admin. The account is created unclaimed — the admin chooses
+// the password in the browser at first sign-in — unless a bootstrap password
+// is explicitly provided (tests, automation).
 func (s *Server) bootstrapAdmin() error {
 	n, err := s.store.CountUsers()
 	if err != nil {
@@ -119,12 +121,16 @@ func (s *Server) bootstrapAdmin() error {
 	if n > 0 {
 		return nil
 	}
-	if s.cfg.AdminEmail == "" || s.cfg.AdminPassword == "" {
-		return errors.New("no users exist yet: provide --admin-email and --admin-password (or CAIRN_ADMIN_EMAIL / CAIRN_ADMIN_PASSWORD) to create the first admin")
+	if s.cfg.AdminEmail == "" {
+		return errors.New("no users exist yet: provide --admin-email (or CAIRN_ADMIN_EMAIL) to create the first admin; its password is chosen in the browser at first sign-in")
 	}
 	u, err := s.store.CreateUser(s.cfg.AdminEmail, adminNameFromEmail(s.cfg.AdminEmail), true)
 	if err != nil {
 		return fmt.Errorf("create bootstrap admin: %w", err)
+	}
+	if s.cfg.AdminPassword == "" {
+		s.log.Info("created bootstrap admin; sign in to choose its password", "email", u.Email)
+		return nil
 	}
 	hash, err := auth.HashPassword(s.cfg.AdminPassword)
 	if err != nil {

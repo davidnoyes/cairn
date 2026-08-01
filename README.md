@@ -48,15 +48,17 @@ anonymous visitors of public artifacts) but they are guardrails, not a sandbox.
 ```sh
 go build ./cmd/cairn
 
-# First run creates the admin account
-./cairn serve --data-dir data \
-  --admin-email you@example.com --admin-password 'choose-something'
+# First run creates the admin account — no password on the command line:
+# you choose it in the browser at first sign-in
+./cairn serve --data-dir data --admin-email you@example.com
 
 open http://localhost:8787/admin
 ```
 
-Create users and API keys in the admin UI (or via `/api/admin/...`). New users
-sign in at `/login` and choose their password on the spot.
+Create users and API keys in the admin UI (or via `/api/admin/...`). Accounts
+— the bootstrap admin included — sign in at `/login` and choose their password
+on the spot. (Automation can still pre-set the admin password with
+`--admin-password` / `CAIRN_ADMIN_PASSWORD`.)
 
 ### Push your first artifact
 
@@ -71,7 +73,7 @@ sign in at `/login` and choose their password on the spot.
 
 ```sh
 docker run -p 8787:8787 -v cairn-data:/data \
-  -e CAIRN_ADMIN_EMAIL=you@example.com -e CAIRN_ADMIN_PASSWORD=secret \
+  -e CAIRN_ADMIN_EMAIL=you@example.com \
   ghcr.io/aloisdeniel/cairn:latest
 ```
 
