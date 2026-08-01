@@ -20,7 +20,7 @@ func runServe(args []string) error {
 	baseURL := fs.String("base-url", envOr("CAIRN_BASE_URL", ""), "external base URL (https enables Secure cookies)")
 	tokenTTL := fs.Duration("token-ttl", envDurationOr("CAIRN_TOKEN_TTL", 7*24*time.Hour), "JWT lifetime")
 	adminEmail := fs.String("admin-email", envOr("CAIRN_ADMIN_EMAIL", ""), "bootstrap admin email (first run only)")
-	adminPassword := fs.String("admin-password", envOr("CAIRN_ADMIN_PASSWORD", ""), "bootstrap admin password (first run only)")
+	adminPassword := fs.String("admin-password", envOr("CAIRN_ADMIN_PASSWORD", ""), "optional bootstrap admin password (omit to choose it in the browser at first sign-in)")
 	maxUploadMB := fs.Int64("max-upload-mb", envInt64Or("CAIRN_MAX_UPLOAD_MB", 256), "max decompressed upload size (MiB)")
 	queryTimeout := fs.Duration("query-timeout", envDurationOr("CAIRN_QUERY_TIMEOUT", 10*time.Second), "shared database query timeout")
 	maxQueryRows := fs.Int("max-query-rows", int(envInt64Or("CAIRN_MAX_QUERY_ROWS", 10000)), "max rows returned per query")
