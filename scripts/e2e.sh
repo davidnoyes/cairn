@@ -9,6 +9,9 @@ PORT="${CAIRN_E2E_PORT:-8797}"
 HOST="http://127.0.0.1:$PORT"
 BIN="$WORK/cairn"
 export CAIRN_CONFIG="$WORK/config/cairn/config.json"   # keep CLI login state isolated
+# These override CAIRN_CONFIG, so a value left in the shell would send every
+# command below to that server instead of the one started here.
+unset CAIRN_HOST CAIRN_API_KEY
 
 pass() { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 fail() { printf '  \033[31m✗ %s\033[0m\n' "$1"; exit 1; }
