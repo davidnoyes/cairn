@@ -154,7 +154,10 @@ diagram picks Mermaid's dark or light theme from the background it sits on —
 its own, else the nearest ancestor's, else the page's `color-scheme` and the
 viewer's OS setting. A gradient counts as the average of its colors; a
 background image is not read. To force a theme, start the diagram with
-`%%{init: {'theme': 'forest'}}%%`.
+`%%{init: {'theme': 'forest'}}%%`. Diagrams must be in the page when it
+finishes loading: an app that adds one later (after fetching its content, for
+example) should include `./mermaid.js` itself and call `mermaid.run()` once
+the diagram is in place.
 
 More examples in [`examples/`](examples/): [`poll`](examples/poll/) — a
 multi-file artifact (CSS, JS, SVG assets, a fetched `config.json`) —
