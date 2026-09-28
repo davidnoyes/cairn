@@ -305,7 +305,7 @@
       const tr = document.createElement('tr');
       const name = document.createElement('div');
       const link = document.createElement('a');
-      link.href = '/shared/' + a.id; link.target = '_blank';
+      link.href = '/shared/' + a.id;
       link.textContent = a.name; link.style.color = 'var(--accent)';
       name.appendChild(link);
       if (a.description) {
@@ -350,8 +350,7 @@
       line.className = 'mono';
       line.style.padding = '.15rem 0';
       const open = document.createElement('a');
-      open.href = '/artifacts/' + artifact.id + '/' + v.id + '/';
-      open.target = '_blank';
+      open.href = '/shared/' + artifact.id + '/' + v.id;
       open.style.color = 'var(--accent)';
       open.textContent = '#' + v.seq;
       line.append(open, document.createTextNode(

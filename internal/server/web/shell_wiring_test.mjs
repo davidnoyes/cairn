@@ -9,6 +9,7 @@ const ORIGIN = 'https://cairn.example';
 function fakeDoc({ readyState = 'complete', baseTarget = null } = {}) {
   const doc = new EventTarget();
   doc.readyState = readyState;
+  doc.baseURI = ORIGIN + '/artifacts/a1/v1/';
   doc.querySelector = (sel) =>
     sel === 'base[target]' && baseTarget ? { getAttribute: () => baseTarget } : null;
   return doc;
@@ -33,10 +34,12 @@ function click(doc, anchor, init = {}) {
 
 function setup(docOpts) {
   const frame = new EventTarget();
+  frame.getAttribute = (k) => (k === 'src' ? '/artifacts/a1/v1/' : null);
   frame.contentDocument = fakeDoc(docOpts);
   const opened = [];
-  attach(frame, ORIGIN, (url) => opened.push(url));
-  return { frame, opened };
+  const navigated = [];
+  attach(frame, ORIGIN, (url) => opened.push(url), (url) => navigated.push(url));
+  return { frame, opened, navigated };
 }
 
 test('installs immediately when the iframe already finished loading', () => {
@@ -87,4 +90,25 @@ test('honors <base target="_blank"> in the artifact document', () => {
   const { frame, opened } = setup({ baseTarget: '_blank' });
   click(frame.contentDocument, fakeAnchor({ href: 'https://example.com/' }));
   assert.deepEqual(opened, []);
+});
+
+test('a link to another Cairn page replaces the whole page, not the frame', () => {
+  const { frame, opened, navigated } = setup();
+  const ev = click(frame.contentDocument, fakeAnchor({ href: '/shared/b2' }));
+  assert.deepEqual(navigated, [ORIGIN + '/shared/b2']);
+  assert.deepEqual(opened, []);
+  assert.equal(ev.defaultPrevented, true);
+});
+
+test('a link within the artifact is left to the frame', () => {
+  const { frame, opened, navigated } = setup();
+  const ev = click(frame.contentDocument, fakeAnchor({ href: 'page2.html' }));
+  assert.deepEqual([opened, navigated], [[], []]);
+  assert.equal(ev.defaultPrevented, false);
+});
+
+test("only this frame's artifact version counts as within the artifact", () => {
+  const { frame, navigated } = setup();
+  click(frame.contentDocument, fakeAnchor({ href: '/artifacts/b2/' }));
+  assert.deepEqual(navigated, [ORIGIN + '/shared/b2']);
 });

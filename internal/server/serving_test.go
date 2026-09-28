@@ -204,13 +204,37 @@ func TestShellJS(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "javascript") {
 		t.Errorf("shell.js content-type: %s", ct)
 	}
-	if !strings.Contains(body(t, resp), "externalLinkTarget") {
-		t.Errorf("shell.js missing externalLinkTarget")
+	if !strings.Contains(body(t, resp), "linkAction") {
+		t.Errorf("shell.js missing linkAction")
 	}
 
 	// The shared shell page loads it
 	resp = get(t, ts.URL+"/shared/"+aid, "", "text/html")
 	if !strings.Contains(body(t, resp), "/shell.js") {
 		t.Errorf("shell page should reference /shell.js")
+	}
+}
+
+// Cairn's own pages change the page rather than opening tabs, so closing a
+// tab never strands the viewer; the shell header links back home.
+func TestPagesStayInOneTab(t *testing.T) {
+	_, ts := testServer(t)
+	admin, aid, _ := setupArtifact(t, ts.URL, true)
+
+	shell := body(t, get(t, ts.URL+"/shared/"+aid, "", "text/html"))
+	if !strings.Contains(shell, `<a class="mark" href="/"`) {
+		t.Errorf("shell page should link home from its mark")
+	}
+	adminResp := get(t, ts.URL+"/admin", admin.token, "text/html")
+	if adminResp.StatusCode != http.StatusOK {
+		t.Fatalf("admin page: %d", adminResp.StatusCode)
+	}
+	for page, html := range map[string]string{
+		"shell": shell,
+		"admin": body(t, adminResp),
+	} {
+		if strings.Contains(html, "_blank") {
+			t.Errorf("%s page opens a new tab", page)
+		}
 	}
 }
