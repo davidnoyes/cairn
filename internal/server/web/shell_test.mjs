@@ -1,5 +1,5 @@
 // Unit tests for the pure external-link decision function in shell.js.
-// Run with: node --test internal/server/web/
+// Run with: node --test internal/server/web/*_test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { externalLinkTarget } from './shell.js';

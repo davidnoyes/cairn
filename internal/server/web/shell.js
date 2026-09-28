@@ -33,7 +33,9 @@
   }
 
   // install attaches the external-link click handler to an iframe's document.
-  function install(frame) {
+  // Installing twice on one document is harmless: the first handler calls
+  // preventDefault, so the second sees defaultPrevented and stands down.
+  function install(frame, origin, open) {
     var doc = frame.contentDocument;
     if (!doc) return; // cross-origin (shouldn't happen; iframe is same-origin)
 
@@ -50,32 +52,37 @@
         anchor.getAttribute('href'),
         anchor.getAttribute('target') || '',
         base ? base.getAttribute('target') || '' : '',
-        location.origin
+        origin
       );
       if (!url) return;
 
       event.preventDefault();
-      global.open(url, '_blank', 'noopener,noreferrer');
+      open(url);
     });
   }
 
-  function init() {
-    var frame = document.querySelector('iframe');
-    if (!frame) return;
-    frame.addEventListener('load', function () { install(frame); });
+  // attach installs on every iframe load, and right away if the artifact
+  // finished loading before this script ran (a single-file artifact often
+  // does, since the iframe starts loading before deferred scripts execute).
+  function attach(frame, origin, open) {
+    frame.addEventListener('load', function () { install(frame, origin, open); });
+    var doc = frame.contentDocument;
+    if (doc && doc.readyState === 'complete') install(frame, origin, open);
   }
 
   // No `document` under Node (required from the test suite): only wire up
-  // the browser behavior when actually running in a browser.
+  // the browser behavior when actually running in a browser. The script is
+  // loaded with `defer`, so the DOM is already parsed here.
   if (typeof document !== 'undefined') {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', init);
-    } else {
-      init();
+    var frame = document.querySelector('iframe');
+    if (frame) {
+      attach(frame, location.origin, function (url) {
+        global.open(url, '_blank', 'noopener,noreferrer');
+      });
     }
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { externalLinkTarget: externalLinkTarget };
+    module.exports = { externalLinkTarget: externalLinkTarget, attach: attach };
   }
 })(typeof window !== 'undefined' ? window : this);
