@@ -6,10 +6,10 @@ import { attach } from './shell.js';
 
 const ORIGIN = 'https://cairn.example';
 
-function fakeDoc({ readyState = 'complete', baseTarget = null } = {}) {
+function fakeDoc({ readyState = 'complete', baseTarget = null, path = '/artifacts/a1/v1/' } = {}) {
   const doc = new EventTarget();
   doc.readyState = readyState;
-  doc.baseURI = ORIGIN + '/artifacts/a1/v1/';
+  doc.baseURI = ORIGIN + path;
   doc.querySelector = (sel) =>
     sel === 'base[target]' && baseTarget ? { getAttribute: () => baseTarget } : null;
   return doc;
@@ -111,4 +111,11 @@ test("only this frame's artifact version counts as within the artifact", () => {
   const { frame, navigated } = setup();
   click(frame.contentDocument, fakeAnchor({ href: '/artifacts/b2/' }));
   assert.deepEqual(navigated, [ORIGIN + '/shared/b2']);
+});
+
+test('after the frame moves to a sub-page, links back up stay in the frame', () => {
+  const { frame, navigated } = setup({ path: '/artifacts/a1/v1/sub/page.html' });
+  const ev = click(frame.contentDocument, fakeAnchor({ href: '../index.html' }));
+  assert.deepEqual(navigated, []);
+  assert.equal(ev.defaultPrevented, false);
 });

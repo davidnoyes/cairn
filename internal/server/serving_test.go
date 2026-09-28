@@ -229,9 +229,15 @@ func TestPagesStayInOneTab(t *testing.T) {
 	if adminResp.StatusCode != http.StatusOK {
 		t.Fatalf("admin page: %d", adminResp.StatusCode)
 	}
+	adminHTML := body(t, adminResp)
+	// The admin page builds its version links in JS, so check the source:
+	// a version opens in the shell, which has the home link, not full screen.
+	if !strings.Contains(adminHTML, "open.href = '/shared/' + artifact.id + '/' + v.id;") {
+		t.Errorf("admin version links should open the shared view")
+	}
 	for page, html := range map[string]string{
 		"shell": shell,
-		"admin": body(t, adminResp),
+		"admin": adminHTML,
 	} {
 		if strings.Contains(html, "_blank") {
 			t.Errorf("%s page opens a new tab", page)
