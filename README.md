@@ -152,7 +152,8 @@ outside the shell can add `<script src="./mermaid.js"></script>` themselves.
 Mermaid is vendored into the binary, so this works fully offline. Each
 diagram picks Mermaid's dark or light theme from the background it sits on —
 its own, else the nearest ancestor's, else the page's `color-scheme` and the
-viewer's OS setting. To force a theme, start the diagram with
+viewer's OS setting. A gradient counts as the average of its colors; a
+background image is not read. To force a theme, start the diagram with
 `%%{init: {'theme': 'forest'}}%%`.
 
 More examples in [`examples/`](examples/): [`poll`](examples/poll/) — a

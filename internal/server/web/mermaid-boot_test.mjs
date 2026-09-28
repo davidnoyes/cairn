@@ -3,6 +3,8 @@
 // (`pandoc -f gfm -t html` on a ```mermaid fence).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 import { normalizeMermaidBlocks, render } from './mermaid-boot.js';
 
 const TRANSPARENT = 'rgba(0, 0, 0, 0)';
@@ -13,6 +15,7 @@ class El {
     this.tagName = tagName.toUpperCase();
     this.className = className;
     this.bg = bg;
+    this.image = 'none';
     this.colorScheme = 'normal';
     this.parentNode = null;
     this.children = [];
@@ -60,7 +63,7 @@ function fakeWin({ osDark = false } = {}) {
   const calls = [];
   return {
     calls,
-    getComputedStyle: (el) => ({ backgroundColor: el.bg, colorScheme: el.colorScheme }),
+    getComputedStyle: (el) => ({ backgroundColor: el.bg, backgroundImage: el.image, colorScheme: el.colorScheme }),
     matchMedia: (q) => ({ matches: osDark && q === '(prefers-color-scheme: dark)' }),
     mermaid: {
       initialize: (c) => calls.push(['init', c.theme, c]),
@@ -212,4 +215,63 @@ test('mixed backgrounds render each group with its theme, one run at a time', as
     { bodyBg: 'rgb(11, 14, 19)' });
   await render(win, doc);
   assert.deepEqual(themes(win), [['default', ['on card']], ['dark', ['on page', 'also page']]]);
+});
+
+test('the cut-off is WCAG relative luminance 0.179, with its channel weights', async () => {
+  for (const [bg, want] of [
+    ['rgb(115, 115, 115)', 'dark'], ['rgb(120, 120, 120)', 'default'],
+    ['rgb(255, 60, 0)', 'default'], ['rgb(0, 60, 255)', 'dark'],
+  ]) {
+    const win = fakeWin();
+    await render(win, fakeDoc([diagram('graph TD')], { bodyBg: bg }));
+    assert.deepEqual(themes(win), [[want, ['graph TD']]], bg);
+  }
+});
+
+test('a gradient counts as the average of its colour stops; an image is not read', async () => {
+  const hero = (image) => {
+    const div = new El('div', 'hero', [diagram('graph TD')]);
+    div.image = image;
+    return div;
+  };
+  const dark = fakeWin();
+  await render(dark, fakeDoc([hero('linear-gradient(rgb(255, 255, 255), rgb(0, 0, 0), rgb(0, 0, 0), rgb(0, 0, 0), rgb(255, 255, 255))')], { bodyBg: 'rgb(255, 255, 255)' }));
+  assert.deepEqual(themes(dark), [['dark', ['graph TD']]]);
+
+  const photo = fakeWin();
+  await render(photo, fakeDoc([hero('url("https://cairn.example/night.jpg")')], { bodyBg: 'rgb(255, 255, 255)' }));
+  assert.deepEqual(themes(photo), [['default', ['graph TD']]]);
+});
+
+// boot evaluates the script as a browser would, with document defined, and
+// records when it first touches the document (render's first step).
+function boot(readyState, extra = {}) {
+  const listeners = {};
+  const touched = [];
+  const context = {
+    document: { readyState, getElementsByTagName: () => { touched.push(readyState); return []; } },
+    addEventListener: (type, fn) => { (listeners[type] ||= []).push(fn); },
+    ...extra,
+  };
+  vm.runInNewContext(readFileSync(new URL('./mermaid-boot.js', import.meta.url), 'utf8'), context);
+  return { context, listeners, touched };
+}
+
+test('injected after the page loaded, it renders at once', () => {
+  const { touched, listeners } = boot('complete');
+  assert.equal(touched.length, 1);
+  assert.deepEqual(Object.keys(listeners), []);
+});
+
+test('included while the page loads, it waits for load, not DOMContentLoaded', () => {
+  const { touched, listeners } = boot('interactive');
+  assert.equal(touched.length, 0);
+  assert.deepEqual(Object.keys(listeners), ['load']);
+  listeners.load[0]();
+  assert.equal(touched.length, 1);
+});
+
+test('a second copy on the same page does nothing', () => {
+  const { touched } = boot('complete', { __cairnMermaidBooted: true });
+  assert.equal(touched.length, 0);
 });

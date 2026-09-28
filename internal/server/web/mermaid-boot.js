@@ -46,6 +46,20 @@
     return [v[0], v[1], v[2], v.length > 3 ? v[3] : 1];
   }
 
+  // gradientColor averages the rgb()/rgba() stops of a computed
+  // background-image gradient, or returns null when it has none. An image
+  // url() cannot be read, so it is ignored.
+  function gradientColor(s) {
+    var stops = (s || "").match(/rgba?\([^)]*\)/g);
+    if (!stops) return null;
+    var sum = [0, 0, 0, 0];
+    for (var i = 0; i < stops.length; i++) {
+      var c = parseColor(stops[i]);
+      for (var k = 0; k < 4; k++) sum[k] += c[k] / stops.length;
+    }
+    return sum;
+  }
+
   // canvasColor approximates the page canvas behind a transparent <html>:
   // dark only when the page opts into a dark color-scheme (CSS or <meta>)
   // and that scheme is in use; browsers draw white otherwise.
@@ -58,16 +72,21 @@
     return dark ? [18, 18, 18, 1] : [255, 255, 255, 1];
   }
 
-  // backgroundIsDark composites the background colors from el up to the
-  // first opaque one (or the canvas) and reports whether the result is
-  // closer to black than white, by WCAG relative luminance.
+  // backgroundIsDark composites the background colors (a gradient over its
+  // element's background-color) from el up to the first opaque one (or the
+  // canvas) and reports whether the result is closer to black than white,
+  // by WCAG relative luminance.
   function backgroundIsDark(win, doc, el) {
     var layers = [];
-    for (var node = el; node && node.nodeType === 1; node = node.parentNode) {
-      var c = parseColor(win.getComputedStyle(node).backgroundColor);
-      if (!c || c[3] === 0) continue;
-      layers.push(c);
-      if (c[3] >= 1) break;
+    walk: for (var node = el; node && node.nodeType === 1; node = node.parentNode) {
+      var style = win.getComputedStyle(node);
+      var own = [gradientColor(style.backgroundImage), parseColor(style.backgroundColor)];
+      for (var j = 0; j < own.length; j++) {
+        var c = own[j];
+        if (!c || c[3] === 0) continue;
+        layers.push(c);
+        if (c[3] >= 1) break walk;
+      }
     }
     var base = layers.length && layers[layers.length - 1][3] >= 1 ? layers.pop() : canvasColor(win, doc);
     for (var i = layers.length - 1; i >= 0; i--) {
