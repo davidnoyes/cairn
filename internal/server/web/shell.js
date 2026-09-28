@@ -1,5 +1,5 @@
 /*
- * shell.js — link handling for the shared shell page.
+ * shell.js — link handling and Mermaid loading for the shared shell page.
  *
  * shell.html embeds an artifact in a same-origin <iframe> with no `target`
  * set, so every plain link click navigates the iframe. That is right for
@@ -14,7 +14,9 @@
  *
  * This script re-attaches a click listener to the iframe document on every
  * `load` (in-artifact navigation replaces the document, so the listener
- * needs reinstalling each time).
+ * needs reinstalling each time). On the same `load` it adds mermaid.js to a
+ * document with Mermaid diagrams, so they render without the artifact
+ * including it.
  */
 (function (global) {
   'use strict';
@@ -54,6 +56,7 @@
   function install(frame, origin, open, navigate) {
     var doc = frame.contentDocument;
     if (!doc) return; // cross-origin (shouldn't happen; iframe is same-origin)
+    addMermaid(frame, doc);
 
     doc.addEventListener('click', function (event) {
       // Bubble phase: let the artifact's own handlers run first.
@@ -78,6 +81,19 @@
       if (action.open) open(action.open);
       else navigate(action.navigate);
     });
+  }
+
+  // addMermaid loads this version's mermaid.js into the artifact document
+  // when it has diagrams and hasn't loaded Mermaid itself. The script is
+  // served from the version's URL space, so an artifact's own mermaid.js
+  // wins; a flag on the document stops a repeat install adding it twice.
+  function addMermaid(frame, doc) {
+    if (doc.__cairnMermaid || (frame.contentWindow && frame.contentWindow.mermaid)) return;
+    if (!doc.querySelector('pre.mermaid, code.language-mermaid, code.mermaid')) return;
+    doc.__cairnMermaid = true;
+    var script = doc.createElement('script');
+    script.src = frame.getAttribute('src') + 'mermaid.js';
+    doc.body.appendChild(script);
   }
 
   // attach installs on every iframe load, and right away if the artifact

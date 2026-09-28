@@ -216,8 +216,8 @@ func TestSharedShell(t *testing.T) {
 	if !strings.Contains(html, "site") {
 		t.Errorf("shell missing artifact name")
 	}
-	if !strings.Contains(html, "pre.mermaid, code.language-mermaid, code.mermaid") {
-		t.Errorf("shell missing auto-render Mermaid hook")
+	if !strings.Contains(body(t, get(t, ts.URL+"/shell.js", "", "")), "pre.mermaid, code.language-mermaid, code.mermaid") {
+		t.Errorf("shell.js missing auto-render Mermaid hook")
 	}
 
 	// Pinned version

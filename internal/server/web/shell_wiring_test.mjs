@@ -6,12 +6,19 @@ import { attach } from './shell.js';
 
 const ORIGIN = 'https://cairn.example';
 
-function fakeDoc({ readyState = 'complete', baseTarget = null, path = '/artifacts/a1/v1/' } = {}) {
+// diagram, if set, is the one selector (such as 'pre.mermaid') the document
+// has a match for. Scripts appended to its body are collected in doc.added.
+function fakeDoc({ readyState = 'complete', baseTarget = null, path = '/artifacts/a1/v1/', diagram = null } = {}) {
   const doc = new EventTarget();
   doc.readyState = readyState;
   doc.baseURI = ORIGIN + path;
-  doc.querySelector = (sel) =>
-    sel === 'base[target]' && baseTarget ? { getAttribute: () => baseTarget } : null;
+  doc.querySelector = (sel) => {
+    if (sel === 'base[target]') return baseTarget ? { getAttribute: () => baseTarget } : null;
+    return diagram && sel.split(',').map((s) => s.trim()).includes(diagram) ? {} : null;
+  };
+  doc.added = [];
+  doc.createElement = (tag) => ({ tagName: tag.toUpperCase() });
+  doc.body = { appendChild: (el) => doc.added.push(el) };
   return doc;
 }
 
@@ -32,10 +39,11 @@ function click(doc, anchor, init = {}) {
   return ev;
 }
 
-function setup(docOpts) {
+function setup(docOpts, win = {}) {
   const frame = new EventTarget();
   frame.getAttribute = (k) => (k === 'src' ? '/artifacts/a1/v1/' : null);
   frame.contentDocument = fakeDoc(docOpts);
+  frame.contentWindow = win;
   const opened = [];
   const navigated = [];
   attach(frame, ORIGIN, (url) => opened.push(url), (url) => navigated.push(url));
@@ -118,4 +126,31 @@ test('after the frame moves to a sub-page, links back up stay in the frame', () 
   const ev = click(frame.contentDocument, fakeAnchor({ href: '../index.html' }));
   assert.deepEqual(navigated, []);
   assert.equal(ev.defaultPrevented, false);
+});
+
+// scripts lists the src of each script the shell added to the document.
+const scripts = (doc) => doc.added.filter((el) => el.tagName === 'SCRIPT').map((el) => el.src);
+
+test('an artifact with Mermaid diagrams gets this version\'s mermaid.js', () => {
+  for (const diagram of ['pre.mermaid', 'code.language-mermaid', 'code.mermaid']) {
+    const { frame } = setup({ diagram });
+    assert.deepEqual(scripts(frame.contentDocument), ['/artifacts/a1/v1/mermaid.js'], diagram);
+  }
+});
+
+test('no diagrams, or Mermaid already loaded by the artifact, adds nothing', () => {
+  assert.deepEqual(scripts(setup().frame.contentDocument), []);
+  const { frame } = setup({ diagram: 'pre.mermaid' }, { mermaid: {} });
+  assert.deepEqual(scripts(frame.contentDocument), []);
+});
+
+test('Mermaid is added once per document, and again after in-frame navigation', () => {
+  const { frame } = setup({ diagram: 'pre.mermaid' });
+  const first = frame.contentDocument;
+  frame.dispatchEvent(new Event('load'));
+  assert.equal(scripts(first).length, 1);
+
+  frame.contentDocument = fakeDoc({ diagram: 'pre.mermaid', path: '/artifacts/a1/v1/sub/page.html' });
+  frame.dispatchEvent(new Event('load'));
+  assert.deepEqual(scripts(frame.contentDocument), ['/artifacts/a1/v1/mermaid.js']);
 });

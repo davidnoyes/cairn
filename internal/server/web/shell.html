@@ -112,21 +112,5 @@
   </div>
   <iframe src="/artifacts/{{.Artifact.ID}}/{{.Version.ID}}/" title="{{.Artifact.Name}}"></iframe>
   <script src="/shell.js" defer></script>
-<script>
-  // cairn: auto-render Mermaid diagrams inside the embedded artifact, if it
-  // has any and hasn't already loaded Mermaid itself.
-  (function () {
-    var frame = document.querySelector("iframe");
-    var mermaidURL = "/artifacts/{{.Artifact.ID}}/{{.Version.ID}}/mermaid.js";
-    frame.addEventListener("load", function () {
-      var doc = frame.contentDocument;
-      if (!doc || frame.contentWindow.mermaid) return;
-      if (!doc.querySelector("pre.mermaid, code.language-mermaid, code.mermaid")) return;
-      var script = doc.createElement("script");
-      script.src = mermaidURL;
-      doc.body.appendChild(script);
-    });
-  })();
-</script>
 </body>
 </html>

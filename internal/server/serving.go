@@ -299,7 +299,7 @@ func (s *Server) serveMermaidJS(w http.ResponseWriter, r *http.Request) {
 	w.Write(web.MermaidJS)
 }
 
-// serveShellJS serves the shared shell's external-link handling script.
+// serveShellJS serves the shared shell's link-handling and Mermaid-loading script.
 func (s *Server) serveShellJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
