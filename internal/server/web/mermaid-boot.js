@@ -37,22 +37,68 @@
     }
   }
 
-  function hasDiagrams(doc) {
-    var pres = doc.getElementsByTagName("pre");
-    for (var i = 0; i < pres.length; i++) {
-      if (pres[i].classList.contains("mermaid")) return true;
-    }
-    return false;
+  // parseColor reads a computed "rgb(…)" or "rgba(…)" value as [r, g, b, a].
+  // Anything else (oklch(), color(), …) returns null and is skipped.
+  function parseColor(s) {
+    var m = /^rgba?\(([^)]*)\)$/.exec(s || "");
+    if (!m) return null;
+    var v = m[1].split(/[\s,\/]+/).map(Number);
+    return [v[0], v[1], v[2], v.length > 3 ? v[3] : 1];
   }
 
-  // render normalizes doc and draws its diagrams with win.mermaid. A syntax
+  // canvasColor approximates the page canvas behind a transparent <html>:
+  // dark only when the page opts into a dark color-scheme (CSS or <meta>)
+  // and that scheme is in use; browsers draw white otherwise.
+  function canvasColor(win, doc) {
+    var scheme = win.getComputedStyle(doc.documentElement).colorScheme || "normal";
+    var meta = doc.querySelector('meta[name="color-scheme"]');
+    if (scheme === "normal" && meta) scheme = meta.getAttribute("content") || "";
+    var dark = /\bdark\b/.test(scheme) &&
+      (!/\blight\b/.test(scheme) || win.matchMedia("(prefers-color-scheme: dark)").matches);
+    return dark ? [18, 18, 18, 1] : [255, 255, 255, 1];
+  }
+
+  // backgroundIsDark composites the background colors from el up to the
+  // first opaque one (or the canvas) and reports whether the result is
+  // closer to black than white, by WCAG relative luminance.
+  function backgroundIsDark(win, doc, el) {
+    var layers = [];
+    for (var node = el; node && node.nodeType === 1; node = node.parentNode) {
+      var c = parseColor(win.getComputedStyle(node).backgroundColor);
+      if (!c || c[3] === 0) continue;
+      layers.push(c);
+      if (c[3] >= 1) break;
+    }
+    var base = layers.length && layers[layers.length - 1][3] >= 1 ? layers.pop() : canvasColor(win, doc);
+    for (var i = layers.length - 1; i >= 0; i--) {
+      for (var k = 0; k < 3; k++) base[k] = layers[i][k] * layers[i][3] + base[k] * (1 - layers[i][3]);
+    }
+    var lum = [0.2126, 0.7152, 0.0722].reduce(function (sum, w, k) {
+      var c = base[k] / 255;
+      return sum + w * (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+    }, 0);
+    return lum < 0.179;
+  }
+
+  // render normalizes doc and draws its diagrams with win.mermaid, in
+  // Mermaid's dark theme where the diagram sits on a dark background. The
+  // theme is global, so each group is initialized and run in turn. A syntax
   // error still shows Mermaid's error box in place of that one diagram;
   // suppressErrors only stops run() rejecting for the whole page.
-  function render(win, doc) {
+  async function render(win, doc) {
     normalizeMermaidBlocks(doc);
-    if (!hasDiagrams(doc) || !win.mermaid) return;
-    win.mermaid.initialize({ startOnLoad: false, securityLevel: "strict" });
-    win.mermaid.run({ querySelector: ".mermaid", suppressErrors: true });
+    if (!win.mermaid) return;
+    var groups = { default: [], dark: [] };
+    var pres = doc.getElementsByTagName("pre");
+    for (var i = 0; i < pres.length; i++) {
+      if (!pres[i].classList.contains("mermaid")) continue;
+      groups[backgroundIsDark(win, doc, pres[i]) ? "dark" : "default"].push(pres[i]);
+    }
+    for (var theme in groups) {
+      if (!groups[theme].length) continue;
+      win.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: theme });
+      await win.mermaid.run({ nodes: groups[theme], suppressErrors: true });
+    }
   }
 
   if (typeof module !== "undefined" && module.exports) {
@@ -62,10 +108,12 @@
   if (typeof document === "undefined" || global.__cairnMermaidBooted) return;
   global.__cairnMermaidBooted = true;
 
+  // Wait for load, as Mermaid's own startOnLoad does, so every stylesheet
+  // has applied before backgrounds are read.
   var boot = function () { render(global, document); };
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
-  } else {
+  if (document.readyState === "complete") {
     boot();
+  } else {
+    global.addEventListener("load", boot);
   }
 })(this);

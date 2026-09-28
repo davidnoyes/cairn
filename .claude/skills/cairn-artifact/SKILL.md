@@ -42,7 +42,8 @@ Create a self-contained directory (e.g. `./artifact/`):
   `<script src="./cairn.js"></script>` — the server injects this file into
   every version's URL space; do not create it yourself.
 - Markdown `mermaid` code fences rendered to HTML (by pandoc, marked,
-  markdown-it, etc.) render automatically in the shared shell view. Add
+  markdown-it, etc.) render automatically in the shared shell view, themed
+  dark or light to match their background. Add
   `<script src="./mermaid.js"></script>` (also server-injected) for the same
   in the full-screen view.
 - Create the schema with the run-once migration helper, never with plain

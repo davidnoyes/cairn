@@ -149,9 +149,11 @@ next to `index.html`. See `examples/guestbook`.
 tag needed in the shell view (`/shared/{id}`), which injects `/mermaid.js` for
 you; full-screen artifacts (`/artifacts/{id}/{vid}/`) that want the same
 outside the shell can add `<script src="./mermaid.js"></script>` themselves.
-Mermaid is vendored into the binary, so this works fully offline. Diagrams
-use Mermaid's default light theme; on a dark page, start a diagram with
-`%%{init: {'theme': 'dark'}}%%`.
+Mermaid is vendored into the binary, so this works fully offline. Each
+diagram picks Mermaid's dark or light theme from the background it sits on —
+its own, else the nearest ancestor's, else the page's `color-scheme` and the
+viewer's OS setting. To force a theme, start the diagram with
+`%%{init: {'theme': 'forest'}}%%`.
 
 More examples in [`examples/`](examples/): [`poll`](examples/poll/) — a
 multi-file artifact (CSS, JS, SVG assets, a fetched `config.json`) —
