@@ -219,11 +219,16 @@ func TestShellJS(t *testing.T) {
 // tab never strands the viewer; the shell header links back home.
 func TestPagesStayInOneTab(t *testing.T) {
 	_, ts := testServer(t)
-	admin, aid, _ := setupArtifact(t, ts.URL, true)
+	admin, aid, vid := setupArtifact(t, ts.URL, true)
 
+	// Signed out, the mark signs in and comes back, like the sign-in button.
 	shell := body(t, get(t, ts.URL+"/shared/"+aid, "", "text/html"))
-	if !strings.Contains(shell, `<a class="mark" href="/"`) {
-		t.Errorf("shell page should link home from its mark")
+	if want := `<a class="mark" href="/login?next=/shared/` + aid + `/` + vid + `"`; !strings.Contains(shell, want) {
+		t.Errorf("signed-out mark should sign in and return: want %s", want)
+	}
+	signedIn := body(t, get(t, ts.URL+"/shared/"+aid, admin.token, "text/html"))
+	if !strings.Contains(signedIn, `<a class="mark" href="/"`) {
+		t.Errorf("signed-in mark should link home")
 	}
 	adminResp := get(t, ts.URL+"/admin", admin.token, "text/html")
 	if adminResp.StatusCode != http.StatusOK {

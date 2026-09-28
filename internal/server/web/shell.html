@@ -82,7 +82,8 @@
 </head>
 <body>
   <header>
-    <a class="mark" href="/" title="home" aria-label="Cairn home">
+    {{if .User}}<a class="mark" href="/" title="home" aria-label="Cairn home">
+    {{else}}<a class="mark" href="/login?next=/shared/{{.Artifact.ID}}/{{.Version.ID}}" title="sign in" aria-label="Sign in to Cairn">{{end}}
       <svg viewBox="0 0 32 32" aria-hidden="true">
         <rect x="11" y="7"  width="10" height="4" rx="2" fill="#C6F135"/>
         <rect x="8"  y="14" width="16" height="4" rx="2" fill="#C6F135" opacity=".7"/>
