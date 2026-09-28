@@ -29,3 +29,6 @@ func buildMermaidJS() []byte {
 	out = append(out, mermaidBoot...)
 	return out
 }
+
+//go:embed shell.js
+var ShellJS []byte

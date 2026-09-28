@@ -299,6 +299,13 @@ func (s *Server) serveMermaidJS(w http.ResponseWriter, r *http.Request) {
 	w.Write(web.MermaidJS)
 }
 
+// serveShellJS serves the shared shell's external-link handling script.
+func (s *Server) serveShellJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(web.ShellJS)
+}
+
 // templates parses the embedded HTML templates once.
 func (s *Server) templates() *template.Template {
 	s.tmplOnce.Do(func() {

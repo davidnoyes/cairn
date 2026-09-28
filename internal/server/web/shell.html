@@ -82,13 +82,14 @@
 </head>
 <body>
   <header>
-    <span class="mark" aria-hidden="true">
-      <svg viewBox="0 0 32 32">
+    {{if .User}}<a class="mark" href="/" title="home" aria-label="Cairn home">
+    {{else}}<a class="mark" href="/login?next=/shared/{{.Artifact.ID}}/{{.Version.ID}}" title="sign in" aria-label="Sign in to Cairn">{{end}}
+      <svg viewBox="0 0 32 32" aria-hidden="true">
         <rect x="11" y="7"  width="10" height="4" rx="2" fill="#C6F135"/>
         <rect x="8"  y="14" width="16" height="4" rx="2" fill="#C6F135" opacity=".7"/>
         <rect x="5"  y="21" width="22" height="4" rx="2" fill="#C6F135" opacity=".45"/>
       </svg>
-    </span>
+    </a>
     <h1 class="name"><a href="/shared/{{.Artifact.ID}}" title="latest version">{{.Artifact.Name}}</a></h1>
     {{if .Artifact.Description}}<p class="desc" title="{{.Artifact.Description}}">{{.Artifact.Description}}</p>{{end}}
     <span class="spacer"></span>
@@ -100,7 +101,7 @@
       </option>
       {{end}}
     </select>
-    <a class="btn" href="/artifacts/{{.Artifact.ID}}/{{.Version.ID}}/" target="_blank" rel="noopener">full screen ↗</a>
+    <a class="btn" href="/artifacts/{{.Artifact.ID}}/{{.Version.ID}}/">full screen</a>
     {{if .User}}<span class="chip" title="{{.User.Email}}">{{if .User.Name}}{{.User.Name}}{{else}}{{.User.Email}}{{end}}</span>
     {{else}}<a class="btn" href="/login?next=/shared/{{.Artifact.ID}}/{{.Version.ID}}">sign in</a>{{end}}
   </header>
@@ -110,6 +111,7 @@
     <span><b>id</b> {{.Version.ID}}</span>
   </div>
   <iframe src="/artifacts/{{.Artifact.ID}}/{{.Version.ID}}/" title="{{.Artifact.Name}}"></iframe>
+  <script src="/shell.js" defer></script>
 <script>
   // cairn: auto-render Mermaid diagrams inside the embedded artifact, if it
   // has any and hasn't already loaded Mermaid itself.

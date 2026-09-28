@@ -233,3 +233,61 @@ func TestSharedShell(t *testing.T) {
 		t.Errorf("login page failed")
 	}
 }
+
+func TestShellJS(t *testing.T) {
+	_, ts := testServer(t)
+	_, aid, _ := setupArtifact(t, ts.URL, true)
+
+	// /shell.js is served with a JS content type
+	resp := get(t, ts.URL+"/shell.js", "", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("shell.js: %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "javascript") {
+		t.Errorf("shell.js content-type: %s", ct)
+	}
+	if !strings.Contains(body(t, resp), "linkAction") {
+		t.Errorf("shell.js missing linkAction")
+	}
+
+	// The shared shell page loads it
+	resp = get(t, ts.URL+"/shared/"+aid, "", "text/html")
+	if !strings.Contains(body(t, resp), "/shell.js") {
+		t.Errorf("shell page should reference /shell.js")
+	}
+}
+
+// Cairn's own pages change the page rather than opening tabs, so closing a
+// tab never strands the viewer; the shell header links back home.
+func TestPagesStayInOneTab(t *testing.T) {
+	_, ts := testServer(t)
+	admin, aid, vid := setupArtifact(t, ts.URL, true)
+
+	// Signed out, the mark signs in and comes back, like the sign-in button.
+	shell := body(t, get(t, ts.URL+"/shared/"+aid, "", "text/html"))
+	if want := `<a class="mark" href="/login?next=/shared/` + aid + `/` + vid + `"`; !strings.Contains(shell, want) {
+		t.Errorf("signed-out mark should sign in and return: want %s", want)
+	}
+	signedIn := body(t, get(t, ts.URL+"/shared/"+aid, admin.token, "text/html"))
+	if !strings.Contains(signedIn, `<a class="mark" href="/"`) {
+		t.Errorf("signed-in mark should link home")
+	}
+	adminResp := get(t, ts.URL+"/admin", admin.token, "text/html")
+	if adminResp.StatusCode != http.StatusOK {
+		t.Fatalf("admin page: %d", adminResp.StatusCode)
+	}
+	adminHTML := body(t, adminResp)
+	// The admin page builds its version links in JS, so check the source:
+	// a version opens in the shell, which has the home link, not full screen.
+	if !strings.Contains(adminHTML, "open.href = '/shared/' + artifact.id + '/' + v.id;") {
+		t.Errorf("admin version links should open the shared view")
+	}
+	for page, html := range map[string]string{
+		"shell": shell,
+		"admin": adminHTML,
+	} {
+		if strings.Contains(html, "_blank") {
+			t.Errorf("%s page opens a new tab", page)
+		}
+	}
+}
