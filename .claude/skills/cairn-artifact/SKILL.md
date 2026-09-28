@@ -41,6 +41,10 @@ Create a self-contained directory (e.g. `./artifact/`):
 - To use the shared database or user info, include
   `<script src="./cairn.js"></script>` — the server injects this file into
   every version's URL space; do not create it yourself.
+- ```mermaid fences rendered to HTML (by pandoc, marked, markdown-it, etc.)
+  render automatically in the shared shell view. Add
+  `<script src="./mermaid.js"></script>` (also server-injected) for the same
+  in the full-screen view.
 - Create the schema with the run-once migration helper, never with plain
   `CREATE TABLE` at startup (concurrent viewers would race):
 

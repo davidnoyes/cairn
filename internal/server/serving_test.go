@@ -126,6 +126,45 @@ func TestServingRedirectsAndFiles(t *testing.T) {
 	}
 }
 
+func TestMermaidJS(t *testing.T) {
+	_, ts := testServer(t)
+	_, aid, vid := setupArtifact(t, ts.URL, true)
+
+	// Global route
+	resp := get(t, ts.URL+"/mermaid.js", "", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("global mermaid.js: %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "javascript") {
+		t.Errorf("mermaid.js content-type: %s", ct)
+	}
+	if !strings.Contains(body(t, resp), "mermaid-boot.js — auto-render bootstrap") {
+		t.Errorf("mermaid.js missing bootstrap marker")
+	}
+
+	// Injected into a version's URL space when the artifact has no mermaid.js
+	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+vid+"/mermaid.js", "", "")
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body(t, resp), "mermaid-boot.js — auto-render bootstrap") {
+		t.Errorf("injected mermaid.js failed")
+	}
+
+	// An artifact's own mermaid.js wins
+	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+vid+"/app.js", "", "")
+	resp.Body.Close()
+	admin := login(t, ts.URL, "admin@example.com", "admin-password")
+	resp = admin.upload("POST", "/api/artifacts/"+aid+"/versions", zipFrom(t, map[string]string{
+		"index.html": "<h1>v2</h1>",
+		"mermaid.js": "console.log('custom mermaid')",
+	}), map[string]string{"name": "v2"})
+	v2 := decode[struct {
+		ID string `json:"id"`
+	}](t, resp)
+	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+v2.ID+"/mermaid.js", "", "")
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body(t, resp), "custom mermaid") {
+		t.Errorf("artifact-provided mermaid.js should win")
+	}
+}
+
 func TestPrivateGating(t *testing.T) {
 	_, ts := testServer(t)
 	admin, aid, vid := setupArtifact(t, ts.URL, false)
@@ -176,6 +215,9 @@ func TestSharedShell(t *testing.T) {
 	}
 	if !strings.Contains(html, "site") {
 		t.Errorf("shell missing artifact name")
+	}
+	if !strings.Contains(html, "pre.mermaid, code.language-mermaid, code.mermaid") {
+		t.Errorf("shell missing auto-render Mermaid hook")
 	}
 
 	// Pinned version
