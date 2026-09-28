@@ -10,6 +10,7 @@ go build ./cmd/cairn     # build the binary
 go test ./...            # unit + integration tests (httptest, temp dirs)
 ./scripts/e2e.sh         # end-to-end smoke test against a real server
 gofmt -l . && go vet ./...
+node --test internal/server/web/*_test.mjs   # shell.js unit tests (no npm deps)
 ```
 
 ## Map

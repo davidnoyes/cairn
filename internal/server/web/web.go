@@ -10,3 +10,6 @@ var Templates embed.FS
 
 //go:embed cairn.js
 var CairnJS []byte
+
+//go:embed shell.js
+var ShellJS []byte

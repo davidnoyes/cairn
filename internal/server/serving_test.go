@@ -191,3 +191,26 @@ func TestSharedShell(t *testing.T) {
 		t.Errorf("login page failed")
 	}
 }
+
+func TestShellJS(t *testing.T) {
+	_, ts := testServer(t)
+	_, aid, _ := setupArtifact(t, ts.URL, true)
+
+	// /shell.js is served with a JS content type
+	resp := get(t, ts.URL+"/shell.js", "", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("shell.js: %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "javascript") {
+		t.Errorf("shell.js content-type: %s", ct)
+	}
+	if !strings.Contains(body(t, resp), "externalLinkTarget") {
+		t.Errorf("shell.js missing externalLinkTarget")
+	}
+
+	// The shared shell page loads it
+	resp = get(t, ts.URL+"/shared/"+aid, "", "text/html")
+	if !strings.Contains(body(t, resp), "/shell.js") {
+		t.Errorf("shell page should reference /shell.js")
+	}
+}
