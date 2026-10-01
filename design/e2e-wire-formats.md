@@ -158,6 +158,20 @@ Every sealed value in the system:
 | The user's keyring, JSON | `mkSealKey` | `keyring` |
 | An artifact's `AK`, the owner's estate copy | `ekSealKey` | `estate`, artifact, epoch |
 
+In the browser, each key that opens `MK` is a non-extractable `CryptoKey`
+limited to one use. The `kek`, `recoveryKek`, or `apiKeyKek` that opens `MK`
+can only unwrap, and the one that seals it can only encrypt, so neither can
+return `MK` as bytes.
+
+`mkSealKey` and `ekSealKey` keep `encrypt`, `decrypt`, and `unwrapKey`. They
+must decrypt for two reasons. The keyring is JSON rather than a key. And
+WebCrypto cannot unwrap a raw X25519 or Ed25519 private key, so the client
+decrypts each one and imports it at once as non-extractable. The residual risk
+is that script running on the app origin can decrypt a sealed private key,
+`EK`, or estate copy to bytes. It needs the sealed value from the server and
+the live `CryptoKey`, so it can do no more than it could already do by signing
+or unwrapping with the user's keys while the page is open.
+
 ### The keyring
 
 The keyring holds the user's pins and their record of each artifact's epoch.

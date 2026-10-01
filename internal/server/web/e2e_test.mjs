@@ -509,7 +509,8 @@ async function assertKekPurposes(sealKey, openWith, rawKey, label) {
   await assertThrows(() => e2e.open(openWith, fields, sealed), e2e.DecryptError);
   await assertThrows(() => e2e.openKey(sealKey, fields, sealed), e2e.DecryptError);
   await assertThrows(() => e2e.open(sealKey, fields, sealed), e2e.DecryptError);
-  await assertThrows(() => e2e.seal(openWith, fields, mk));
+  // WebCrypto refuses the key for want of 'encrypt', before seal touches mk.
+  await assertThrows(() => e2e.seal(openWith, fields, mk), { name: 'InvalidAccessError' });
 }
 
 test('non-extractable keys: KEK CryptoKey variants match the raw KEKs, one purpose each', async () => {
@@ -814,6 +815,14 @@ test('verify copies sig on entry', async () => {
   const sig = hex(v.want);
   const pending = e2e.verify(pub, v.purpose, hex(v.body), sig);
   sig.fill(0);
+  assert.equal(await pending, true);
+});
+
+test('verify copies body on entry', async () => {
+  const v = vf.signature[0];
+  const body = hex(v.body);
+  const pending = e2e.verify(hex(v.pub), v.purpose, body, hex(v.want));
+  body.fill(0);
   assert.equal(await pending, true);
 });
 
