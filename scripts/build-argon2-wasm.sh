@@ -12,7 +12,7 @@ OUT="$ROOT/internal/server/web/vendor"
 # that a rebuild matches the committed files; bump this with the rebuild.
 export GOTOOLCHAIN=go1.27.1
 
-GOOS=js GOARCH=wasm go build -trimpath -ldflags='-s -w -buildid=' \
+GOOS=js GOARCH=wasm go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' \
   -o "$OUT/argon2.wasm" "$ROOT/cmd/argon2wasm"
 
 cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" "$OUT/wasm_exec.js"
