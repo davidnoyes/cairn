@@ -51,3 +51,26 @@ jobs:
 
       - name: e2e
         run: ./scripts/e2e.sh
+
+  # Slower checks for milestone and integration branches only: every fuzz
+  # test for 60 seconds, and the mutation list in scripts/mutations.txt.
+  deep:
+    if: startsWith(github.ref_name, 'e2e/') || github.ref_name == 'feat/e2e-trust-model'
+    runs-on: ubuntu-latest
+    env:
+      CAIRN_HOST: ""
+      CAIRN_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: fuzz
+        run: ./scripts/fuzz.sh
+      - name: mutations
+        run: ./scripts/mutate.sh
