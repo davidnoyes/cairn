@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign up · Cairn</title>
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="wrap">
+  <main class="card">
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32">
+        <rect x="11" y="7"  width="10" height="4" rx="2" fill="#C6F135"/>
+        <rect x="8"  y="14" width="16" height="4" rx="2" fill="#C6F135" opacity=".7"/>
+        <rect x="5"  y="21" width="22" height="4" rx="2" fill="#C6F135" opacity=".45"/>
+      </svg>
+    </div>
+    <h1>cairn</h1>
+    <p class="sub">create an account</p>
+
+    <form id="form" method="dialog" autocomplete="on">
+      <label for="email">email</label>
+      <input id="email" name="email" type="email" autocomplete="username" required autofocus>
+      <label for="name">name</label>
+      <input id="name" name="name" type="text" autocomplete="name" maxlength="200">
+      <label for="password">password</label>
+      <input id="password" name="password" type="password" autocomplete="new-password" required>
+      <p class="strength" id="strength" aria-live="polite"></p>
+      <label for="confirm">confirm password</label>
+      <input id="confirm" name="confirm" type="password" autocomplete="new-password" required>
+      <button type="submit" id="submit">Sign up</button>
+      <p class="error" id="error" role="alert" hidden></p>
+      <div class="links"><a href="/login">Sign in instead</a></div>
+    </form>
+
+    <section id="recovery" hidden>
+      <h2>Save your recovery code</h2>
+      <p class="text">Cairn encrypts your artifacts with keys that only your password or this code can open.
+      If you forget your password, this code is the only way to keep your keys.
+      Nobody, including an administrator, can recover it for you. We show it once.</p>
+      <code class="code" id="code"></code>
+      <form id="confirmForm" method="dialog">
+        <label for="group" id="groupPrompt"></label>
+        <input id="group" name="group" type="text" autocomplete="off" required>
+        <button type="submit">I saved it</button>
+        <p class="error" id="confirmError" role="alert" hidden></p>
+      </form>
+    </section>
+
+    <section id="check" hidden>
+      <h2>Check your mail</h2>
+      <p class="text">If this address can sign up, we sent a link to verify it.
+      The link works for 24 hours. Open it, then sign in.</p>
+      <div class="links"><a href="/login">Sign in</a></div>
+    </section>
+  </main>
+  </div>
+  <script src="/zxcvbn.js"></script>
+  <script type="module" src="/signup.js"></script>
+</body>
+</html>

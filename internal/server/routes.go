@@ -73,6 +73,9 @@ func (s *Server) routes() {
 	// Pages. Account pages send the app CSP: scripts load only from files.
 	mux.HandleFunc("GET /", s.handleRoot)
 	mux.HandleFunc("GET /login", withAppCSP(s.handleLoginPage))
+	for _, page := range []string{"signup", "verify", "forgot", "reset"} {
+		mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))
+	}
 	mux.HandleFunc("GET /admin", withAppCSP(s.handleAdminPage))
 	mux.HandleFunc("GET /logout", s.handleLogoutPage)
 	mux.HandleFunc("GET /cairn.js", s.serveCairnJS)
@@ -80,6 +83,9 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /sql-wasm.js", s.serveSqlJS)
 	mux.HandleFunc("GET /sql-wasm.wasm", s.serveSqlJS)
 	mux.HandleFunc("GET /shell.js", s.serveShellJS)
+	for path, file := range appAssets {
+		mux.HandleFunc("GET "+path, serveAppAsset(file))
+	}
 	mux.HandleFunc("GET /argon2.wasm", s.serveArgon2Wasm)
 	mux.HandleFunc("GET /wasm_exec.js", s.serveWasmExecJS)
 	mux.HandleFunc("GET /artifacts/{id}", s.handleArtifactRedirect)

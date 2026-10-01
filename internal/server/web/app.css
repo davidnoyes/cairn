@@ -1,0 +1,115 @@
+/* app.css — the signed-out account pages (signup, verify, login, forgot,
+   reset). The app CSP allows styles only from files, so this is not inline. */
+:root{
+  --bg:#0B0E13;
+  --bg-raise:#10141C;
+  --bg-panel:#0E1219;
+  --line:rgba(148,163,184,.13);
+  --line-soft:rgba(148,163,184,.07);
+  --text:#E4E9F2;
+  --muted:#8C96A8;
+  --faint:#5A6476;
+  --accent:#C6F135;
+  --accent-dim:rgba(198,241,53,.55);
+  --accent-tint:rgba(198,241,53,.08);
+  --danger:#E08A7C;
+  /* generic fallbacks matter: this page is served by a self-hosted binary
+     that may run with no internet access, and the CSP allows no web fonts */
+  --sans:"Familjen Grotesk",-apple-system,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+  --mono:"Fragment Mono",ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+[hidden]{display:none !important}
+html,body{overflow-x:clip}
+body{
+  min-height:100svh; display:grid; place-items:center;
+  background:var(--bg); color:var(--text); font-family:var(--sans);
+  line-height:1.6; -webkit-font-smoothing:antialiased;
+  padding:1.25rem;
+}
+::selection{background:var(--accent); color:#0B0E13}
+
+.wrap{position:relative; width:min(25rem, 100%)}
+.wrap::before{
+  content:""; position:absolute; inset:-6rem -8rem auto;
+  height:24rem;
+  background:radial-gradient(closest-side, rgba(198,241,53,.05), transparent);
+  pointer-events:none;
+}
+.card{
+  position:relative;
+  background:var(--bg-panel); border:1px solid var(--line); border-radius:10px;
+  padding:2.2rem 2rem 2rem;
+}
+.mark{display:flex; justify-content:center; margin-bottom:.9rem}
+.mark svg{width:44px; height:44px; display:block}
+h1{
+  text-align:center; font-size:24px; font-weight:600; letter-spacing:-.015em;
+}
+h2{font-size:18px; font-weight:600; margin:0 0 .5rem}
+.sub{
+  text-align:center; font-family:var(--mono); font-size:11.5px; letter-spacing:.08em;
+  color:var(--faint); margin-bottom:1.8rem;
+}
+label{
+  display:block; font-family:var(--mono); font-size:12px; color:var(--muted);
+  margin:1rem 0 .35rem;
+}
+input[type=text], input[type=email], input[type=password]{
+  width:100%; padding:8px 12px; font-family:var(--mono); font-size:13px;
+  background:var(--bg); color:var(--text);
+  border:1px solid var(--line); border-radius:7px; outline:none;
+  transition:border-color .15s ease;
+}
+input:focus{border-color:var(--accent-dim)}
+input::placeholder{color:var(--faint)}
+button{
+  width:100%; margin-top:1.5rem; cursor:pointer;
+  font-family:var(--mono); font-size:13px;
+  background:var(--accent); color:#0B0E13;
+  border:1px solid var(--accent); border-radius:7px; padding:8px 16px;
+  transition:filter .15s ease;
+}
+button:hover, button:focus-visible{filter:brightness(1.08)}
+button:disabled{cursor:progress; filter:grayscale(.6) brightness(.8)}
+p.text{color:var(--muted); font-size:14px; line-height:1.55; margin-top:.8rem}
+a{color:var(--accent)}
+.links{
+  display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap;
+  margin-top:1.4rem; font-family:var(--mono); font-size:12px;
+}
+.links a{color:var(--muted); text-decoration:none}
+.links a:hover, .links a:focus-visible{color:var(--accent)}
+.note{
+  margin-top:1.2rem; padding:.7rem .8rem; border-radius:7px;
+  background:var(--accent-tint); border:1px solid var(--accent-dim);
+  color:var(--muted); font-size:13.5px; line-height:1.5;
+}
+.warn{
+  margin-top:1rem; padding:.7rem .8rem; border-radius:7px;
+  border:1px solid var(--danger); color:var(--text);
+  font-size:13.5px; line-height:1.5;
+}
+.strength{
+  margin-top:.4rem; min-height:1.3em; font-family:var(--mono); font-size:11.5px;
+  color:var(--faint); overflow-wrap:anywhere;
+}
+.strength.ok{color:var(--accent)}
+.strength.bad{color:var(--danger)}
+.code{
+  display:block; margin-top:1rem; padding:.8rem; border-radius:7px;
+  background:var(--bg); border:1px solid var(--accent-dim);
+  font-family:var(--mono); font-size:15px; letter-spacing:.06em;
+  text-align:center; overflow-wrap:anywhere; user-select:all;
+}
+.choice{display:flex; gap:.6rem; align-items:flex-start; margin:.7rem 0 0}
+.choice input{margin-top:.35rem}
+.choice span{font-size:14px; color:var(--text)}
+.error{
+  margin-top:1rem; font-family:var(--mono); font-size:12.5px;
+  color:var(--danger); text-align:center; overflow-wrap:anywhere;
+}
+.ok-text{
+  margin-top:1rem; font-family:var(--mono); font-size:12.5px;
+  color:var(--accent); text-align:center; overflow-wrap:anywhere;
+}

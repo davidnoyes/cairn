@@ -58,6 +58,21 @@ The server serves both at `/argon2.wasm` and `/wasm_exec.js`.
 `internal/server/web/argon2.mjs` loads them to derive a key in the main
 thread; `argon2-worker.js` does the same off the UI thread.
 
+## Password strength (zxcvbn)
+
+`zxcvbn.js` is the password strength estimator the sign-up and reset pages
+load. The browser scores a new password with it, and refuses one below 3.
+
+- **Version:** 4.4.2.
+- **Source:** `npm pack zxcvbn@4.4.2` → `package/dist/zxcvbn.js`, from
+  [zxcvbn on npm](https://www.npmjs.com/package/zxcvbn). The tarball's
+  integrity matched the registry's sha512 value.
+- **License:** the MIT License. Dan Wheeler and Dropbox hold the copyright.
+  The full text is in `LICENSE.zxcvbn`.
+
+Loading it sets `window.zxcvbn`. The server serves it at `/zxcvbn.js`, and
+only the sign-up and reset pages load it.
+
 ## Checksums
 
 `SHA256SUMS` pins every vendored file. `vendor_test.go` fails when a file
@@ -71,5 +86,5 @@ changes, or when a file is missing from the list.
 
    ```sh
    shasum -a 256 argon2.wasm mermaid.min.js sql-wasm.js sql-wasm.wasm \
-     wasm_exec.js > SHA256SUMS
+     wasm_exec.js zxcvbn.js > SHA256SUMS
    ```

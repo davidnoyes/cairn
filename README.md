@@ -29,10 +29,11 @@ be driven by AI agents.
   a **file storage** where clients upload and download arbitrary files.
   Versions can be re-uploaded in place (work-in-progress iteration) — the
   shared database and file storage survive re-uploads.
-- **Users** — created by admins; no email verification, no self-signup. A new
-  account has no password: **the user chooses one at first sign-in**.
-- **API keys** — created by admins, tied to a user, revocable. For CLIs and
-  agents.
+- **Users** — sign up themselves, in the browser or with `cairn signup`, from an
+  allowed email domain, and verify their email. The `--admin-email` address
+  becomes an administrator when it signs up.
+- **API keys** — created by `cairn login` for a device, tied to a user,
+  revocable. For CLIs and agents.
 
 ### Trust model (read this)
 
@@ -48,17 +49,36 @@ anonymous visitors of public artifacts) but they are guardrails, not a sandbox.
 ```sh
 go build ./cmd/cairn
 
-# First run creates the admin account — no password on the command line:
-# you choose it in the browser at first sign-in
-./cairn serve --data-dir data --admin-email you@example.com
+# log:// writes each email, with its link, to the server log
+./cairn serve --data-dir data --admin-email you@example.com \
+  --smtp-url log:// --public-url http://localhost:8787
 
-open http://localhost:8787/admin
+open http://localhost:8787/signup
 ```
 
-Create users and API keys in the admin UI (or via `/api/admin/...`). Accounts
-— the bootstrap admin included — sign in at `/login` and choose their password
-on the spot. (Automation can still pre-set the admin password with
-`--admin-password` / `CAIRN_ADMIN_PASSWORD`.)
+To create the administrator account, sign up with the `--admin-email` address.
+The verification link appears in the server log.
+
+### Sign up in the browser
+
+Open `/signup` on your server. You need an email address that the server
+allows: a domain set with `--signup-domain`, or the `--admin-email` address.
+
+1. Enter your email, your name, and a password. Choose a long passphrase. The
+   page refuses a password that its strength estimator scores below 3 of 4.
+2. Save the recovery code the page shows. Cairn shows it once. Without it, a
+   password reset gives you new keys, and artifacts that others shared with you
+   stay unreadable until they share them again.
+3. Open the link in the verification email. It works for 24 hours.
+4. Sign in at `/login`.
+
+If you forget your password, open `/forgot`. The emailed link works for 30
+minutes. On the reset page, enter your recovery code to keep your keys, or
+choose new keys.
+
+Your browser stretches the password and creates your keys on your device, so
+the server never sees the password. The page keeps your unwrapped keys in
+IndexedDB as non-extractable keys, and clears them when you sign out.
 
 ### Push your first artifact
 
@@ -90,6 +110,7 @@ image yourself instead: `docker build -t cairn .`
 | `/shared/{id}` / `/shared/{id}/{versionId}` | version embedded in a shell frame with metadata and a version picker |
 | `/admin` | admin UI |
 | `/login`, `/logout` | session pages |
+| `/signup`, `/verify`, `/forgot`, `/reset` | account pages; the emailed links open `/verify` and `/reset` |
 
 Private artifacts redirect anonymous visitors to `/login?next=…`. Because a
 version is always served under its own directory URL, relative paths inside

@@ -47,7 +47,7 @@ VERIFY_LINK=$(grep -oE "$HOST/verify#token=[A-Za-z0-9_-]+" "$SERVER_LOG" | tail 
 [[ -n "$VERIFY_LINK" ]] || fail "no verification link in server log"
 "$BIN" confirm-email "$VERIFY_LINK" >/dev/null
 echo "e2e-password-1" | "$BIN" login --host "$HOST" --email admin@e2e.test --password-stdin >/dev/null
-"$BIN" whoami | grep -q admin@e2e.test || fail "whoami"
+"$BIN" whoami | grep admin@e2e.test >/dev/null || fail "whoami"
 pass "CLI signup + confirm-email + login + whoami"
 
 # Headless use: the config file holds the full four-part API key; only the
@@ -55,7 +55,7 @@ pass "CLI signup + confirm-email + login + whoami"
 # keySecret never leaves this machine.
 API_KEY=$(python3 -c "import json;print(json.load(open('$CAIRN_CONFIG'))['apiKey'])")
 BEARER=$(echo "$API_KEY" | cut -d'_' -f1-3)
-CAIRN_HOST="$HOST" CAIRN_API_KEY="$API_KEY" "$BIN" whoami | grep -q admin@e2e.test || fail "API key auth"
+CAIRN_HOST="$HOST" CAIRN_API_KEY="$API_KEY" "$BIN" whoami | grep admin@e2e.test >/dev/null || fail "API key auth"
 pass "API key auth"
 
 echo "== push"
@@ -69,20 +69,20 @@ echo "== resource reference"
 curl -sf -X POST "$HOST/api/artifacts/$AID/resources" \
   -H "Authorization: Bearer $BEARER" -H 'Content-Type: application/json' \
   -d '{"type":"claude-session","value":"sess-e2e"}' >/dev/null
-curl -sf "$HOST/api/artifacts/sess-e2e" | grep -q "$AID" || fail "API lookup by resource value"
+curl -sf "$HOST/api/artifacts/sess-e2e" | grep "$AID" >/dev/null || fail "API lookup by resource value"
 pass "API resolves resource value to artifact"
-"$BIN" artifact show sess-e2e | grep -q "$AID" || fail "CLI lookup by resource value"
+"$BIN" artifact show sess-e2e | grep "$AID" >/dev/null || fail "CLI lookup by resource value"
 pass "CLI resolves resource value"
 
 echo "== serving"
 LOC=$(curl -s -o /dev/null -w '%{redirect_url}' "$HOST/artifacts/$AID")
 [[ "$LOC" == "$HOST/artifacts/$AID/$VID/" || "$LOC" == "/artifacts/$AID/$VID/" ]] || fail "latest redirect ($LOC)"
 pass "artifact redirects to latest version"
-curl -sf "$HOST/artifacts/$AID/$VID/" | grep -q "Guestbook" || fail "index served"
+curl -sf "$HOST/artifacts/$AID/$VID/" | grep "Guestbook" >/dev/null || fail "index served"
 pass "index.html served"
-curl -sf "$HOST/artifacts/$AID/$VID/cairn.js" | grep -q "cairn.js" || fail "cairn.js injected"
+curl -sf "$HOST/artifacts/$AID/$VID/cairn.js" | grep "cairn.js" >/dev/null || fail "cairn.js injected"
 pass "cairn.js available inside version"
-curl -sf "$HOST/shared/$AID" | grep -q "iframe" || fail "shared shell"
+curl -sf "$HOST/shared/$AID" | grep "iframe" >/dev/null || fail "shared shell"
 pass "shared shell renders"
 
 echo "== shared database"
@@ -91,12 +91,12 @@ echo "== shared database"
 "$BIN" db query --artifact guestbook \
   --params '["hello from e2e","e2e","2026-01-01T00:00:00Z"]' \
   "INSERT INTO entries (message, author, created_at) VALUES (?, ?, ?)" >/dev/null
-"$BIN" db query --artifact guestbook "SELECT message FROM entries" | grep -q "hello from e2e" || fail "db round trip"
+"$BIN" db query --artifact guestbook "SELECT message FROM entries" | grep "hello from e2e" >/dev/null || fail "db round trip"
 pass "SQL write + read through CLI"
 
 # Anonymous read works (public artifact), anonymous write is rejected.
 curl -sf -X POST "$HOST/api/artifacts/$AID/versions/$VID/db/query" \
-  -H 'Content-Type: application/json' -d '{"sql":"SELECT COUNT(*) FROM entries"}' | grep -q '\[\[1\]\]' \
+  -H 'Content-Type: application/json' -d '{"sql":"SELECT COUNT(*) FROM entries"}' | grep '\[\[1\]\]' >/dev/null \
   || fail "anonymous read"
 pass "anonymous read on public artifact"
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$HOST/api/artifacts/$AID/versions/$VID/db/query" \
@@ -107,10 +107,10 @@ pass "anonymous write rejected"
 echo "== file storage"
 echo "hello file" > "$WORK/note.txt"
 "$BIN" files put "$WORK/note.txt" --artifact guestbook --path notes/hello.txt >/dev/null
-"$BIN" files list --artifact guestbook | grep -q "notes/hello.txt" || fail "file list"
-"$BIN" files get notes/hello.txt --artifact guestbook | grep -q "hello file" || fail "file get"
+"$BIN" files list --artifact guestbook | grep "notes/hello.txt" >/dev/null || fail "file list"
+"$BIN" files get notes/hello.txt --artifact guestbook | grep "hello file" >/dev/null || fail "file get"
 pass "file put + list + get through CLI"
-curl -sf "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt" | grep -q "hello file" \
+curl -sf "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt" | grep "hello file" >/dev/null \
   || fail "anonymous file read"
 pass "anonymous file read on public artifact"
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
@@ -130,7 +130,7 @@ VID2=$(python3 -c "import json;print(json.load(open('$WORK/push2.json'))['versio
 # v2's database is fresh; the old version's data is still reachable read-only.
 curl -sf -X POST "$HOST/api/artifacts/$AID/versions/$VID/db/query" \
   -H 'Content-Type: application/json' -d '{"sql":"SELECT message FROM entries"}' \
-  | grep -q "hello from e2e" || fail "old version data lost"
+  | grep "hello from e2e" >/dev/null || fail "old version data lost"
 pass "per-version databases isolated; old data readable"
 "$BIN" push "$ROOT/examples/guestbook" --artifact guestbook --overwrite latest --changelog "rewritten" >/dev/null
 pass "re-upload (overwrite latest)"
@@ -147,7 +147,7 @@ echo "== backup"
 pass "backup produced"
 
 echo "== keys + password reset"
-"$BIN" keys list | grep -q "(device)" || fail "keys list"
+"$BIN" keys list | grep "(device)" >/dev/null || fail "keys list"
 pass "keys list shows the device key"
 
 # A second account, so resetting its password doesn't disturb admin@e2e.test's
@@ -179,7 +179,7 @@ grep -q "invalid email or password" "$WORK/oldpw.err" || fail "old-password logi
 pass "the old password no longer logs in"
 
 echo "reset-flow-even-stronger-pw-2" | "$BIN" login --host "$HOST" --email reset@e2e.test --password-stdin >/dev/null
-"$BIN" whoami | grep -q reset@e2e.test || fail "login with the new password"
+"$BIN" whoami | grep reset@e2e.test >/dev/null || fail "login with the new password"
 pass "login with the reset password"
 
 LOGOUT_KEY=$(python3 -c "import json;print(json.load(open('$CAIRN_CONFIG'))['apiKey'])")
@@ -194,6 +194,28 @@ if CAIRN_HOST="$HOST" CAIRN_API_KEY="$LOGOUT_KEY" "$BIN" whoami >/dev/null 2>&1;
   fail "the logged-out device key still authenticates"
 fi
 pass "logout revoked the device key on the server"
+
+echo "== browser account pages"
+for page in signup verify login forgot reset; do
+  curl -s -D - -o /dev/null "$HOST/$page" | grep -i "^content-security-policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'" >/dev/null \
+    || fail "/$page lacks the app CSP"
+  script=$(curl -s "$HOST/$page" | grep -oE 'src="/[a-z0-9-]+\.js"' | tail -1 | cut -d'"' -f2)
+  curl -s -D - -o /dev/null "$HOST$script" | grep -i '^content-type: text/javascript' >/dev/null \
+    || fail "$script is not served as JavaScript"
+done
+pass "account pages send the app CSP and their scripts load"
+
+echo "== browser account flows"
+# The same flows the account pages run (account.mjs), with real Argon2id,
+# against this server: sign up, verify, sign in, reset with the recovery code.
+command -v node >/dev/null || fail "node is required for the browser account flows"
+node "$ROOT/scripts/e2e-accounts.mjs" "$HOST" "$SERVER_LOG" admin@e2e.test e2e-password-1 \
+  || fail "browser account flows"
+pass "browser sign-up, verify, sign-in, reset, sign-out"
+echo "browser-flow-even-stronger-pw-2" | "$BIN" login --host "$HOST" --email web@e2e.test --password-stdin >/dev/null \
+  || fail "CLI login to the browser-created account"
+"$BIN" whoami | grep web@e2e.test >/dev/null || fail "whoami for the browser-created account"
+pass "CLI signs in to the account the browser created and reset"
 
 echo
 echo "all e2e checks passed"

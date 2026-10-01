@@ -36,3 +36,17 @@ internal/e2e/keys.go	if p.Memory > ceilingMemory {	if false {	go test ./internal
 internal/e2e/envelope.go	if len(env.NewSig) == 0 {	if false {	go test ./internal/e2e -run TestOpenRotationRejectsMissingNewSig
 internal/e2e/seal.go	commit := Derive(ak, nil, LabelAKCommit, []byte(artifact), epochBytes(epoch))	commit := Derive(ak, nil, LabelFileKey, []byte(artifact), epochBytes(epoch))	go test ./internal/e2e -run TestVectors
 internal/server/validate.go	if e2e.CheckPublicKeys(b.X25519Pub, b.Ed25519Pub) != nil {	if false {	go test ./internal/server -run TestValidateBundleRejectsLowOrderKeys
+internal/server/web/account.mjs	export const MIN_SCORE = 3;	export const MIN_SCORE = 0;	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	e2e.checkFloor(kdf);	void 0;	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	history.replaceState(null, '', location.pathname + location.search);	void 0;	node --test internal/server/web/account_test.mjs
+internal/server/web/e2e.mjs	return importEd25519Priv(seed, false, ['sign']);	return importEd25519Priv(seed, true, ['sign']);	node --test internal/server/web/account_test.mjs
+internal/server/web/e2e.mjs	importX25519Priv(raw, false, ['deriveBits']);	importX25519Priv(raw, true, ['deriveBits']);	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	await deps.keyStore.clear();	void 0;	node --test internal/server/web/account_test.mjs
+internal/server/web/keystore.mjs	clear: () => run('readwrite', (store) => store.clear()),	clear: () => run('readwrite', () => ({})),	node --test internal/server/web/keystore_test.mjs
+internal/server/routes.go	mux.HandleFunc("GET /login", withAppCSP(s.handleLoginPage))	mux.HandleFunc("GET /login", s.handleLoginPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	mux.HandleFunc("GET /admin", withAppCSP(s.handleAdminPage))	mux.HandleFunc("GET /admin", s.handleAdminPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "signup" { mux.HandleFunc("GET /"+page, s.handleStaticPage(page+".html")) } else { mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "verify" { mux.HandleFunc("GET /"+page, s.handleStaticPage(page+".html")) } else { mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "forgot" { mux.HandleFunc("GET /"+page, s.handleStaticPage(page+".html")) } else { mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "reset" { mux.HandleFunc("GET /"+page, s.handleStaticPage(page+".html")) } else { mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/serving.go	contentType := "text/javascript; charset=utf-8"	contentType := "text/plain; charset=utf-8"	go test ./internal/server -run TestAccountPageAssetsAreServed
