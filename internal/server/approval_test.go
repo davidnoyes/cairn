@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -194,6 +195,20 @@ func TestPendingStates(t *testing.T) {
 	w := newApprovalWorld(t)
 	o := w.o
 
+	// An unverified account and a disabled one are never waiting.
+	unverified := newUserKeys(t)
+	hash, err := auth.HashPassword(string(testAuthKey("unverified-password")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.s.store.CreateAccount("unverified@example.com", "Unverified", hash, bundleFor(t, unverified), false); err != nil {
+		t.Fatal(err)
+	}
+	disabled := seedKeyedAccount(t, w.s, w.base, "disabled@example.com")
+	if err := w.s.store.SetUserDisabled(disabled.id, true); err != nil {
+		t.Fatal(err)
+	}
+
 	// Team none: nobody is waiting.
 	none := newArtifact(t, w.owner, "private")
 	if got := pendingOf(t, w.owner.testClient, none); len(got) != 0 {
@@ -283,6 +298,21 @@ func TestPendingOfAnArtifactWithNoRecord(t *testing.T) {
 	w.owner.mustDo("GET", "/api/artifacts/"+id+"/pending", nil, &list, http.StatusOK)
 	if len(list) != 0 {
 		t.Errorf("pending = %+v, want none", list)
+	}
+}
+
+// Approving into an artifact with no membership record is a 409, as it is
+// for any artifact with no team, not a server error. The access check
+// refuses it first, on the artifact's team of none.
+func TestApproveOnAnArtifactWithNoRecord(t *testing.T) {
+	w := newApprovalWorld(t)
+	id := uuid.NewString()
+	if _, err := w.s.store.CreateOwnedArtifact(id, "bare", "", w.owner.id, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, msg := status(w.owner.testClient, "POST", "/api/artifacts/"+id+"/keys", map[string]any{"user": w.team1.id, "fp": w.team1.keys.fp()})
+	if got != http.StatusConflict {
+		t.Errorf("approve with no record: %d %q, want 409", got, msg)
 	}
 }
 
@@ -559,9 +589,86 @@ func TestApprovalRacingANextEpochRecord(t *testing.T) {
 	w.o.approve(w.owner, w.team1)
 }
 
-// A caller the owner demoted between the access check and the approval is
-// refused inside the transaction: the server checks the caller against the
-// latest record again.
+// An editor's approval and the owner's next-epoch record race. The artifact
+// row lock lets one in first, and that one wins: an approval that lands
+// first makes the record refuse a team member who holds a wrap and is
+// neither listed nor excluded, and a record that lands first makes the
+// approval name a past epoch. Either way the approved user ends with a wrap
+// for every epoch up to the latest or with none, and a stored approval only
+// beside the wraps it came with.
+func TestApprovalRacingANextEpochRecordConcurrently(t *testing.T) {
+	w := newApprovalWorld(t)
+	for i := 0; i < 20; i++ {
+		o := newArtifact(t, w.owner, "race")
+		o.share("editor", w.editor)
+		o.setTeam("viewer")
+		approval := approveReq(t, o, w.editor, w.team1)
+		b := o.nextEpoch()
+		record := o.change(b)
+
+		var approveStatus, recordStatus int
+		var approveMsg, recordMsg string
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			approveStatus, approveMsg = status(w.editor.testClient, "POST", o.approvePath(), approval)
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			recordStatus, recordMsg = status(w.owner.testClient, "PUT", "/api/artifacts/"+o.id+"/membership", record)
+		}()
+		close(start)
+		wg.Wait()
+
+		if (approveStatus == http.StatusOK) == (recordStatus == http.StatusOK) {
+			t.Fatalf("round %d: the approval answered %d %q and the record %d %q, want exactly one to land", i, approveStatus, approveMsg, recordStatus, recordMsg)
+		}
+		if approveStatus != http.StatusOK && approveStatus != http.StatusBadRequest ||
+			recordStatus != http.StatusOK && recordStatus != http.StatusBadRequest {
+			t.Fatalf("round %d: the approval answered %d %q and the record %d %q, want 200 or 400", i, approveStatus, approveMsg, recordStatus, recordMsg)
+		}
+		art, err := w.s.store.ArtifactByID(o.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var wraps []store.Wrap
+		var approvals []store.Approval
+		if err := w.s.store.WithArtifact(o.id, func(tx *store.ArtifactTx) (err error) {
+			if wraps, err = tx.Wraps(); err != nil {
+				return err
+			}
+			approvals, err = tx.Approvals()
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		epochs := []int{}
+		for _, wr := range wraps {
+			if wr.UserID == w.team1.id {
+				epochs = append(epochs, wr.Epoch)
+			}
+		}
+		if len(epochs) != 0 && len(epochs) != art.Epoch {
+			t.Fatalf("round %d: the approved user holds wraps for epochs %v at epoch %d, want every epoch or none (approval: %d %q)", i, epochs, art.Epoch, approveStatus, approveMsg)
+		}
+		stored := false
+		for _, a := range approvals {
+			stored = stored || a.UserID == w.team1.id
+		}
+		if stored != (len(epochs) != 0) {
+			t.Fatalf("round %d: approval stored = %v with wraps for epochs %v", i, stored, epochs)
+		}
+	}
+}
+
+// An editor whose keys changed holds a wrap and a listing for keys that are
+// no longer theirs. access.Check refuses their approval with a 403 before
+// the transaction starts; the check inside it, against the latest record, is
+// exercised by the membership package's tests.
 func TestApprovalFromAnEditorWhoseKeysChanged(t *testing.T) {
 	w := newApprovalWorld(t)
 	editor := resetKeys(t, w.s, w.base, w.editor)

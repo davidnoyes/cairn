@@ -25,14 +25,24 @@ var (
 	// shares again, through a membership record.
 	ErrAlreadyListed = errors.New("the user is already a member of the artifact")
 	// ErrAlreadyApproved means the user already holds a wrap through an
-	// approval, and waits for the owner to list them.
+	// approval, and waits for the owner to list them. The owner cannot check
+	// a wrap's contents; only the recipient can, and a bad wrap is repaired
+	// by a new epoch.
 	ErrAlreadyApproved = errors.New("the user is already approved; the owner lists them in the next record")
 	// ErrChangedKey means the user holds a wrap, or is listed, under keys
 	// that are no longer theirs. A changed key is never a new member.
-	ErrChangedKey = errors.New("the user's keys changed after they were wrapped to; the owner shares again with cairn share")
+	ErrChangedKey = errors.New("the user's keys changed after they were wrapped to or listed; the owner shares again with cairn share")
 	// ErrNotWaiting means the server lists the user as none of new, approved,
 	// or keyChanged.
 	ErrNotWaiting = errors.New("the user is not waiting for approval on this artifact")
+	// ErrApprovalUnverified means the owner's client does not list a user the
+	// server reports as approved, because the approval does not check out.
+	// Only a new epoch repairs it, which this version of cairn cannot create
+	// yet.
+	ErrApprovalUnverified = errors.New("the approval does not check out, so cairn will not share with the user; fixing it needs a new epoch, which a later release of cairn will create")
+	// ErrPendingKeysDiffer means the server serves a user's keys one way in
+	// the directory and another in the pending list.
+	ErrPendingKeysDiffer = errors.New("the server serves different keys for the user in the directory and in the pending list")
 	// ErrTeamNeedsNextEpoch means setting the team to none drops a team
 	// member who holds a wrap, which only a new epoch can do.
 	ErrTeamNeedsNextEpoch = errors.New("setting the team to none while a team member holds a wrap needs a new epoch, which this version of cairn cannot create yet")
@@ -121,28 +131,33 @@ func (c *Client) Approve(artifactID, who string, acceptNewKey bool) (*ApproveRes
 	if e := ExcludedMatch(latest.Excluded, u); e != nil {
 		return nil, fmt.Errorf("%w: %s matches the excluded entry for %s (%s)", ErrExcluded, u.Email, e.Email, e.User)
 	}
-	if u.ID == latest.Owner || slices.ContainsFunc(latest.Members, func(m e2e.Member) bool { return m.User == u.ID }) {
-		return nil, fmt.Errorf("%w: %s", ErrAlreadyListed, u.Email)
-	}
 	pending, err := c.Pending(artifactID)
 	if err != nil {
 		return nil, err
 	}
 	p := slices.IndexFunc(pending, func(p PendingUser) bool { return p.User.ID == u.ID })
+	// A listed member whose key changed is pending as keyChanged, so this
+	// check comes before ErrAlreadyListed.
+	if p >= 0 && pending[p].State == PendingKeyChanged {
+		return nil, fmt.Errorf("%w: %s", ErrChangedKey, u.Email)
+	}
+	if u.ID == latest.Owner || slices.ContainsFunc(latest.Members, func(m e2e.Member) bool { return m.User == u.ID }) {
+		return nil, fmt.Errorf("%w: %s", ErrAlreadyListed, u.Email)
+	}
 	switch {
 	case p < 0:
 		return nil, fmt.Errorf("%w: %s", ErrNotWaiting, u.Email)
-	case pending[p].State == PendingKeyChanged:
-		return nil, fmt.Errorf("%w: %s", ErrChangedKey, u.Email)
 	case pending[p].State == PendingApproved:
 		return nil, fmt.Errorf("%w: %s", ErrAlreadyApproved, u.Email)
 	case pending[p].User.FP != u.FP:
-		return nil, fmt.Errorf("the server serves different keys for %s in the directory and in the pending list", u.Email)
+		return nil, fmt.Errorf("%w: %s", ErrPendingKeysDiffer, u.Email)
 	}
 	prior, pin, err := checkPin(va.Keyring, u, acceptNewKey)
 	if err != nil {
 		return nil, err
 	}
+	// Defense in depth behind VerifyChain's epoch pin, which already refuses a
+	// stale epoch.
 	if err := e2e.CheckEncryptEpoch(va.Keyring.EpochPin(artifactID), latest.Epoch); err != nil {
 		return nil, err
 	}
@@ -260,14 +275,11 @@ type pinDecision struct {
 	basedOn string
 }
 
-// listApproved decides, for each approved user the server reports, whether
-// the owner's client may list them as role without asking: only when the
-// approval passes all four checks of e2e.CheckApproval, and the keys do not
-// contradict the owner's pin. A user failing a check is reported, never
-// listed. skip names users already in the record being built.
-func (c *Client) listApproved(k *UnlockedKeys, va *VerifiedArtifact, dir []DirectoryUser, pending []PendingUser, role string, skip func(id string) bool) approvedListing {
-	out := approvedListing{pins: map[string]pinDecision{}}
-	latest := va.Chain.Latest
+// checkApproved runs the four checks of e2e.CheckApproval on the approval
+// in the pending entry p, and requires the directory to list the same keys
+// for the user as the pending entry does, so the approval's fingerprint is
+// the directory's. It does not look at the owner's pin.
+func checkApproved(k *UnlockedKeys, latest e2e.MembershipBody, dir []DirectoryUser, p PendingUser) error {
 	keysOf := func(id string) (e2e.KeyPair, bool) {
 		if id == k.UserID {
 			return e2e.KeyPair{X25519: e2e.B64(k.X25519Pub), Ed25519: e2e.B64(k.Ed25519Pub)}, true
@@ -279,24 +291,35 @@ func (c *Client) listApproved(k *UnlockedKeys, va *VerifiedArtifact, dir []Direc
 		}
 		return e2e.KeyPair{}, false
 	}
+	if d, ok := keysOf(p.User.ID); ok && d != approvalUser(p.User).Keys {
+		return fmt.Errorf("%w: %s", ErrPendingKeysDiffer, p.User.Email)
+	}
+	in := e2e.ApprovalInput{Artifact: latest.Artifact, Latest: &latest, Approval: p.Approval, User: approvalUser(p.User)}
+	for _, d := range dir {
+		in.Directory = append(in.Directory, approvalUser(d))
+	}
+	if p.Approval != nil {
+		var ok bool
+		if in.SignerKeys, ok = keysOf(p.Approval.Signer); !ok {
+			return fmt.Errorf("%w: the directory does not list the signer %s", e2e.ErrApprovalSigner, p.Approval.Signer)
+		}
+	}
+	return e2e.CheckApproval(in)
+}
+
+// listApproved decides, for each approved user the server reports, whether
+// the owner's client may list them as role without asking: only when the
+// approval passes all four checks of e2e.CheckApproval, the directory lists
+// the keys the pending entry does, and the keys do not contradict the
+// owner's pin. A user failing a check is reported, never listed. skip names
+// users already in the record being built.
+func (c *Client) listApproved(k *UnlockedKeys, va *VerifiedArtifact, dir []DirectoryUser, pending []PendingUser, role string, skip func(id string) bool) approvedListing {
+	out := approvedListing{pins: map[string]pinDecision{}}
 	for _, p := range pending {
 		if p.State != PendingApproved || skip(p.User.ID) {
 			continue
 		}
-		in := e2e.ApprovalInput{Artifact: latest.Artifact, Latest: &latest, Approval: p.Approval, User: approvalUser(p.User)}
-		for _, d := range dir {
-			in.Directory = append(in.Directory, approvalUser(d))
-		}
-		err := error(nil)
-		if p.Approval != nil {
-			var ok bool
-			if in.SignerKeys, ok = keysOf(p.Approval.Signer); !ok {
-				err = fmt.Errorf("%w: the directory does not list the signer %s", e2e.ErrApprovalSigner, p.Approval.Signer)
-			}
-		}
-		if err == nil {
-			err = e2e.CheckApproval(in)
-		}
+		err := checkApproved(k, va.Chain.Latest, dir, p)
 		var pin *e2e.Pin
 		if err == nil {
 			_, pin, err = checkPin(va.Keyring, p.User, false)
@@ -327,14 +350,23 @@ type TeamResult struct {
 	Unlisted []UnlistedUser
 }
 
+// CheckTeam refuses a team value other than none, viewer, or editor, so a
+// caller can do it before any request.
+func CheckTeam(team string) error {
+	if team != "none" && team != "viewer" && team != "editor" {
+		return fmt.Errorf("team must be none, viewer, or editor, not %q", team)
+	}
+	return nil
+}
+
 // Team sets whom the artifact is shared with as a team (none, viewer, or
 // editor) in a same-epoch record, and lists each approved team member whose
 // approval passes the four checks, under the role the team grants. Setting
 // none while a team member holds a wrap needs a new epoch, which is
 // ErrTeamNeedsNextEpoch.
 func (c *Client) Team(artifactID, team string) (*TeamResult, error) {
-	if team != "none" && team != "viewer" && team != "editor" {
-		return nil, fmt.Errorf("team must be none, viewer, or editor, not %q", team)
+	if err := CheckTeam(team); err != nil {
+		return nil, err
 	}
 	k, err := c.Unlock()
 	if err != nil {

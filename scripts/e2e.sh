@@ -305,6 +305,7 @@ pass "cairn approve lists the new member, to the owner and to an editor"
 
 CAIRN_CONFIG="$CONFIG2" "$BIN" approve teamdoc team@e2e.test > "$WORK/approve.txt" || fail "approve: $(cat "$WORK/approve.txt")"
 grep -q "approved for teamdoc" "$WORK/approve.txt" || fail "approve output: $(cat "$WORK/approve.txt")"
+grep -q "they can read it now" "$WORK/approve.txt" || fail "approve output says nothing of reading: $(cat "$WORK/approve.txt")"
 curl -sf "${AUTH3[@]}" "$HOST/artifacts/$TID/$TVID/" | grep "Guestbook" >/dev/null || fail "the approved member cannot read"
 curl -sf "${AUTH3[@]}" "$HOST/api/artifacts/$TID/keys" \
   | python3 -c "import json,sys;k=json.load(sys.stdin);assert [w['epoch'] for w in k['wraps']]==[1], k" \
@@ -314,6 +315,8 @@ pass "an editor's approval lets the member read, and not write"
 
 "$BIN" approve teamdoc --json | jq -e '.pending[] | select(.email == "team@e2e.test") | .state == "approved"' >/dev/null \
   || fail "the owner does not see the approval"
+"$BIN" approve teamdoc | grep -q "the owner's next cairn team $TID viewer|editor or cairn share lists them" \
+  || fail "the owner's list does not say how an approved member is listed"
 if CAIRN_CONFIG="$CONFIG2" "$BIN" approve teamdoc --json | jq -e '.pending[] | select(.email == "team@e2e.test")' >/dev/null; then
   fail "the editor still sees an approved member"
 fi

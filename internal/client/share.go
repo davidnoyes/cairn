@@ -317,6 +317,7 @@ type ShareResult struct {
 	Promoted  bool // an existing viewer became an editor
 	Unchanged bool // the user already held this role under these keys
 	Epoch     int
+	TeamRole  string // the latest record's team: none, viewer, or editor
 	// Listed are approved team members the record also lists, with the role
 	// the team grants; Unlisted are those whose approval failed a check, who
 	// the owner is asked about.
@@ -367,12 +368,20 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	if err != nil {
 		return nil, err
 	}
-	res := &ShareResult{User: u, Prior: prior, Role: role, Epoch: latest.Epoch}
+	res := &ShareResult{User: u, Prior: prior, Role: role, Epoch: latest.Epoch, TeamRole: latest.Team}
 	pending, err := c.Pending(artifactID)
 	if err != nil {
 		return nil, err
 	}
-	approved := slices.ContainsFunc(pending, func(p PendingUser) bool { return p.User.ID == u.ID && p.State == PendingApproved })
+	// An approved user holds their wraps already, so the owner's client takes
+	// the server's word for it only after the checks listApproved makes.
+	approved := false
+	if p := slices.IndexFunc(pending, func(p PendingUser) bool { return p.User.ID == u.ID && p.State == PendingApproved }); p >= 0 {
+		approved = true
+		if err := checkApproved(k, latest, dir, pending[p]); err != nil {
+			return nil, fmt.Errorf("%w: %s: %w", ErrApprovalUnverified, u.Email, err)
+		}
+	}
 
 	members := slices.Clone(latest.Members)
 	i := slices.IndexFunc(members, func(m e2e.Member) bool { return m.User == u.ID })
@@ -410,6 +419,8 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 
 	var wraps []map[string]any
 	if needsWraps {
+		// Defense in depth behind VerifyChain's epoch pin, which already
+		// refuses a stale epoch.
 		if err := e2e.CheckEncryptEpoch(va.Keyring.EpochPin(artifactID), latest.Epoch); err != nil {
 			return nil, err
 		}

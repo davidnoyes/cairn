@@ -325,7 +325,8 @@ func TestWrapsEstateAndApprovals(t *testing.T) {
 
 	s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
 		ap, err := tx.Approvals()
-		if err != nil || len(ap) != 1 || ap[0].UserID != k.ID || string(ap[0].Envelope.Sig) != "as" {
+		if err != nil || len(ap) != 1 || ap[0].UserID != k.ID || ap[0].FP != "fpk" || ap[0].Epoch != 2 ||
+			string(ap[0].Envelope.Body) != "ab" || string(ap[0].Envelope.Sig) != "as" || ap[0].Envelope.Signer != o.ID {
 			t.Fatalf("Approvals: %v %+v", err, ap)
 		}
 		// next epoch: drop every wrap held by a user the record does not list

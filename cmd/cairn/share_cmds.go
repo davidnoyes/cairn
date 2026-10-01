@@ -154,7 +154,7 @@ func runShare(args []string) error {
 	default:
 		fmt.Printf("added as %s of %s\n", res.Role, a.Name)
 	}
-	printListing(a.ID, res.Listed, res.Unlisted)
+	printListing(a.ID, res.TeamRole, res.Listed, res.Unlisted)
 	if res.Prior != e2e.PinVerified {
 		fmt.Printf("compare the fingerprint with them, then run: cairn pin %s --verified\n", res.User.Email)
 	}
@@ -176,14 +176,15 @@ func listingJSON(listed []client.DirectoryUser, unlisted []client.UnlistedUser) 
 
 // printListing says which approved team members the record listed, and
 // names, with their fingerprints, those it did not: the owner decides about
-// each of them by name.
-func printListing(artifact string, listed []client.DirectoryUser, unlisted []client.UnlistedUser) {
+// each of them by name. role is the team's role, which the owner passes to
+// cairn share so that an editor team's member is not shared as a viewer.
+func printListing(artifact, role string, listed []client.DirectoryUser, unlisted []client.UnlistedUser) {
 	for _, d := range listed {
 		fmt.Printf("listed approved team member %s (%s), fingerprint %s\n", d.Email, d.Name, showFP(d.FP))
 	}
 	for _, x := range unlisted {
-		fmt.Printf("not listed: %s (%s), fingerprint %s: %v\ncheck the fingerprint with them, then run: cairn share %s %s\n",
-			x.User.Name, x.User.Email, showFP(x.User.FP), x.Err, artifact, x.User.Email)
+		fmt.Printf("not listed: %s (%s), fingerprint %s: %v\ncheck the fingerprint with them, then run: cairn share %s %s --role %s\n",
+			x.User.Name, x.User.Email, showFP(x.User.FP), x.Err, artifact, x.User.Email, role)
 	}
 }
 
@@ -213,6 +214,9 @@ func runApprove(args []string) error {
 	if err != nil {
 		return err
 	}
+	if len(pos) == 1 && *acceptNewKey {
+		return fmt.Errorf("usage: %s; --accept-new-key needs a USER", usage)
+	}
 	c, err := apiClient()
 	if err != nil {
 		return err
@@ -234,7 +238,7 @@ func runApprove(args []string) error {
 			"prior": res.Prior, "epoch": res.Epoch, "approved": true,
 		})
 	}
-	fmt.Printf("%s (%s)\nfingerprint %s (%s)\napproved for %s: they read it now, and write once the owner lists them\n",
+	fmt.Printf("%s (%s)\nfingerprint %s (%s)\napproved for %s: they can read it now, and the owner's next cairn team or cairn share lists them with the team's role\n",
 		res.User.Email, res.User.ID, showFP(res.User.FP), shareState(res.Prior), a.Name)
 	if res.Prior != e2e.PinVerified {
 		fmt.Printf("compare the fingerprint with them, then run: cairn pin %s --verified\n", res.User.Email)
@@ -256,13 +260,32 @@ func listPending(c *client.Client, id, name string, jsonOut bool) error {
 		return printJSON(map[string]any{"artifact": id, "pending": out})
 	}
 	if len(list) == 0 {
-		fmt.Printf("no team members waiting on %s\n", name)
+		va, _, err := c.Members(id)
+		if err != nil {
+			return explainRefusal(c, err)
+		}
+		if va.Chain.Latest.Team == "none" {
+			fmt.Printf("%s is not shared with the team; run cairn team %s viewer|editor\n", name, id)
+		} else {
+			fmt.Printf("no team members waiting on %s\n", name)
+		}
 		return nil
 	}
+	states := map[string]bool{}
 	for _, p := range list {
+		states[p.State] = true
 		fmt.Printf("%-10s  %-20s  %-32s  %s\n", p.State, p.User.Name, p.User.Email, showFP(p.User.FP))
 	}
-	fmt.Printf("compare a fingerprint with them, then run: cairn approve %s USER\n", id)
+	fmt.Println("new: waiting for approval; approved: approved, not yet listed by the owner; keyChanged: keys changed since they were wrapped to or listed")
+	if states[client.PendingNew] {
+		fmt.Printf("compare a fingerprint with them, then run: cairn approve %s USER\n", id)
+	}
+	if states[client.PendingApproved] {
+		fmt.Printf("approved: the owner's next cairn team %s viewer|editor or cairn share lists them\n", id)
+	}
+	if states[client.PendingKeyChanged] {
+		fmt.Printf("keyChanged: the owner shares again with cairn share %s USER\n", id)
+	}
 	return nil
 }
 
@@ -272,6 +295,9 @@ func runTeam(args []string) error {
 	jsonOut := fs.Bool("json", false, "JSON output")
 	pos, err := parsePositional(fs, args, 2, usage)
 	if err != nil {
+		return err
+	}
+	if err := client.CheckTeam(pos[1]); err != nil {
 		return err
 	}
 	c, err := apiClient()
@@ -298,7 +324,7 @@ func runTeam(args []string) error {
 	} else {
 		fmt.Printf("team set to %s for %s\n", res.Team, a.Name)
 	}
-	printListing(a.ID, res.Listed, res.Unlisted)
+	printListing(a.ID, res.Team, res.Listed, res.Unlisted)
 	return nil
 }
 

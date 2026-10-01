@@ -325,7 +325,7 @@ func TestApproveRefusals(t *testing.T) {
 			w.setup(t, "viewer")
 			w.sharing.resetBob(t)
 			return approve(t, w.ada, w.artifact, "bob@example.com")
-		}, ErrAlreadyListed},
+		}, ErrChangedKey},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -807,6 +807,16 @@ func TestOwnersClientAsksWhenAnApprovalFails(t *testing.T) {
 				_, pair, fp := strangerKeys(t)
 				return append(list, entry("twin", " CAT@Example.com", pair, signAs(t, w.ada, w, 2, "twin", fp)))
 			}},
+		{name: "directory keys that differ from the pending entry's", want: ErrPendingKeysDiffer, who: "cat@example.com",
+			dir: func(t *testing.T, w *world, list []map[string]any) []map[string]any {
+				_, pair, _ := strangerKeys(t)
+				for _, e := range list {
+					if e["id"] == w.cat.ID {
+						e["x25519Pub"], e["ed25519Pub"] = pair.X25519, pair.Ed25519
+					}
+				}
+				return list
+			}},
 		{name: "another user ID sharing the email", want: e2e.ErrApprovalDuplicate, who: "cat@example.com",
 			dir: func(t *testing.T, w *world, list []map[string]any) []map[string]any {
 				_, pair, _ := strangerKeys(t)
@@ -966,6 +976,29 @@ func TestTeamNoneIgnoresAListedMemberWhoseKeyChanged(t *testing.T) {
 	}
 }
 
+// Only the owner or a listed editor, under the fingerprint the record lists,
+// may approve.
+func TestApproverOf(t *testing.T) {
+	latest := e2e.MembershipBody{Owner: "o", OwnerFP: "ofp", Members: []e2e.Member{
+		{User: "e", Role: "editor", FP: "efp"}, {User: "v", Role: "viewer", FP: "vfp"},
+	}}
+	for _, c := range []struct {
+		name, user, fp string
+		want           bool
+	}{
+		{"the owner", "o", "ofp", true},
+		{"the owner under other keys", "o", "other", false},
+		{"a listed editor", "e", "efp", true},
+		{"a listed editor under other keys", "e", "other", false},
+		{"a viewer", "v", "vfp", false},
+		{"a stranger", "x", "ofp", false},
+	} {
+		if got := approverOf(latest, &UnlockedKeys{UserID: c.user, FP: c.fp}); got != c.want {
+			t.Errorf("%s: approverOf = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 // A user the server does not list as waiting is not approved, even though the
 // directory shows them: the server's pending list is the only way to a wrap.
 func TestApproveRefusesAUserTheServerDoesNotListAsWaiting(t *testing.T) {
@@ -985,5 +1018,81 @@ func TestApproveRefusesAUserTheServerDoesNotListAsWaiting(t *testing.T) {
 	}
 	if keys, err := w.cat.Keys(w.artifact); err == nil && len(keys.Wraps) != 0 {
 		t.Errorf("cat holds %d wraps after a refusal", len(keys.Wraps))
+	}
+}
+
+// Sharing by name with a user the server reports as approved skips the
+// wraps, so the owner's client runs the same checks listApproved does, and
+// the directory's fingerprint must be the one approved. A failing user is
+// not listed, and nothing is pinned.
+func TestShareByNameRefusesAnApprovalThatDoesNotCheckOut(t *testing.T) {
+	cases := []struct {
+		name    string
+		want    error
+		pending func(t *testing.T, w *team, list []map[string]any) []map[string]any
+	}{
+		{"an approval of another fingerprint", e2e.ErrApprovalMismatch,
+			func(t *testing.T, w *team, list []map[string]any) []map[string]any {
+				k := mustUnlock(t, w.ada)
+				raw, _ := json.Marshal(e2e.ApprovalBody{V: 1, Artifact: w.artifact, Epoch: 1, User: w.userID(t, w.cat), FP: strings.Repeat("ab", 32)})
+				env, err := e2e.NewEnvelope(k.Ed25519Seed, k.UserID, "approval", raw)
+				if err != nil {
+					t.Fatal(err)
+				}
+				catEntry(list)["approval"] = env
+				return list
+			}},
+		{"a signature that does not verify", e2e.ErrDecrypt,
+			func(t *testing.T, w *team, list []map[string]any) []map[string]any {
+				env := catEntry(list)["approval"].(map[string]any)
+				sig, _ := e2e.UnB64(env["sig"].(string))
+				sig[0] ^= 1
+				env["sig"] = e2e.B64(sig)
+				return list
+			}},
+		{"no approval", e2e.ErrApprovalMissing,
+			func(t *testing.T, w *team, list []map[string]any) []map[string]any {
+				catEntry(list)["approval"] = nil
+				return list
+			}},
+		{"pending keys that differ from the directory's", ErrPendingKeysDiffer,
+			func(t *testing.T, w *team, list []map[string]any) []map[string]any {
+				_, pair, _ := strangerKeys(t)
+				e := catEntry(list)
+				e["x25519Pub"], e["ed25519Pub"] = pair.X25519, pair.Ed25519
+				return list
+			}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			w := newTeam(t)
+			w.setup(t, "viewer")
+			if err := approve(t, w.bob, w.artifact, "cat@example.com"); err != nil {
+				t.Fatal(err)
+			}
+			owner := rewritingList(t, w.ada, "/api/artifacts/"+w.artifact+"/pending", func(list []map[string]any) []map[string]any {
+				return c.pending(t, w, list)
+			})
+			res, err := owner.Share(w.artifact, "cat@example.com", "viewer", false)
+			if !errors.Is(err, ErrApprovalUnverified) || !errors.Is(err, c.want) {
+				t.Fatalf("Share = %+v, %v, want ErrApprovalUnverified wrapping %v", res, err, c.want)
+			}
+			if !strings.Contains(err.Error(), "new epoch") {
+				t.Errorf("message %q does not say fixing it needs a new epoch", err)
+			}
+			if m, _ := w.ada.Membership(w.artifact); len(m.Records) != 3 {
+				t.Errorf("a refused share wrote a record: %d records, want 3", len(m.Records))
+			}
+			if r, ok := memberRows(t, w.ada, w.artifact)["cat@example.com"]; ok {
+				t.Errorf("the record lists %+v", r)
+			}
+			kr, err := w.ada.ReadKeyring(mustUnlock(t, w.ada))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p, ok := kr.Pins[w.userID(t, w.cat)]; ok {
+				t.Errorf("a pin was stored for cat: %+v", p)
+			}
+		})
 	}
 }

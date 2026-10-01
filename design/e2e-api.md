@@ -674,6 +674,10 @@ request with:
 
 The server runs these checks in one transaction that locks the artifact row.
 
+The owner cannot check what a wrap holds. Only the recipient can open it, so a
+bad wrap from an approver shows up when the approved user tries to read, and a
+new epoch repairs it.
+
 An approved team member can read. They can write only once the owner lists
 them, because clients refuse anything signed by someone a record does not
 list.

@@ -278,4 +278,10 @@ func TestExcludedMatch(t *testing.T) {
 			t.Errorf("%s: match = %v, want %v", c.name, got, c.want)
 		}
 	}
+	// A signed record may carry the email as the directory spelled it, so the
+	// stored side is normalized too.
+	stored := []ExcludedEntry{{User: "u-1", FP: "aa", Email: " A@Example.COM"}}
+	if ExcludedMatch(stored, "u-2", "bb", "a@example.com") == nil {
+		t.Error("an excluded entry with an unnormalized email did not match")
+	}
 }

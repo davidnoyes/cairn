@@ -271,3 +271,13 @@ func TestCheckApprovalTeamNoneComesBeforeTheUser(t *testing.T) {
 	_, err := CheckApproval(f.cur, f.dir, f.approval(t, f.o, f.x))
 	refused(t, err, 409, RuleTeamNone, "team")
 }
+
+// An artifact with no record has no team: the approval is a refusal for the
+// state, never a plain error that the server would report as a failure.
+func TestCheckApprovalWithNoRecord(t *testing.T) {
+	f := newFixture(t)
+	ch := f.approval(t, f.o, f.x)
+	f.cur.Latest = nil
+	_, err := CheckApproval(f.cur, f.dir, ch)
+	refused(t, err, 409, RuleTeamNone, "no membership record")
+}

@@ -58,7 +58,7 @@ func statusError(status int, rule Rule, format string, args ...any) *Error {
 func CheckApproval(cur Current, dir Directory, ch ApprovalChange) (*ApprovalResult, error) {
 	latest := cur.Latest
 	if latest == nil || cur.Owner == nil {
-		return nil, errors.New("membership: the artifact has no record")
+		return nil, conflict(RuleTeamNone, "the artifact has no membership record, so it has no team to approve into")
 	}
 
 	// 403: the caller is the owner, or an editor listed under their

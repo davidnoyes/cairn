@@ -261,14 +261,17 @@ when the directory lists two accounts with the same email or fingerprint.
 
 `cairn team` shares an artifact with the whole team as `viewer` or `editor`,
 or stops with `none`. A new member gets nothing until the owner or an editor
-approves them by name. `cairn approve` lists who is waiting, with their
-fingerprints. Compare a fingerprint with the person, then approve them. An
-approved member can read, but can write only once the owner's next `share` or
-`team` lists them. The owner's client lists an approved member only when the
-signed approval checks out, and otherwise prints their name and fingerprint.
-`approve` refuses anyone the owner excluded, and refuses a changed key unless
-you pass `--accept-new-key`. Setting `none` while an approved member holds a
-key needs a new epoch, which a later release adds.
+approves them by name. `cairn approve ARTIFACT` lists who is waiting, with
+their fingerprints. Compare a fingerprint with the person first. Running
+`cairn approve ARTIFACT USER` is itself your confirmation. An approved member
+can read right away. The owner's next `cairn team` or `cairn share` lists them
+with the team's role, and an editor team's members can write only from then
+on. The owner's client lists an approved member only when the signed approval
+checks out, and otherwise prints their name and fingerprint. `approve` refuses
+anyone the owner excluded. It refuses a user whose pinned key changed unless
+you pass `--accept-new-key`. If a user's key changed after you approved or
+listed them, the owner runs `cairn share` again. Setting `none` while an
+approved member holds a key needs a new epoch, which a later release adds.
 
 Pins and the latest verified membership record of each artifact live in
 your keyring, sealed on the server. Each machine keeps a small anchor for

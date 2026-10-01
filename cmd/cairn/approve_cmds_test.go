@@ -104,6 +104,11 @@ func TestTeamCommandRefusals(t *testing.T) {
 	if _, err := runQuiet(t, runTeam, w.artifact, "everyone"); err == nil || !strings.Contains(err.Error(), "none, viewer, or editor") {
 		t.Errorf("team everyone: %v", err)
 	}
+	// A typo is refused before any request, so an artifact that does not
+	// exist is not looked up.
+	if _, err := runQuiet(t, runTeam, "no-such-artifact", "everyone"); err == nil || !strings.Contains(err.Error(), "none, viewer, or editor") {
+		t.Errorf("team typo on a missing artifact: %v, want the team message", err)
+	}
 	w.as(t, "bob")
 	if _, err := runQuiet(t, runTeam, w.artifact, "none"); !errors.Is(err, client.ErrNotOwner) {
 		t.Errorf("team by an editor: %v, want ErrNotOwner", err)
@@ -152,7 +157,7 @@ func TestApproveCommandListsAndApproves(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cairn approve cat: %v", err)
 	}
-	for _, want := range []string{"cat@example.com", showFP(cat.FP), "new; pinned unverified", "approved for shared", "cairn pin cat@example.com --verified"} {
+	for _, want := range []string{"cat@example.com", showFP(cat.FP), "new; pinned unverified", "approved for shared", "they can read it now", "next cairn team or cairn share lists them with the team's role", "cairn pin cat@example.com --verified"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("cairn approve printed %q, want %q", out, want)
 		}
@@ -184,11 +189,143 @@ func TestApproveCommandWithNoTeamWaiting(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, err := runQuiet(t, runApprove, w.artifact)
-	if err != nil || !strings.Contains(out, "no team members waiting") {
+	if err != nil || !strings.Contains(out, "not shared with the team; run cairn team "+w.artifact+" viewer|editor") || strings.Contains(out, "no team members waiting") {
 		t.Errorf("cairn approve under team none printed %q, %v", out, err)
 	}
 	if _, err := runQuiet(t, runApprove, w.artifact, "cat@example.com"); !errors.Is(err, client.ErrNoTeam) {
 		t.Errorf("approve under team none: %v, want ErrNoTeam", err)
+	}
+}
+
+// With a team and nobody waiting, the list says so; it does not claim the
+// artifact is unshared.
+func TestApproveCommandWithNobodyWaiting(t *testing.T) {
+	w := newTeamWorld(t)
+	w.as(t, "bob")
+	for _, who := range []string{"cat", "dan"} {
+		if _, err := runQuiet(t, runApprove, w.artifact, who+"@example.com"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, err := runQuiet(t, runApprove, w.artifact)
+	if err != nil || !strings.Contains(out, "no team members waiting") || strings.Contains(out, "not shared with the team") {
+		t.Errorf("cairn approve with nobody waiting printed %q, %v", out, err)
+	}
+}
+
+// The list explains each state it shows, and gives only the next step that
+// applies to a row it printed.
+func TestApproveCommandListGuidancePerState(t *testing.T) {
+	w := newTeamWorld(t)
+	const legend = "keyChanged: keys changed since they were wrapped to or listed"
+	hintNew := "cairn approve " + w.artifact + " USER"
+	hintApproved := "cairn team " + w.artifact + " viewer|editor or cairn share lists them"
+	hintChanged := "cairn share " + w.artifact + " USER"
+	check := func(t *testing.T, text string, want, notWant []string) {
+		t.Helper()
+		for _, x := range want {
+			if !strings.Contains(text, x) {
+				t.Errorf("cairn approve printed %q, want %q", text, x)
+			}
+		}
+		for _, x := range notWant {
+			if strings.Contains(text, x) {
+				t.Errorf("cairn approve printed %q, must not say %q", text, x)
+			}
+		}
+	}
+	w.as(t, "bob")
+	for _, who := range []string{"cat", "dan"} {
+		if _, err := runQuiet(t, runApprove, w.artifact, who+"@example.com"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Only approved rows: no approve hint.
+	w.as(t, "ada")
+	text, _ := runQuiet(t, runApprove, w.artifact)
+	check(t, text, []string{"approved", legend, hintApproved}, []string{hintNew, hintChanged})
+	// A listed member who resets is keyChanged, and a new user is new.
+	if _, err := runQuiet(t, runTeam, w.artifact, "viewer"); err != nil {
+		t.Fatal(err)
+	}
+	resetCLIUser(t, w, "bob@example.com")
+	w.as(t, "ada")
+	text, _ = runQuiet(t, runApprove, w.artifact)
+	check(t, text, []string{"keyChanged", legend, hintChanged}, []string{hintNew, hintApproved})
+	signupVerify(t, w.host, w.m, "eve@example.com", sharePassword)
+	text, _ = runQuiet(t, runApprove, w.artifact)
+	check(t, text, []string{"new", "keyChanged", legend, hintNew, hintChanged}, []string{hintApproved})
+}
+
+// resetCLIUser resets email's account without the recovery code, so its keys
+// change.
+func resetCLIUser(t *testing.T, w *teamWorld, email string) {
+	t.Helper()
+	if err := client.New(w.host, "").Forgot(email); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.New(w.host, "").ResetNew(verifyLink(t, w.m, email), "a brand new password"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Approving a listed member whose key changed says the key changed, and the
+// owner shares again; it is not "already a member".
+func TestApproveCommandRefusesAListedMemberWhoseKeyChanged(t *testing.T) {
+	w := newTeamWorld(t)
+	resetCLIUser(t, w, "bob@example.com")
+	w.as(t, "ada")
+	_, err := runQuiet(t, runApprove, w.artifact, "bob@example.com")
+	if !errors.Is(err, client.ErrChangedKey) || !strings.Contains(err.Error(), "cairn share") {
+		t.Errorf("approve a listed member whose key changed: %v, want ErrChangedKey pointing to cairn share", err)
+	}
+}
+
+// With an editor team, an approved user whose pin the owner holds for other
+// keys is reported, with a share command that keeps the team's role; the
+// JSON for share and team carries the same listed and unlisted entries.
+func TestShareAndTeamJSONListedAndUnlisted(t *testing.T) {
+	w := newTeamWorld(t)
+	w.as(t, "ada")
+	if _, err := runQuiet(t, runTeam, w.artifact, "editor"); err != nil {
+		t.Fatal(err)
+	}
+	runJSON[map[string]any](t, runPin, "cat@example.com", "--verified", "--json")
+	resetCLIUser(t, w, "cat@example.com")
+	w.as(t, "bob")
+	if _, err := runQuiet(t, runApprove, w.artifact, "cat@example.com", "--accept-new-key"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runQuiet(t, runApprove, w.artifact, "dan@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	w.as(t, "ada")
+	// dan is listed by the next share; cat is not, as their key contradicts the pin.
+	signupVerify(t, w.host, w.m, "eve@example.com", sharePassword)
+	signupVerify(t, w.host, w.m, "fay@example.com", sharePassword)
+	res := runJSON[map[string]any](t, runShare, w.artifact, "eve@example.com", "--json")
+	listed, unlisted := res["listed"].([]any), res["unlisted"].([]any)
+	if len(listed) != 1 || len(unlisted) != 1 {
+		t.Fatalf("share --json listed %v, unlisted %v, want one each", listed, unlisted)
+	}
+	l, u := listed[0].(map[string]any), unlisted[0].(map[string]any)
+	if l["email"] != "dan@example.com" || l["user"] == "" || l["name"] == "" || len(l["fp"].(string)) != 64 {
+		t.Errorf("listed entry = %v, want user, name, email, fp for dan", l)
+	}
+	if u["email"] != "cat@example.com" || u["user"] == "" || u["name"] == "" || len(u["fp"].(string)) != 64 || u["reason"] == "" {
+		t.Errorf("unlisted entry = %v, want user, name, email, fp, reason for cat", u)
+	}
+	text, err := runQuiet(t, runTeam, w.artifact, "viewer")
+	if err != nil || !strings.Contains(text, "cairn share "+w.artifact+" cat@example.com --role viewer") {
+		t.Errorf("cairn team viewer printed %q, %v, want a share hint with --role viewer", text, err)
+	}
+	res = runJSON[map[string]any](t, runTeam, w.artifact, "editor", "--json")
+	if u := res["unlisted"].([]any); len(u) != 1 || u[0].(map[string]any)["email"] != "cat@example.com" || u[0].(map[string]any)["reason"] == "" {
+		t.Errorf("team --json unlisted = %v, want cat with a reason", u)
+	}
+	text, _ = runQuiet(t, runShare, w.artifact, "fay@example.com")
+	if !strings.Contains(text, "cairn share "+w.artifact+" cat@example.com --role editor") {
+		t.Errorf("cairn share printed %q, want a share hint with --role editor", text)
 	}
 }
 
@@ -197,6 +334,9 @@ func TestApproveCommandRefusals(t *testing.T) {
 	w.as(t, "bob")
 	if _, err := runQuiet(t, runApprove); err == nil || !strings.Contains(err.Error(), "usage: cairn approve ARTIFACT [USER]") {
 		t.Errorf("approve with no artifact: %v", err)
+	}
+	if _, err := runQuiet(t, runApprove, w.artifact, "--accept-new-key"); err == nil || !strings.Contains(err.Error(), "usage: cairn approve ARTIFACT [USER]") {
+		t.Errorf("approve --accept-new-key with no user: %v", err)
 	}
 	if _, err := runQuiet(t, runApprove, w.artifact, "cat@example.com", "extra"); err == nil || !strings.Contains(err.Error(), "usage: cairn approve ARTIFACT [USER]") {
 		t.Errorf("approve with too many arguments: %v", err)

@@ -1266,6 +1266,8 @@ test('excludedMatch matches by ID, fingerprint, and normalized email', () => {
   assert.equal(e2e.excludedMatch(x, 'u-2', 'aa', 'b@example.com'), x[0]);
   assert.equal(e2e.excludedMatch(x, 'u-2', 'bb', ' A@Example.com'), x[0]);
   assert.equal(e2e.excludedMatch(x, 'u-2', 'bb', 'b@example.com'), null);
+  const stored = [{ user: 'u-1', fp: 'aa', email: ' A@Example.COM' }];
+  assert.equal(e2e.excludedMatch(stored, 'u-2', 'bb', 'a@example.com'), stored[0]);
 });
 
 test('checkEncryptEpoch refuses an epoch below the pinned one', () => {

@@ -62,7 +62,7 @@ internal/client/share.go	if err := CheckDirectory(dir); err != nil {	if err := e
 internal/client/share.go	case members[i].Role == "editor" && role == "viewer":	case false:	go test ./internal/client -run 'TestSharePromotesAndRefusesDemotion'
 internal/client/share.go	if want, ok := commits[e.Epoch]; !ok || commit != want {	if want, ok := commits[e.Epoch]; !ok && commit != want {	go test ./internal/client -run 'TestShareRefusesAnEstateCopyThatMissesTheCommit'
 cmd/cairn/config.go	f.cliConfig = cfg	*f = configFile{cliConfig: cfg}	go test ./cmd/cairn -run TestKeyringAnchorSurvivesLogoutAndLogin
-internal/client/share.go	if e.User == u.ID || e.FP == u.FP || e2e.NormalizeEmail(e.Email) == email {	if e.User == u.ID || e.FP == u.FP || e.Email == email {	go test ./internal/client -run TestExcludedMatch
+internal/e2e/approval.go	if e.User == id || e.FP == fp || NormalizeEmail(e.Email) == email {	if e.User == id || e.FP == fp || e.Email == email {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
 internal/store/archives.go	DELETE FROM user_keyrings WHERE user_id = ?	DELETE FROM user_keyrings WHERE user_id = '-'	go test ./internal/store -run TestResetAccountDeletesKeyring
 internal/server/handlers_auth.go	return func() error { return s.store.ResetAccount(u.ID, authHash, bundle, s.clk.Now()) }, true	return func() error { return s.store.SetPassword(u.ID, authHash, "{}", bundle.MKPassword) }, true	go test ./internal/server -run TestResetNewDeletesKeyring
 cmd/cairn/config.go	return host + " " + userID + " " + fp	return host + " " + userID	go test ./cmd/cairn -run TestConfigAnchorsAreKeyedByHostUserAndFingerprint
@@ -73,7 +73,7 @@ internal/server/web/e2e.mjs	return `cairn.keyringAnchor.${userId}.${fp}`;	return
 # Pin and chain races, the CLI anchor store, and the recovery guidance (milestone 3 step 4 fixes).
 internal/client/share.go	case cur.FP == pin.FP && cur.State == e2e.PinVerified:	case false:	go test ./internal/client -run TestStorePinHoldsAgainstAConcurrentPin
 internal/client/share.go	case cur.FP != pin.FP && cur.FP != basedOn:	case false:	go test ./internal/client -run TestStorePinHoldsAgainstAConcurrentPin
-internal/client/share.go	}, nil); err != nil {	}, nil); err != nil && false {	go test ./internal/client -run TestShareLeavesNoPinWhenTheMembershipWriteFails
+internal/client/share.go	if err := c.putRecord(k, artifactID, va, next, wraps); err != nil {	if err := c.putRecord(k, artifactID, va, next, wraps); err != nil && false {	go test ./internal/client -run TestShareLeavesNoPinWhenTheMembershipWriteFails
 internal/client/keyring.go	if p, ok := kr.Pins[creator]; ok && anchorFP != "" && p.FP != anchorFP {	if p, ok := kr.Pins[creator]; ok && anchorFP != "" && p.FP != anchorFP && false {	go test ./internal/client -run TestRecordChainRefusesAMismatchedCreatorPin
 internal/client/keyring.go	anchorFP = pin.FP	anchorFP = ""	go test ./internal/client -run TestRecordChainRefusesAMismatchedCreatorPin
 internal/client/keyring.go	anchorFP = kr.Pins[creator].FP	anchorFP = ""	go test ./internal/client -run TestRecordChainRefusesAMismatchedCreatorPin
@@ -154,7 +154,6 @@ internal/client/approve.go	if !approverOf(latest, k) {	if false {	go test ./inte
 internal/client/approve.go	if latest.Team == "none" {	if false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/approve.go	if e := ExcludedMatch(latest.Excluded, u); e != nil {	if e := ExcludedMatch(latest.Excluded, u); e != nil && false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/approve.go	case p < 0:	case false:	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
-internal/client/approve.go	case pending[p].State == PendingKeyChanged:	case false:	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/approve.go	case pending[p].State == PendingApproved:	case false:	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/approve.go	case pending[p].User.FP != u.FP:	case false:	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/approve.go	checkPin(va.Keyring, u, acceptNewKey)	checkPin(va.Keyring, u, true)	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
@@ -171,3 +170,27 @@ internal/client/approve.go	if team != "none" && team != "viewer" && team != "edi
 internal/client/share.go	needsWraps = !approved	needsWraps = true || approved	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/share.go	if latest.Team != "none" {	if false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 cmd/cairn/share_cmds.go	if len(pos) < min || len(pos) > max {	if len(pos) < min {	go test ./cmd/cairn -run 'Approve|Team'
+internal/client/share.go	if err := checkApproved(k, latest, dir, pending[p]); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -run 'TestShareByNameRefuses'
+internal/client/approve.go	if d, ok := keysOf(p.User.ID); ok && d != approvalUser(p.User).Keys {	if false {	go test ./internal/client -run 'TestShareByNameRefuses|TestOwnersClientAsksWhenAnApprovalFails'
+internal/client/approve.go	if p >= 0 && pending[p].State == PendingKeyChanged {	if false {	go test ./internal/client -run 'TestApproveRefusals'
+internal/client/approve.go	if u.ID == latest.Owner || slices.ContainsFunc(latest.Members, func(m e2e.Member) bool { return m.User == u.ID }) {	if false {	go test ./internal/client -run 'TestApproveRefusals'
+internal/client/approve.go	return latest.OwnerFP == k.FP	return true	go test ./internal/client -run 'TestApproverOf'
+internal/client/approve.go	return m.User == k.UserID && m.Role == "editor" && m.FP == k.FP	return m.User == k.UserID && m.Role == "editor"	go test ./internal/client -run 'TestApproverOf'
+internal/client/approve.go	return m.User == k.UserID && m.Role == "editor" && m.FP == k.FP	return m.User == k.UserID && m.FP == k.FP	go test ./internal/client -run 'TestApproverOf'
+internal/store/sharing.go	t.id, a.UserID, a.FP, a.Epoch, a.Envelope.Body, a.Envelope.Sig, a.Envelope.Signer, now())	t.id, a.UserID, a.FP, a.Epoch, a.Envelope.Sig, a.Envelope.Sig, a.Envelope.Signer, now())	go test ./internal/store -run TestWrapsEstateAndApprovals
+internal/store/sharing.go	t.id, a.UserID, a.FP, a.Epoch, a.Envelope.Body, a.Envelope.Sig, a.Envelope.Signer, now())	t.id, a.UserID, a.FP, a.Epoch, a.Envelope.Body, a.Envelope.Sig, a.UserID, now())	go test ./internal/store -run TestWrapsEstateAndApprovals
+cmd/cairn/share_cmds.go	"email": d.Email, "fp": d.FP})	"email": "", "fp": d.FP})	go test ./cmd/cairn -run 'TestShareAndTeamJSONListedAndUnlisted'
+cmd/cairn/share_cmds.go	"reason": x.Err.Error()})	"reason": ""})	go test ./cmd/cairn -run 'TestShareAndTeamJSONListedAndUnlisted'
+cmd/cairn/share_cmds.go	artifact, x.User.Email, role)	artifact, x.User.Email, "viewer")	go test ./cmd/cairn -run 'TestShareAndTeamJSONListedAndUnlisted'
+cmd/cairn/share_cmds.go	if va.Chain.Latest.Team == "none" {	if va.Chain.Latest.Team == "none" && false {	go test ./cmd/cairn -run 'TestApproveCommandWithNoTeamWaiting'
+cmd/cairn/share_cmds.go	if va.Chain.Latest.Team == "none" {	if va.Chain.Latest.Team == "none" || true {	go test ./cmd/cairn -run 'TestApproveCommandWithNobodyWaiting'
+cmd/cairn/share_cmds.go	if states[client.PendingNew] {	if true {	go test ./cmd/cairn -run 'TestApproveCommandListGuidancePerState'
+cmd/cairn/share_cmds.go	if states[client.PendingApproved] {	if true {	go test ./cmd/cairn -run 'TestApproveCommandListGuidancePerState'
+cmd/cairn/share_cmds.go	if states[client.PendingKeyChanged] {	if true {	go test ./cmd/cairn -run 'TestApproveCommandListGuidancePerState'
+cmd/cairn/share_cmds.go	if len(pos) == 1 && *acceptNewKey {	if false {	go test ./cmd/cairn -run 'TestApproveCommandRefusals'
+cmd/cairn/share_cmds.go	if err := client.CheckTeam(pos[1]); err != nil {	if false {	go test ./cmd/cairn -run 'TestTeamCommandRefusals'
+internal/membership/approval.go	return nil, conflict(RuleTeamNone, "the artifact has no membership record, so it has no team to approve into")	return nil, errors.New("membership: the artifact has no record")	go test ./internal/membership -run TestCheckApprovalWithNoRecord
+internal/membership/membership.go	if err := tx.DeleteApprovalsExcept(keep); err != nil {	if err := error(nil); err != nil {	go test ./internal/membership -run TestApplyThroughTheStore
+internal/server/sharing.go	if u.ID == latest.Owner || !u.Verified || u.Disabled ||	if u.ID == latest.Owner || u.Disabled ||	go test ./internal/server -run TestPendingStates
+internal/server/sharing.go	if u.ID == latest.Owner || !u.Verified || u.Disabled ||	if u.ID == latest.Owner || !u.Verified ||	go test ./internal/server -run TestPendingStates
+internal/server/web/e2e.mjs	if (e.user === id || e.fp === fp || normalizeEmail(e.email) === normalized) return e;	if (e.user === id || e.fp === fp || e.email === normalized) return e;	node --test internal/server/web/e2e_test.mjs
