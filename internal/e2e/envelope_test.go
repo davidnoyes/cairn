@@ -3,13 +3,91 @@ package e2e
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
 
 func membershipBody() string {
-	return `{"v":1,"artifact":"artifact-1","epoch":3,"owner":"user-1","akCommit":"aa",` +
-		`"members":[{"user":"user-1","role":"editor","fp":"bb"}],"team":"none",` +
-		`"public":false,"publicWrites":false,"prev":""}`
+	return `{"v":1,"artifact":"artifact-1","epoch":3,"seq":1,"owner":"user-1","ownerFp":"bb","akCommit":"aa",` +
+		`"members":[{"user":"user-1","role":"editor","fp":"bb"}],"excluded":[],"team":"none",` +
+		`"public":false,"publicWrites":false,"prev":"","transfer":"","handover":""}`
+}
+
+// bodyField is one key of a purpose body and its raw JSON value, in wire
+// order, so a test can drop any one key and keep the rest.
+type bodyField struct{ key, value string }
+
+// bodyJSON joins fields into a JSON object, leaving out the key skip.
+func bodyJSON(fields []bodyField, skip string) string {
+	var parts []string
+	for _, f := range fields {
+		if f.key != skip {
+			parts = append(parts, `"`+f.key+`":`+f.value)
+		}
+	}
+	return "{" + strings.Join(parts, ",") + "}"
+}
+
+// TestOpenEnvelopeSigTableBodies opens a full body for each purpose whose
+// shape the spec's signature table gives, and refuses it with ErrFormat when
+// any one of the fields added to the table is missing.
+func TestOpenEnvelopeSigTableBodies(t *testing.T) {
+	fp := `"` + strings.Repeat("aa", 32) + `"`
+	cases := []struct {
+		purpose string
+		out     func() any
+		fields  []bodyField
+		dropped []string // the fields whose absence must be refused
+	}{
+		{"membership", func() any { return new(MembershipBody) }, []bodyField{
+			{"v", "1"}, {"artifact", `"artifact-1"`}, {"epoch", "3"}, {"seq", "2"},
+			{"owner", `"user-1"`}, {"ownerFp", fp}, {"akCommit", fp},
+			{"members", `[{"user":"user-1","role":"editor","fp":` + fp + `}]`},
+			{"excluded", `[{"user":"user-2","fp":` + fp + `,"email":"b@example.com"}]`},
+			{"team", `"none"`}, {"public", "false"}, {"publicWrites", "false"},
+			{"prev", `""`}, {"transfer", `""`}, {"handover", `""`},
+		}, []string{"seq", "ownerFp", "excluded", "transfer", "handover"}},
+		{"transfer", func() any { return new(TransferBody) }, []bodyField{
+			{"v", "1"}, {"artifact", `"artifact-1"`}, {"from", `"user-1"`},
+			{"to", `"user-2"`}, {"toFp", fp}, {"prev", fp},
+		}, []string{"artifact", "from", "to", "toFp", "prev"}},
+		{"approval", func() any { return new(ApprovalBody) }, []bodyField{
+			{"v", "1"}, {"artifact", `"artifact-1"`}, {"epoch", "3"},
+			{"user", `"user-2"`}, {"fp", fp},
+		}, []string{"artifact", "epoch", "user", "fp"}},
+		{"successor", func() any { return new(SuccessorBody) }, []bodyField{
+			{"v", "1"}, {"user", `"user-1"`}, {"seq", "2"}, {"successor", `"user-2"`},
+			{"successorFp", fp}, {"action", `"nominate"`},
+		}, []string{"successorFp"}},
+	}
+	seed, pub, err := GenerateEd25519(newDRBG("openenv-sigtable"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := func(purpose, body string, out any) error {
+		env, err := NewEnvelope(seed, "user-1", purpose, []byte(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return OpenEnvelope(env, pub, purpose, out)
+	}
+	for _, c := range cases {
+		if err := open(c.purpose, bodyJSON(c.fields, ""), c.out()); err != nil {
+			t.Errorf("%s: a full body was refused: %v", c.purpose, err)
+		}
+		for _, key := range c.dropped {
+			if err := open(c.purpose, bodyJSON(c.fields, key), c.out()); !errors.Is(err, ErrFormat) {
+				t.Errorf("%s without %s: got %v, want ErrFormat", c.purpose, key, err)
+			}
+		}
+	}
+}
+
+func TestBodyHash(t *testing.T) {
+	const want = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+	if got := BodyHash([]byte("abc")); got != want {
+		t.Fatalf("BodyHash(abc) = %s, want %s", got, want)
+	}
 }
 
 func TestOpenEnvelopeAccepts(t *testing.T) {

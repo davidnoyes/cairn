@@ -863,11 +863,13 @@ func generateVectors(t testing.TB) vectorFile {
 		purpose string
 		body    string
 	}{
-		{"membership", `{"v":1,"artifact":"artifact-1","epoch":3,"owner":"user-1","akCommit":"` + fullFP + `","members":[{"user":"user-1","role":"editor","fp":"` + fullFP + `"}],"team":"none","public":false,"publicWrites":false,"prev":""}`},
+		{"membership", `{"v":1,"artifact":"artifact-1","epoch":3,"seq":1,"owner":"user-1","ownerFp":"` + fullFP + `","akCommit":"` + fullFP + `","members":[{"user":"user-1","role":"editor","fp":"` + fullFP + `"}],"excluded":[{"user":"user-2","fp":"` + fullFP + `","email":"user2@example.com"}],"team":"none","public":false,"publicWrites":false,"prev":"","transfer":"","handover":""}`},
+		{"transfer", `{"v":1,"artifact":"artifact-1","from":"user-1","to":"user-2","toFp":"` + fullFP + `","prev":"` + fullFP + `"}`},
+		{"approval", `{"v":1,"artifact":"artifact-1","epoch":3,"user":"user-2","fp":"` + fullFP + `"}`},
 		{"manifest", `{"v":1,"artifact":"artifact-1","version":"version-1","epoch":3,"files":[{"path":"index.html","blob":"blob-1","size":12,"sha256":"deadbeef"}]}`},
 		{"revision", `{"v":1,"artifact":"artifact-1","version":"version-1","revision":4,"epoch":3,"sha256":"deadbeef"}`},
 		{"vouch", `{"v":1,"artifact":"artifact-1","version":"version-1","manifest":"deadbeef"}`},
-		{"successor", `{"v":1,"user":"user-1","seq":2,"successor":"user-2","action":"nominate"}`},
+		{"successor", `{"v":1,"user":"user-1","seq":2,"successor":"user-2","successorFp":"` + fullFP + `","action":"nominate"}`},
 		{"reset", `{"v":1,"user":"user-1","token":"5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8"}`},
 		{"record", `{"v":1,"artifact":"artifact-1","version":"version-1","kind":"file","name":"path/to/file","epoch":3,"sha256":"deadbeef"}`},
 	}

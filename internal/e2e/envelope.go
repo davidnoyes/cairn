@@ -3,6 +3,8 @@ package e2e
 import (
 	"bytes"
 	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,18 +31,50 @@ type Member struct {
 	FP   string `json:"fp"`
 }
 
+// ExcludedEntry is a user an owner removed, listed in the membership record
+// so the same user can't be added back under another ID, key, or email.
+type ExcludedEntry struct {
+	User  string `json:"user"`
+	FP    string `json:"fp"`
+	Email string `json:"email"`
+}
+
 // MembershipBody is signed by the owner.
 type MembershipBody struct {
-	V            int      `json:"v"`
-	Artifact     string   `json:"artifact"`
-	Epoch        int      `json:"epoch"`
-	Owner        string   `json:"owner"`
-	AKCommit     string   `json:"akCommit"`
-	Members      []Member `json:"members"`
-	Team         string   `json:"team"`
-	Public       bool     `json:"public"`
-	PublicWrites bool     `json:"publicWrites"`
-	Prev         string   `json:"prev"`
+	V            int             `json:"v"`
+	Artifact     string          `json:"artifact"`
+	Epoch        int             `json:"epoch"`
+	Seq          int             `json:"seq"`
+	Owner        string          `json:"owner"`
+	OwnerFP      string          `json:"ownerFp"`
+	AKCommit     string          `json:"akCommit"`
+	Members      []Member        `json:"members"`
+	Excluded     []ExcludedEntry `json:"excluded"`
+	Team         string          `json:"team"`
+	Public       bool            `json:"public"`
+	PublicWrites bool            `json:"publicWrites"`
+	Prev         string          `json:"prev"`
+	Transfer     string          `json:"transfer"`
+	Handover     string          `json:"handover"`
+}
+
+// TransferBody is signed by the current owner.
+type TransferBody struct {
+	V        int    `json:"v"`
+	Artifact string `json:"artifact"`
+	From     string `json:"from"`
+	To       string `json:"to"`
+	ToFP     string `json:"toFp"`
+	Prev     string `json:"prev"`
+}
+
+// ApprovalBody is signed by the approving owner or editor.
+type ApprovalBody struct {
+	V        int    `json:"v"`
+	Artifact string `json:"artifact"`
+	Epoch    int    `json:"epoch"`
+	User     string `json:"user"`
+	FP       string `json:"fp"`
 }
 
 type ManifestFile struct {
@@ -89,11 +123,12 @@ type RotationBody struct {
 
 // SuccessorBody is signed by the user.
 type SuccessorBody struct {
-	V         int    `json:"v"`
-	User      string `json:"user"`
-	Seq       int    `json:"seq"`
-	Successor string `json:"successor"`
-	Action    string `json:"action"`
+	V           int    `json:"v"`
+	User        string `json:"user"`
+	Seq         int    `json:"seq"`
+	Successor   string `json:"successor"`
+	SuccessorFP string `json:"successorFp"`
+	Action      string `json:"action"`
 }
 
 // ResetBody is signed by the user, with their existing key.
@@ -112,6 +147,13 @@ type RecordBody struct {
 	Name     string `json:"name"`
 	Epoch    int    `json:"epoch"`
 	SHA256   string `json:"sha256"`
+}
+
+// BodyHash returns the lowercase hex SHA-256 of a signed body, the form the
+// spec's prev, transfer, and manifest fields take.
+func BodyHash(body []byte) string {
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
 }
 
 // bodyVersion is read out of a decoded body to check it against the "v":1

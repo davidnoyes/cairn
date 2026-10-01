@@ -693,6 +693,72 @@ async function envelopeFor(purpose, body) {
   return e2e.newEnvelope(envSeed, 'user-1', purpose, textEncoder.encode(body));
 }
 
+// The signature table's membership, transfer, approval, and successor
+// bodies: a full body opens, and dropping any field the table added is a
+// FormatError. Mirrors TestOpenEnvelopeSigTableBodies in
+// internal/e2e/envelope_test.go.
+const sigTableFp = `"${'aa'.repeat(32)}"`;
+const sigTableCases = [
+  [
+    'membership',
+    [
+      ['v', '1'], ['artifact', '"artifact-1"'], ['epoch', '3'], ['seq', '2'],
+      ['owner', '"user-1"'], ['ownerFp', sigTableFp], ['akCommit', sigTableFp],
+      ['members', `[{"user":"user-1","role":"editor","fp":${sigTableFp}}]`],
+      ['excluded', `[{"user":"user-2","fp":${sigTableFp},"email":"b@example.com"}]`],
+      ['team', '"none"'], ['public', 'false'], ['publicWrites', 'false'],
+      ['prev', '""'], ['transfer', '""'], ['handover', '""'],
+    ],
+    ['seq', 'ownerFp', 'excluded', 'transfer', 'handover'],
+  ],
+  [
+    'transfer',
+    [
+      ['v', '1'], ['artifact', '"artifact-1"'], ['from', '"user-1"'],
+      ['to', '"user-2"'], ['toFp', sigTableFp], ['prev', sigTableFp],
+    ],
+    ['artifact', 'from', 'to', 'toFp', 'prev'],
+  ],
+  [
+    'approval',
+    [
+      ['v', '1'], ['artifact', '"artifact-1"'], ['epoch', '3'],
+      ['user', '"user-2"'], ['fp', sigTableFp],
+    ],
+    ['artifact', 'epoch', 'user', 'fp'],
+  ],
+  [
+    'successor',
+    [
+      ['v', '1'], ['user', '"user-1"'], ['seq', '2'], ['successor', '"user-2"'],
+      ['successorFp', sigTableFp], ['action', '"nominate"'],
+    ],
+    ['successorFp'],
+  ],
+];
+
+function sigTableJSON(fields, skip) {
+  return `{${fields.filter(([k]) => k !== skip).map(([k, v]) => `"${k}":${v}`).join(',')}}`;
+}
+
+for (const [purpose, fields, dropped] of sigTableCases) {
+  test(`signature table: ${purpose} body`, async () => {
+    const body = await e2e.openEnvelope(await envelopeFor(purpose, sigTableJSON(fields, '')), envPub, purpose);
+    assert.equal(body.v, 1);
+    for (const key of dropped) {
+      const env = await envelopeFor(purpose, sigTableJSON(fields, key));
+      await assertThrows(() => e2e.openEnvelope(env, envPub, purpose), e2e.FormatError);
+    }
+  });
+}
+
+test('bodyHash is the lowercase hex SHA-256 of the body', async () => {
+  assert.equal(
+    await e2e.bodyHash(textEncoder.encode('abc')),
+    'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+  );
+});
+
 test('envelope strictness: valid body decodes', async () => {
   const env = await envelopeFor('vouch', `{"v":1,"artifact":"a1","version":"v1","manifest":"deadbeef"}`);
   const body = await e2e.openEnvelope(env, envPub, 'vouch');

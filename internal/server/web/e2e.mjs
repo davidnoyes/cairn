@@ -1523,6 +1523,12 @@ export async function fingerprint(x25519Pub, ed25519Pub) {
   return new Uint8Array(digest);
 }
 
+// bodyHash returns the lowercase hex SHA-256 of a signed body, the form the
+// spec's prev, transfer, and manifest fields take.
+export async function bodyHash(body) {
+  return toHex(new Uint8Array(await subtle.digest('SHA-256', body)));
+}
+
 // formatFingerprint renders the first 20 bytes of a fingerprint as hex, in
 // groups of four characters separated by spaces.
 export function formatFingerprint(fp) {
@@ -1553,6 +1559,12 @@ const MEMBER_SCHEMA = {
   fp: field('string'),
 };
 
+const EXCLUDED_SCHEMA = {
+  user: field('string'),
+  fp: field('string'),
+  email: field('string'),
+};
+
 const MANIFEST_FILE_SCHEMA = {
   path: field('string'),
   blob: field('string'),
@@ -1567,13 +1579,33 @@ export const BODY_SCHEMAS = {
     v: field('number'),
     artifact: field('string'),
     epoch: field('number'),
+    seq: field('number'),
     owner: field('string'),
+    ownerFp: field('string'),
     akCommit: field('string'),
     members: field('array', { item: MEMBER_SCHEMA }),
+    excluded: field('array', { item: EXCLUDED_SCHEMA }),
     team: field('string'),
     public: field('boolean'),
     publicWrites: field('boolean'),
     prev: field('string'),
+    transfer: field('string'),
+    handover: field('string'),
+  },
+  transfer: {
+    v: field('number'),
+    artifact: field('string'),
+    from: field('string'),
+    to: field('string'),
+    toFp: field('string'),
+    prev: field('string'),
+  },
+  approval: {
+    v: field('number'),
+    artifact: field('string'),
+    epoch: field('number'),
+    user: field('string'),
+    fp: field('string'),
   },
   manifest: {
     v: field('number'),
@@ -1617,6 +1649,7 @@ export const BODY_SCHEMAS = {
     user: field('string'),
     seq: field('number'),
     successor: field('string'),
+    successorFp: field('string'),
     action: field('string'),
   },
   reset: {
