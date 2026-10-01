@@ -127,10 +127,14 @@ var ErrExists = errors.New("already exists")
 var ErrStale = errors.New("record does not follow the latest record")
 
 // ErrLegacyData is returned by Open when the data directory holds accounts
-// or artifacts from a Cairn version that predates this schema. Those accounts cannot be
+// or artifacts from a Cairn version that predates this schema. They cannot be
 // migrated automatically: start the server with a fresh data directory, or
-// run `cairn import` to bring the old accounts across.
-var ErrLegacyData = errors.New("this data directory holds accounts from an earlier version of Cairn; start with a fresh data directory, or run `cairn import`")
+// run `cairn import` to bring the old data across.
+var ErrLegacyData = errors.New("this data directory holds accounts or artifacts from an earlier version of Cairn; start with a fresh data directory, or run `cairn import`")
+
+// ErrOwnsArtifacts is returned when deleting a user who still owns artifacts:
+// their members would lose the owner every record is signed by.
+var ErrOwnsArtifacts = errors.New("user owns artifacts")
 
 // isUniqueViolation reports whether err is a SQLite uniqueness failure (a
 // duplicate email, or a reused API key id — a client-chosen primary key).

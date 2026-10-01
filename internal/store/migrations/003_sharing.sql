@@ -100,7 +100,7 @@ CREATE TABLE artifact_offers (
     id          TEXT PRIMARY KEY,
     artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
     to_user     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    by          TEXT NOT NULL CHECK (by IN ('owner', 'admin')),
+    offered_by  TEXT NOT NULL CHECK (offered_by IN ('owner', 'admin')),
     hash        TEXT NOT NULL DEFAULT '',
     body        BLOB,
     sig         BLOB,

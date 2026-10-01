@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
@@ -163,6 +164,10 @@ func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.DeleteUser(id); err != nil {
+		if errors.Is(err, store.ErrOwnsArtifacts) {
+			writeError(w, http.StatusConflict, "user owns artifacts; disable the account instead")
+			return
+		}
 		s.writeStoreError(w, err, "user")
 		return
 	}

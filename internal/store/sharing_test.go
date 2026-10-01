@@ -488,3 +488,30 @@ func TestAccessState(t *testing.T) {
 		t.Fatalf("missing artifact: %v", err)
 	}
 }
+
+func TestDeleteUserWhoOwnsAnArtifactIsErrOwnsArtifacts(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	ownedArtifact(t, s, o)
+	if err := s.DeleteUser(o.ID); !errors.Is(err, ErrOwnsArtifacts) {
+		t.Fatalf("DeleteUser(owner) = %v, want ErrOwnsArtifacts", err)
+	}
+	if _, err := s.UserByID(o.ID); err != nil {
+		t.Errorf("owner deleted anyway: %v", err)
+	}
+}
+
+func TestRecordWriteForAVersionOnAnotherArtifactIsErrNotFound(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	a := ownedArtifact(t, s, o)
+	err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+		if err := tx.RecordWrite("missing", "db", "", 1, o.ID); !errors.Is(err, ErrNotFound) {
+			t.Errorf("RecordWrite(missing version) = %v, want ErrNotFound", err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

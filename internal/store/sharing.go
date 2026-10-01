@@ -115,6 +115,10 @@ func (t *ArtifactTx) ArtifactID() string { return t.id }
 
 // WithArtifact runs fn in one transaction that locks artifact id, committing
 // if fn returns nil. A missing artifact is ErrNotFound.
+//
+// The lock stalls every other store call, so fn must use only the ArtifactTx
+// (a Store call inside it deadlocks) and stay short: extract uploads, copy
+// files, and hash large bodies before calling WithArtifact, not inside fn.
 func (s *Store) WithArtifact(id string, fn func(*ArtifactTx) error) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -140,7 +144,8 @@ func (s *Store) WithArtifact(id string, fn func(*ArtifactTx) error) error {
 
 // CreateOwnedArtifact inserts an artifact with the given ID and owner, then
 // runs fn (if not nil) in the same transaction, so the first record and its
-// wraps land with the artifact or not at all. An ID in use is ErrExists.
+// wraps land with the artifact or not at all. An ID in use is ErrExists. fn
+// follows the same rules as in WithArtifact.
 func (s *Store) CreateOwnedArtifact(id, name, description, ownerID string, fn func(*ArtifactTx) error) (*Artifact, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -173,8 +178,16 @@ func (s *Store) CreateOwnedArtifact(id, name, description, ownerID string, fn fu
 // AccessState reads what the permission check needs for userID on an
 // artifact. An empty userID (anonymous) has no member entry and no wraps. A
 // missing artifact is ErrNotFound.
+//
+// The three reads share one transaction, so a membership change cannot land
+// between them and pair a new epoch with old wraps.
 func (s *Store) AccessState(artifactID, userID string) (*AccessState, error) {
-	a, err := s.ArtifactByID(artifactID)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	a, err := scanArtifact(tx.QueryRow(`SELECT `+artifactCols+` FROM artifacts WHERE id = ?`, artifactID))
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +196,7 @@ func (s *Store) AccessState(artifactID, userID string) (*AccessState, error) {
 		return st, nil
 	}
 	var m Member
-	err = s.db.QueryRow(`SELECT user_id, role, fp FROM artifact_members WHERE artifact_id = ? AND user_id = ?`,
+	err = tx.QueryRow(`SELECT user_id, role, fp FROM artifact_members WHERE artifact_id = ? AND user_id = ?`,
 		artifactID, userID).Scan(&m.UserID, &m.Role, &m.FP)
 	switch {
 	case err == nil:
@@ -191,7 +204,7 @@ func (s *Store) AccessState(artifactID, userID string) (*AccessState, error) {
 	case !errors.Is(err, sql.ErrNoRows):
 		return nil, err
 	}
-	if st.Wraps, err = s.WrapsFor(artifactID, userID); err != nil {
+	if st.Wraps, err = queryWraps(tx, `WHERE artifact_id = ? AND user_id = ? ORDER BY epoch`, artifactID, userID); err != nil {
 		return nil, err
 	}
 	return st, nil
@@ -501,7 +514,7 @@ func (t *ArtifactTx) PutOffer(o Offer) error {
 	if o.Envelope != nil {
 		body, sig, signer = o.Envelope.Body, o.Envelope.Sig, &o.Envelope.Signer
 	}
-	_, err := t.tx.Exec(`INSERT INTO artifact_offers (id, artifact_id, to_user, by, hash, body, sig, signer, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`,
+	_, err := t.tx.Exec(`INSERT INTO artifact_offers (id, artifact_id, to_user, offered_by, hash, body, sig, signer, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`,
 		uuid.NewString(), t.id, o.To, o.By, o.Hash, body, sig, signer, now())
 	if isUniqueViolation(err) {
 		return ErrExists
@@ -509,7 +522,7 @@ func (t *ArtifactTx) PutOffer(o Offer) error {
 	return err
 }
 
-const offerCols = `to_user, by, hash, body, sig, signer, state, created_at`
+const offerCols = `to_user, offered_by, hash, body, sig, signer, state, created_at`
 
 func scanOffer(row interface{ Scan(...any) error }) (*Offer, error) {
 	var o Offer
@@ -581,10 +594,19 @@ func (t *ArtifactTx) SetVersionWriter(versionID, userID string, epoch int) error
 
 // RecordWrite records the epoch a database revision (kind "db", key "") or a
 // file (kind "file", key = path) of a version was last written under, and by
-// whom. A later write to the same target replaces the earlier row.
+// whom. A later write to the same target replaces the earlier row. A version
+// that is not on this artifact is ErrNotFound.
 func (t *ArtifactTx) RecordWrite(versionID, kind, key string, epoch int, writer string) error {
-	_, err := t.tx.Exec(`INSERT OR REPLACE INTO version_writes (version_id, kind, key, epoch, writer, written_at)
+	res, err := t.tx.Exec(`INSERT OR REPLACE INTO version_writes (version_id, kind, key, epoch, writer, written_at)
 		SELECT id, ?, ?, ?, ?, ? FROM versions WHERE id = ? AND artifact_id = ?`,
 		kind, key, epoch, writer, now(), versionID, t.id)
-	return err
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

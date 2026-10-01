@@ -135,7 +135,17 @@ func (s *Store) SetUserDisabled(userID string, disabled bool) error {
 	return s.exec1(`UPDATE users SET disabled = ?, token_version = token_version + 1 WHERE id = ?`, disabled, userID)
 }
 
+// DeleteUser deletes an account. A user who owns artifacts is
+// ErrOwnsArtifacts: disable the account instead, so an administrator can hand
+// the artifacts over.
 func (s *Store) DeleteUser(userID string) error {
+	var owns bool
+	if err := s.db.QueryRow(`SELECT EXISTS (SELECT 1 FROM artifacts WHERE owner_id = ?)`, userID).Scan(&owns); err != nil {
+		return err
+	}
+	if owns {
+		return ErrOwnsArtifacts
+	}
 	return s.exec1(`DELETE FROM users WHERE id = ?`, userID)
 }
 

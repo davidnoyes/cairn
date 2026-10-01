@@ -176,6 +176,9 @@ func match(r Request) matches {
 	return m
 }
 
+// holdsWrap ignores the fingerprint a wrap was made for: the design grants
+// team access for any wrap at the current epoch, and a wrap for keys the
+// caller no longer has opens nothing.
 func holdsWrap(wraps []Wrap, epoch int) bool {
 	for _, w := range wraps {
 		if w.Epoch == epoch {
@@ -204,8 +207,10 @@ func LevelOf(r Request) Level {
 	return LevelNone
 }
 
-// contentTokenAllows is the allowlist of a content-origin token. Every other
-// action is answered as if the route did not exist.
+// contentTokenAllows is the allowlist of a content-origin token for actions
+// on its own artifact. Every other action is answered as if the route did
+// not exist. GET /api/me and GET /api/users/{id} are not artifact actions;
+// the router allows them for a content token in step 8.
 func contentTokenAllows(act Action) bool {
 	switch act {
 	case ReadContent, WriteData, ReadMembership:
