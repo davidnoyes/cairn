@@ -24,6 +24,8 @@ Client:
   cairn artifact         Manage artifacts (list|create NAME|show|update|delete)
   cairn members          List an artifact's owner and members, with pin states, from its verified chain
   cairn share            Add a member, or promote a viewer (ARTIFACT USER --role viewer|editor)
+  cairn team             Share with the whole team, or stop (ARTIFACT none|viewer|editor)
+  cairn approve          List team members waiting, or approve one by name (ARTIFACT [USER])
   cairn pin              Pin a user's fingerprint in your keyring (--verified once compared)
   cairn push             Upload a directory as a new (or replaced) version (--create: new artifact)
   cairn db               Run SQL against a version's shared database
@@ -66,6 +68,10 @@ func main() {
 		err = runMembers(args)
 	case "share":
 		err = runShare(args)
+	case "team":
+		err = runTeam(args)
+	case "approve":
+		err = runApprove(args)
 	case "pin":
 		err = runPin(args)
 	case "push":

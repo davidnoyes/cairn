@@ -568,3 +568,165 @@ func (s *Server) handleGetKeys(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, v)
 }
+
+// Team approval
+
+type pendingView struct {
+	ID         string        `json:"id"`
+	Name       string        `json:"name"`
+	Email      string        `json:"email"`
+	X25519Pub  string        `json:"x25519Pub"`
+	Ed25519Pub string        `json:"ed25519Pub"`
+	State      string        `json:"state"`
+	Approval   *e2e.Envelope `json:"approval"`
+}
+
+// States of a pending entry. rotated needs the rotation records of step 7,
+// so until then every changed key is keyChanged.
+const (
+	pendingNew        = "new"
+	pendingApproved   = "approved"
+	pendingKeyChanged = "keyChanged"
+)
+
+// handlePending lists the users the caller's client should ask about: team
+// members waiting, and changed keys. Approved entries, with the stored
+// approval, are for the owner only. A user who matches an excluded entry by
+// user ID, fingerprint, or normalized email never appears.
+func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
+	a := requestArtifact(r)
+	owner := access.LevelOf(requestAccess(r)) == access.LevelOwner
+	out := []pendingView{}
+	err := s.store.WithArtifact(a.ID, func(tx *store.ArtifactTx) error {
+		cur, err := membership.Load(tx, membership.TxDirectory(tx))
+		if err != nil {
+			return err
+		}
+		latest := cur.Latest
+		if latest == nil { // an artifact from before membership records has no team
+			return nil
+		}
+		users, err := tx.KeyedUsers()
+		if err != nil {
+			return err
+		}
+		approvals, err := tx.Approvals()
+		if err != nil {
+			return err
+		}
+		approval := map[string]*store.Approval{}
+		for i := range approvals {
+			approval[approvals[i].UserID] = &approvals[i]
+		}
+		listed := map[string]e2e.Member{}
+		for _, m := range latest.Members {
+			listed[m.User] = m
+		}
+		wraps := map[string][]store.Wrap{}
+		for _, wr := range cur.Wraps {
+			wraps[wr.UserID] = append(wraps[wr.UserID], wr)
+		}
+		for _, u := range users {
+			if u.ID == latest.Owner || !u.Verified || u.Disabled ||
+				e2e.ExcludedMatch(latest.Excluded, u.ID, u.FP, u.Email) != nil {
+				continue
+			}
+			state := pendingState(latest, u, listed, wraps[u.ID])
+			if state == "" || (state == pendingApproved && !owner) {
+				continue
+			}
+			v := pendingView{ID: u.ID, Name: u.Name, Email: u.Email, X25519Pub: e2e.B64(u.X25519Pub),
+				Ed25519Pub: e2e.B64(u.Ed25519Pub), State: state}
+			if ap := approval[u.ID]; state == pendingApproved && ap != nil {
+				env := envelopeOf(ap.Envelope)
+				v.Approval = &env
+			}
+			out = append(out, v)
+		}
+		return nil
+	})
+	if err != nil {
+		s.writeStoreError(w, err, "artifact")
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// pendingState classifies one user, or returns "" when there is nothing to
+// ask about. A user who holds a wrap or is listed under a fingerprint that
+// is no longer theirs is keyChanged; an unlisted user with a wrap for the
+// current epoch is approved; an unlisted user with none is new while the
+// record shares with a team.
+func pendingState(latest *e2e.MembershipBody, u *store.KeyedUser, listed map[string]e2e.Member, wraps []store.Wrap) string {
+	m, isListed := listed[u.ID]
+	if isListed && m.FP != u.FP {
+		return pendingKeyChanged
+	}
+	for _, wr := range wraps {
+		if wr.FP != u.FP {
+			return pendingKeyChanged
+		}
+	}
+	if isListed {
+		return ""
+	}
+	for _, wr := range wraps {
+		if wr.Epoch == latest.Epoch {
+			return pendingApproved
+		}
+	}
+	if latest.Team != access.TeamNone {
+		return pendingNew
+	}
+	return ""
+}
+
+type approveRequest struct {
+	User     string       `json:"user"`
+	FP       string       `json:"fp"`
+	Approval e2e.Envelope `json:"approval"`
+	Wraps    []struct {
+		Epoch   int    `json:"epoch"`
+		Wrapped string `json:"wrapped"`
+	} `json:"wraps"`
+}
+
+// handleApprove stores a team member's approval with the wraps of every
+// epoch. The checks and the writes run in one transaction that holds the
+// artifact row lock, so a next-epoch record cannot land between them.
+func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
+	a := requestArtifact(r)
+	var req approveRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	ch := membership.ApprovalChange{Caller: requestUser(r).ID, User: req.User, FP: req.FP, Approval: req.Approval}
+	for _, wr := range req.Wraps {
+		b, err := e2e.UnB64(wr.Wrapped)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "wraps: wrapped is not base64")
+			return
+		}
+		ch.Wraps = append(ch.Wraps, membership.ApprovalWrap{Epoch: wr.Epoch, Wrapped: b})
+	}
+	var epoch int
+	err := s.store.WithArtifact(a.ID, func(tx *store.ArtifactTx) error {
+		dir := membership.TxDirectory(tx)
+		cur, err := membership.Load(tx, dir)
+		if err != nil {
+			return err
+		}
+		res, err := membership.CheckApproval(cur, dir, ch)
+		if err != nil {
+			return err
+		}
+		epoch = res.Approval.Epoch
+		return membership.ApplyApproval(tx, res)
+	})
+	if err != nil {
+		s.writeChangeError(w, err)
+		return
+	}
+	s.log.Info("team member approved", "artifact", a.ID, "user", req.User, "epoch", epoch, "by", requestUser(r).Email)
+	writeJSON(w, http.StatusOK, map[string]int{"epoch": epoch})
+}

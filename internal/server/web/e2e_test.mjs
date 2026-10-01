@@ -1203,6 +1203,71 @@ test('verifyChain: linked replaces fingerprint equality', async () => {
   ]);
 });
 
+// approvalErrors maps each approval entry's error kind to the class
+// checkApproval throws for it; see testdata/README.md.
+const approvalErrors = {
+  missing: e2e.ApprovalMissingError,
+  signer: e2e.ApprovalSignerError,
+  decrypt: e2e.DecryptError,
+  format: e2e.FormatError,
+  mismatch: e2e.ApprovalMismatchError,
+  excluded: e2e.ApprovalExcludedError,
+  duplicate: e2e.ApprovalDuplicateError,
+};
+
+// approval mirrors the Go approval vector check: checkApproval must accept
+// each approval that passes all four checks, and refuse each other one with
+// the class for its error kind.
+describe('approval', () => {
+  for (const v of vf.approval) {
+    test(v.name, async () => {
+      const input = {
+        artifact: v.artifact,
+        latest: v.latest,
+        approval: v.approval,
+        signerKeys: v.signerKeys,
+        user: v.user,
+        directory: v.directory,
+      };
+      if (v.error) {
+        assert.ok(approvalErrors[v.error], `${v.name}: unknown error kind ${v.error}`);
+        await assert.rejects(() => e2e.checkApproval(input), approvalErrors[v.error], `${v.name}: ${v.why}`);
+        return;
+      }
+      await e2e.checkApproval(input);
+    });
+  }
+});
+
+test('approval vectors cover every error kind', () => {
+  const kinds = new Set(vf.approval.map((v) => v.error ?? ''));
+  for (const k of Object.keys(approvalErrors)) assert.ok(kinds.has(k), `no approval vector for ${k}`);
+});
+
+// signApproval builds the approval body the way Go marshals it, and the
+// result opens under the signer's key as an approval, and under no other
+// purpose.
+test('signApproval builds a body openEnvelope accepts', async () => {
+  const { seed, pub } = await e2e.generateEd25519();
+  const env = await e2e.signApproval(seed, 'u-bob', { artifact: 'art-1', epoch: 2, user: 'u-dave', fp: 'ab'.repeat(32) });
+  assert.equal(env.signer, 'u-bob');
+  assert.equal(
+    new TextDecoder().decode(e2e.unb64(env.body)),
+    `{"v":1,"artifact":"art-1","epoch":2,"user":"u-dave","fp":"${'ab'.repeat(32)}"}`,
+  );
+  const body = await e2e.openEnvelope(env, pub, 'approval');
+  assert.deepEqual(body, { v: 1, artifact: 'art-1', epoch: 2, user: 'u-dave', fp: 'ab'.repeat(32) });
+  await assertThrows(() => e2e.openEnvelope(env, pub, 'vouch'), e2e.DecryptError);
+});
+
+test('excludedMatch matches by ID, fingerprint, and normalized email', () => {
+  const x = [{ user: 'u-1', fp: 'aa', email: 'a@example.com' }];
+  assert.equal(e2e.excludedMatch(x, 'u-1', 'bb', 'b@example.com'), x[0]);
+  assert.equal(e2e.excludedMatch(x, 'u-2', 'aa', 'b@example.com'), x[0]);
+  assert.equal(e2e.excludedMatch(x, 'u-2', 'bb', ' A@Example.com'), x[0]);
+  assert.equal(e2e.excludedMatch(x, 'u-2', 'bb', 'b@example.com'), null);
+});
+
 test('checkEncryptEpoch refuses an epoch below the pinned one', () => {
   const pin = { epoch: 3, seq: 5, head: 'h' };
   e2e.checkEncryptEpoch(pin, 3);
@@ -1396,7 +1461,7 @@ test('vectors.json has no section this file does not check', () => {
     'enc', 'derive', 'argon2', 'recoveryCode', 'apiKey', 'akCommit', 'seal',
     'blob', 'wrap', 'signature', 'rotation', 'ed25519Strict', 'x25519Strict',
     'fingerprint', 'linkToken', 'fileAddress', 'blindIndex', 'strictJSON',
-    'base64url', 'envelope', 'chain', 'keyring',
+    'base64url', 'envelope', 'chain', 'approval', 'keyring',
   ];
   const unhandled = Object.keys(vf).filter((k) => !handled.includes(k));
   assert.deepEqual(unhandled, []);

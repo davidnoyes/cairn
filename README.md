@@ -244,6 +244,9 @@ member needs a new epoch, which a later release adds.
 cairn share my-app bob@example.com                 # add as viewer
 cairn share my-app bob@example.com --role editor   # or promote
 cairn members my-app                               # roles, fingerprints, pin states
+cairn team my-app viewer                           # share with the whole team
+cairn approve my-app                               # team members waiting
+cairn approve my-app carol@example.com             # approve one, by name
 cairn pin bob@example.com --verified               # after comparing fingerprints
 ```
 
@@ -255,6 +258,17 @@ were pinned, for example after an account reset without the recovery code,
 pass `--accept-new-key` once you have confirmed the new one. `share` also
 refuses anyone the owner excluded from the artifact, and refuses outright
 when the directory lists two accounts with the same email or fingerprint.
+
+`cairn team` shares an artifact with the whole team as `viewer` or `editor`,
+or stops with `none`. A new member gets nothing until the owner or an editor
+approves them by name. `cairn approve` lists who is waiting, with their
+fingerprints. Compare a fingerprint with the person, then approve them. An
+approved member can read, but can write only once the owner's next `share` or
+`team` lists them. The owner's client lists an approved member only when the
+signed approval checks out, and otherwise prints their name and fingerprint.
+`approve` refuses anyone the owner excluded, and refuses a changed key unless
+you pass `--accept-new-key`. Setting `none` while an approved member holds a
+key needs a new epoch, which a later release adds.
 
 Pins and the latest verified membership record of each artifact live in
 your keyring, sealed on the server. Each machine keeps a small anchor for

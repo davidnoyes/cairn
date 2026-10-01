@@ -90,3 +90,84 @@ cmd/cairn/share_cmds.go	key := configAnchors{host: c.Host}.key(refused.UserID, r
 internal/server/web/e2e.mjs	if (anchor.rev < cur.rev) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	if (anchor.rev === cur.rev && anchor.hash !== cur.hash) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
 internal/store/bundles.go	if _, err := tx.Exec(`UPDATE users SET auth_hash = ?, token_version = token_version + 1 WHERE id = ?`, authHash, userID); err != nil {	tx.Exec(`DELETE FROM user_keyrings WHERE user_id = ?`, userID); if _, err := tx.Exec(`UPDATE users SET auth_hash = ?, token_version = token_version + 1 WHERE id = ?`, authHash, userID); err != nil {	go test ./internal/server -run TestResetRecoveryKeepsKeyring
+
+# Team approval (milestone 3, step 5): the server rules, the four checks in
+# Go and JavaScript, and the client conditions.
+internal/membership/approval.go	if m.User == caller.ID && m.Role == access.RoleEditor {	if m.User == caller.ID {	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	if m.FP != caller.FP {	if false {	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	if latest.Team != access.TeamViewer && latest.Team != access.TeamEditor {	if false {	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	if u == nil || !u.Verified || !u.Active {	if u == nil {	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	if u.ID == cur.Owner.ID {	if false {	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	if m.User == u.ID {	if false && m.User == u.ID {	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	if w.UserID == u.ID {	if false && w.UserID == u.ID {	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	if x := e2e.ExcludedMatch(latest.Excluded, u.ID, u.FP, u.Email); x != nil {	if x := e2e.ExcludedMatch(latest.Excluded, u.ID, u.FP, u.Email); x != nil && false {	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	if id != u.ID {	if false && id != u.ID {	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	if ch.FP != u.FP {	if false {	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	if ch.Approval.Signer != caller.ID {	if false {	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	case body.Artifact != cur.ArtifactID:	case false:	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	case body.Epoch != latest.Epoch:	case false:	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	case body.User != u.ID:	case false:	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	case body.FP != ch.FP:	case false:	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	case len(w.Wrapped) != wrapSize:	case false:	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	case w.Epoch < 1 || w.Epoch > latest.Epoch:	case false:	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	case got[w.Epoch]:	case false:	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	if !got[e] {	if false {	go test ./internal/membership -run 'TestCheckApproval'
+internal/membership/approval.go	Wrapped: w.Wrapped, FP: u.FP})	Wrapped: w.Wrapped, FP: ""})	go test ./internal/membership -run 'TestCheckApproval'
+internal/access/access.go	if act == ApproveMember && r.Artifact.Team != TeamViewer && r.Artifact.Team != TeamEditor {	if false {	go test ./internal/access
+internal/server/sharing.go	if u.ID == latest.Owner || !u.Verified || u.Disabled ||	if !u.Verified || u.Disabled ||	go test ./internal/server -run 'TestPending|TestApprov'
+internal/server/sharing.go	e2e.ExcludedMatch(latest.Excluded, u.ID, u.FP, u.Email) != nil {	false {	go test ./internal/server -run 'TestPending|TestApprov'
+internal/server/sharing.go	if state == "" || (state == pendingApproved && !owner) {	if state == "" || (state == pendingApproved && !owner && false) {	go test ./internal/server -run 'TestPending|TestApprov'
+internal/server/sharing.go	if state == "" || (state == pendingApproved && !owner) {	if state == "" && false || (state == pendingApproved && !owner) {	go test ./internal/server -run 'TestPending|TestApprov'
+internal/server/sharing.go	if isListed && m.FP != u.FP {	if false && isListed && m.FP != u.FP {	go test ./internal/server -run 'TestPending|TestApprov'
+internal/server/sharing.go	if wr.FP != u.FP {	if false && wr.FP != u.FP {	go test ./internal/server -run 'TestPending|TestApprov'
+internal/server/sharing.go	if isListed {	if false {	go test ./internal/server -run 'TestPending|TestApprov'
+internal/server/sharing.go	if wr.Epoch == latest.Epoch {	if false && wr.Epoch == latest.Epoch {	go test ./internal/server -run 'TestPending|TestApprov'
+internal/server/sharing.go	if latest.Team != access.TeamNone {	if true {	go test ./internal/server -run 'TestPending|TestApprov'
+internal/server/sharing.go	if ap := approval[u.ID]; state == pendingApproved && ap != nil {	if ap := approval[u.ID]; false && ap != nil {	go test ./internal/server -run 'TestPending|TestApprov'
+internal/e2e/approval.go	if in.Approval == nil {	if false {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
+internal/e2e/approval.go	if listedFP == "" || signerFP != listedFP {	if listedFP == "" && false || signerFP != listedFP && false {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
+internal/e2e/approval.go	if m.User == in.Approval.Signer && m.Role == "editor" {	if m.User == in.Approval.Signer {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
+internal/e2e/approval.go	case body.Artifact != in.Artifact:	case false:	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
+internal/e2e/approval.go	case body.Epoch != latest.Epoch:	case false:	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
+internal/e2e/approval.go	case body.User != in.User.ID:	case false:	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
+internal/e2e/approval.go	case body.FP != userFP:	case false:	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
+internal/e2e/approval.go	if x := ExcludedMatch(latest.Excluded, in.User.ID, userFP, in.User.Email); x != nil {	if x := ExcludedMatch(latest.Excluded, in.User.ID, userFP, in.User.Email); x != nil && false {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
+internal/e2e/approval.go	if dfp == userFP || NormalizeEmail(d.Email) == email {	if dfp == userFP || NormalizeEmail(d.Email) == email && false {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
+internal/e2e/approval.go	if dfp == userFP || NormalizeEmail(d.Email) == email {	if dfp == userFP && false || NormalizeEmail(d.Email) == email {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
+internal/e2e/approval.go	if e.User == id || e.FP == fp || NormalizeEmail(e.Email) == email {	if e.FP == fp || NormalizeEmail(e.Email) == email {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
+internal/e2e/approval.go	if e.User == id || e.FP == fp || NormalizeEmail(e.Email) == email {	if e.User == id || NormalizeEmail(e.Email) == email {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
+internal/e2e/approval.go	if e.User == id || e.FP == fp || NormalizeEmail(e.Email) == email {	if e.User == id || e.FP == fp {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
+internal/server/web/e2e.mjs	if (!approval) throw new ApprovalMissingError('no approval');	if (false) throw new ApprovalMissingError('no approval');	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (listedFp === '' || signer.fp !== listedFp) {	if (false) {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (m.user === approval.signer && m.role === 'editor') listedFp = m.fp;	if (m.user === approval.signer) listedFp = m.fp;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (body.artifact !== input.artifact) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (body.epoch !== latest.epoch) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (body.user !== user.id) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (body.fp !== userFp) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (x) throw new ApprovalExcludedError(x.user);	if (false) throw new ApprovalExcludedError(x.user);	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if ((await keysFingerprint(d.keys)).fp === userFp || normalizeEmail(d.email) === email) {	if ((await keysFingerprint(d.keys)).fp === userFp) {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if ((await keysFingerprint(d.keys)).fp === userFp || normalizeEmail(d.email) === email) {	if (normalizeEmail(d.email) === email) {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (e.user === id || e.fp === fp || normalizeEmail(e.email) === normalized) return e;	if (e.fp === fp || normalizeEmail(e.email) === normalized) return e;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (e.user === id || e.fp === fp || normalizeEmail(e.email) === normalized) return e;	if (e.user === id || normalizeEmail(e.email) === normalized) return e;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (e.user === id || e.fp === fp || normalizeEmail(e.email) === normalized) return e;	if (e.user === id || e.fp === fp) return e;	node --test internal/server/web/e2e_test.mjs
+internal/client/approve.go	if !approverOf(latest, k) {	if false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	if latest.Team == "none" {	if false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	if e := ExcludedMatch(latest.Excluded, u); e != nil {	if e := ExcludedMatch(latest.Excluded, u); e != nil && false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	case p < 0:	case false:	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	case pending[p].State == PendingKeyChanged:	case false:	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	case pending[p].State == PendingApproved:	case false:	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	case pending[p].User.FP != u.FP:	case false:	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	checkPin(va.Keyring, u, acceptNewKey)	checkPin(va.Keyring, u, true)	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	if err := c.storePin(k, u.ID, *pin, basedOn); err != nil {	if err := error(nil); err != nil && pin == nil && basedOn == "" {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	basedOn := va.Keyring.Pins[u.ID].FP	basedOn := "unrelated"	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	if chain.Latest.Owner == k.UserID {	if false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	if want, ok := commits[w.Epoch]; !ok || commit != want {	if want, ok := commits[w.Epoch]; !ok && false || commit != want && false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	if p.State != PendingApproved || skip(p.User.ID) {	if skip(p.User.ID) {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	_, pin, err = checkPin(va.Keyring, p.User, false)	_, pin, err = checkPin(va.Keyring, p.User, true)	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	if p.State == PendingApproved || p.State == PendingKeyChanged && !listed(p.User.ID) {	if p.State == PendingKeyChanged && !listed(p.User.ID) {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	if p.State == PendingApproved || p.State == PendingKeyChanged && !listed(p.User.ID) {	if p.State == PendingApproved || p.State == PendingKeyChanged {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	if latest.Team == team && len(lst.members) == 0 {	if false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	if team != "none" && team != "viewer" && team != "editor" {	if false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/share.go	needsWraps = !approved	needsWraps = true || approved	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/share.go	if latest.Team != "none" {	if false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+cmd/cairn/share_cmds.go	if len(pos) < min || len(pos) > max {	if len(pos) < min {	go test ./cmd/cairn -run 'Approve|Team'

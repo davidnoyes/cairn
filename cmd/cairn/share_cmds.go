@@ -138,9 +138,11 @@ func runShare(args []string) error {
 		return explainRefusal(c, err)
 	}
 	if *jsonOut {
+		listed, unlisted := listingJSON(res.Listed, res.Unlisted)
 		return printJSON(map[string]any{
 			"artifact": a.ID, "user": res.User.ID, "email": res.User.Email, "fp": res.User.FP,
 			"prior": res.Prior, "role": res.Role, "promoted": res.Promoted, "unchanged": res.Unchanged, "epoch": res.Epoch,
+			"listed": listed, "unlisted": unlisted,
 		})
 	}
 	fmt.Printf("%s (%s)\nfingerprint %s (%s)\n", res.User.Email, res.User.ID, showFP(res.User.FP), shareState(res.Prior))
@@ -152,9 +154,151 @@ func runShare(args []string) error {
 	default:
 		fmt.Printf("added as %s of %s\n", res.Role, a.Name)
 	}
+	printListing(a.ID, res.Listed, res.Unlisted)
 	if res.Prior != e2e.PinVerified {
 		fmt.Printf("compare the fingerprint with them, then run: cairn pin %s --verified\n", res.User.Email)
 	}
+	return nil
+}
+
+// listingJSON is the listed and unlisted approved team members, as share
+// and team print them in JSON.
+func listingJSON(listed []client.DirectoryUser, unlisted []client.UnlistedUser) (l, u []map[string]string) {
+	l, u = []map[string]string{}, []map[string]string{}
+	for _, d := range listed {
+		l = append(l, map[string]string{"user": d.ID, "name": d.Name, "email": d.Email, "fp": d.FP})
+	}
+	for _, x := range unlisted {
+		u = append(u, map[string]string{"user": x.User.ID, "name": x.User.Name, "email": x.User.Email, "fp": x.User.FP, "reason": x.Err.Error()})
+	}
+	return l, u
+}
+
+// printListing says which approved team members the record listed, and
+// names, with their fingerprints, those it did not: the owner decides about
+// each of them by name.
+func printListing(artifact string, listed []client.DirectoryUser, unlisted []client.UnlistedUser) {
+	for _, d := range listed {
+		fmt.Printf("listed approved team member %s (%s), fingerprint %s\n", d.Email, d.Name, showFP(d.FP))
+	}
+	for _, x := range unlisted {
+		fmt.Printf("not listed: %s (%s), fingerprint %s: %v\ncheck the fingerprint with them, then run: cairn share %s %s\n",
+			x.User.Name, x.User.Email, showFP(x.User.FP), x.Err, artifact, x.User.Email)
+	}
+}
+
+// parsePositionalRange is parsePositional for a command that takes between
+// min and max positional arguments.
+func parsePositionalRange(fs *flag.FlagSet, args []string, min, max int, usage string) ([]string, error) {
+	var pos []string
+	for len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		pos, args = append(pos, args[0]), args[1:]
+	}
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+	pos = append(pos, fs.Args()...)
+	if len(pos) < min || len(pos) > max {
+		return nil, fmt.Errorf("usage: %s", usage)
+	}
+	return pos, nil
+}
+
+func runApprove(args []string) error {
+	const usage = "cairn approve ARTIFACT [USER] [--accept-new-key] [--json]"
+	fs := flag.NewFlagSet("approve", flag.ExitOnError)
+	acceptNewKey := fs.Bool("accept-new-key", false, "approve even though the user's fingerprint changed since it was pinned")
+	jsonOut := fs.Bool("json", false, "JSON output")
+	pos, err := parsePositionalRange(fs, args, 1, 2, usage)
+	if err != nil {
+		return err
+	}
+	c, err := apiClient()
+	if err != nil {
+		return err
+	}
+	a, err := c.ResolveArtifact(pos[0])
+	if err != nil {
+		return err
+	}
+	if len(pos) == 1 {
+		return listPending(c, a.ID, a.Name, *jsonOut)
+	}
+	res, err := c.Approve(a.ID, pos[1], *acceptNewKey)
+	if err != nil {
+		return explainRefusal(c, err)
+	}
+	if *jsonOut {
+		return printJSON(map[string]any{
+			"artifact": a.ID, "user": res.User.ID, "email": res.User.Email, "fp": res.User.FP,
+			"prior": res.Prior, "epoch": res.Epoch, "approved": true,
+		})
+	}
+	fmt.Printf("%s (%s)\nfingerprint %s (%s)\napproved for %s: they read it now, and write once the owner lists them\n",
+		res.User.Email, res.User.ID, showFP(res.User.FP), shareState(res.Prior), a.Name)
+	if res.Prior != e2e.PinVerified {
+		fmt.Printf("compare the fingerprint with them, then run: cairn pin %s --verified\n", res.User.Email)
+	}
+	return nil
+}
+
+// listPending prints the users waiting on artifact id.
+func listPending(c *client.Client, id, name string, jsonOut bool) error {
+	list, err := c.Pending(id)
+	if err != nil {
+		return explainRefusal(c, err)
+	}
+	if jsonOut {
+		out := make([]map[string]string, 0, len(list))
+		for _, p := range list {
+			out = append(out, map[string]string{"user": p.User.ID, "name": p.User.Name, "email": p.User.Email, "fp": p.User.FP, "state": p.State})
+		}
+		return printJSON(map[string]any{"artifact": id, "pending": out})
+	}
+	if len(list) == 0 {
+		fmt.Printf("no team members waiting on %s\n", name)
+		return nil
+	}
+	for _, p := range list {
+		fmt.Printf("%-10s  %-20s  %-32s  %s\n", p.State, p.User.Name, p.User.Email, showFP(p.User.FP))
+	}
+	fmt.Printf("compare a fingerprint with them, then run: cairn approve %s USER\n", id)
+	return nil
+}
+
+func runTeam(args []string) error {
+	const usage = "cairn team ARTIFACT none|viewer|editor [--json]"
+	fs := flag.NewFlagSet("team", flag.ExitOnError)
+	jsonOut := fs.Bool("json", false, "JSON output")
+	pos, err := parsePositional(fs, args, 2, usage)
+	if err != nil {
+		return err
+	}
+	c, err := apiClient()
+	if err != nil {
+		return err
+	}
+	a, err := c.ResolveArtifact(pos[0])
+	if err != nil {
+		return err
+	}
+	res, err := c.Team(a.ID, pos[1])
+	if err != nil {
+		return explainRefusal(c, err)
+	}
+	if *jsonOut {
+		listed, unlisted := listingJSON(res.Listed, res.Unlisted)
+		return printJSON(map[string]any{
+			"artifact": a.ID, "team": res.Team, "epoch": res.Epoch, "unchanged": res.Unchanged,
+			"listed": listed, "unlisted": unlisted,
+		})
+	}
+	if res.Unchanged {
+		fmt.Printf("team is already %s; nothing changed\n", res.Team)
+	} else {
+		fmt.Printf("team set to %s for %s\n", res.Team, a.Name)
+	}
+	printListing(a.ID, res.Listed, res.Unlisted)
 	return nil
 }
 

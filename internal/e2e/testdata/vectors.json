@@ -3938,6 +3938,1907 @@
       "error": "format"
     }
   ],
+  "approval": [
+    {
+      "name": "owner-signed",
+      "why": "the owner's approval passes",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "_B2QXYYgvT2ATXtoMrbaLZgRhBBQxUTWfoQUm0okG5l0-Oa-7lK8asWDZ66frs94cwbl6P19BgxxVQMJs-fxBw",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ]
+    },
+    {
+      "name": "editor-signed",
+      "why": "a listed editor's approval passes",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "-sG1fiT1veT93et_2oUMGzlFTytU3l6gKOhfVMTwASEUpE-ndHEv0ufwZ70C7wwh7Pf4KM90yrKsTvAfU9xPCQ",
+        "signer": "u-bob"
+      },
+      "signerKeys": {
+        "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+        "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ]
+    },
+    {
+      "name": "approval-missing",
+      "why": "a server that serves no approval gets the user asked about",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": null,
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "missing"
+    },
+    {
+      "name": "signer-viewer",
+      "why": "a listed viewer cannot approve",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "Y3gvedBZG7ZQ_YoGtWYykXkg8nCFfZU_TnjPjELxXABhTP7SrzUkVUibzRo_bsjZKbPTrBjesahJC_-EgfolCA",
+        "signer": "u-carol"
+      },
+      "signerKeys": {
+        "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+        "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "signer"
+    },
+    {
+      "name": "signer-unlisted",
+      "why": "a user the record does not list cannot approve",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "JA68RKGuBpBk0EhvSKHFwa7Oc2ydjgBPEpRcFw353jn9BJELp5MSuJVIEgpqt_OjEbq3Djmeyy3ujoZbCZc4AA",
+        "signer": "u-mallory"
+      },
+      "signerKeys": {
+        "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+        "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "signer"
+    },
+    {
+      "name": "signer-key-not-listed-fp",
+      "why": "an editor's key that does not hash to the listed fp cannot approve",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "7FHlp2fLb8wqW24oPq3vvqCZL6-UNtAbDcXusyBS22VM1KTEGRmtOcx2YwLatuY50lEosEoDldLXrDefMJz-Bg",
+        "signer": "u-bob"
+      },
+      "signerKeys": {
+        "x25519": "Dsvoj5pNNW1LvjhEfOz_bpwNUThuzGAM5wp2E9-owBM",
+        "ed25519": "bF33FV3T7_fF0y4-DKOwS1JDYwPE1VVHI7dYOP8Ti5E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "signer"
+    },
+    {
+      "name": "signature-forged",
+      "why": "an approval signed by another key does not verify under the signer's",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "JA68RKGuBpBk0EhvSKHFwa7Oc2ydjgBPEpRcFw353jn9BJELp5MSuJVIEgpqt_OjEbq3Djmeyy3ujoZbCZc4AA",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "decrypt"
+    },
+    {
+      "name": "body-unknown-field",
+      "why": "a signed body with a field the format does not declare is refused",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIiLCJyb2xlIjoiZWRpdG9yIn0",
+        "sig": "XHsKHGG2KoYAG_YcX5aSJflqXrFN-V7ZKwXUxSsl2hkhIgAoIj4N1AveJKpGAeMB4SM96xZ1R5G9shfJIcEjBA",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "format"
+    },
+    {
+      "name": "other-artifact",
+      "why": "an approval for another artifact is not this one's",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LW90aGVyIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "-jiiCPnMTVmd_gShJ8V967rvpXu_kBfwt6GBT3xrMZfgoHW0qWlFg267tu8t_JDeV57dVHGrXRojZv2UH4ZzCg",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "mismatch"
+    },
+    {
+      "name": "old-epoch",
+      "why": "an approval for an earlier epoch is refused",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "i9vsku7J8HS0vRbhTt2sbl4uaOrzNjayr118K8SWjCc_bd-edW3UNit0Ffom-YK8Lzpm-GJFh8Vqb-Jeu467Bg",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "mismatch"
+    },
+    {
+      "name": "other-user",
+      "why": "an approval for another user is not this user's",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LW1hbGxvcnkiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "_pTOoRBLdiJAn1b_24C3wdrV_rYnc2KjPL8zEAVkG3t0a1j_FBGRsQlAVoQSMGFOGt_4M_olGYQmccEVMmt5DA",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "mismatch"
+    },
+    {
+      "name": "other-fp",
+      "why": "an approval for another fingerprint is refused",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjM4M2I4NDg1MjZjNjY4OWRkODk2OTYxNTk1MzVkYjRkMGU4NTA3YTFlYjcxZDhmYzRlODE4ZmZkNzM3ZDE0ZTUifQ",
+        "sig": "t9z1mEYBy-IYKZb92d1PSpSWoKhAKd07X9LQE8XSv052J1Yak_1O22COo5P4RxBrtSPqtYJ_67qt-qSI3CLCDA",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "mismatch"
+    },
+    {
+      "name": "served-keys-changed",
+      "why": "an approval of keys the server no longer serves for the user is refused",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "_B2QXYYgvT2ATXtoMrbaLZgRhBBQxUTWfoQUm0okG5l0-Oa-7lK8asWDZ66frs94cwbl6P19BgxxVQMJs-fxBw",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "xwXYbmzFgiNufDPn9dojxChYJDda9S4haRoae7wDxDU",
+          "ed25519": "LnIekh2ZvXW30NdA0xqTr0uH4G40vH2kB_3Q_uR0MCE"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "mismatch"
+    },
+    {
+      "name": "excluded-by-id",
+      "why": "an excluded entry for the user's ID blocks listing",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [
+          {
+            "user": "u-dave",
+            "fp": "383b848526c6689dd89696159535db4d0e8507a1eb71d8fc4e818ffd737d14e5",
+            "email": "other@example.com"
+          }
+        ],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "_B2QXYYgvT2ATXtoMrbaLZgRhBBQxUTWfoQUm0okG5l0-Oa-7lK8asWDZ66frs94cwbl6P19BgxxVQMJs-fxBw",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "excluded"
+    },
+    {
+      "name": "excluded-by-fp",
+      "why": "an excluded entry for the user's fingerprint blocks listing",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [
+          {
+            "user": "u-zed",
+            "fp": "3283e0148398775d61d1984db1b2a12ff87659491be4931e0ff7b9d21bf3d182",
+            "email": "zed@example.com"
+          }
+        ],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "_B2QXYYgvT2ATXtoMrbaLZgRhBBQxUTWfoQUm0okG5l0-Oa-7lK8asWDZ66frs94cwbl6P19BgxxVQMJs-fxBw",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "excluded"
+    },
+    {
+      "name": "excluded-by-email",
+      "why": "an excluded entry for the user's normalized email blocks listing",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [
+          {
+            "user": "u-zed",
+            "fp": "383b848526c6689dd89696159535db4d0e8507a1eb71d8fc4e818ffd737d14e5",
+            "email": "dave@example.com"
+          }
+        ],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "_B2QXYYgvT2ATXtoMrbaLZgRhBBQxUTWfoQUm0okG5l0-Oa-7lK8asWDZ66frs94cwbl6P19BgxxVQMJs-fxBw",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "excluded"
+    },
+    {
+      "name": "excluded-by-email-case",
+      "why": "the email match is on the normalized form",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [
+          {
+            "user": "u-zed",
+            "fp": "383b848526c6689dd89696159535db4d0e8507a1eb71d8fc4e818ffd737d14e5",
+            "email": "dave@example.com"
+          }
+        ],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "_B2QXYYgvT2ATXtoMrbaLZgRhBBQxUTWfoQUm0okG5l0-Oa-7lK8asWDZ66frs94cwbl6P19BgxxVQMJs-fxBw",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": " Dave@Example.COM ",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "error": "excluded"
+    },
+    {
+      "name": "excluded-unrelated",
+      "why": "an excluded entry that matches nothing about the user does not block",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [
+          {
+            "user": "u-zed",
+            "fp": "383b848526c6689dd89696159535db4d0e8507a1eb71d8fc4e818ffd737d14e5",
+            "email": "zed@example.com"
+          }
+        ],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "_B2QXYYgvT2ATXtoMrbaLZgRhBBQxUTWfoQUm0okG5l0-Oa-7lK8asWDZ66frs94cwbl6P19BgxxVQMJs-fxBw",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ]
+    },
+    {
+      "name": "directory-shares-email",
+      "why": "another user ID with the same normalized email blocks listing",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "_B2QXYYgvT2ATXtoMrbaLZgRhBBQxUTWfoQUm0okG5l0-Oa-7lK8asWDZ66frs94cwbl6P19BgxxVQMJs-fxBw",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        },
+        {
+          "id": "u-dave2",
+          "email": "DAVE@example.com",
+          "keys": {
+            "x25519": "6Wdbr5N0WIZvZJTFiEkfoKqnEenYALBz07F2CplSrlk",
+            "ed25519": "0Sg27qkZtxltXjtubQX6rYCvjHuCaoCYe0c7FX7UrwY"
+          }
+        }
+      ],
+      "error": "duplicate"
+    },
+    {
+      "name": "directory-shares-fp",
+      "why": "another user ID with the same fingerprint blocks listing",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "_B2QXYYgvT2ATXtoMrbaLZgRhBBQxUTWfoQUm0okG5l0-Oa-7lK8asWDZ66frs94cwbl6P19BgxxVQMJs-fxBw",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+        "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        },
+        {
+          "id": "u-dave2",
+          "email": "dave2@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        }
+      ],
+      "error": "duplicate"
+    }
+  ],
   "keyring": [
     {
       "name": "empty",

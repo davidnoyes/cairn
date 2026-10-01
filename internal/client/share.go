@@ -161,13 +161,7 @@ func FindUser(dir []DirectoryUser, who string) (DirectoryUser, error) {
 // ExcludedMatch reports the excluded entry u matches, by user id,
 // fingerprint, or normalized email, or nil.
 func ExcludedMatch(excluded []e2e.ExcludedEntry, u DirectoryUser) *e2e.ExcludedEntry {
-	email := e2e.NormalizeEmail(u.Email)
-	for i, e := range excluded {
-		if e.User == u.ID || e.FP == u.FP || e2e.NormalizeEmail(e.Email) == email {
-			return &excluded[i]
-		}
-	}
-	return nil
+	return e2e.ExcludedMatch(excluded, u.ID, u.FP, u.Email)
 }
 
 // checkPin compares u's current keys with the keyring's pin. A changed key
@@ -323,6 +317,11 @@ type ShareResult struct {
 	Promoted  bool // an existing viewer became an editor
 	Unchanged bool // the user already held this role under these keys
 	Epoch     int
+	// Listed are approved team members the record also lists, with the role
+	// the team grants; Unlisted are those whose approval failed a check, who
+	// the owner is asked about.
+	Listed   []DirectoryUser
+	Unlisted []UnlistedUser
 }
 
 // Share adds who to an artifact at its current epoch, or promotes a viewer
@@ -331,7 +330,9 @@ type ShareResult struct {
 // user whose keys changed since they were pinned, unless acceptNewKey. A
 // user seen for the first time is pinned unverified. The new member gets a
 // wrap of every epoch's AK, opened from the owner's estate copies and
-// checked against the chain's akCommit.
+// checked against the chain's akCommit. A user an editor approved already
+// holds those wraps, so they get none. The record also lists each approved
+// team member whose approval passes the four checks.
 func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareResult, error) {
 	if role != "viewer" && role != "editor" {
 		return nil, fmt.Errorf("role must be viewer or editor, not %q", role)
@@ -367,6 +368,11 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 		return nil, err
 	}
 	res := &ShareResult{User: u, Prior: prior, Role: role, Epoch: latest.Epoch}
+	pending, err := c.Pending(artifactID)
+	if err != nil {
+		return nil, err
+	}
+	approved := slices.ContainsFunc(pending, func(p PendingUser) bool { return p.User.ID == u.ID && p.State == PendingApproved })
 
 	members := slices.Clone(latest.Members)
 	i := slices.IndexFunc(members, func(m e2e.Member) bool { return m.User == u.ID })
@@ -374,6 +380,7 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	switch {
 	case i < 0:
 		members = append(members, e2e.Member{User: u.ID, Role: role, FP: u.FP})
+		needsWraps = !approved
 	case members[i].Role == "editor" && role == "viewer":
 		return nil, ErrNeedsNextEpoch
 	default:
@@ -391,6 +398,14 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 		}
 		return res, nil
 	}
+	var lst approvedListing
+	if latest.Team != "none" {
+		lst = c.listApproved(k, va, dir, pending, latest.Team, func(id string) bool {
+			return slices.ContainsFunc(members, func(m e2e.Member) bool { return m.User == id })
+		})
+	}
+	members = append(members, lst.members...)
+	res.Listed, res.Unlisted = lst.listed, lst.unlisted
 	slices.SortFunc(members, func(a, b e2e.Member) int { return strings.Compare(a.User, b.User) })
 
 	var wraps []map[string]any
@@ -415,26 +430,14 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	}
 
 	next := latest
-	next.Seq, next.Prev, next.Transfer, next.Handover = latest.Seq+1, va.Chain.Head, "", ""
 	next.Members = members
-	if next.Excluded == nil {
-		next.Excluded = []e2e.ExcludedEntry{}
-	}
-	body, err := json.Marshal(next)
-	if err != nil {
+	if err := c.putRecord(k, artifactID, va, next, wraps); err != nil {
 		return nil, err
 	}
-	env, err := e2e.NewEnvelope(k.Ed25519Seed, k.UserID, "membership", body)
-	if err != nil {
-		return nil, err
-	}
-	if wraps == nil {
-		wraps = []map[string]any{}
-	}
-	if err := c.doJSON("PUT", "/api/artifacts/"+artifactID+"/membership", map[string]any{
-		"membership": env, "wraps": wraps, "estate": []any{}, "linkTokenHash": "",
-	}, nil); err != nil {
-		return nil, err
+	for id, d := range lst.pins {
+		if err := c.storePin(k, id, d.pin, d.basedOn); err != nil {
+			return nil, fmt.Errorf("the server accepted the new membership record, but pinning %s failed: %w", id, err)
+		}
 	}
 	if pin != nil {
 		if err := c.storePin(k, u.ID, *pin, basedOn); err != nil {
@@ -447,15 +450,44 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	return res, nil
 }
 
-// epochAKs opens the owner's estate copy of each epoch's AK and checks it
-// against the akCommit the verified chain lists for that epoch.
-func (c *Client) epochAKs(k *UnlockedKeys, artifactID string, chain *e2e.Chain) (map[int][]byte, error) {
+// putRecord signs next as the record after the verified chain's latest, at
+// the same epoch, and PUTs it with wraps.
+func (c *Client) putRecord(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, next e2e.MembershipBody, wraps []map[string]any) error {
+	next.Seq, next.Prev, next.Transfer, next.Handover = va.Chain.Latest.Seq+1, va.Chain.Head, "", ""
+	if next.Excluded == nil {
+		next.Excluded = []e2e.ExcludedEntry{}
+	}
+	body, err := json.Marshal(next)
+	if err != nil {
+		return err
+	}
+	env, err := e2e.NewEnvelope(k.Ed25519Seed, k.UserID, "membership", body)
+	if err != nil {
+		return err
+	}
+	if wraps == nil {
+		wraps = []map[string]any{}
+	}
+	return c.doJSON("PUT", "/api/artifacts/"+artifactID+"/membership", map[string]any{
+		"membership": env, "wraps": wraps, "estate": []any{}, "linkTokenHash": "",
+	}, nil)
+}
+
+// epochCommits maps each epoch to the akCommit the verified chain lists for it.
+func epochCommits(chain *e2e.Chain) map[int]string {
 	commits := map[int]string{}
 	for _, b := range chain.Bodies {
 		if _, ok := commits[b.Epoch]; !ok {
 			commits[b.Epoch] = b.AKCommit
 		}
 	}
+	return commits
+}
+
+// epochAKs opens the owner's estate copy of each epoch's AK and checks it
+// against the akCommit the verified chain lists for that epoch.
+func (c *Client) epochAKs(k *UnlockedKeys, artifactID string, chain *e2e.Chain) (map[int][]byte, error) {
+	commits := epochCommits(chain)
 	keys, err := c.Keys(artifactID)
 	if err != nil {
 		return nil, err

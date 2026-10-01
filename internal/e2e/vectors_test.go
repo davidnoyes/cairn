@@ -265,6 +265,7 @@ type vectorFile struct {
 	Envelope      []envelopeVec      `json:"envelope"`
 	Base64URL     []base64Vec        `json:"base64url"`
 	Chain         []chainVec         `json:"chain"`
+	Approval      []approvalVec      `json:"approval"`
 	Keyring       []keyringVec       `json:"keyring"`
 }
 
@@ -1149,6 +1150,7 @@ func generateVectors(t testing.TB) vectorFile {
 
 	vf.Envelope = envelopeVectors()
 	vf.Chain = chainVectors(t)
+	vf.Approval = approvalVectors(t)
 	vf.Keyring = keyringVectors(t)
 
 	return vf
@@ -1535,6 +1537,7 @@ func checkVectors(t *testing.T, vf vectorFile) {
 
 	t.Run("envelope", func(t *testing.T) { checkEnvelopeVectors(t, vf.Envelope) })
 	t.Run("chain", func(t *testing.T) { checkChainVectors(t, vf.Chain) })
+	t.Run("approval", func(t *testing.T) { checkApprovalVectors(t, vf.Approval) })
 	t.Run("keyring", func(t *testing.T) { checkKeyringVectors(t, vf.Keyring) })
 
 	t.Run("strictJSON", func(t *testing.T) {

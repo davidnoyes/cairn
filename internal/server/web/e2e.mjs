@@ -70,6 +70,44 @@ export class ReusedAkError extends Error {
   }
 }
 
+// The approval errors, matching Go's ErrApprovalMissing, ErrApprovalSigner,
+// ErrApprovalMismatch, ErrApprovalExcluded, and ErrApprovalDuplicate. See
+// checkApproval.
+export class ApprovalMissingError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ApprovalMissingError';
+  }
+}
+
+export class ApprovalSignerError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ApprovalSignerError';
+  }
+}
+
+export class ApprovalMismatchError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ApprovalMismatchError';
+  }
+}
+
+export class ApprovalExcludedError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ApprovalExcludedError';
+  }
+}
+
+export class ApprovalDuplicateError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ApprovalDuplicateError';
+  }
+}
+
 // The keyring errors, matching Go's ErrKeyringRev, ErrKeyringRollback, and
 // ErrKeyringFork. See openKeyring.
 export class KeyringRevError extends Error {
@@ -2132,6 +2170,71 @@ export async function verifyChain(input) {
     if (latest.epoch < pin.epoch) throw new StaleEpochError(`latest epoch ${latest.epoch}, pinned ${pin.epoch}`);
   }
   return { bodies, latest, head: prevHash, handovers };
+}
+
+// signApproval signs an approval of user at fp, for artifact at epoch, as
+// signer. The body's fields are in the order Go marshals them.
+export async function signApproval(seed, signer, { artifact, epoch, user, fp }) {
+  const body = textEncoder.encode(JSON.stringify({ v: 1, artifact, epoch, user, fp }));
+  return newEnvelope(seed, signer, 'approval', body);
+}
+
+// excludedMatch returns the excluded entry a user matches by ID, fingerprint
+// (hex), or normalized email, or null. Mirrors ExcludedMatch.
+export function excludedMatch(excluded, id, fp, email) {
+  const normalized = normalizeEmail(email);
+  for (const e of excluded) {
+    if (e.user === id || e.fp === fp || normalizeEmail(e.email) === normalized) return e;
+  }
+  return null;
+}
+
+// keysFingerprint returns the hex fingerprint of a wire-form {x25519,
+// ed25519} pair, with its Ed25519 key.
+async function keysFingerprint(keys) {
+  const ed = unb64(keys.ed25519);
+  return { fp: toHex(await fingerprint(unb64(keys.x25519), ed)), ed };
+}
+
+// checkApproval runs the four checks that let an owner's client list an
+// approved team member, in the order Go's CheckApproval does. input is
+// {artifact, latest, approval, signerKeys, user, directory}: latest is the
+// current record of a verified chain, signerKeys the keys the server serves
+// for approval.signer, user the approved user as the server serves them
+// ({id, email, keys}), and directory every user the directory lists. It
+// throws ApprovalMissingError, ApprovalSignerError, DecryptError or
+// FormatError, ApprovalMismatchError, ApprovalExcludedError, or
+// ApprovalDuplicateError.
+export async function checkApproval(input) {
+  const { latest, approval, user } = input;
+  if (!approval) throw new ApprovalMissingError('no approval');
+  const signer = await keysFingerprint(input.signerKeys);
+  let listedFp = '';
+  if (approval.signer === latest.owner) {
+    listedFp = latest.ownerFp;
+  } else {
+    for (const m of latest.members) {
+      if (m.user === approval.signer && m.role === 'editor') listedFp = m.fp;
+    }
+  }
+  if (listedFp === '' || signer.fp !== listedFp) {
+    throw new ApprovalSignerError(`${approval.signer} is not the owner or a listed editor`);
+  }
+  const body = await openEnvelope(approval, signer.ed, 'approval');
+  const userFp = (await keysFingerprint(user.keys)).fp;
+  if (body.artifact !== input.artifact) throw new ApprovalMismatchError(`artifact ${body.artifact}`);
+  if (body.epoch !== latest.epoch) throw new ApprovalMismatchError(`epoch ${body.epoch}, current ${latest.epoch}`);
+  if (body.user !== user.id) throw new ApprovalMismatchError(`user ${body.user}`);
+  if (body.fp !== userFp) throw new ApprovalMismatchError(`fp is not the fingerprint of the keys served for ${user.id}`);
+  const x = excludedMatch(latest.excluded, user.id, userFp, user.email);
+  if (x) throw new ApprovalExcludedError(x.user);
+  const email = normalizeEmail(user.email);
+  for (const d of input.directory) {
+    if (d.id === user.id) continue;
+    if ((await keysFingerprint(d.keys)).fp === userFp || normalizeEmail(d.email) === email) {
+      throw new ApprovalDuplicateError(d.id);
+    }
+  }
 }
 
 // checkEncryptEpoch refuses to encrypt under an epoch older than the

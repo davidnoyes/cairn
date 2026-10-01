@@ -268,6 +268,69 @@ keyring_row put $NEW_ROW
 "$BIN" members notes >/dev/null || fail "members after the keyring was put back"
 pass "the same keyring, put back, is accepted again"
 
+echo "== team share"
+# A new artifact, so the notes artifact above keeps the two members the
+# checks before this section count. The editor is share@e2e.test; a third
+# account, team@e2e.test, is the team member who waits for approval.
+"$BIN" artifact create teamdoc --json > "$WORK/teamdoc.json"
+TID=$(python3 -c "import json;print(json.load(open('$WORK/teamdoc.json'))['id'])")
+"$BIN" push "$ROOT/examples/guestbook" --artifact teamdoc --name v1 --json > "$WORK/teamdoc-push.json"
+TVID=$(python3 -c "import json;print(json.load(open('$WORK/teamdoc-push.json'))['version']['id'])")
+"$BIN" share teamdoc share@e2e.test --role editor >/dev/null || fail "sharing teamdoc with the editor"
+CONFIG3="$WORK/config3/config.json"
+echo "team-flow-strong-pw-1" | CAIRN_CONFIG="$CONFIG3" "$BIN" signup --host "$HOST" --email team@e2e.test --password-stdin >/dev/null
+VERIFY_LINK4=$(grep -oE "$HOST/verify#token=[A-Za-z0-9_-]+" "$SERVER_LOG" | tail -1)
+CAIRN_CONFIG="$CONFIG3" "$BIN" confirm-email "$VERIFY_LINK4" >/dev/null
+echo "team-flow-strong-pw-1" | CAIRN_CONFIG="$CONFIG3" "$BIN" login --host "$HOST" --email team@e2e.test --password-stdin >/dev/null
+BEARER3=$(python3 -c "import json;print('_'.join(json.load(open('$CONFIG3'))['apiKey'].split('_')[:3]))")
+AUTH3=(-H "Authorization: Bearer $BEARER3")
+BATCH='{"statements":[{"sql":"CREATE TABLE IF NOT EXISTS team_probe (x INTEGER)"}]}'
+team_batch() {
+  curl -s -o /dev/null -w '%{http_code}' "${AUTH3[@]}" -H 'Content-Type: application/json' -d "$BATCH" \
+    "$HOST/api/artifacts/$TID/versions/$TVID/db/batch"
+}
+
+"$BIN" team teamdoc viewer | grep -q "team set to viewer for teamdoc" || fail "cairn team viewer"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH3[@]}" "$HOST/artifacts/$TID/$TVID/")
+[[ "$STATUS" == "404" ]] || fail "a team member reads before an approval ($STATUS)"
+pass "a team share gives a new member nothing until they are approved"
+
+"$BIN" approve teamdoc --json > "$WORK/pending.json" || fail "approve (list)"
+jq -e '.artifact == "'"$TID"'" and (.pending | map(select(.email == "team@e2e.test")) | length == 1)
+  and all(.pending[]; has("user") and has("name") and has("email") and has("fp") and has("state"))
+  and (.pending[] | select(.email == "team@e2e.test") | .state == "new" and (.fp | length == 64))' \
+  "$WORK/pending.json" >/dev/null || fail "approve --json fields: $(cat "$WORK/pending.json")"
+CAIRN_CONFIG="$CONFIG2" "$BIN" approve teamdoc | grep -E "^new +.*team@e2e.test" >/dev/null || fail "the editor does not see the new member"
+pass "cairn approve lists the new member, to the owner and to an editor"
+
+CAIRN_CONFIG="$CONFIG2" "$BIN" approve teamdoc team@e2e.test > "$WORK/approve.txt" || fail "approve: $(cat "$WORK/approve.txt")"
+grep -q "approved for teamdoc" "$WORK/approve.txt" || fail "approve output: $(cat "$WORK/approve.txt")"
+curl -sf "${AUTH3[@]}" "$HOST/artifacts/$TID/$TVID/" | grep "Guestbook" >/dev/null || fail "the approved member cannot read"
+curl -sf "${AUTH3[@]}" "$HOST/api/artifacts/$TID/keys" \
+  | python3 -c "import json,sys;k=json.load(sys.stdin);assert [w['epoch'] for w in k['wraps']]==[1], k" \
+  || fail "the approved member holds no wrap of epoch 1"
+[[ "$(team_batch)" == "403" ]] || fail "an approved member writes before the owner lists them"
+pass "an editor's approval lets the member read, and not write"
+
+"$BIN" approve teamdoc --json | jq -e '.pending[] | select(.email == "team@e2e.test") | .state == "approved"' >/dev/null \
+  || fail "the owner does not see the approval"
+if CAIRN_CONFIG="$CONFIG2" "$BIN" approve teamdoc --json | jq -e '.pending[] | select(.email == "team@e2e.test")' >/dev/null; then
+  fail "the editor still sees an approved member"
+fi
+pass "an approved member shows to the owner only"
+
+if "$BIN" team teamdoc none >/dev/null 2>"$WORK/teamnone.err"; then
+  fail "team none succeeded while a team member holds a wrap"
+fi
+grep -q "new epoch" "$WORK/teamnone.err" || fail "team none failed for another reason: $(cat "$WORK/teamnone.err")"
+pass "team none is refused while a team member holds a wrap: it needs a new epoch"
+
+"$BIN" team teamdoc editor > "$WORK/team-editor.txt" || fail "team editor: $(cat "$WORK/team-editor.txt")"
+grep -q "listed approved team member team@e2e.test" "$WORK/team-editor.txt" || fail "team editor did not list the member: $(cat "$WORK/team-editor.txt")"
+"$BIN" members teamdoc | grep -E "editor +team@e2e.test" >/dev/null || fail "members after the owner listed the team member"
+[[ "$(team_batch)" == "200" ]] || fail "a listed member cannot write"
+pass "the owner's next record lists the approved member, who can then write"
+
 echo "== backup"
 "$BIN" backup --data-dir "$WORK/data" --out "$WORK/backup" >/dev/null
 [[ -f "$WORK/backup/cairn.db" ]] || fail "backup missing metadata db"

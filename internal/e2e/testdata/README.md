@@ -196,6 +196,40 @@ The overrides, and which primitives read them:
   before one ending in U+1F600. UTF-8 bytes put them in that order, but
   UTF-16 code units don't, so a verifier that compares them with `<` in
   JavaScript refuses it.
+- **`approval`**: a stored team approval that `CheckApproval`/`checkApproval`
+  must accept or refuse, as the four checks in "Team approval" of
+  `design/e2e-api.md` run them. Each entry has these fields:
+  - `name` and `why`.
+  - `artifact`: the artifact ID the approval must name.
+  - `latest`: the current membership record, as the JSON body object. Its
+    `epoch` is the current epoch, its `owner` and `ownerFp` name the owner,
+    its `members` list the editors, and its `excluded` list the entries
+    check 4 matches.
+  - `approval`: the stored `{body, sig, signer}` envelope in its b64 wire
+    form, or `null` when the server serves none.
+  - `signerKeys`: the `{x25519, ed25519}` keys, in b64, that the server
+    serves for the approval's signer.
+  - `user`: the approved user as the server serves them: `id`, `email`, and
+    `keys`, the same pair in b64. The fingerprint is always computed from
+    `keys`.
+  - `directory`: every user of the directory, in the shape of `user`.
+  - `error`: absent when the approval passes all four checks. Otherwise the
+    error kind it must fail with:
+
+  | `error` | Go | JavaScript |
+  | --- | --- | --- |
+  | `missing` | `ErrApprovalMissing` | `ApprovalMissingError` |
+  | `signer` | `ErrApprovalSigner` | `ApprovalSignerError` |
+  | `mismatch` | `ErrApprovalMismatch` | `ApprovalMismatchError` |
+  | `excluded` | `ErrApprovalExcluded` | `ApprovalExcludedError` |
+  | `duplicate` | `ErrApprovalDuplicate` | `ApprovalDuplicateError` |
+  | `decrypt` | `ErrDecrypt` | `DecryptError` |
+  | `format` | `ErrFormat` | `FormatError` |
+
+  The checks run in this order: a missing approval, the signer, the
+  signature and the body, the artifact, epoch, user, and fingerprint, the
+  excluded entries, and the directory. Each entry breaks one rule, so the
+  kind shows which check refused it.
 - **`keyring`**: a `GET /api/me/keyring` answer that `OpenKeyring`/
   `openKeyring` must accept or refuse. Each entry has these fields:
   - `name` and `why`.
