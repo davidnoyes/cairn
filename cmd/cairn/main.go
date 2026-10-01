@@ -26,6 +26,8 @@ Client:
   cairn share            Add a member, or promote a viewer (ARTIFACT USER --role viewer|editor)
   cairn team             Share with the whole team, or stop (ARTIFACT none|viewer|editor)
   cairn approve          List team members waiting, or approve one by name (ARTIFACT [USER])
+  cairn review           List versions pushed by someone no longer an editor, which need a vouch (ARTIFACT)
+  cairn vouch            Vouch for a version after reviewing it (ARTIFACT VERSION)
   cairn public           Turn the public link on or off (ARTIFACT on|off [--writes on|off])
   cairn pin              Pin a user's fingerprint in your keyring (--verified once compared)
   cairn push             Upload a directory as a new (or replaced) version (--create: new artifact)
@@ -73,6 +75,10 @@ func main() {
 		err = runTeam(args)
 	case "approve":
 		err = runApprove(args)
+	case "review":
+		err = runReview(args)
+	case "vouch":
+		err = runVouch(args)
 	case "public":
 		err = runPublic(args)
 	case "pin":

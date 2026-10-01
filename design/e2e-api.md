@@ -747,8 +747,13 @@ to fetch them. Milestone 4, which adds signed manifests, implements that.
 `PUT /api/artifacts/{id}/versions/{vid}/vouch` takes `{"vouch": envelope}`.
 The server checks that the owner signed it, and that `artifact` and `version`
 match. From milestone 4 on, it also checks `manifest` against the stored
-manifest. `GET /api/artifacts/{id}/versions/{vid}` returns `pushedBy` and
-`vouch`, which is the envelope or `null`.
+manifest. Until then `manifest` is the empty string, the server refuses any
+other value, and it cannot check a vouch against the version's content.
+Replacing a version's content deletes its vouch, so the owner's vouch never
+covers content they did not review.
+
+`GET /api/artifacts/{id}/versions/{vid}` returns `pushedBy` and `vouch`, which
+is the envelope or `null`.
 
 #### Ownership transfer
 

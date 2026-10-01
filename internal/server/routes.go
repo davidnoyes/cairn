@@ -62,6 +62,8 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /api/artifacts/{id}/keys", s.artifactRoute(access.ReadKeys, s.handleGetKeys))
 	mux.HandleFunc("POST /api/artifacts/{id}/keys", s.artifactRoute(access.ApproveMember, s.handleApprove))
 	mux.HandleFunc("GET /api/artifacts/{id}/pending", s.artifactRoute(access.ListPending, s.handlePending))
+	mux.HandleFunc("GET /api/artifacts/{id}/review", s.artifactRoute(access.ReviewVersions, s.handleReview))
+	mux.HandleFunc("PUT /api/artifacts/{id}/versions/{vid}/vouch", s.artifactRoute(access.ReviewVersions, s.handleVouch))
 	mux.HandleFunc("POST /api/artifacts/{id}/resources", s.artifactRoute(access.Rename, s.handleAddResource))
 	mux.HandleFunc("DELETE /api/artifacts/{id}/resources/{rid}", s.artifactRoute(access.Rename, s.handleDeleteResource))
 	mux.HandleFunc("GET /api/artifacts/{id}/versions", s.artifactRoute(access.ReadContent, s.handleListVersions))

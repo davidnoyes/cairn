@@ -659,6 +659,70 @@ func (t *ArtifactTx) AcceptedOffers() (map[string]*Offer, error) {
 	return out, rows.Err()
 }
 
+// Vouches
+
+// ReviewVersions returns the versions that need the owner's review: pushed
+// by a user who is neither the owner nor an editor of the latest record, and
+// with no vouch. A version with no pusher (a deleted account) is not listed.
+// Ordered by seq.
+func (t *ArtifactTx) ReviewVersions() ([]*Version, error) {
+	rows, err := t.tx.Query(`SELECT `+versionCols+` FROM versions
+		WHERE artifact_id = ? AND pushed_by IS NOT NULL
+		AND pushed_by IS NOT (SELECT owner_id FROM artifacts WHERE id = ?)
+		AND pushed_by NOT IN (SELECT user_id FROM artifact_members WHERE artifact_id = ? AND role = 'editor')
+		AND id NOT IN (SELECT version_id FROM version_vouches)
+		ORDER BY seq`, t.id, t.id, t.id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Version
+	for rows.Next() {
+		v, err := scanVersion(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// PutVouch stores the owner's vouch for a version, replacing an earlier one.
+// A version that is not on this artifact is ErrNotFound.
+func (t *ArtifactTx) PutVouch(versionID string, env Envelope) error {
+	res, err := t.tx.Exec(`INSERT OR REPLACE INTO version_vouches (version_id, artifact_id, body, sig, signer, created_at)
+		SELECT id, artifact_id, ?, ?, ?, ? FROM versions WHERE id = ? AND artifact_id = ?`,
+		env.Body, env.Sig, env.Signer, now(), versionID, t.id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// Vouches returns the stored vouches, keyed by version ID.
+func (t *ArtifactTx) Vouches() (map[string]Envelope, error) {
+	rows, err := t.tx.Query(`SELECT version_id, body, sig, signer FROM version_vouches WHERE artifact_id = ?`, t.id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]Envelope{}
+	for rows.Next() {
+		var id string
+		var e Envelope
+		if err := rows.Scan(&id, &e.Body, &e.Sig, &e.Signer); err != nil {
+			return nil, err
+		}
+		out[id] = e
+	}
+	return out, rows.Err()
+}
+
 // Versions and the epoch of each write
 
 // RecordWrite records the epoch a database revision (kind "db", key "") or a

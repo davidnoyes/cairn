@@ -270,6 +270,10 @@ func (s *Store) SwapVersionContent(artifactID, versionID, contentDir, name, chan
 	} else if n == 0 {
 		return "", ErrEpochMoved
 	}
+	// A vouch covers the content the owner reviewed, not its replacement.
+	if _, err := tx.Exec(`DELETE FROM version_vouches WHERE version_id = ?`, versionID); err != nil {
+		return "", err
+	}
 	if err := tx.Commit(); err != nil {
 		return "", err
 	}

@@ -1046,3 +1046,40 @@ func TestVersionWritesDeclareTheirEpoch(t *testing.T) {
 		t.Errorf("push declaring epoch 2: %v", err)
 	}
 }
+
+// A vouch is for the content the owner reviewed, so replacing that content
+// drops it.
+func TestSwapVersionContentDropsTheVouch(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	a := ownedArtifact(t, s, o)
+	v, err := s.CreateVersion(a.ID, "v1", "", "c1", o.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vouches := func() int {
+		var n int
+		if err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+			vs, err := tx.Vouches()
+			n = len(vs)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+		return tx.PutVouch(v.ID, Envelope{Body: []byte("vb"), Sig: []byte("vs"), Signer: o.ID})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if n := vouches(); n != 1 {
+		t.Fatalf("%d vouches before the swap, want 1", n)
+	}
+	if _, err := s.SwapVersionContent(a.ID, v.ID, "c2", "v1", "", o.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	if n := vouches(); n != 0 {
+		t.Errorf("%d vouches after the swap, want 0", n)
+	}
+}

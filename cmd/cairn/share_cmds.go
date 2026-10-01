@@ -289,6 +289,93 @@ func listPending(c *client.Client, id, name string, jsonOut bool) error {
 	return nil
 }
 
+func runReview(args []string) error {
+	const usage = "cairn review ARTIFACT [--json]"
+	fs := flag.NewFlagSet("review", flag.ExitOnError)
+	jsonOut := fs.Bool("json", false, "JSON output")
+	pos, err := parsePositional(fs, args, 1, usage)
+	if err != nil {
+		return err
+	}
+	c, err := apiClient()
+	if err != nil {
+		return err
+	}
+	a, err := c.ResolveArtifact(pos[0])
+	if err != nil {
+		return err
+	}
+	list, err := c.Review(a.ID)
+	if err != nil {
+		return explainRefusal(c, err)
+	}
+	emails := map[string]string{}
+	if len(list) > 0 {
+		dir, err := c.Directory()
+		if err != nil {
+			return err
+		}
+		for _, u := range dir {
+			emails[u.ID] = u.Email
+		}
+	}
+	if *jsonOut {
+		out := make([]map[string]any, 0, len(list))
+		for _, v := range list {
+			var pusher any
+			if v.PushedBy != "" {
+				pusher = v.PushedBy
+			}
+			out = append(out, map[string]any{"id": v.ID, "seq": v.Seq, "pushedBy": pusher, "email": emails[v.PushedBy], "createdAt": v.CreatedAt})
+		}
+		return printJSON(map[string]any{"artifact": a.ID, "versions": out})
+	}
+	if len(list) == 0 {
+		fmt.Printf("no versions on %s need review\n", a.Name)
+		return nil
+	}
+	fmt.Printf("%d versions on %s need review: their pushers are no longer editors\n", len(list), a.Name)
+	for _, v := range list {
+		who := emails[v.PushedBy]
+		if who == "" {
+			who = v.PushedBy
+		}
+		if who == "" {
+			who = "(account deleted)"
+		}
+		date, _, _ := strings.Cut(v.CreatedAt, "T")
+		fmt.Printf("%-4d  %s  %-32s  %s\n", v.Seq, v.ID, who, date)
+	}
+	fmt.Printf("after you have looked at one, run: cairn vouch %s VERSION\n", a.ID)
+	return nil
+}
+
+func runVouch(args []string) error {
+	const usage = "cairn vouch ARTIFACT VERSION [--json]"
+	fs := flag.NewFlagSet("vouch", flag.ExitOnError)
+	jsonOut := fs.Bool("json", false, "JSON output")
+	pos, err := parsePositional(fs, args, 2, usage)
+	if err != nil {
+		return err
+	}
+	c, err := apiClient()
+	if err != nil {
+		return err
+	}
+	a, err := c.ResolveArtifact(pos[0])
+	if err != nil {
+		return err
+	}
+	if err := c.Vouch(a.ID, pos[1]); err != nil {
+		return explainRefusal(c, err)
+	}
+	if *jsonOut {
+		return printJSON(map[string]any{"artifact": a.ID, "version": pos[1], "vouched": true})
+	}
+	fmt.Printf("vouched for version %s of %s\n", pos[1], a.Name)
+	return nil
+}
+
 func runTeam(args []string) error {
 	const usage = "cairn team ARTIFACT none|viewer|editor [--json]"
 	fs := flag.NewFlagSet("team", flag.ExitOnError)

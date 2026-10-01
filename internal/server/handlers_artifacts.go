@@ -175,24 +175,33 @@ func (s *Server) handleDeleteResource(w http.ResponseWriter, r *http.Request) {
 // Versions (metadata; uploads live in upload.go)
 
 func (s *Server) handleListVersions(w http.ResponseWriter, r *http.Request) {
-	vs, err := s.store.ListVersions(requestArtifact(r).ID)
+	id := requestArtifact(r).ID
+	vs, err := s.store.ListVersions(id)
 	if err != nil {
 		s.writeStoreError(w, err, "versions")
 		return
 	}
-	if vs == nil {
-		vs = []*store.Version{}
+	vouches, err := s.vouchesOf(id)
+	if err != nil {
+		s.writeStoreError(w, err, "versions")
+		return
 	}
-	writeJSON(w, http.StatusOK, vs)
+	writeJSON(w, http.StatusOK, viewVersions(vs, vouches))
 }
 
 func (s *Server) handleGetVersion(w http.ResponseWriter, r *http.Request) {
-	v, err := s.store.VersionByID(requestArtifact(r).ID, r.PathValue("vid"))
+	id := requestArtifact(r).ID
+	v, err := s.store.VersionByID(id, r.PathValue("vid"))
 	if err != nil {
 		s.writeStoreError(w, err, "version")
 		return
 	}
-	writeJSON(w, http.StatusOK, v)
+	vouches, err := s.vouchesOf(id)
+	if err != nil {
+		s.writeStoreError(w, err, "version")
+		return
+	}
+	writeJSON(w, http.StatusOK, viewVersions([]*store.Version{v}, vouches)[0])
 }
 
 type versionMetaRequest struct {
