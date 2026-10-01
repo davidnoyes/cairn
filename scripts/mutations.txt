@@ -11,3 +11,12 @@ internal/mail/mail.go	if strings.ContainsAny(m.To, "\r\n") || strings.ContainsAn
 internal/server/serving.go	if _, err := os.Stat(filepath.Join(root, clean)); err != nil {	if true {	go test ./internal/server -run TestSqlJSPrecedence
 internal/mail/mail.go	func (l *Log) Send(_ context.Context, m Message) error {	func (l *Log) Send(_ context.Context, m Message) error { validate := func(Message) error { return nil }	go test ./internal/mail -run TestMailersRejectInvalidMessages
 internal/mail/mail.go	func (s *SMTP) Send(_ context.Context, m Message) error {	func (s *SMTP) Send(_ context.Context, m Message) error { validate := func(Message) error { return nil }	go test ./internal/mail -run TestMailersRejectInvalidMessages
+internal/e2e/keys.go	p.Memory < floorMemory	false	go test ./internal/e2e -run TestParamsCheckFloorMemory
+internal/e2e/keys.go	p.Time < floorTime	false	go test ./internal/e2e -run TestParamsCheckFloorTime
+internal/e2e/blob.go	len(rest) <= blobFullChunkSize	len(rest) < blobFullChunkSize	go test ./internal/e2e -run TestBlobRoundTripSizes
+internal/e2e/blob.go	pt[start:end], header)	pt[start:end], nil)	go test ./internal/e2e -run TestBlobRoundTripSizes
+internal/e2e/blob.go	chunkCT, header)	chunkCT, header[:1])	go test ./internal/e2e -run TestBlobRoundTripSizes
+internal/e2e/seal.go	gcm.Open(nil, nonce, ct, sealAD(fields))	gcm.Open(nil, nonce, ct, nil)	go test ./internal/e2e -run 'TestSealOpenRoundTrip|TestOpenRejectsWrongFields'
+internal/e2e/wrap.go	unwrapKey := wrapKey(shared, ctx, ephPub)	unwrapKey := wrapKey(shared, WrapContext{}, ephPub)	go test ./internal/e2e -run TestWrapUnwrapRoundTrip
+internal/e2e/wrap.go	if sharedIsZero {	if !sharedIsZero {	go test ./internal/e2e -run TestWrapRejectsAllZeroSharedSecret
+internal/e2e/sign.go	return ed25519.Verify(pub, msg, sig)	return true || ed25519.Verify(pub, msg, sig)	go test ./internal/e2e -run 'TestVerifyRejectsWrongBody|TestEnvelopeVerifyRejectsTamperedBody'
