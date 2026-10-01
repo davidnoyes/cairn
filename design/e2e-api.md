@@ -295,3 +295,322 @@ is not a terminal.
 
 The config file stores the host, the email, and the full four-part API key.
 `CAIRN_API_KEY` holds the same four-part string.
+
+## Ownership and sharing
+
+Milestone 3 gives every artifact an owner, members, signed membership
+records, and wrapped keys. Content stays as it is until milestone 4 encrypts
+it, but the keys, the records, and the access rules are final. Every check
+below is for access and consistency. Clients still verify every record
+themselves, because the server is not trusted to.
+
+### Access
+
+The server works out one access level for each request, in this order:
+
+1. **Owner.** The caller is `artifacts.owner_id`.
+2. **Member.** The caller is listed in the latest membership record, as
+   `editor` or `viewer`.
+3. **Team member.** The record's `team` is not `none`, and the caller holds a
+   wrap for the current epoch. This is `viewer` access until the owner lists
+   them. A team member without a wrap has no access at all.
+4. **Link holder.** The artifact is public, and the request carries
+   `X-Cairn-Link-Token` whose hash matches. A link holder who is also signed
+   in can write the database and files while public writes are on.
+5. **None.**
+
+What each level may do is the permission table in the
+[trust model](e2e-trust-model.md#ownership-sharing-and-epochs). Two rules sit
+on top of it:
+
+- A request with no access gets `404`, never `401` or `403`, so it cannot
+  tell whether the artifact exists. This applies to administrators too.
+- The `{id}` segment of an artifact route resolves only among artifacts the
+  caller can read, so a resource reference cannot reveal someone else's
+  artifact through a `409`.
+
+Share, unshare, make public, transfer, delete, and push need a session or an
+API key. Milestone 4 adds a content-origin token, and these endpoints refuse
+it.
+
+In this milestone the browser cannot open a public link yet. The milestone 4
+service worker sends `X-Cairn-Link-Token` on each request.
+
+### Membership records
+
+A membership record is the `membership` envelope from
+[wire formats](e2e-wire-formats.md#signatures). The server accepts a record
+only when all of these hold:
+
+- It verifies under the owner's current Ed25519 public key, and the body
+  parses strictly.
+- `artifact` is the artifact, and `owner` is its owner.
+- `prev` is `hex(SHA-256)` of the latest record's body, or empty for the
+  first. A stale `prev` gets `409`, so two concurrent changes cannot both
+  land.
+- `members` is sorted by user ID, has no duplicates, and does not list the
+  owner. Each role is `viewer` or `editor`, and `team` is `none`, `viewer`, or
+  `editor`.
+- Each member's `fp` is the fingerprint of that user's current keys. A member
+  added by this record must be a verified, active user.
+- `epoch` is either the current epoch or the next one.
+
+A record at the **same epoch** keeps `akCommit`. It can add members, change
+roles, change `team`, turn public writes on or off, and make the artifact
+public. It cannot remove a member or make a public artifact private.
+
+A record at the **next epoch** has a new `akCommit`. It is required to remove
+a member or make a public artifact private, and allowed at any other time.
+Members approved through a team share but not yet listed lose access at the
+new epoch, unless the record lists them.
+
+Each change carries the wraps it needs, and the server refuses a change whose
+wraps do not match exactly:
+
+| Change | Wraps required |
+| --- | --- |
+| Same epoch | Every epoch, for each member the record adds or whose `fp` changed |
+| Next epoch | The new epoch, for the owner and every listed member; and every earlier epoch, for each member the record adds or whose `fp` changed |
+
+A wrap is `{"user", "epoch", "wrapped"}`, 81 bytes in `b64`. The server stores
+the recipient's current fingerprint with it. A next-epoch change also carries
+the estate copy of the new `AK`, `{"epoch", "sealed"}`, 61 bytes in `b64`.
+
+When a record removes a member, the server deletes that member's wraps.
+
+### Endpoints for sharing
+
+| Method and path | Access | Purpose |
+| --- | --- | --- |
+| `GET /api/artifacts` | Any | Artifacts the caller can read |
+| `POST /api/artifacts` | Any | Create an artifact with its first record |
+| `GET /api/artifacts/{id}` | Read | The artifact, with the caller's access |
+| `PATCH /api/artifacts/{id}` | Owner, editor | Rename, or change the description |
+| `DELETE /api/artifacts/{id}` | Owner | Delete the artifact |
+| `GET /api/artifacts/{id}/membership` | Read | Every membership record, oldest first |
+| `PUT /api/artifacts/{id}/membership` | Owner | Add a membership record |
+| `GET /api/artifacts/{id}/keys` | Owner, member, team member | The caller's wraps |
+| `POST /api/artifacts/{id}/keys` | Owner, editor | Approve a team member |
+| `GET /api/artifacts/{id}/pending` | Owner, editor | Team members waiting, and changed keys |
+| `GET /api/artifacts/{id}/review` | Owner | Versions that need a vouch |
+| `PUT /api/artifacts/{id}/versions/{vid}/vouch` | Owner | Vouch for a version |
+| `POST /api/artifacts/{id}/transfer` | Owner | Offer ownership to an editor |
+| `DELETE /api/artifacts/{id}/transfer` | Owner, offered user | Withdraw or decline the offer |
+| `POST /api/artifacts/{id}/transfer/accept` | Offered user | Accept ownership |
+| `GET /api/me/keyring` | Any | The sealed keyring |
+| `PUT /api/me/keyring` | Any | Replace the sealed keyring |
+| `POST /api/me/rotate` | Session | Rotate keys |
+| `GET /api/users/{id}/rotations` | Any | A user's rotation records |
+| `GET /api/admin/users/{id}/artifacts` | Administrator | Artifacts a user owns |
+| `POST /api/admin/artifacts/{id}/transfer` | Administrator | Offer ownership when the owner is deactivated |
+| `DELETE /api/admin/artifacts/{id}` | Administrator | Delete when the owner is deactivated |
+
+"Read" is any access level other than `none`. "Any" means any signed-in
+caller, as in milestone 2. The version, database, and file endpoints keep
+their paths and follow the permission table. A version push records the
+pusher.
+
+#### Creating an artifact
+
+`POST /api/artifacts`:
+
+```json
+{"id": "UUID", "name": "Poll", "description": "",
+ "membership": {"body": "b64", "sig": "b64", "signer": "user ID"},
+ "wraps": [{"user": "ID", "epoch": 1, "wrapped": "b64"}],
+ "estate": [{"epoch": 1, "sealed": "b64"}]}
+```
+
+The client generates the ID, because the first record is signed over it. The
+record has epoch 1, an empty `prev`, and the caller as owner. It may already
+list members. `wraps` covers the owner and every listed member, and `estate`
+covers epoch 1. An ID already in use gets `409`. The answer is `201` with the
+artifact.
+
+`GET /api/artifacts/{id}` and each entry of `GET /api/artifacts` return:
+
+```json
+{"id", "name", "description", "owner", "access", "epoch", "team",
+ "public", "publicWrites", "transfer", "createdAt", "updatedAt"}
+```
+
+`access` is `owner`, `editor`, `viewer`, `team`, or `link`. `transfer` is
+`null`, or `{"to", "by", "at"}` while an offer is open, where `by` is `owner`
+or `admin`. `PATCH` takes `name` and `description` only; `public` is gone from
+both requests.
+
+#### Changing membership
+
+`PUT /api/artifacts/{id}/membership`:
+
+```json
+{"membership": {"body": "b64", "sig": "b64", "signer": "user ID"},
+ "wraps": [{"user": "ID", "epoch": 2, "wrapped": "b64"}],
+ "estate": [{"epoch": 2, "sealed": "b64"}],
+ "linkTokenHash": "64 hex"}
+```
+
+`linkTokenHash` is `hex(SHA-256(linkToken))` for the record's epoch. It is
+required when the record is public, and refused otherwise. The server stores
+it with the epoch, and deletes it when the artifact becomes private. A public
+artifact that moves to a new epoch needs the new epoch's hash, so the old
+link stops working.
+
+The answer is `200 {"epoch"}`.
+
+`GET /api/artifacts/{id}/membership` returns `{"records": [envelope, ...]}`.
+A link holder can read it, because every holder of `AK` checks `akCommit`.
+
+#### Keys
+
+`GET /api/artifacts/{id}/keys` returns the caller's own wraps, and for the
+owner the estate copies:
+
+```json
+{"wraps": [{"epoch": 1, "wrapped": "b64", "fp": "64 hex"}],
+ "estate": [{"epoch": 1, "sealed": "b64"}]}
+```
+
+#### Team approval
+
+`GET /api/artifacts/{id}/pending` lists users the caller's client should ask
+about:
+
+```json
+[{"id", "name", "email", "x25519Pub", "ed25519Pub", "state"}]
+```
+
+- `new`: the record's `team` is not `none`, and this verified, active user
+  holds no wrap and is not listed.
+- `keyChanged`: the user holds a wrap, or is listed, under a fingerprint that
+  is no longer theirs. The client checks `GET /api/users/{id}/rotations` to
+  tell a rotation from a reset.
+
+`POST /api/artifacts/{id}/keys` approves a `new` user, after the person at
+the client has confirmed their name and fingerprint:
+
+```json
+{"user": "ID", "fp": "64 hex", "wraps": [{"epoch": 1, "wrapped": "b64"}]}
+```
+
+The server refuses the request with:
+
+- `403` from a viewer or a team member, because a viewer's client never wraps
+  keys.
+- `409` when the user already holds a wrap or is listed. A changed key is
+  never a new member. The owner shares again through a membership record that
+  lists the new fingerprint.
+- `409` when `fp` is not the user's current fingerprint.
+- `400` unless `wraps` covers every epoch.
+
+An approved team member can read. They can write only once the owner lists
+them, because clients refuse anything signed by someone a record does not
+list.
+
+#### Reviewing a removed editor's versions
+
+`GET /api/artifacts/{id}/review` lists versions whose pusher is neither the
+owner nor a listed editor, and that have no vouch:
+`[{"id", "seq", "pushedBy", "createdAt"}]`.
+
+`PUT /api/artifacts/{id}/versions/{vid}/vouch` takes `{"vouch": envelope}`.
+The server checks that the owner signed it, and that `artifact` and `version`
+match. From milestone 4 on, it also checks `manifest` against the stored
+manifest. `GET /api/artifacts/{id}/versions/{vid}` returns `pushedBy` and
+`vouch`, which is the envelope or `null`.
+
+#### Ownership transfer
+
+1. The owner offers ownership with `POST /api/artifacts/{id}/transfer`
+   `{"to": "user ID"}`. The user must be a listed editor. A new offer replaces
+   the old one.
+2. An administrator can make the same offer with
+   `POST /api/admin/artifacts/{id}/transfer`, only while the owner's account
+   is deactivated. Otherwise the answer is `409`, because an active owner
+   must agree.
+3. The offered user accepts with `POST /api/artifacts/{id}/transfer/accept`:
+   `{"membership", "wraps", "estate", "linkTokenHash"}`, as for a membership
+   change.
+
+The accepting record is signed by the new owner, names them as `owner`, and
+does not list them as a member. The previous owner counts as a current
+member, so leaving them out is a removal and needs the next epoch. `estate`
+covers every epoch, under the new owner's `EK`. On success the server changes
+the owner, deletes the previous owner's estate copies, and closes the offer.
+
+Either side withdraws or declines with `DELETE /api/artifacts/{id}/transfer`.
+
+`GET /api/admin/users/{id}/artifacts` returns
+`[{"id", "name", "editors": [{"id", "name"}]}]`, so an administrator can
+choose an editor. `DELETE /api/admin/artifacts/{id}` deletes an artifact only
+while its owner is deactivated.
+
+#### Keyring
+
+`GET /api/me/keyring` returns `{"rev": 0, "keyring": ""}` until the first
+write. `PUT /api/me/keyring` takes `{"rev", "keyring"}`, where `keyring` is
+the sealed keyring in `b64`, at most 1 MiB. `rev` must be one more than the
+stored `rev`. Otherwise the answer is `409 {"error", "rev"}`, so a second
+device reads again and merges instead of overwriting.
+
+#### Rotating keys
+
+`POST /api/me/rotate`:
+
+```json
+{"authKey": "b64", "bundle": {},
+ "rotation": {"body": "b64", "sig": "b64", "signer": "user ID", "newSig": "b64"},
+ "wraps": [{"artifact": "ID", "epoch": 1, "wrapped": "b64"}],
+ "estate": [{"artifact": "ID", "epoch": 1, "sealed": "b64"}]}
+```
+
+The server checks:
+
+- `authKey`, as a sign-in for the rate limits.
+- The bundle, as at sign-up. Its `kdf` must equal the current one, because
+  the password does not change.
+- The rotation record: signed by the current Ed25519 key, with `newSig` by
+  the bundle's. Its `user` is the caller, its `seq` is one more than the last,
+  `old` is the current public keys, and `new` is the bundle's.
+- `wraps` replaces every wrap the caller holds, one for one, and `estate`
+  replaces every estate copy of every artifact the caller owns.
+
+In one transaction, the server stores the new bundle, replaces the wraps and
+estate copies, revokes every API key, deletes the successor's copy, and stores
+the rotation record. The token version increases, and the answer sets a new
+cookie. The client then shows the new recovery code.
+
+`GET /api/users/{id}/rotations` returns `{"records": [envelope, ...]}`,
+oldest first. A client that has pinned an earlier key follows the chain from
+its pin and shows "keys rotated" when every step verifies.
+
+### Commands for sharing
+
+`ARTIFACT` is an artifact ID or a reference, as today. `USER` is an email
+address.
+
+| Command | Does |
+| --- | --- |
+| `cairn artifact create NAME` | Generates the first key and record, and creates the artifact |
+| `cairn members ARTIFACT` | Lists the owner and members, with roles, fingerprints, and pin states |
+| `cairn share ARTIFACT USER [--role viewer\|editor]` | Shows the fingerprint, pins it, and shares |
+| `cairn unshare ARTIFACT USER` | Removes a member and starts a new epoch |
+| `cairn team ARTIFACT none\|viewer\|editor` | Shares with the whole team, or stops |
+| `cairn public ARTIFACT on\|off [--writes on\|off]` | Makes the artifact public, and prints the public link, or private |
+| `cairn approve ARTIFACT [USER]` | Lists team members waiting, or approves one |
+| `cairn pin USER [--verified]` | Shows a user's fingerprint and pin state, or marks it verified |
+| `cairn review ARTIFACT` | Lists versions that need a vouch |
+| `cairn vouch ARTIFACT VERSION` | Vouches for a version |
+| `cairn transfer ARTIFACT USER` | Offers ownership to an editor |
+| `cairn transfer accept\|decline ARTIFACT` | Answers an offer |
+| `cairn rotate-keys` | Rotates keys, prints the new recovery code, and creates a new device key |
+
+`cairn share` and `cairn approve` refuse a user whose pinned key changed. They
+print both fingerprints and the date of any reset, and need
+`--accept-new-key` to go ahead. A key change that a rotation chain explains
+shows as **keys rotated**, keeps the pin's verified state, and needs no flag.
+Every command that encrypts refuses an epoch lower than the one in the
+keyring.
+
+`cairn rotate-keys` asks for the password, because it needs a session; every
+API key stops working when it finishes.
