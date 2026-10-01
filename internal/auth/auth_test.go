@@ -66,26 +66,3 @@ func TestJWTExpiry(t *testing.T) {
 		t.Error("expired token verified")
 	}
 }
-
-func TestAPIKeyFormat(t *testing.T) {
-	id, token, secretHash, err := NewAPIKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !IsAPIKey(token) {
-		t.Fatalf("token %q not recognized as API key", token)
-	}
-	gotID, secret, ok := ParseAPIKey(token)
-	if !ok || gotID != id {
-		t.Fatalf("ParseAPIKey: ok=%v id=%q want %q", ok, gotID, id)
-	}
-	if HashAPIKeySecret(secret) != secretHash {
-		t.Error("secret hash mismatch")
-	}
-	if _, _, ok := ParseAPIKey("cairn_missingsecret"); ok {
-		t.Error("malformed key parsed")
-	}
-	if IsAPIKey("eyJhbGciOi...") {
-		t.Error("JWT recognized as API key")
-	}
-}

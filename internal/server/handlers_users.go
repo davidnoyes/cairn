@@ -59,6 +59,11 @@ func (s *Server) handleUserByID(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "user")
 		return
 	}
+	// The same accounts the directory lists, and no others.
+	if u.Disabled || u.VerifiedAt == "" {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
 	d, err := s.toDirectoryUser(u)
 	if err != nil {
 		s.writeStoreError(w, err, "user")

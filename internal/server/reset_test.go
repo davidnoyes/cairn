@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
+	"github.com/aloisdeniel/cairn/internal/auth"
 	"github.com/aloisdeniel/cairn/internal/e2e"
 )
 
@@ -175,4 +177,113 @@ func TestResetNewArchivesOldBundleAndKeys(t *testing.T) {
 			t.Errorf("revoked key %s still listed as live", k.ID)
 		}
 	}
+}
+
+// TestResetMalformedRequestKeepsToken: a rejected reset/complete must not use
+// up the emailed token, or a client bug or a garbled field would burn the
+// user's only link. The token still works exactly once.
+func TestResetMalformedRequestKeepsToken(t *testing.T) {
+	s, ts := testServer(t)
+	m := mailer(s)
+	forgotPassword(t, ts.URL, "admin@example.com")
+	msg, _ := m.Last("admin@example.com")
+	rawToken := extractFragmentToken(t, msg.Body)
+	c := &testClient{t: t, base: ts.URL}
+	authKey := e2e.B64(testAuthKey("new-pw"))
+
+	c.mustDo("POST", "/api/auth/reset/complete", map[string]any{
+		"token": rawToken, "mode": "new", "authKey": authKey,
+	}, nil, http.StatusBadRequest)
+	c.mustDo("POST", "/api/auth/reset/complete", map[string]any{
+		"token": rawToken, "mode": "recovery", "authKey": authKey,
+		"kdf": testBundleWire().KDF, "mkPassword": testBundleWire().MKPassword,
+		"proof": e2e.B64(bytes.Repeat([]byte{1}, 64)),
+	}, nil, http.StatusBadRequest)
+
+	good := map[string]any{"token": rawToken, "mode": "new", "authKey": authKey, "bundle": testBundleWire()}
+	c.mustDo("POST", "/api/auth/reset/complete", good, nil, http.StatusOK)
+	c.mustDo("POST", "/api/auth/reset/complete", good, nil, http.StatusBadRequest)
+}
+
+// TestResetNoticeIgnoresMailLimit: forgot requests can use up an address's
+// mail budget, but the notice that the password changed must still arrive.
+func TestResetNoticeIgnoresMailLimit(t *testing.T) {
+	s, ts := testServer(t)
+	m := mailer(s)
+	for range 3 {
+		forgotPassword(t, ts.URL, "admin@example.com")
+	}
+	msg, _ := m.Last("admin@example.com")
+	c := &testClient{t: t, base: ts.URL}
+	c.mustDo("POST", "/api/auth/reset/complete", map[string]any{
+		"token": extractFragmentToken(t, msg.Body), "mode": "new",
+		"authKey": e2e.B64(testAuthKey("new-pw")), "bundle": testBundleWire(),
+	}, nil, http.StatusOK)
+	if last, _ := m.Last("admin@example.com"); last.Subject != "Your Cairn password was reset" {
+		t.Fatalf("last mail = %q, want the reset notice", last.Subject)
+	}
+}
+
+// TestResetRecoveryRejectsBadProof: recovery mode keeps the account's keys,
+// so it must prove possession of the Ed25519 key the recovery code unseals.
+// A proof from another key, or over the wrong token, is refused and changes
+// nothing; the right proof then still works.
+func TestResetRecoveryRejectsBadProof(t *testing.T) {
+	s, ts := testServer(t)
+	w, seed, _ := signedBundleWire(t)
+	hash, err := auth.HashPassword(string(testAuthKey("pw")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := decodeBundle(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := s.store.CreateAccount("ada@example.com", "Ada", hash, bundle, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.MarkVerified(u.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	forgotPassword(t, ts.URL, "ada@example.com")
+	msg, _ := mailer(s).Last("ada@example.com")
+	rawToken := extractFragmentToken(t, msg.Body)
+	tokenBytes, err := e2e.UnB64(rawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherSeed, _, err := e2e.GenerateEd25519(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := func(seed []byte, tokenHash string) string {
+		body, err := json.Marshal(resetProofBody{V: 1, User: u.ID, Token: tokenHash})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e2e.B64(e2e.Sign(seed, "reset", body))
+	}
+	complete := func(proof string) map[string]any {
+		return map[string]any{
+			"token": rawToken, "mode": "recovery", "authKey": e2e.B64(testAuthKey("new-pw")),
+			"kdf": testBundleWire().KDF, "mkPassword": testBundleWire().MKPassword, "proof": proof,
+		}
+	}
+
+	c := &testClient{t: t, base: ts.URL}
+	for name, p := range map[string]string{
+		"another key":     proof(otherSeed, hashToken(tokenBytes)),
+		"the wrong token": proof(seed, hashToken([]byte("some other token"))),
+	} {
+		resp := c.do("POST", "/api/auth/reset/complete", complete(p), nil)
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("proof signed by %s: status %d, want 400", name, resp.StatusCode)
+		}
+	}
+	loginAgain(t, c, "ada@example.com", "pw")
+
+	c.mustDo("POST", "/api/auth/reset/complete", complete(proof(seed, hashToken(tokenBytes))), nil, http.StatusOK)
+	loginAgain(t, c, "ada@example.com", "new-pw")
 }

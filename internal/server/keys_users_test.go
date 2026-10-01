@@ -156,3 +156,102 @@ func TestDirectoryExcludesDisabledAndUnverified(t *testing.T) {
 		t.Errorf("admin directory missing disabled/unverified accounts: %+v", adminDir)
 	}
 }
+
+// TestAPIKeyWrongSecretRefused: a real key id with the wrong secret is
+// refused, so the key id alone is not a credential.
+func TestAPIKeyWrongSecretRefused(t *testing.T) {
+	s, ts := testServer(t)
+	seedAccount(t, s, "ada@example.com", "pw", false)
+	c := &testClient{t: t, base: ts.URL}
+	loginAgain(t, c, "ada@example.com", "pw")
+	c.mustDo("POST", "/api/keys", map[string]any{
+		"authKey": e2e.B64(testAuthKey("pw")), "name": "k",
+		"keyId": "0011223344556677", "authSecret": "00112233445566778899aabbccddeeff",
+		"mk": e2e.B64(bytes.Repeat([]byte{0x33}, sealedKeyLen)),
+	}, nil, http.StatusCreated)
+
+	wrong := &testClient{t: t, base: ts.URL, token: "cairn_0011223344556677_ffeeddccbbaa99887766554433221100"}
+	if resp := wrong.do("GET", "/api/me", nil, nil); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("wrong secret for a real key id: status %d, want 401", resp.StatusCode)
+	}
+}
+
+// TestRevokeOtherUsersKeyNotFound: DELETE /api/keys/{id} only reaches the
+// caller's own keys; another user's key is a 404 and keeps working.
+func TestRevokeOtherUsersKeyNotFound(t *testing.T) {
+	s, ts := testServer(t)
+	seedAccount(t, s, "ada@example.com", "pw", false)
+	seedAccount(t, s, "bob@example.com", "pw", false)
+	ada := &testClient{t: t, base: ts.URL}
+	loginAgain(t, ada, "ada@example.com", "pw")
+	var created createKeyResponse
+	ada.mustDo("POST", "/api/keys", map[string]any{
+		"authKey": e2e.B64(testAuthKey("pw")), "name": "k",
+		"keyId": "8899aabbccddeeff", "authSecret": "8899aabbccddeeff0011223344556677",
+		"mk": e2e.B64(bytes.Repeat([]byte{0x44}, sealedKeyLen)),
+	}, &created, http.StatusCreated)
+
+	bob := &testClient{t: t, base: ts.URL}
+	loginAgain(t, bob, "bob@example.com", "pw")
+	bob.mustDo("DELETE", "/api/keys/"+created.ID, nil, nil, http.StatusNotFound)
+
+	key := &testClient{t: t, base: ts.URL, token: "cairn_8899aabbccddeeff_8899aabbccddeeff0011223344556677"}
+	key.mustDo("GET", "/api/me", nil, nil, http.StatusOK)
+}
+
+// TestUserByIDHidesDisabledAndUnverified: GET /api/users/{id} shows the
+// same accounts the directory lists, and no others.
+func TestUserByIDHidesDisabledAndUnverified(t *testing.T) {
+	s, ts := newTestServer(t, func(c *Config) { c.SignupDomains = []string{"example.com"} })
+	seedAccount(t, s, "admin@example.com", "admin-password", true)
+	verified := seedAccount(t, s, "verified@example.com", "pw", false)
+	disabled := seedAccount(t, s, "disabled@example.com", "pw", false)
+	if err := s.store.SetUserDisabled(disabled.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	signupAndCapture(t, ts.URL, mailer(s), "unverified@example.com", "pw")
+	unverified := mustUserID(t, s, "unverified@example.com")
+
+	c := &testClient{t: t, base: ts.URL}
+	loginAgain(t, c, "verified@example.com", "pw")
+	c.mustDo("GET", "/api/users/"+verified.ID, nil, nil, http.StatusOK)
+	c.mustDo("GET", "/api/users/"+disabled.ID, nil, nil, http.StatusNotFound)
+	c.mustDo("GET", "/api/users/"+unverified, nil, nil, http.StatusNotFound)
+}
+
+// TestLoginDisabledAccountRefused: the right key for a deactivated account
+// gets 403, not a session.
+func TestLoginDisabledAccountRefused(t *testing.T) {
+	s, ts := testServer(t)
+	u := seedAccount(t, s, "ada@example.com", "pw", false)
+	admin := login(t, ts.URL, "admin@example.com", "admin-password")
+	admin.mustDo("PATCH", "/api/admin/users/"+u.ID, map[string]any{"disabled": true}, nil, http.StatusOK)
+
+	c := &testClient{t: t, base: ts.URL}
+	c.mustDo("POST", "/api/auth/login", map[string]any{
+		"email": "ada@example.com", "authKey": e2e.B64(testAuthKey("pw")), "client": "cli",
+	}, nil, http.StatusForbidden)
+}
+
+// TestPasswordChangeEndsOldSessions: changing the password bumps the token
+// version, so a token issued before it stops working at once, while the one
+// the change hands back works.
+func TestPasswordChangeEndsOldSessions(t *testing.T) {
+	s, ts := testServer(t)
+	seedAccount(t, s, "ada@example.com", "pw", false)
+	old := &testClient{t: t, base: ts.URL}
+	loginAgain(t, old, "ada@example.com", "pw")
+	current := &testClient{t: t, base: ts.URL}
+	loginAgain(t, current, "ada@example.com", "pw")
+
+	w := testBundleWire()
+	current.mustDo("PUT", "/api/me/password", map[string]any{
+		"authKey": e2e.B64(testAuthKey("pw")), "newAuthKey": e2e.B64(testAuthKey("new-pw")),
+		"kdf": w.KDF, "mkPassword": w.MKPassword,
+	}, nil, http.StatusOK)
+
+	old.mustDo("GET", "/api/me", nil, nil, http.StatusUnauthorized)
+	fresh := &testClient{t: t, base: ts.URL}
+	loginAgain(t, fresh, "ada@example.com", "new-pw")
+	fresh.mustDo("GET", "/api/me", nil, nil, http.StatusOK)
+}

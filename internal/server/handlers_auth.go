@@ -83,6 +83,12 @@ func (s *Server) sendMail(to, subject, body string) {
 	if !s.mailLimit.take(to) {
 		return
 	}
+	s.deliverMail(to, subject, body)
+}
+
+// deliverMail sends without the per-address limit, for mail only a token
+// holder can trigger.
+func (s *Server) deliverMail(to, subject, body string) {
 	if err := s.mail.Send(context.Background(), mail.Message{To: to, Subject: subject, Body: body}); err != nil {
 		s.log.Error("send mail", "to", to, "err", err)
 	}
@@ -122,8 +128,11 @@ func (s *Server) sendResetLink(u *store.User) {
 	s.sendMail(u.Email, "Reset your Cairn password", "Follow this link to reset your password:\n\n"+link+"\n\nThis link expires in 30 minutes.")
 }
 
+// sendResetNotice bypasses the mail limit: anyone can spend an address's
+// budget with forgot requests, and this notice is the user's only signal
+// that their password changed.
 func (s *Server) sendResetNotice(u *store.User) {
-	s.sendMail(u.Email, "Your Cairn password was reset", "Your password was just reset. If this wasn't you, contact your administrator.")
+	s.deliverMail(u.Email, "Your Cairn password was reset", "Your password was just reset. If this wasn't you, contact your administrator.")
 }
 
 // issueToken signs a session JWT for u, carrying its current token version so
@@ -214,21 +223,17 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	existing, err := s.store.UserByEmail(email)
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		s.writeStoreError(w, err, "account")
-		return
-	}
-	if err == nil && existing.VerifiedAt != "" {
+	// CreateAccount decides new, unverified, or verified in one transaction,
+	// so a verification landing mid-request can't change the answer.
+	u, err := s.store.CreateAccount(email, req.Name, authHash, bundle, email == s.cfg.AdminEmail)
+	switch {
+	case errors.Is(err, store.ErrExists):
 		s.sendMail(email, "Someone tried to sign up with your email",
 			fmt.Sprintf("Someone tried to create a Cairn account with %s, which already has one. If this wasn't you, you can ignore this message.", email))
-	} else {
-		isAdmin := email == s.cfg.AdminEmail
-		u, cerr := s.store.CreateAccount(email, req.Name, authHash, bundle, isAdmin)
-		if cerr != nil {
-			s.writeStoreError(w, cerr, "account")
-			return
-		}
+	case err != nil:
+		s.writeStoreError(w, err, "account")
+		return
+	default:
 		s.sendVerifyLink(u)
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "check-email"})
@@ -453,7 +458,7 @@ func (s *Server) handleResetComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tokenHash := hashToken(raw)
-	tok, err := s.store.UseToken(tokenHash, "reset", s.clk.Now())
+	tok, err := s.store.PeekToken(tokenHash, "reset", s.clk.Now())
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid or expired token")
 		return
@@ -474,73 +479,82 @@ func (s *Server) handleResetComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var apply func() error
+	var ok bool
 	switch req.Mode {
 	case "recovery":
-		s.handleResetRecovery(w, req, u, tokenHash, authHash)
+		apply, ok = s.prepareResetRecovery(w, req, u, tokenHash, authHash)
 	case "new":
-		s.handleResetNew(w, req, u, authHash)
+		apply, ok = s.prepareResetNew(w, req, u, authHash)
 	default:
 		writeError(w, http.StatusBadRequest, "unknown reset mode")
 		return
 	}
+	if !ok {
+		return
+	}
+	// The token is used only once the request is known to be good, so a
+	// malformed attempt doesn't burn the link. UseToken is atomic, so of two
+	// concurrent completions only one gets past here.
+	if _, err := s.store.UseToken(tokenHash, "reset", s.clk.Now()); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid or expired token")
+		return
+	}
+	if err := apply(); err != nil {
+		s.writeStoreError(w, err, "account")
+		return
+	}
+	s.sendResetNotice(u)
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// handleResetRecovery replaces authKey, kdf, and mkPassword after verifying
-// the reset proof against the user's existing Ed25519 key. The key pairs,
-// the recovery wrap, and API keys are untouched.
-func (s *Server) handleResetRecovery(w http.ResponseWriter, req resetCompleteRequest, u *store.User, tokenHash, authHash string) {
+// prepareResetRecovery verifies the reset proof against the user's existing
+// Ed25519 key, and returns the change that replaces authKey, kdf, and
+// mkPassword. The key pairs, the recovery wrap, and API keys are untouched.
+func (s *Server) prepareResetRecovery(w http.ResponseWriter, req resetCompleteRequest, u *store.User, tokenHash, authHash string) (func() error, bool) {
 	if _, err := validateKDF(req.KDF); err != nil {
 		writeError(w, http.StatusBadRequest, "malformed key bundle")
-		return
+		return nil, false
 	}
 	mkPassword, err := e2e.UnB64(req.MKPassword)
 	if err != nil || validateSealedLen(mkPassword) != nil {
 		writeError(w, http.StatusBadRequest, "malformed key bundle")
-		return
+		return nil, false
 	}
 	proof, err := e2e.UnB64(req.Proof)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid proof")
-		return
+		return nil, false
 	}
 	b, err := s.store.BundleFor(u.ID)
 	if err != nil {
 		s.writeStoreError(w, err, "bundle")
-		return
+		return nil, false
 	}
 	body, err := json.Marshal(resetProofBody{V: 1, User: u.ID, Token: tokenHash})
 	if err != nil {
 		s.writeStoreError(w, err, "proof")
-		return
+		return nil, false
 	}
 	if !e2e.Verify(b.Ed25519Pub, "reset", body, proof) {
 		writeError(w, http.StatusBadRequest, "invalid proof")
-		return
+		return nil, false
 	}
-	if err := s.store.SetPassword(u.ID, authHash, string(req.KDF), mkPassword); err != nil {
-		s.writeStoreError(w, err, "account")
-		return
-	}
-	s.sendResetNotice(u)
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	return func() error { return s.store.SetPassword(u.ID, authHash, string(req.KDF), mkPassword) }, true
 }
 
-// handleResetNew archives the current bundle and every API key's wrapped MK,
-// revokes those keys, and stores a fresh bundle.
-func (s *Server) handleResetNew(w http.ResponseWriter, req resetCompleteRequest, u *store.User, authHash string) {
+// prepareResetNew validates the new bundle, and returns the change that
+// archives the current bundle and every API key's wrapped MK, revokes those
+// keys, and stores the new bundle.
+func (s *Server) prepareResetNew(w http.ResponseWriter, req resetCompleteRequest, u *store.User, authHash string) (func() error, bool) {
 	if req.Bundle == nil {
 		writeError(w, http.StatusBadRequest, "malformed key bundle")
-		return
+		return nil, false
 	}
 	bundle, err := decodeBundle(*req.Bundle)
 	if err != nil || validateBundle(bundle) != nil {
 		writeError(w, http.StatusBadRequest, "malformed key bundle")
-		return
+		return nil, false
 	}
-	if err := s.store.ResetAccount(u.ID, authHash, bundle, s.clk.Now()); err != nil {
-		s.writeStoreError(w, err, "account")
-		return
-	}
-	s.sendResetNotice(u)
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	return func() error { return s.store.ResetAccount(u.ID, authHash, bundle, s.clk.Now()) }, true
 }

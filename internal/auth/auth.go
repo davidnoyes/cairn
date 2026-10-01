@@ -1,5 +1,5 @@
-// Package auth implements Cairn's credentials: bcrypt passwords, HS256 JWTs
-// and API keys.
+// Package auth implements Cairn's credentials: bcrypt passwords and HS256
+// JWTs. API keys are in internal/e2e.
 package auth
 
 import (
@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -106,48 +105,4 @@ func VerifyJWT(secret []byte, token string) (*Claims, error) {
 		return nil, ErrInvalidToken
 	}
 	return &c, nil
-}
-
-// API keys, formatted "cairn_<keyid>_<secret>". The key id gives O(1) lookup;
-// only SHA-256(secret) is stored.
-
-const apiKeyPrefix = "cairn_"
-
-// NewAPIKey generates a key, returning its id, the full token to show once,
-// and the secret hash to store.
-func NewAPIKey() (id, token, secretHash string, err error) {
-	idB := make([]byte, 8)
-	secretB := make([]byte, 24)
-	if _, err = rand.Read(idB); err != nil {
-		return
-	}
-	if _, err = rand.Read(secretB); err != nil {
-		return
-	}
-	id = hex.EncodeToString(idB)
-	secret := b64.EncodeToString(secretB)
-	token = apiKeyPrefix + id + "_" + secret
-	secretHash = HashAPIKeySecret(secret)
-	return
-}
-
-// ParseAPIKey splits a presented token into key id and secret.
-func ParseAPIKey(token string) (id, secret string, ok bool) {
-	rest, found := strings.CutPrefix(token, apiKeyPrefix)
-	if !found {
-		return "", "", false
-	}
-	id, secret, ok = strings.Cut(rest, "_")
-	return id, secret, ok && id != "" && secret != ""
-}
-
-func HashAPIKeySecret(secret string) string {
-	sum := sha256.Sum256([]byte(secret))
-	return hex.EncodeToString(sum[:])
-}
-
-// IsAPIKey reports whether a bearer credential looks like an API key rather
-// than a JWT.
-func IsAPIKey(token string) bool {
-	return strings.HasPrefix(token, apiKeyPrefix)
 }

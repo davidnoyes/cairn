@@ -161,6 +161,9 @@ func (s *Server) userFromAPIKey(token string) (*store.User, *store.APIKey, error
 		return nil, nil, errors.New("invalid API key")
 	}
 	u, err := s.store.UserByID(key.UserID)
+	// No path today leaves a live key on an unverified account (creating one
+	// needs a session, and re-signup deletes the unverified account and its
+	// keys); the check keeps that true if either changes.
 	if err != nil || u.Disabled || u.VerifiedAt == "" {
 		return nil, nil, errors.New("invalid API key")
 	}
