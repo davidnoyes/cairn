@@ -56,9 +56,10 @@ node --test internal/server/web/*_test.mjs   # web/ JS unit tests (no npm deps)
 - Never classify SQL as read/write by parsing — connection-level only.
 - Uploaded zips: `fs.ValidPath` names only, no symlinks, decompressed-size
   budget, `index.html` required at root (single wrapping top dir is stripped).
-- First-login-sets-password is the intended trust model (no invite tokens);
-  `confirm` field guards typos. Admin "reset password" returns the account to
-  the unclaimed state.
+- Accounts are self-service: sign-up from an allowed domain (or the
+  `--admin-email` address) with email verification. The password is stretched
+  on the client, so the server never sees it. Browser pages load scripts only
+  from files under the app CSP (`csp.go`), with no inline code.
 - Users are trusted with everything authenticated; anonymous gets read-only
   access to public artifacts. Keep new endpoints on that line.
 - The `{id}` segment of artifact routes is a *reference*: artifact id first,

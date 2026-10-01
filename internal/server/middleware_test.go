@@ -35,8 +35,8 @@ func TestSafeNext(t *testing.T) {
 }
 
 // TestLoginNextRejectsBackslash covers both places the target is used: the
-// redirect for a signed-in user, and the page script that navigates after
-// sign-in.
+// redirect for a signed-in user, and the data attribute the page script
+// navigates to after sign-in.
 func TestLoginNextRejectsBackslash(t *testing.T) {
 	_, ts := testServer(t)
 	admin := login(t, ts.URL, "admin@example.com", "admin-password")
@@ -62,7 +62,7 @@ func TestLoginNextRejectsBackslash(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if !strings.Contains(string(body), `const next = "/";`) {
+	if !strings.Contains(string(body), `data-next="/"`) {
 		t.Errorf("login page does not fall back to /:\n%s", body)
 	}
 }

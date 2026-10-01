@@ -223,6 +223,17 @@ func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleStaticPage serves a signed-out account page whose template takes no
+// data: its script reads everything it needs from the URL.
+func (s *Server) handleStaticPage(name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if err := s.templates().ExecuteTemplate(w, name, nil); err != nil {
+			s.log.Error("render page", "page", name, "err", err)
+		}
+	}
+}
+
 func (s *Server) handleLogoutPage(w http.ResponseWriter, r *http.Request) {
 	s.clearSessionCookie(w)
 	http.Redirect(w, r, "/login", http.StatusFound)
@@ -291,6 +302,52 @@ func (s *Server) serveSqlJS(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Write(web.SqlJS)
+}
+
+// appAssets maps a URL path to its file in web.Assets: what the account pages
+// load. Modules import each other with relative URLs, so they share one
+// directory. The worker's own files are served by the handlers below.
+var appAssets = map[string]string{
+	"/app.css":           "app.css",
+	"/admin.css":         "admin.css",
+	"/icon.svg":          "icon.svg",
+	"/e2e.mjs":           "e2e.mjs",
+	"/account.mjs":       "account.mjs",
+	"/keystore.mjs":      "keystore.mjs",
+	"/argon2-client.mjs": "argon2-client.mjs",
+	"/ui.mjs":            "ui.mjs",
+	"/signup.js":         "signup.js",
+	"/verify.js":         "verify.js",
+	"/login.js":          "login.js",
+	"/forgot.js":         "forgot.js",
+	"/reset.js":          "reset.js",
+	"/admin.js":          "admin.js",
+	"/argon2-worker.js":  "argon2-worker.js",
+	"/zxcvbn.js":         "vendor/zxcvbn.js",
+}
+
+// serveAppAsset serves one embedded file, with a content type from its
+// extension. It sets no Content-Security-Policy: the argon2 worker runs
+// without Trusted Types enforcement, and the other files are not documents.
+func serveAppAsset(file string) http.HandlerFunc {
+	contentType := "text/javascript; charset=utf-8"
+	switch path.Ext(file) {
+	case ".css":
+		contentType = "text/css; charset=utf-8"
+	case ".svg":
+		contentType = "image/svg+xml"
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		data, err := web.Assets.ReadFile(file)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(data)
+	}
 }
 
 // serveArgon2Wasm serves the vendored Argon2id WebAssembly module. Like

@@ -221,3 +221,18 @@ internal/client/public.go	if !on && writes != nil {	if false {	go test ./interna
 internal/client/client.go	req.Header.Set("X-Cairn-Link-Token", c.LinkToken)	_ = c.LinkToken	go test ./internal/client -run 'TestPublic|TestSharingRecords|TestOpenLink'
 cmd/cairn/share_cmds.go	if !on && writes != nil {	if false {	go test ./cmd/cairn -run 'TestPublic'
 internal/server/sharing.go	a.PublicTokenHash == "" || a.PublicEpoch != a.Epoch {	a.PublicTokenHash == "" {	go test ./internal/server -run TestLinkTokenIsOnlyForTheStoredEpoch
+||||||| bb34c6f
+internal/server/web/account.mjs	export const MIN_SCORE = 3;	export const MIN_SCORE = 0;	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	e2e.checkFloor(kdf);	void 0;	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	history.replaceState(null, '', location.pathname + location.search);	void 0;	node --test internal/server/web/account_test.mjs
+internal/server/web/e2e.mjs	return importEd25519Priv(seed, false, ['sign']);	return importEd25519Priv(seed, true, ['sign']);	node --test internal/server/web/account_test.mjs
+internal/server/web/e2e.mjs	importX25519Priv(raw, false, ['deriveBits']);	importX25519Priv(raw, true, ['deriveBits']);	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	await deps.keyStore.clear();	void 0;	node --test internal/server/web/account_test.mjs
+internal/server/web/keystore.mjs	clear: () => run('readwrite', (store) => store.clear()),	clear: () => run('readwrite', () => ({})),	node --test internal/server/web/keystore_test.mjs
+internal/server/routes.go	mux.HandleFunc("GET /login", withAppCSP(s.handleLoginPage))	mux.HandleFunc("GET /login", s.handleLoginPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	mux.HandleFunc("GET /admin", withAppCSP(s.handleAdminPage))	mux.HandleFunc("GET /admin", s.handleAdminPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "signup" { mux.HandleFunc("GET /"+page, s.handleStaticPage(page+".html")) } else { mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "verify" { mux.HandleFunc("GET /"+page, s.handleStaticPage(page+".html")) } else { mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "forgot" { mux.HandleFunc("GET /"+page, s.handleStaticPage(page+".html")) } else { mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "reset" { mux.HandleFunc("GET /"+page, s.handleStaticPage(page+".html")) } else { mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/serving.go	contentType := "text/javascript; charset=utf-8"	contentType := "text/plain; charset=utf-8"	go test ./internal/server -run TestAccountPageAssetsAreServed

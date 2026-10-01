@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Choose a new password · Cairn</title>
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="wrap">
+  <main class="card">
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32">
+        <rect x="11" y="7"  width="10" height="4" rx="2" fill="#C6F135"/>
+        <rect x="8"  y="14" width="16" height="4" rx="2" fill="#C6F135" opacity=".7"/>
+        <rect x="5"  y="21" width="22" height="4" rx="2" fill="#C6F135" opacity=".45"/>
+      </svg>
+    </div>
+    <h1>cairn</h1>
+    <p class="sub">choose a new password</p>
+    <p class="text" id="working" aria-live="polite">Checking your link…</p>
+    <p class="error" id="linkError" role="alert" hidden></p>
+    <div class="links" id="linkLinks" hidden><a href="/forgot">Ask for a new link</a><a href="/login">Sign in</a></div>
+
+    <form id="form" method="dialog" autocomplete="on" hidden>
+      <p class="text" id="account"></p>
+      <label class="choice"><input type="radio" name="mode" value="recovery" checked><span>I have my recovery code. Keep my keys.</span></label>
+      <label class="choice"><input type="radio" name="mode" value="new"><span>I lost my recovery code. Start with new keys.</span></label>
+      <div id="codeRow">
+        <label for="code">recovery code</label>
+        <input id="code" name="code" type="text" autocomplete="off" spellcheck="false">
+      </div>
+      <p class="warn" id="warning" hidden>Without your recovery code, you get new keys.
+      Artifacts that other people shared with you stay unreadable until their owners share them with you again,
+      and artifacts you own become unreadable to you. This cannot be undone.</p>
+      <label for="password">new password</label>
+      <input id="password" name="password" type="password" autocomplete="new-password" required>
+      <p class="strength" id="strength" aria-live="polite"></p>
+      <label for="confirm">confirm new password</label>
+      <input id="confirm" name="confirm" type="password" autocomplete="new-password" required>
+      <button type="submit" id="submit">Set the new password</button>
+      <p class="error" id="error" role="alert" hidden></p>
+    </form>
+
+    <section id="done" hidden>
+      <p class="ok-text" role="status">Your password is changed.</p>
+      <p class="text">Every other session is signed out. Sign in with the new password.</p>
+      <div class="links"><a href="/login">Sign in</a></div>
+    </section>
+
+    <section id="recovery" hidden>
+      <h2>Save your new recovery code</h2>
+      <p class="text">Your old recovery code no longer works.
+      Nobody, including an administrator, can recover this one for you. We show it once.</p>
+      <code class="code" id="newCode"></code>
+      <form id="confirmForm" method="dialog">
+        <label for="group" id="groupPrompt"></label>
+        <input id="group" name="group" type="text" autocomplete="off" required>
+        <button type="submit">I saved it</button>
+        <p class="error" id="confirmError" role="alert" hidden></p>
+      </form>
+    </section>
+  </main>
+  </div>
+  <script src="/zxcvbn.js"></script>
+  <script type="module" src="/reset.js"></script>
+</body>
+</html>
