@@ -34,7 +34,7 @@ export function createWorkerArgon2(scope = globalThis) {
   let nextId = 0;
   const pending = new Map();
   const stop = () => {
-    worker.terminate();
+    worker?.terminate();
     worker = undefined;
   };
   const start = () => {

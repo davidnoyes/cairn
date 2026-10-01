@@ -2186,7 +2186,7 @@ export async function verifyChain(input) {
 // Group 2 is the port; its range is checked apart. The same pattern as
 // linkHostRE in internal/e2e/link.go: DNS-style labels of 1 to 63 letters,
 // digits, hyphens, and underscores, none starting or ending with a hyphen, or
-// a bracketed IPv6 literal.
+// an IPv6 address in brackets, checked only as hex digits and colons.
 const LINK_HOST_RE =
   /^https?:\/\/((?:[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)(?:\.[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)*|\[[0-9a-fA-F:]+\])(?::([1-9][0-9]{0,4}))?$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;

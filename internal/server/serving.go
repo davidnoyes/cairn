@@ -347,7 +347,7 @@ func serveAppAsset(file string) http.HandlerFunc {
 	}
 	data, err := web.Assets.ReadFile(file)
 	if err != nil {
-		return http.NotFound
+		panic("app asset " + file + " is not embedded: " + err.Error())
 	}
 	sum := sha256.Sum256(data)
 	etag := `"` + hex.EncodeToString(sum[:]) + `"`

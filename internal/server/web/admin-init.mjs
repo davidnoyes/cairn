@@ -11,7 +11,8 @@ export class UnauthenticatedError extends Error {
 }
 
 // startAdmin shows who is signed in, then loads every list on its own, so one
-// list that fails does not hide the others or their errors.
+// list that fails does not hide the others or their errors. A failure of
+// /api/me is shown in every list too, because the flash hides itself.
 //
 //   api(path)                  like admin.js's api()
 //   lists                      [{name, load}]
@@ -22,7 +23,10 @@ export async function startAdmin({ api, lists, setWho, listFailed, fail }) {
   try {
     setWho((await api('/api/me')).email);
   } catch (err) {
-    if (!(err instanceof UnauthenticatedError)) fail(err);
+    if (!(err instanceof UnauthenticatedError)) {
+      fail(err);
+      for (const { name } of lists) listFailed(name, err);
+    }
     return;
   }
   await Promise.all(lists.map(async ({ name, load }) => {

@@ -185,6 +185,7 @@ export function confirmRecoveryCode({ form, panel, codeEl, promptEl, input, erro
       errorEl.hidden = false;
       return;
     }
+    errorEl.hidden = true; // a wrong group's error, from an earlier try
     codeEl.textContent = '';
     panel.hidden = true;
     win.removeEventListener('beforeunload', warn);

@@ -267,7 +267,7 @@ func TestPublicRefusesAHostTheLinkCannotNameBeforeWriting(t *testing.T) {
 	s := newSharing(t)
 	before := publicChain(t, s.ada, s.artifact).Latest.Seq
 	bad := *s.ada
-	bad.Host = "HTTP" + s.host[len("http"):] // reaches the server, but the link grammar is lowercase only
+	bad.Host = "HTTP" + s.host[len("http"):] // reaches the server, but the link grammar wants a lowercase scheme
 	_, err := bad.Public(s.artifact, true, nil)
 	if !errors.Is(err, e2e.ErrFormat) || !strings.Contains(err.Error(), bad.Host) {
 		t.Fatalf("Public = %v, want ErrFormat naming the host %s", err, bad.Host)

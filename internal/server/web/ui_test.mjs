@@ -151,6 +151,18 @@ test('the right group clears the code field, hides the panel, drops the warning,
   assert.equal(confirmed, 1);
 });
 
+test('the right group after a wrong one hides the earlier error', async () => {
+  const { els, win } = confirmPage();
+  confirmRecoveryCode(els, CODE, () => {}, win);
+  els.input.value = 'ZZZZ';
+  await els.form.fire('submit');
+  assert.equal(els.errorEl.hidden, false);
+  const group = els.promptEl.textContent.match(/group (\d+) of/)[1] - 1;
+  els.input.value = CODE.split('-')[group];
+  await els.form.fire('submit');
+  assert.equal(els.errorEl.hidden, true);
+});
+
 test('wiring the confirmation again leaves one submit listener and one warning', async () => {
   const { els, win } = confirmPage();
   let confirmed = 0;

@@ -246,7 +246,8 @@ internal/server/web/account.mjs	for (const secret of [mk, ek, recovery?.code, x2
 internal/server/web/account.mjs	const stretched = await deps.stretch(password, email, kdf);	const stretched = Object.assign(await deps.stretch(password, email, kdf), { fill() {} });	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	const stretched = await deps.stretch(password, email, params);	const stretched = Object.assign(await deps.stretch(password, email, params), { fill() {} });	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	stretched = await deps.stretch(password, info.email, params);	stretched = Object.assign(await deps.stretch(password, info.email, params), { fill() {} });	node --test internal/server/web/account_test.mjs
-internal/server/web/admin-init.mjs	if (!(err instanceof UnauthenticatedError)) fail(err);	void 0;	node --test internal/server/web/admin-init_test.mjs
+internal/server/web/admin-init.mjs	if (!(err instanceof UnauthenticatedError)) {	if (true) {	node --test internal/server/web/admin-init_test.mjs
+internal/server/web/admin-init.mjs	      fail(err);	      void 0;	node --test internal/server/web/admin-init_test.mjs
 internal/server/web/admin-init.mjs	if (!(err instanceof UnauthenticatedError)) listFailed(name, err);	throw err;	node --test internal/server/web/admin-init_test.mjs
 internal/server/web/ui.mjs	button.disabled = false;	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/account.mjs	/^#token=([A-Za-z0-9_-]+)$/	/^#token=([A-Za-z0-9_-]+)/	node --test internal/server/web/account_test.mjs
@@ -285,3 +286,9 @@ internal/client/public.go	return nil, fmt.Errorf("cannot make a link for host %s
 internal/server/sharing.go	!a.Public || token == nil	token == nil	go test ./internal/server -run TestLinkMatchesRefusesAPrivateArtifact
 cmd/cairn/share_cmds.go	if f.Name == "writes" {	if false {	go test ./cmd/cairn -run 'TestPublic'
 cmd/cairn/share_cmds.go	if *writesFlag == "" {	if false {	go test ./cmd/cairn -run 'TestPublic'
+# Account pages: review fixes (crypto errors, list errors, recovery confirm, zeroing)
+internal/server/web/account.mjs	if (!(err instanceof e2e.DecryptError)) throw err;	;	node --test internal/server/web/account_test.mjs
+internal/server/web/admin-init.mjs	for (const { name } of lists) listFailed(name, err);	;	node --test internal/server/web/admin-init_test.mjs
+internal/server/web/ui.mjs	errorEl.hidden = true; // a wrong group's error, from an earlier try	;	node --test internal/server/web/ui_test.mjs
+internal/server/web/account.mjs	x25519Raw?.fill(0);	;	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	ed25519Raw?.fill(0);	;	node --test internal/server/web/account_test.mjs

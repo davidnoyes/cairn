@@ -236,14 +236,18 @@ export async function resetWithRecovery(deps, { token, info, recoveryCode, passw
     throw new Error('That is not a recovery code. It has 26 letters and digits in groups of four.');
   }
   // The recovery KEK has to decrypt MK to raw bytes, which the non-extractable
-  // recoveryKekCryptoKey cannot do (it only unwraps into a non-extractable
-  // key), so its raw bytes are zeroed with the rest.
+  // recoveryKekCryptoKey cannot do (it has one purpose, seal or open, and
+  // open only unwraps into a non-extractable key), so its raw bytes are
+  // zeroed with the rest. Only a failed decrypt means a wrong code; any
+  // other error is reported as itself, so it never sends the user to
+  // discard their keys.
   let recoveryKek, mk, seed, stretched, proof, params, authKey, mkPassword;
   try {
+    recoveryKek = await e2e.recoveryKek(code);
     try {
-      recoveryKek = await e2e.recoveryKek(code);
       mk = await e2e.open(recoveryKek, ['mk'], e2e.unb64(info.mkRecovery));
-    } catch {
+    } catch (err) {
+      if (!(err instanceof e2e.DecryptError)) throw err;
       throw new Error('That recovery code does not open this account. Check that you typed all 26 characters, in groups of four. If you lost it, choose "Start with new keys".');
     }
     seed = await e2e.open(await e2e.mkSealCryptoKey(mk), ['ed25519'], e2e.unb64(info.ed25519Priv));

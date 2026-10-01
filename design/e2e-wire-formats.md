@@ -459,8 +459,9 @@ characters separated by spaces.
   visitor's client anchors the owner's key chain to it, never to keys the
   server serves. Before `/shared/` comes a bare `scheme://host[:port]`. The
   scheme is `http` or `https`, in lowercase. The host is DNS-style labels or
-  a bracketed IPv6 literal. The port, when present, is from 1 to 65535 with
-  no leading zero. Each label is 1 to 63 characters of letters, digits,
+  an IPv6 address in brackets. The bracketed form is checked only for hex
+  digits and colons. The port, when present, is from 1 to 65535 with no
+  leading zero. Each label is 1 to 63 characters of letters, digits,
   hyphens, and underscores, and does not start or end with a hyphen. Labels
   are separated by single dots.
 - **Link token.** Sent as the `X-Cairn-Link-Token` header, `b64(linkToken)`.

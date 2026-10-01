@@ -42,8 +42,15 @@ test('startAdmin stays quiet for the unauthenticated redirect, and loads nothing
 test('startAdmin shows any other failure of /api/me instead of assuming a sign-in redirect', async () => {
   const h = harness({ api: async () => { throw new Error('HTTP 500'); }, lists: [{ name: 'artifacts', load: ok }] });
   await h.run();
-  assert.deepEqual(h.seen.failed, [['init', 'HTTP 500']]);
+  assert.deepEqual(h.seen.failed, [['init', 'HTTP 500'], ['artifacts', 'HTTP 500']]);
   assert.deepEqual(h.seen.loaded, []);
+});
+
+test('a failure of /api/me also stays shown in every list, after the flash hides', async () => {
+  const failed = [];
+  await startAdmin({ api: async () => { throw new Error('HTTP 500'); }, lists: [{ name: 'artifacts', load: ok }, { name: 'users', load: ok }],
+    setWho: () => {}, listFailed: (name, err) => failed.push([name, err.message]), fail: () => {} });
+  assert.deepEqual(failed, [['artifacts', 'HTTP 500'], ['users', 'HTTP 500']]);
 });
 
 test('one list failing does not hide the others, and its error is shown', async () => {

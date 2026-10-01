@@ -60,8 +60,9 @@ func (l Link) check() error {
 // isLinkHost reports whether s is exactly scheme://host[:port], with an
 // http or https scheme and nothing else. The host is DNS-style labels (1 to
 // 63 of letters, digits, hyphens, and underscores, none starting or ending
-// with a hyphen, joined by single dots) or a bracketed IPv6 literal. The
-// port is 1 to 65535 with no leading zero. No user info.
+// with a hyphen, joined by single dots) or an IPv6 address in brackets,
+// checked only as hex digits and colons. The port is 1 to 65535 with no
+// leading zero. No user info.
 func isLinkHost(s string) bool {
 	m := linkHostRE.FindStringSubmatch(s)
 	if m == nil {

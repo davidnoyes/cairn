@@ -552,6 +552,22 @@ test('signIn zeroes the stretched key when deriving from it throws', async () =>
   assert.ok(isZero(kept[0]), 'the stretched key was left in memory');
 });
 
+test('signIn zeroes the decrypted private keys when opening the bundle fails after them', async () => {
+  const server = fakeServer();
+  await signedUp(server);
+  // A truncated EK fails to open after both private keys were decrypted.
+  const stored = server.accounts.get('ada@example.com').bundle;
+  stored.ek = e2e.b64(e2e.unb64(stored.ek).slice(1));
+  const spy = spyCrypto();
+  try {
+    await assert.rejects(account.signIn(makeDeps(server), { email: 'ada@example.com', password: STRONG }), (e) => e.name === 'DecryptError');
+  } finally {
+    spy.restore();
+  }
+  assert.ok(spy.decrypted.length >= 2, 'both private keys were decrypted');
+  for (const secret of spy.decrypted) assert.ok(isZero(secret), 'a decrypted private key was left in memory');
+});
+
 test('reset with the recovery code zeroes the code, its key, MK, and the seed when the stretch throws', async () => {
   const server = fakeServer();
   const { recoveryCode } = await signedUp(server);
@@ -566,6 +582,34 @@ test('reset with the recovery code zeroes the code, its key, MK, and the seed wh
   }
   assert.ok(spy.decrypted.length >= 2, 'MK and the seed were opened');
   for (const secret of [...spy.decrypted, ...spy.raws]) assert.ok(isZero(secret), 'a secret was left in memory');
+  assert.equal(call(server, '/api/auth/reset/complete').length, 0);
+});
+
+test('reset with the recovery code reports a crypto failure as itself, not as a wrong code', async () => {
+  const server = fakeServer();
+  const { recoveryCode } = await signedUp(server);
+  const token = resetToken(server, 'ada@example.com');
+  const { info } = await account.resetBeginFromLink(makeDeps(server), fakePage('#token=' + token));
+  const spy = spyCrypto();
+  spy.failing.add('deriveBits');
+  try {
+    await assert.rejects(
+      account.resetWithRecovery(makeDeps(server), { token, info, recoveryCode, password: NEW_STRONG, confirm: NEW_STRONG }),
+      (e) => /injected deriveBits/.test(e.message) && !/Start with new keys/.test(e.message));
+  } finally {
+    spy.restore();
+  }
+  assert.equal(call(server, '/api/auth/reset/complete').length, 0);
+});
+
+test('reset with the recovery code reports a malformed sealed MK as itself, not as a wrong code', async () => {
+  const server = fakeServer();
+  const { recoveryCode } = await signedUp(server);
+  const token = resetToken(server, 'ada@example.com');
+  const { info } = await account.resetBeginFromLink(makeDeps(server), fakePage('#token=' + token));
+  await assert.rejects(
+    account.resetWithRecovery(makeDeps(server), { token, info: { ...info, mkRecovery: '@@@' }, recoveryCode, password: NEW_STRONG, confirm: NEW_STRONG }),
+    (e) => e instanceof e2e.FormatError && !/Start with new keys/.test(e.message));
   assert.equal(call(server, '/api/auth/reset/complete').length, 0);
 });
 
