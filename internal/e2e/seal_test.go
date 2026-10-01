@@ -275,8 +275,11 @@ func TestLinkTokenHashDeterministic(t *testing.T) {
 
 func TestFileAddressBoundToPath(t *testing.T) {
 	fk := testKey("filekey")
-	a := FileAddress(fk, "/a.txt")
-	b := FileAddress(fk, "/b.txt")
+	a, errA := FileAddress(fk, "/a.txt")
+	b, errB := FileAddress(fk, "/b.txt")
+	if errA != nil || errB != nil {
+		t.Fatal(errA, errB)
+	}
 	if a == b {
 		t.Fatal("FileAddress ignored the path")
 	}
@@ -324,7 +327,10 @@ func TestAKCommitRejectsWrongKeyLength(t *testing.T) {
 
 func TestBlindIndexBoundToTypeAndValue(t *testing.T) {
 	ik := testKey("indexkey")
-	a := BlindIndex(ik, "session", "abc123")
+	a, err := BlindIndex(ik, "session", "abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
 	cases := []struct {
 		name, typ, value string
 	}{
@@ -332,7 +338,10 @@ func TestBlindIndexBoundToTypeAndValue(t *testing.T) {
 		{"value", "session", "xyz789"},
 	}
 	for _, c := range cases {
-		b := BlindIndex(ik, c.typ, c.value)
+		b, err := BlindIndex(ik, c.typ, c.value)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if a == b {
 			t.Fatalf("changing %s did not change BlindIndex", c.name)
 		}

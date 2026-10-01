@@ -324,8 +324,10 @@ func checkNoLoneSurrogates(data []byte) error {
 // owner to the signer, binds a rotation's user/old to the key being rotated
 // away from, or enforces a monotonic seq. The caller must do all of that —
 // Signer is untrusted wire data, never a key lookup by itself — and must run
-// CheckPublicKeys on a rotated key pair and on any wrap recipient before
-// trusting it.
+// CheckPublicKeys on any wrap recipient before trusting it. OpenRotation
+// itself runs CheckPublicKeys on the new key pair, so a rotation to a
+// malformed or low-order key is refused as ErrFormat even when both
+// signatures verify.
 
 // OpenEnvelope verifies env's signature against pub for purpose, strictly
 // decodes its body into out, and requires the body's "v" field to be 1.
@@ -373,8 +375,15 @@ func OpenRotation(env Envelope, oldPub ed25519.PublicKey, out *RotationBody) err
 	if len(env.NewSig) == 0 {
 		return fmt.Errorf("%w: rotation envelope missing newSig", ErrFormat)
 	}
+	newX25519, err := UnB64(out.New.X25519)
+	if err != nil {
+		return err
+	}
 	newPub, err := UnB64(out.New.Ed25519)
 	if err != nil {
+		return err
+	}
+	if err := CheckPublicKeys(newX25519, newPub); err != nil {
 		return err
 	}
 	if !Verify(newPub, "rotation", env.Body, env.NewSig) {

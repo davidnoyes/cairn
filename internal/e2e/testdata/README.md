@@ -42,8 +42,10 @@ The overrides, and which primitives read them:
   `blob` (`artifact`, `version`, `kind`, `name`) and `wrap` (`purpose`,
   `artifact`, `epoch`, `recipientId`).
 - **`key`**: hex, replaces the key the operation opens or verifies with.
-  Used by `seal` (the AES-256-GCM key) and `wrap` (the recipient's X25519
-  private key).
+  Used by `seal` (the AES-256-GCM key), `wrap` (the recipient's X25519
+  private key), and `fileAddress` and `blindIndex` (the HMAC key). In
+  `fileAddress` and `blindIndex`, every `key` is the wrong length, and the
+  operation must fail with `ErrFormat`/`FormatError`, not produce a MAC.
 - **`fields`**: hex strings, replaces `seal`'s associated-data fields.
 - **`purpose`**: replaces a `signature` entry's purpose.
 - **`pub`**: hex, replaces a `signature` entry's public key.
@@ -90,18 +92,30 @@ The overrides, and which primitives read them:
   `seed`, `pub`, `body`, `signer`, `want` (the signature).
 - **`rotation`**: a rotation envelope. `sig` is signed by the old Ed25519
   key, and `newSig` by the new one, over the same body. `oldSeed`, `oldPub`,
-  `newSeed`, `newPub`, `signer`, `body`, `sig`, `newSig`. The
-  "missing newSig" case isn't a vector here, since the schema has no way to
-  say an override makes a field absent rather than unset; it's a direct Go
+  `newSeed`, `newPub`, `signer`, `body`, `sig`, `newSig`. An entry with a
+  `refuse` string has two valid signatures over a body that names a bad new
+  key, such as a low-order X25519 key. `OpenRotation`/`openRotation` must
+  refuse that entry as a whole with `ErrFormat`/`FormatError`, and `refuse`
+  says why. The "missing newSig" case isn't a vector here, since the
+  schema has no way to say an override makes a field absent rather than
+  unset; it's a direct Go
   test (`envelope_test.go`) instead.
-- **`ed25519Strict`**: `pub` and `why`. Most entries are one of the hardcoded
-  canonical small-order encodings or a known non-canonical encoding of one
-  (a y coordinate >= p, or x=0 with the sign bit set), with `purpose`,
-  `body`, and `sig` empty, and must fail both `CheckPublicKeys` and `Verify`
-  — including the universal R=B,S=1 forgery — on their own. One entry is a
-  genuine key with a non-canonical signature instead: `purpose`, `body`, and
-  `sig` (the S component replaced by S + L) are all set, and only `Verify`
-  applies.
+- **`ed25519Strict`**: `pub` and `why`. Entries come in two kinds:
+  - **A bad key.** `purpose`, `body`, and `sig` are empty, and the key alone
+    must fail both `CheckPublicKeys` and `Verify`, including the universal
+    R=B,S=1 forgery. The keys are the hardcoded small-order encodings, the
+    known non-canonical encodings of them (a y coordinate >= p, or x=0 with
+    the sign bit set), a point on the curve with a torsion component, and a
+    canonical y with no matching x.
+  - **A bad signature.** `purpose`, `body`, and `sig` are all set, and only
+    `Verify` applies. The signatures are: S replaced by S + L; R the
+    identity, of order 8, or the identity encoded with y = p+1; R with a
+    torsion component; and a signature under a key with a torsion component
+    that passes the cofactorless equation.
+
+  Each bad signature must also fail before the curve equation runs:
+  `signatureEncodingOK` in Go, and `verify` with `subtle.verify` stubbed in
+  JS. A verifier that relied on the equation would accept some of them.
 - **`x25519Strict`**: `pub` and `why`. Every entry is a non-canonical (high
   bit set, or u >= p) or low-order X25519 public key that must fail
   `CheckPublicKeys` on its own.
@@ -109,14 +123,26 @@ The overrides, and which primitives read them:
   (the formatted short form).
 - **`linkToken`**: `ak`, `artifact`, `epoch`, `want`, `hash`
   (`LinkTokenHash(want)`).
-- **`fileAddress`**: `fileKey`, `path`, `want`.
-- **`blindIndex`**: `indexKey`, `type`, `value`, `want`.
+- **`fileAddress`**: `fileKey`, `path`, `want`, and `negative` entries with
+  a 16-, 31-, or 33-byte `key`.
+- **`blindIndex`**: `indexKey`, `type`, `value`, `want`, and `negative`
+  entries with a 16-, 31-, or 33-byte `key`.
 - **`strictJSON`**: a raw body or envelope byte string `DecodeStrict`/
   `decodeStrict` must refuse. `purpose` (which `BODY_SCHEMAS` entry to decode
   `body` against), `body` (hex, since some entries are invalid UTF-8), `why`.
+  The surrogate entries cover an unpaired high surrogate escape, a lone low
+  surrogate escape, and a high surrogate escape followed by a plain character
+  or by a second high surrogate escape.
+- **`envelope`**: a raw `{body, sig, signer, newSig}` envelope that
+  `Envelope.UnmarshalJSON`/`decodeEnvelope` must accept or refuse. `json`
+  (the text itself, not hex), `accept`, `why`. A refused entry must fail
+  with `ErrFormat`/`FormatError`. An accepted entry must re-encode to exactly
+  `json`. The refused entries include an explicit `"newSig":""`, since
+  `newSig` may be absent but never present and empty.
 - **`base64url`**: `bytes` (hex) and its canonical `encoded` form, plus
-  `negative` entries (a non-URL character, padding, or non-zero trailing
-  bits in a partial group) that `UnB64`/`unb64` must refuse.
+  `negative` entries (a non-URL character, padding, non-zero trailing bits
+  in a partial group, or a carriage return or line feed anywhere) that
+  `UnB64`/`unb64` must refuse.
 
 ## Blob transforms
 

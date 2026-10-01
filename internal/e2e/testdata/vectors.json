@@ -1093,6 +1093,19 @@
           "newSig": "1ad66b467807590464fe6cb0f46a8cf1589626a2959a10e7accc67842416fd01b3f9fd6811133fcf202e0513054fc0fdad98de93c5e740557ff9cc6ac6211500"
         }
       ]
+    },
+    {
+      "name": "low-order-new-x25519",
+      "oldSeed": "e6b2dee8501dd31b19dc5050b776844b7fe28f6bfe9cbf8f7c531c8a0339794d",
+      "oldPub": "388d54c7efd27b4ecb76d653279d7d6c8a335a1af8098c420a82b1c29b6d7d54",
+      "newSeed": "df9d5b8bd39a42b089341e2906e281eb23700d14ff4f65f6c02d1f56f37b7c87",
+      "newPub": "5ad9ab1a9b8405c439b0fe28a453189405294c6cfc11379abf07317fbd880b2e",
+      "signer": "user-1",
+      "body": "7b2276223a312c2275736572223a22757365722d31222c22736571223a322c226f6c64223a7b22783235353139223a22325950312d766a5a72386937315355414e7a5a65594f4d58714f596639704f764b6a383661756c2d76586f222c2265643235353139223a224f493155782d5f536530374c64745a544a35313962496f7a5768723443597843436f4b7877707474665651227d2c226e6577223a7b22783235353139223a2241414141414141414141414141414141414141414141414141414141414141414141414141414141414141222c2265643235353139223a2257746d7247707545426351357350346f70464d596c41557054477a38455465617677637866373249437934227d7d",
+      "sig": "922b4b1c0ee570be810ebd8656ea70687d2c0e9f862ada3f9e38ac57ec2a1359e2684c2b1fe321c194bbb2fdb8033f9213b30472af1fd12a94792a9a24732f04",
+      "newSig": "dc45537b20f4318840ed0f7158c6c89097cc95aeae58eb5377ad3b12e51c36e5b89559a927d355dbcf2bfeccec29c953fd7d706c0f9a88d8b0a2864abbb47f05",
+      "negative": null,
+      "refuse": "the new X25519 key is low-order; both signatures are valid"
     }
   ],
   "ed25519Strict": [
@@ -1173,6 +1186,56 @@
       "body": "626f647920666f72206e6f6e2d63616e6f6e6963616c20532074657374",
       "sig": "444323653b8b347e1cc40a3334b1dd9c052778dd953e0545519e656a6644a7887a87c9dccb80b75cad949647b99434efe7f3a2a2cced89e80b11fd1102a79a11",
       "why": "non-canonical S (S + L)"
+    },
+    {
+      "name": "r-identity",
+      "pub": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "purpose": "reset",
+      "body": "7b2276223a312c2275736572223a227531222c22746f6b656e223a2274227d",
+      "sig": "0100000000000000000000000000000000000000000000000000000000000000734a4de83d6a0f42c55b95e7f026c5d3ac924a15c367f779e431202a2cdb5803",
+      "why": "R is the identity point"
+    },
+    {
+      "name": "r-small-order",
+      "pub": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "purpose": "reset",
+      "body": "7b2276223a312c2275736572223a227531222c22746f6b656e223a2274227d",
+      "sig": "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc850e1e0f25e8a27cfb4e17f3119cf8bb4d713e25181b68fd9dec353adae253df08",
+      "why": "R is a point of order 8"
+    },
+    {
+      "name": "r-non-canonical",
+      "pub": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "purpose": "reset",
+      "body": "7b2276223a312c2275736572223a227531222c22746f6b656e223a2274227d",
+      "sig": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f1e93573138bdf075cd5c13e0212cfb87bc3ef707f302a8df9c4f0b93ec55bf02",
+      "why": "R encodes the identity with y = p+1"
+    },
+    {
+      "name": "r-mixed-order",
+      "pub": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "purpose": "reset",
+      "body": "7b2276223a312c2275736572223a227531222c22746f6b656e223a2274227d",
+      "sig": "3b9148883f991130f4643710657fbe0a78e9bce49c497c0f31f3065cc63ba8cf9caa576c6f263fb23c6a97b4ca1df0f3ad90b512386ba68a8c77f21ffc798204",
+      "why": "R has a torsion component of order 8"
+    },
+    {
+      "name": "mixed-order-key-signature",
+      "pub": "38fd00c26d1ce27e6f4b55b15fbebffae98052f763b21625375d037af012b0a7",
+      "purpose": "reset",
+      "body": "7b2276223a312c2275736572223a227531222c22746f6b656e223a2274227d",
+      "sig": "f400c4a7005b6752b4d23fa932c8ff8935939acce4a1e6d9f6461be05c86c7bdfba58f903a28ee7c69fd63cf32b8474184ee3b3e596a9a1b53c1950161740101",
+      "why": "the key has a torsion component; the signature passes the cofactorless equation"
+    },
+    {
+      "name": "mixed-order-key",
+      "pub": "ea9d1a3a083c9b4655ae5e7e6e0dc9064a2a2ce0861e1f5ac01cfea6ec46b3e6",
+      "why": "on the curve and not small-order, but with a torsion component"
+    },
+    {
+      "name": "not-on-curve",
+      "pub": "0200000000000000000000000000000000000000000000000000000000000000",
+      "why": "y is canonical but no x satisfies the curve equation"
     }
   ],
   "x25519Strict": [
@@ -1221,7 +1284,21 @@
       "name": "sample",
       "fileKey": "36227f17a0680a4135606234fbcbb1716ec2f4a40435161281551dd08f333dd0",
       "path": "/images/logo.png",
-      "want": "2ef2f458f4481dd1247f41cdbda66fa73887531595409b6f9b56e4dcc758fbc7"
+      "want": "2ef2f458f4481dd1247f41cdbda66fa73887531595409b6f9b56e4dcc758fbc7",
+      "negative": [
+        {
+          "why": "16-byte key",
+          "key": "000102030405060708090a0b0c0d0e0f"
+        },
+        {
+          "why": "31-byte key",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e"
+        },
+        {
+          "why": "33-byte key",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+        }
+      ]
     }
   ],
   "blindIndex": [
@@ -1230,7 +1307,21 @@
       "indexKey": "6db28cc0c2f183f7afc8107f849c16412485449dcf8730ecee014413e844a322",
       "type": "session",
       "value": "abc123",
-      "want": "b500f0b823ceda026cb37d1dd24af3a320d5b61cf4519fa1c019fff0b09d39ed"
+      "want": "b500f0b823ceda026cb37d1dd24af3a320d5b61cf4519fa1c019fff0b09d39ed",
+      "negative": [
+        {
+          "why": "16-byte key",
+          "key": "000102030405060708090a0b0c0d0e0f"
+        },
+        {
+          "why": "31-byte key",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e"
+        },
+        {
+          "why": "33-byte key",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+        }
+      ]
     }
   ],
   "strictJSON": [
@@ -1287,6 +1378,134 @@
       "purpose": "vouch",
       "body": "7b2276223a312c226172746966616374223a226131222c2276657273696f6e223a227631222c226d616e6966657374223a225c7564383030227d",
       "why": "an unpaired UTF-16 surrogate escape"
+    },
+    {
+      "name": "lone-low-surrogate",
+      "purpose": "vouch",
+      "body": "7b2276223a312c226172746966616374223a226131222c2276657273696f6e223a227631222c226d616e6966657374223a225c7564633030227d",
+      "why": "a low surrogate escape with no high surrogate before it"
+    },
+    {
+      "name": "high-surrogate-then-char",
+      "purpose": "vouch",
+      "body": "7b2276223a312c226172746966616374223a226131222c2276657273696f6e223a227631222c226d616e6966657374223a225c756438303041227d",
+      "why": "a high surrogate escape followed by a plain character"
+    },
+    {
+      "name": "high-surrogate-twice",
+      "purpose": "vouch",
+      "body": "7b2276223a312c226172746966616374223a226131222c2276657273696f6e223a227631222c226d616e6966657374223a225c75643830305c7564383030227d",
+      "why": "a high surrogate escape followed by another high surrogate escape"
+    }
+  ],
+  "envelope": [
+    {
+      "name": "valid",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":\"u1\"}",
+      "accept": true,
+      "why": "body, sig and signer"
+    },
+    {
+      "name": "valid-newSig",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":\"u1\",\"newSig\":\"WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWg\"}",
+      "accept": true,
+      "why": "a rotation envelope with newSig"
+    },
+    {
+      "name": "duplicate-key",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"body\":\"eyJ2IjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":\"u1\"}",
+      "accept": false,
+      "why": "body appears twice"
+    },
+    {
+      "name": "trailing-data",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":\"u1\"} {}",
+      "accept": false,
+      "why": "a second JSON value after the envelope"
+    },
+    {
+      "name": "case-variant-key",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"Signer\":\"u1\"}",
+      "accept": false,
+      "why": "\"Signer\" instead of \"signer\""
+    },
+    {
+      "name": "unknown-key",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":\"u1\",\"extra\":1}",
+      "accept": false,
+      "why": "a field the envelope does not declare"
+    },
+    {
+      "name": "missing-signer",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\"}",
+      "accept": false,
+      "why": "signer is absent"
+    },
+    {
+      "name": "non-string-signer",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":1}",
+      "accept": false,
+      "why": "signer is a number"
+    },
+    {
+      "name": "null-body",
+      "json": "{\"body\":null,\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":\"u1\"}",
+      "accept": false,
+      "why": "body is null"
+    },
+    {
+      "name": "newSig-empty",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":\"u1\",\"newSig\":\"\"}",
+      "accept": false,
+      "why": "\"newSig\":\"\" is not the same as an absent newSig"
+    },
+    {
+      "name": "newSig-null",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":\"u1\",\"newSig\":null}",
+      "accept": false,
+      "why": "newSig is null"
+    },
+    {
+      "name": "body-base64-lf",
+      "json": "{\"body\":\"eyJ2\\nIjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":\"u1\"}",
+      "accept": false,
+      "why": "body has an embedded line feed"
+    },
+    {
+      "name": "body-base64-padded",
+      "json": "{\"body\":\"eyJ2IjoxfQ=\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":\"u1\"}",
+      "accept": false,
+      "why": "body is padded with equals"
+    },
+    {
+      "name": "sig-base64-cr",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\\r\",\"signer\":\"u1\"}",
+      "accept": false,
+      "why": "sig has a trailing carriage return"
+    },
+    {
+      "name": "sig-base64-plus",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"sig\":\"+AECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":\"u1\"}",
+      "accept": false,
+      "why": "sig uses the standard alphabet's plus sign"
+    },
+    {
+      "name": "newSig-base64-crlf",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":\"u1\",\"newSig\":\"WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp\\r\\naWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWg\"}",
+      "accept": false,
+      "why": "newSig has an embedded CR LF"
+    },
+    {
+      "name": "newSig-base64-slash",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":\"u1\",\"newSig\":\"/lpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWg\"}",
+      "accept": false,
+      "why": "newSig uses the standard alphabet's slash"
+    },
+    {
+      "name": "lone-surrogate-escape",
+      "json": "{\"body\":\"eyJ2IjoxfQ\",\"sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw\",\"signer\":\"u\\ud800\"}",
+      "accept": false,
+      "why": "signer holds an unpaired surrogate escape"
     }
   ],
   "base64url": [
@@ -1310,6 +1529,26 @@
         {
           "why": "padded with equals",
           "input": "AA="
+        },
+        {
+          "why": "leading line feed",
+          "input": "\nAA"
+        },
+        {
+          "why": "trailing line feed",
+          "input": "AA\n"
+        },
+        {
+          "why": "embedded line feed",
+          "input": "A\nA"
+        },
+        {
+          "why": "embedded carriage return and line feed",
+          "input": "A\r\nA"
+        },
+        {
+          "why": "trailing carriage return",
+          "input": "AA\r"
         }
       ]
     },
@@ -1333,6 +1572,69 @@
         {
           "why": "padded with equals",
           "input": "AAE="
+        },
+        {
+          "why": "leading line feed",
+          "input": "\nAAE"
+        },
+        {
+          "why": "trailing line feed",
+          "input": "AAE\n"
+        },
+        {
+          "why": "embedded line feed",
+          "input": "A\nAE"
+        },
+        {
+          "why": "embedded carriage return and line feed",
+          "input": "A\r\nAE"
+        },
+        {
+          "why": "trailing carriage return",
+          "input": "AAE\r"
+        }
+      ]
+    },
+    {
+      "name": "len-4",
+      "bytes": "00010203",
+      "encoded": "AAECAw",
+      "negative": [
+        {
+          "why": "non-zero trailing bits",
+          "input": "AAECAx"
+        },
+        {
+          "why": "contains a plus sign",
+          "input": "+AECAw"
+        },
+        {
+          "why": "contains a slash",
+          "input": "/AECAw"
+        },
+        {
+          "why": "padded with equals",
+          "input": "AAECAw="
+        },
+        {
+          "why": "leading line feed",
+          "input": "\nAAECAw"
+        },
+        {
+          "why": "trailing line feed",
+          "input": "AAECAw\n"
+        },
+        {
+          "why": "embedded line feed",
+          "input": "AAE\nCAw"
+        },
+        {
+          "why": "embedded carriage return and line feed",
+          "input": "AAE\r\nCAw"
+        },
+        {
+          "why": "trailing carriage return",
+          "input": "AAECAw\r"
         }
       ]
     }

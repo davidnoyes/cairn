@@ -38,10 +38,12 @@ func B64(b []byte) string {
 }
 
 // UnB64 decodes a base64url-no-pad string, refusing anything outside the
-// URL-safe alphabet, any padding, and non-zero trailing bits.
+// URL-safe alphabet, any padding, and non-zero trailing bits. The decoder
+// skips CR and LF even in Strict mode, so the result is also re-encoded and
+// compared: only the one canonical spelling of a value decodes.
 func UnB64(s string) ([]byte, error) {
 	b, err := b64.DecodeString(s)
-	if err != nil {
+	if err != nil || B64(b) != s {
 		return nil, ErrFormat
 	}
 	return b, nil

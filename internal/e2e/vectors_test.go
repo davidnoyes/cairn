@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"math/big"
@@ -261,6 +262,7 @@ type vectorFile struct {
 	FileAddress   []fileAddressVec   `json:"fileAddress"`
 	BlindIndex    []blindIndexVec    `json:"blindIndex"`
 	StrictJSON    []strictJSONVec    `json:"strictJSON"`
+	Envelope      []envelopeVec      `json:"envelope"`
 	Base64URL     []base64Vec        `json:"base64url"`
 }
 
@@ -337,6 +339,9 @@ type rotationVec struct {
 	Sig      string     `json:"sig"`
 	NewSig   string     `json:"newSig"`
 	Negative []negative `json:"negative"`
+	// Refuse, when set, says why the entry as a whole must be refused as
+	// malformed (ErrFormat, FormatError) even though both signatures verify.
+	Refuse string `json:"refuse,omitempty"`
 }
 
 // ed25519StrictVec covers two different rejections under one name: a
@@ -462,19 +467,33 @@ type linkTokenVec struct {
 	Hash     string `json:"hash"`
 }
 
+// fileAddressVec and blindIndexVec carry negatives whose key override is a
+// wrong-length key: FileAddress/fileAddress and BlindIndex/blindIndex must
+// refuse it (ErrFormat/FormatError) rather than MAC under it.
 type fileAddressVec struct {
-	Name    string `json:"name"`
-	FileKey string `json:"fileKey"`
-	Path    string `json:"path"`
-	Want    string `json:"want"`
+	Name     string     `json:"name"`
+	FileKey  string     `json:"fileKey"`
+	Path     string     `json:"path"`
+	Want     string     `json:"want"`
+	Negative []negative `json:"negative"`
 }
 
 type blindIndexVec struct {
-	Name     string `json:"name"`
-	IndexKey string `json:"indexKey"`
-	Type     string `json:"type"`
-	Value    string `json:"value"`
-	Want     string `json:"want"`
+	Name     string     `json:"name"`
+	IndexKey string     `json:"indexKey"`
+	Type     string     `json:"type"`
+	Value    string     `json:"value"`
+	Want     string     `json:"want"`
+	Negative []negative `json:"negative"`
+}
+
+// wrongKeyLenNegatives overrides the key with one too short or too long.
+func wrongKeyLenNegatives() []negative {
+	var out []negative
+	for _, n := range []int{16, 31, 33} {
+		out = append(out, negative{Why: fmt.Sprintf("%d-byte key", n), Key: hexEnc(fillBytes(n))})
+	}
+	return out
 }
 
 func vectorsPath() string {
@@ -888,6 +907,24 @@ func generateVectors(t testing.TB) vectorFile {
 				{Why: "newSig by a wrong key", NewSig: hexEnc(wrongNewSig)},
 			},
 		}}
+
+		// Both signatures valid, but the new X25519 key is the all-zero
+		// low-order point: only the key check can refuse it.
+		body.New.X25519 = B64(make([]byte, 32))
+		badBody, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		badEnv, err := SignRotation(oldSeed, newSeed, badBody, "user-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		vf.Rotation = append(vf.Rotation, rotationVec{
+			Name: "low-order-new-x25519", OldSeed: hexEnc(oldSeed), OldPub: hexEnc(oldPub),
+			NewSeed: hexEnc(newSeed), NewPub: hexEnc(newPub), Signer: "user-1",
+			Body: hexEnc(badBody), Sig: hexEnc(badEnv.Sig), NewSig: hexEnc(badEnv.NewSig),
+			Refuse: "the new X25519 key is low-order; both signatures are valid",
+		})
 	}
 
 	// ed25519Strict: every hardcoded small-order public key, plus every known
@@ -917,6 +954,7 @@ func generateVectors(t testing.TB) vectorFile {
 			Sig: hexEnc(nonCanonical), Why: "non-canonical S (S + L)",
 		})
 	}
+	vf.Ed25519Strict = append(vf.Ed25519Strict, ed25519StrictTorsionVectors(t)...)
 
 	// x25519Strict: a non-canonical (high bit set, or u >= p) or low-order
 	// X25519 public key must fail CheckPublicKeys on its own.
@@ -981,14 +1019,30 @@ func generateVectors(t testing.TB) vectorFile {
 				Name: "unpaired-surrogate", Purpose: "vouch", Why: "an unpaired UTF-16 surrogate escape",
 				Body: hexEnc([]byte(`{"v":1,"artifact":"a1","version":"v1","manifest":"` + `\ud800` + `"}`)),
 			},
+			{
+				Name: "lone-low-surrogate", Purpose: "vouch", Why: "a low surrogate escape with no high surrogate before it",
+				Body: hexEnc([]byte(`{"v":1,"artifact":"a1","version":"v1","manifest":"` + `\udc00` + `"}`)),
+			},
+			{
+				Name: "high-surrogate-then-char", Purpose: "vouch", Why: "a high surrogate escape followed by a plain character",
+				Body: hexEnc([]byte(`{"v":1,"artifact":"a1","version":"v1","manifest":"` + `\ud800A` + `"}`)),
+			},
+			{
+				Name: "high-surrogate-twice", Purpose: "vouch", Why: "a high surrogate escape followed by another high surrogate escape",
+				Body: hexEnc([]byte(`{"v":1,"artifact":"a1","version":"v1","manifest":"` + `\ud800\ud800` + `"}`)),
+			},
 		}
 	}
 
 	// base64url: strict decoding accepts only the URL-safe alphabet, no
-	// padding, and zero padding bits in a partial group; see UnB64/unb64.
-	for _, n := range []int{1, 2} {
+	// padding, zero padding bits in a partial group, and no whitespace at all
+	// (Go's decoder silently skips CR and LF unless told not to); see
+	// UnB64/unb64. len-4 gives a full group plus a partial one, so an
+	// embedded line break can sit between them.
+	for _, n := range []int{1, 2, 4} {
 		b := fillBytes(n)
 		encoded := B64(b)
+		mid := len(encoded) / 2
 		vf.Base64URL = append(vf.Base64URL, base64Vec{
 			Name: fmt.Sprintf("len-%d", n), Bytes: hexEnc(b), Encoded: encoded,
 			Negative: []negative{
@@ -996,6 +1050,11 @@ func generateVectors(t testing.TB) vectorFile {
 				{Why: "contains a plus sign", Input: "+" + encoded[1:]},
 				{Why: "contains a slash", Input: "/" + encoded[1:]},
 				{Why: "padded with equals", Input: encoded + "="},
+				{Why: "leading line feed", Input: "\n" + encoded},
+				{Why: "trailing line feed", Input: encoded + "\n"},
+				{Why: "embedded line feed", Input: encoded[:mid] + "\n" + encoded[mid:]},
+				{Why: "embedded carriage return and line feed", Input: encoded[:mid] + "\r\n" + encoded[mid:]},
+				{Why: "trailing carriage return", Input: encoded + "\r"},
 			},
 		})
 	}
@@ -1025,18 +1084,30 @@ func generateVectors(t testing.TB) vectorFile {
 	// fileAddress
 	{
 		fk := testKey("vector-filekey")
+		want, err := FileAddress(fk, "/images/logo.png")
+		if err != nil {
+			t.Fatal(err)
+		}
 		vf.FileAddress = []fileAddressVec{{
-			Name: "sample", FileKey: hexEnc(fk), Path: "/images/logo.png", Want: FileAddress(fk, "/images/logo.png"),
+			Name: "sample", FileKey: hexEnc(fk), Path: "/images/logo.png", Want: want,
+			Negative: wrongKeyLenNegatives(),
 		}}
 	}
 
 	// blindIndex
 	{
 		ik := testKey("vector-indexkey")
+		want, err := BlindIndex(ik, "session", "abc123")
+		if err != nil {
+			t.Fatal(err)
+		}
 		vf.BlindIndex = []blindIndexVec{{
-			Name: "sample", IndexKey: hexEnc(ik), Type: "session", Value: "abc123", Want: BlindIndex(ik, "session", "abc123"),
+			Name: "sample", IndexKey: hexEnc(ik), Type: "session", Value: "abc123", Want: want,
+			Negative: wrongKeyLenNegatives(),
 		}}
 	}
+
+	vf.Envelope = envelopeVectors()
 
 	return vf
 }
@@ -1321,7 +1392,14 @@ func checkVectors(t *testing.T, vf vectorFile) {
 			body := hexDec(t, v.Body)
 			env := Envelope{Body: body, Sig: hexDec(t, v.Sig), Signer: v.Signer, NewSig: hexDec(t, v.NewSig)}
 			var out RotationBody
-			if err := OpenRotation(env, hexDec(t, v.OldPub), &out); err != nil {
+			err := OpenRotation(env, hexDec(t, v.OldPub), &out)
+			if v.Refuse != "" {
+				if !errors.Is(err, ErrFormat) {
+					t.Errorf("%s (%s): OpenRotation = %v, want ErrFormat", v.Name, v.Refuse, err)
+				}
+				continue
+			}
+			if err != nil {
 				t.Errorf("%s: OpenRotation failed: %v", v.Name, err)
 			}
 			for _, neg := range v.Negative {
@@ -1355,16 +1433,26 @@ func checkVectors(t *testing.T, vf vectorFile) {
 				t.Fatalf("%s: pub is %d bytes, want 32", v.Name, len(pub))
 			}
 			if v.Sig != "" {
-				// A genuine key, with a non-canonical signature.
-				if Verify(pub, v.Purpose, hexDec(t, v.Body), hexDec(t, v.Sig)) {
+				// A signature some verifier accepts, which Verify must
+				// refuse, and must refuse before the curve equation: Go's
+				// cofactorless equation alone already fails several of
+				// these, so only the encoding checks prove each rejection.
+				sig := hexDec(t, v.Sig)
+				if Verify(pub, v.Purpose, hexDec(t, v.Body), sig) {
 					t.Errorf("%s (%s): Verify accepted it", v.Name, v.Why)
+				}
+				if signatureEncodingOK(pub, sig) {
+					t.Errorf("%s (%s): signatureEncodingOK accepted it", v.Name, v.Why)
 				}
 				continue
 			}
-			// A small-order or non-canonical key must fail on its own, for
-			// any purpose, body, and signature — including the R=B,S=1
-			// forgery.
-			x25519Pub := testKey("ed25519-strict-x25519-" + v.Name)
+			// A bad key must fail on its own, for any purpose, body, and
+			// signature — including the R=B,S=1 forgery. The X25519 key is
+			// genuine, so only the Ed25519 key can be the reason.
+			_, x25519Pub, err := GenerateX25519(newDRBG("ed25519-strict-x25519"))
+			if err != nil {
+				t.Fatal(err)
+			}
 			if err := CheckPublicKeys(x25519Pub, pub); err == nil {
 				t.Errorf("%s (%s): CheckPublicKeys accepted a bad Ed25519 key", v.Name, v.Why)
 			}
@@ -1377,7 +1465,10 @@ func checkVectors(t *testing.T, vf vectorFile) {
 	})
 
 	t.Run("x25519Strict", func(t *testing.T) {
-		genuineEd25519Pub := testKey("x25519-strict-ed25519-placeholder")
+		_, genuineEd25519Pub, err := GenerateEd25519(newDRBG("x25519-strict-ed25519"))
+		if err != nil {
+			t.Fatal(err)
+		}
 		for _, v := range vf.X25519Strict {
 			pub := hexDec(t, v.Pub)
 			if err := CheckPublicKeys(pub, genuineEd25519Pub); err == nil {
@@ -1385,6 +1476,8 @@ func checkVectors(t *testing.T, vf vectorFile) {
 			}
 		}
 	})
+
+	t.Run("envelope", func(t *testing.T) { checkEnvelopeVectors(t, vf.Envelope) })
 
 	t.Run("strictJSON", func(t *testing.T) {
 		for _, v := range vf.StrictJSON {
@@ -1449,16 +1542,26 @@ func checkVectors(t *testing.T, vf vectorFile) {
 
 	t.Run("fileAddress", func(t *testing.T) {
 		for _, v := range vf.FileAddress {
-			if got := FileAddress(hexDec(t, v.FileKey), v.Path); got != v.Want {
-				t.Errorf("%s: FileAddress mismatch", v.Name)
+			if got, err := FileAddress(hexDec(t, v.FileKey), v.Path); err != nil || got != v.Want {
+				t.Errorf("%s: FileAddress mismatch (%v)", v.Name, err)
+			}
+			for _, neg := range v.Negative {
+				if _, err := FileAddress(hexDec(t, neg.Key), v.Path); !errors.Is(err, ErrFormat) {
+					t.Errorf("%s negative %q: got %v, want ErrFormat", v.Name, neg.Why, err)
+				}
 			}
 		}
 	})
 
 	t.Run("blindIndex", func(t *testing.T) {
 		for _, v := range vf.BlindIndex {
-			if got := BlindIndex(hexDec(t, v.IndexKey), v.Type, v.Value); got != v.Want {
-				t.Errorf("%s: BlindIndex mismatch", v.Name)
+			if got, err := BlindIndex(hexDec(t, v.IndexKey), v.Type, v.Value); err != nil || got != v.Want {
+				t.Errorf("%s: BlindIndex mismatch (%v)", v.Name, err)
+			}
+			for _, neg := range v.Negative {
+				if _, err := BlindIndex(hexDec(t, neg.Key), v.Type, v.Value); !errors.Is(err, ErrFormat) {
+					t.Errorf("%s negative %q: got %v, want ErrFormat", v.Name, neg.Why, err)
+				}
 			}
 		}
 	})

@@ -10,6 +10,8 @@ import (
 	"io"
 	"math/big"
 	"strings"
+
+	"filippo.io/edwards25519"
 )
 
 // GenerateEd25519 reads a 32-byte seed from rnd and derives an Ed25519 key
@@ -34,17 +36,68 @@ func Sign(seed []byte, purpose string, body []byte) ([]byte, error) {
 	return ed25519.Sign(priv, msg), nil
 }
 
-// Verify checks a signature produced by Sign. It refuses a public key of the
-// wrong length and a public key that is one of the small-order Ed25519
-// encodings, which would let a forged "signature" verify against more than
-// one message under a cofactored verifier.
+// Verify checks a signature produced by Sign. Before the curve equation it
+// runs signatureEncodingOK, so it accepts exactly the signatures every
+// strict verifier (cofactored or not) accepts, and the browser module
+// agrees with it whichever WebCrypto implementation runs there.
 func Verify(pub []byte, purpose string, body, sig []byte) bool {
-	if len(pub) != ed25519.PublicKeySize || isSmallOrderEd25519(pub) {
+	if !signatureEncodingOK(pub, sig) {
 		return false
 	}
 	msg := Enc([]byte(LabelSig), []byte(purpose), body)
 	return ed25519.Verify(pub, msg, sig)
 }
+
+// signatureEncodingOK is every check Verify makes before the curve
+// equation: the public key A and the signature's R (its first 32 bytes) must
+// each be the canonical encoding of a point of prime order L (see
+// isPrimeOrderEd25519), and S (its last 32 bytes) must be below L.
+// crypto/ed25519 already refuses some of these through its own equation,
+// but a cofactored verifier accepts a signature with a small-order or
+// mixed-order R or A that a cofactorless one refuses; refusing them here
+// makes the result the same under both. Split out so a test can show each
+// check refuses on its own.
+func signatureEncodingOK(pub, sig []byte) bool {
+	if len(pub) != ed25519.PublicKeySize || len(sig) != ed25519.SignatureSize {
+		return false
+	}
+	if !isPrimeOrderEd25519(pub) || !isPrimeOrderEd25519(sig[:32]) {
+		return false
+	}
+	_, err := edwards25519.NewScalar().SetCanonicalBytes(sig[32:])
+	return err == nil
+}
+
+// isPrimeOrderEd25519 reports whether enc is the canonical encoding of a
+// curve point in the prime-order subgroup other than the identity: not
+// refused by isSmallOrderEd25519, on the curve, and torsion-free. A
+// mixed-order point (a prime-order point plus one of the small-order ones)
+// passes the first two, so it needs the third: [L]P = O, computed as
+// [L-1]P + P because a Scalar only holds values below L. The inputs are
+// public, so the variable-time multiplication is fine.
+func isPrimeOrderEd25519(enc []byte) bool {
+	if len(enc) != 32 || isSmallOrderEd25519(enc) {
+		return false
+	}
+	p, err := new(edwards25519.Point).SetBytes(enc)
+	if err != nil {
+		return false
+	}
+	q := new(edwards25519.Point).VarTimeDoubleScalarBaseMult(scalarLMinus1, p, edwards25519.NewScalar())
+	q.Add(q, p)
+	return q.Equal(edwards25519.NewIdentityPoint()) == 1
+}
+
+// scalarLMinus1 is L-1, the largest value a Scalar holds: -1 mod L.
+var scalarLMinus1 = func() *edwards25519.Scalar {
+	one := make([]byte, 32)
+	one[0] = 1
+	s, err := edwards25519.NewScalar().SetCanonicalBytes(one)
+	if err != nil {
+		panic("e2e: scalar 1 is not canonical")
+	}
+	return s.Negate(s)
+}()
 
 // smallOrderEd25519 is the 8 canonical Ed25519 public key encodings whose
 // decoded point has order dividing 8: the identity, the order-2 point, the
@@ -153,9 +206,11 @@ func isNonCanonicalX25519(pub []byte) bool {
 // An X25519 key is checked for canonical form, then by attempting ECDH with
 // a fresh ephemeral key: crypto/ecdh returns an error exactly when the
 // result would be the all-zero output RFC 7748 requires implementations to
-// reject, which is what every low-order point produces. An Ed25519 key is
-// checked structurally and against the hardcoded small-order list; see
-// isSmallOrderEd25519.
+// reject, which is what every low-order point produces. An Ed25519 key must
+// be a canonical, on-curve, torsion-free point; see isPrimeOrderEd25519.
+// X25519 needs no torsion check: a clamped scalar is a multiple of 8, so
+// the torsion component of a mixed-order key never reaches the shared
+// secret.
 func CheckPublicKeys(x25519Pub, ed25519Pub []byte) error {
 	if len(x25519Pub) != 32 {
 		return fmt.Errorf("%w: x25519 public key length %d, want 32", ErrFormat, len(x25519Pub))
@@ -177,8 +232,8 @@ func CheckPublicKeys(x25519Pub, ed25519Pub []byte) error {
 	if _, err := fresh.ECDH(pub); err != nil {
 		return fmt.Errorf("%w: x25519 public key is low-order", ErrFormat)
 	}
-	if isSmallOrderEd25519(ed25519Pub) {
-		return fmt.Errorf("%w: ed25519 public key is low-order", ErrFormat)
+	if !isPrimeOrderEd25519(ed25519Pub) {
+		return fmt.Errorf("%w: ed25519 public key is not a canonical point of prime order", ErrFormat)
 	}
 	return nil
 }

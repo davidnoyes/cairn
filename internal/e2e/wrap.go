@@ -72,11 +72,17 @@ func Wrap(rnd io.Reader, ctx WrapContext, key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Best-effort zeroing: the ephemeral scalar, the shared secret and the
+	// derived wrap key are dead once the AEAD holds its own key schedule.
 	shared, sharedIsZero := x25519Shared(ephPriv, ctx.RecipientPub)
+	clear(ephPriv)
+	defer clear(shared)
 	if sharedIsZero {
 		return nil, ErrFormat
 	}
-	gcm, err := newGCM(wrapKey(shared, ctx, ephPub))
+	k := wrapKey(shared, ctx, ephPub)
+	defer clear(k)
+	gcm, err := newGCM(k)
 	if err != nil {
 		return nil, err
 	}
@@ -105,12 +111,14 @@ func Unwrap(priv []byte, ctx WrapContext, wrapped []byte) ([]byte, error) {
 	ct := wrapped[1+wrapPubSize:]
 
 	shared, zero := x25519Shared(priv, ephPub)
+	defer clear(shared) // best-effort zeroing, as in Wrap
 	if zero {
 		return nil, ErrDecrypt
 	}
 	// ctx is bound into the derivation here, so a wrap moved to another
 	// purpose, artifact, epoch, or recipient fails to decrypt.
 	unwrapKey := wrapKey(shared, ctx, ephPub)
+	defer clear(unwrapKey)
 	gcm, err := newGCM(unwrapKey)
 	if err != nil {
 		return nil, ErrDecrypt

@@ -11,7 +11,8 @@ byte for byte. The cross-language test vectors in
 - **Bytes in JSON** are base64url without padding, shown here as `b64(x)`.
   Decoding is strict: only `A–Z`, `a–z`, `0–9`, `-`, and `_` are accepted,
   and the unused bits of a final partial group must be zero, so each value
-  has exactly one accepted spelling.
+  has exactly one accepted spelling. A carriage return or line feed anywhere
+  in the value is refused, not skipped.
 - **IDs** are the server's UUID strings: user, artifact, and version IDs.
 - **Integers inside derived inputs**, such as an epoch or a revision, are
   decimal ASCII with no leading zeros: epoch 3 is the string `3`.
@@ -139,7 +140,9 @@ ad = enc("cairn/v1/seal", fields…)
 ```
 
 The nonce is random. Opening checks the version byte and fails on any
-authentication error. The plaintext of every sealed key is 32 bytes.
+authentication error. The plaintext of every sealed key is 32 bytes, so a
+sealed key is exactly 61 bytes. The version byte is outside the AEAD's
+authenticated data, so a reader must check it rather than rely on the tag.
 
 Every sealed value in the system:
 
@@ -261,10 +264,18 @@ a bad key is refused too. With `p = 2^255 − 19`:
 
 - **Ed25519.** Refuse the key if its low 255 bits, read little-endian as `y`,
   are at least `p`; if `x` is zero (`y` is 1 or `p − 1`) and the sign bit is
-  set; or if it is one of the eight canonical small-order points. A
-  signature's `S` must be less than the group order `L`.
+  set; or if it is one of the eight canonical small-order points. The key
+  must also decode to a point on the curve with no torsion component: `[L]A`
+  must be the identity.
+- **Ed25519 signatures.** `S` must be less than the group order `L`. `R`
+  passes the same checks as a key: canonical (`y < p`), not the identity, not
+  of small order, and free of torsion. A verifier enforces these before it
+  checks the curve equation, so cofactored and cofactorless verifiers accept
+  exactly the same signatures.
 - **X25519.** Refuse the key if its full 32 bytes, read little-endian without
-  masking the top bit, are at least `p`, or if it is a low-order point.
+  masking the top bit, are at least `p`, or if it is a low-order point. No
+  torsion check is needed, because the clamped scalar is a multiple of the
+  cofactor.
 
 The `signer` field is not signed, so a verifier never takes the signing key
 from it or from the user directory alone:
@@ -291,7 +302,9 @@ The bytes must be valid UTF-8, with no leading byte-order mark and no
 unpaired surrogate escape: a `\u` escape for one half of a UTF-16 surrogate
 pair without the other half. Every number must be a non-negative integer with
 no leading zeros, fraction, or exponent, and no larger than `2^53 − 1`, the
-largest integer JavaScript holds exactly.
+largest integer JavaScript holds exactly. A JSON text handed over as a
+JavaScript string, rather than as bytes, is refused if it holds a lone UTF-16
+surrogate.
 
 | Purpose | Signed by | Body |
 | --- | --- | --- |
@@ -325,7 +338,10 @@ largest integer JavaScript holds exactly.
   no higher than the last it accepted, so an old record cannot be replayed.
 - A rotation envelope carries a second signature, `newSig`, made by the new
   Ed25519 key over the same message. It proves the user holds the new key, so
-  nobody can rotate a user onto a key that belongs to someone else.
+  nobody can rotate a user onto a key that belongs to someone else. Before it
+  checks `newSig`, a verifier applies the key rules in this section to both
+  new keys. `newSig` may be absent from other envelopes, but where present it
+  must be a non-empty string: `""` and `null` are refused.
 - A vouch's `manifest` is `hex(SHA-256)` of the manifest envelope's body.
 - A reset's `token` is `hex(SHA-256)` of the reset token from the emailed
   link, so the proof cannot be replayed with another link.
@@ -348,6 +364,9 @@ characters separated by spaces.
 - **File address.** `hex(HMAC-SHA256(fileKey, path))`.
 - **Blind index.** `hex(HMAC-SHA256(indexKey, enc("cairn/v1/blind", type,
   value)))`.
+
+`fileKey` and `indexKey` must each be exactly 32 bytes; any other length is
+an error rather than an HMAC key.
 
 ## Test vectors
 
