@@ -6680,6 +6680,90 @@
           "input": "https://u@cairn.example/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
         },
         {
+          "why": "host is an unclosed IPv6 literal",
+          "input": "http://[::1/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "host is a bracketed non-hex literal",
+          "input": "http://[zz]/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "text after an IPv6 literal",
+          "input": "http://[::1]x/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "port is empty",
+          "input": "http://cairn.example:/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "port zero",
+          "input": "http://cairn.example:0/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "port 65536",
+          "input": "http://cairn.example:65536/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "port 123456",
+          "input": "http://cairn.example:123456/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "port with a leading zero",
+          "input": "http://cairn.example:08787/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "host is a hyphen",
+          "input": "http://-/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "host is a dot",
+          "input": "http://./shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "empty label",
+          "input": "http://a..b/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "label starts with a hyphen",
+          "input": "http://-a.b/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "label ends with a hyphen",
+          "input": "http://a-.b/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "later label starts with a hyphen",
+          "input": "http://a.-b/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "later label ends with a hyphen",
+          "input": "http://a.b-/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "later label is 64 characters",
+          "input": "http://a.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "trailing dot",
+          "input": "http://a.b./shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "leading dot",
+          "input": "http://.a.b/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "label is 64 characters",
+          "input": "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.b/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "empty host",
+          "input": "https:///shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
+          "why": "uppercase scheme",
+          "input": "HTTPS://cairn.example/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
+        },
+        {
           "why": "leading space",
           "input": " https://cairn.example/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2"
         },
@@ -6701,6 +6785,66 @@
       "epoch": 1,
       "o": "6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2",
       "want": "http://localhost:8787/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=1\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2",
+      "negative": null
+    },
+    {
+      "name": "ipv6-with-port",
+      "host": "http://[::1]:8787",
+      "artifact": "0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b",
+      "ak": "e730e324a28de32c7d618f08177dca92272939a2a409d43fc32b721a2368fc07",
+      "epoch": 3,
+      "o": "6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2",
+      "want": "http://[::1]:8787/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2",
+      "negative": null
+    },
+    {
+      "name": "port-65535",
+      "host": "https://cairn.example:65535",
+      "artifact": "0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b",
+      "ak": "e730e324a28de32c7d618f08177dca92272939a2a409d43fc32b721a2368fc07",
+      "epoch": 3,
+      "o": "6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2",
+      "want": "https://cairn.example:65535/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2",
+      "negative": null
+    },
+    {
+      "name": "underscore-label",
+      "host": "http://cairn_app:8787",
+      "artifact": "0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b",
+      "ak": "e730e324a28de32c7d618f08177dca92272939a2a409d43fc32b721a2368fc07",
+      "epoch": 3,
+      "o": "6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2",
+      "want": "http://cairn_app:8787/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2",
+      "negative": null
+    },
+    {
+      "name": "label-of-63-characters",
+      "host": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example",
+      "artifact": "0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b",
+      "ak": "e730e324a28de32c7d618f08177dca92272939a2a409d43fc32b721a2368fc07",
+      "epoch": 3,
+      "o": "6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2",
+      "want": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2",
+      "negative": null
+    },
+    {
+      "name": "later-label-of-63-characters",
+      "host": "https://example.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "artifact": "0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b",
+      "ak": "e730e324a28de32c7d618f08177dca92272939a2a409d43fc32b721a2368fc07",
+      "epoch": 3,
+      "o": "6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2",
+      "want": "https://example.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2",
+      "negative": null
+    },
+    {
+      "name": "hyphens-inside-labels",
+      "host": "https://a-b.c--d.example",
+      "artifact": "0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b",
+      "ak": "e730e324a28de32c7d618f08177dca92272939a2a409d43fc32b721a2368fc07",
+      "epoch": 3,
+      "o": "6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2",
+      "want": "https://a-b.c--d.example/shared/0b7e3f0a-6c1d-4f5e-9a2b-3c4d5e6f7a8b#k=5zDjJKKN4yx9YY8IF33KkicpOaKkCdQ_wytyGiNo_Ac\u0026e=3\u0026o=6c7cec6cdd529c9bef834bca670a91afbf5d8f8d20dd2bc092c54791bf4b3ef2",
       "negative": null
     }
   ],
@@ -6741,7 +6885,10 @@
         "head": "c3f5a0b018f15c7837d8af7ec772e1d5bb368d97c7808feb17b62e4d1789cb59",
         "seq": 2,
         "epoch": 1,
-        "handovers": []
+        "handovers": [],
+        "editors": [
+          "u-bob"
+        ]
       }
     },
     {
@@ -6785,7 +6932,10 @@
         "head": "8f484a7662268fc9ca7fae66a55d4848a693c5e467e8880a333c4b34045e8a16",
         "seq": 3,
         "epoch": 1,
-        "handovers": []
+        "handovers": [],
+        "editors": [
+          "u-bob"
+        ]
       }
     },
     {
@@ -6829,7 +6979,10 @@
         "head": "291860f597a7936d8df6dd997522a00aa6c02f27d007260fc38d5c1d09f795cf",
         "seq": 3,
         "epoch": 2,
-        "handovers": []
+        "handovers": [],
+        "editors": [
+          "u-bob"
+        ]
       }
     },
     {
@@ -6872,7 +7025,10 @@
         "head": "c3f5a0b018f15c7837d8af7ec772e1d5bb368d97c7808feb17b62e4d1789cb59",
         "seq": 2,
         "epoch": 1,
-        "handovers": []
+        "handovers": [],
+        "editors": [
+          "u-bob"
+        ]
       }
     },
     {
@@ -6979,7 +7135,7 @@
     },
     {
       "name": "editor-keys-substituted",
-      "why": "the keys served for an editor hash to another fingerprint than the record lists",
+      "why": "the keys served for an editor hash to another fingerprint than the record lists, so that editor is not a trusted writer, and the open still succeeds",
       "artifact": "artifact-chain",
       "ak": "af4a73359b502ae55ad49fb6d2b65aee836e3d83ffc08a65585407bfa7bcaf85",
       "epoch": 1,
@@ -7009,11 +7165,17 @@
           "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
         }
       },
-      "error": "chain"
+      "want": {
+        "head": "c3f5a0b018f15c7837d8af7ec772e1d5bb368d97c7808feb17b62e4d1789cb59",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": [],
+        "editors": []
+      }
     },
     {
       "name": "editor-keys-missing",
-      "why": "the server serves no keys for a listed editor",
+      "why": "the server serves no keys for a listed editor, for instance a deleted account, and the open still succeeds",
       "artifact": "artifact-chain",
       "ak": "af4a73359b502ae55ad49fb6d2b65aee836e3d83ffc08a65585407bfa7bcaf85",
       "epoch": 1,
@@ -7038,7 +7200,59 @@
       },
       "offers": {},
       "keys": {},
-      "error": "chain"
+      "want": {
+        "head": "c3f5a0b018f15c7837d8af7ec772e1d5bb368d97c7808feb17b62e4d1789cb59",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": [],
+        "editors": []
+      }
+    },
+    {
+      "name": "one-editor-unverified",
+      "why": "two editors, and only the second's keys verify; the first is left out and the second kept",
+      "artifact": "artifact-chain",
+      "ak": "af4a73359b502ae55ad49fb6d2b65aee836e3d83ffc08a65585407bfa7bcaf85",
+      "epoch": 1,
+      "o": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1kYXZlIiwicm9sZSI6ImVkaXRvciIsImZwIjoiMzI4M2UwMTQ4Mzk4Nzc1ZDYxZDE5ODRkYjFiMmExMmZmODc2NTk0OTFiZTQ5MzFlMGZmN2I5ZDIxYmYzZDE4MiJ9XSwiZXhjbHVkZWQiOltdLCJ0ZWFtIjoibm9uZSIsInB1YmxpYyI6ZmFsc2UsInB1YmxpY1dyaXRlcyI6ZmFsc2UsInByZXYiOiIiLCJ0cmFuc2ZlciI6IiIsImhhbmRvdmVyIjoiIn0",
+          "sig": "AOpbWnecnzngl-sJYwoLsoFDDs8QZSPKqNFa5m-cvvU5h4rEAOe4Q1oL2kOw81vEcHI7uxInZ47QAguYf6klBQ",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1kYXZlIiwicm9sZSI6ImVkaXRvciIsImZwIjoiMzI4M2UwMTQ4Mzk4Nzc1ZDYxZDE5ODRkYjFiMmExMmZmODc2NTk0OTFiZTQ5MzFlMGZmN2I5ZDIxYmYzZDE4MiJ9XSwiZXhjbHVkZWQiOltdLCJ0ZWFtIjoibm9uZSIsInB1YmxpYyI6dHJ1ZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6ImI3NmE2OGEwYmYzNjM4YzhmN2M0OWNiMjYwNDgyNGY4MDNjYWM0NzI4MjcyYWRmOTQ3ZDYxOTdmYzhlMWZlMjEiLCJ0cmFuc2ZlciI6IiIsImhhbmRvdmVyIjoiIn0",
+          "sig": "lKrmLxzdAvFTMNOEiTO542oB9nUqIyhd6hVM_d09Bpxl29q5MhkumAOguNlEqeQ0Nb0rnvJskklowxmSWAnRCg",
+          "signer": "u-alice"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        }
+      },
+      "offers": {},
+      "keys": {
+        "u-bob": {
+          "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+          "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+        },
+        "u-dave": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "want": {
+        "head": "18fd81a1877c5ca65afa5e3a7442f7d57a2aa20cbad1054f8be250e8342f31c7",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": [],
+        "editors": [
+          "u-dave"
+        ]
+      }
     },
     {
       "name": "wrong-ak",

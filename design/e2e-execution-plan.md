@@ -311,8 +311,9 @@ Integration tests written first:
   notice on every member's client and to link-scope visitors. Writing needs
   `--accept-new-owner`, and the notice still shows afterward.
 - A link-scope client anchors the owner's chain at the link's `o`, refuses a
-  chain whose served owner keys do not reach it, and refuses an editor whose
-  served keys do not hash to the listed `fp`.
+  chain whose served owner keys do not reach it, and leaves out of its
+  trusted writers an editor whose served keys are missing or do not hash to
+  the listed `fp`. The link still opens.
 - Records from before a change of owner verify under the previous owner's
   chain, anchored at the `fp` the preceding record listed for them.
 - Rotation closes the user's open offers, warns about artifacts transferred

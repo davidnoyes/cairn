@@ -3,6 +3,7 @@ package client
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
@@ -243,10 +244,36 @@ func TestOpenLinkRefusals(t *testing.T) {
 		out, _ := json.Marshal(m)
 		return out
 	})
-	if _, err := forged.OpenLink(good); !errors.Is(err, e2e.ErrChain) {
-		t.Errorf("OpenLink with substituted editor keys = %v, want ErrChain", err)
+	opened, err := forged.OpenLink(good)
+	if err != nil {
+		t.Fatalf("OpenLink with substituted editor keys: %v", err)
 	}
-	if _, err := w.cat.OpenLink(good); err != nil {
+	if _, trusted := opened.Editors[bobID]; trusted {
+		t.Error("an editor whose served keys do not hash to the record's fp is a trusted writer")
+	}
+	opened, err = w.cat.OpenLink(good)
+	if err != nil {
 		t.Errorf("OpenLink as a signed-in non-member: %v", err)
+	} else if _, trusted := opened.Editors[bobID]; !trusted {
+		t.Error("an editor whose keys verify is not a trusted writer")
+	}
+}
+
+// TestPublicRefusesAHostTheLinkCannotNameBeforeWriting proves Public builds the
+// link before it writes a record: a host the link format refuses leaves the
+// artifact private, so the owner is never stuck with a public artifact and no
+// link.
+func TestPublicRefusesAHostTheLinkCannotNameBeforeWriting(t *testing.T) {
+	s := newSharing(t)
+	before := publicChain(t, s.ada, s.artifact).Latest.Seq
+	bad := *s.ada
+	bad.Host = "HTTP" + s.host[len("http"):] // reaches the server, but the link grammar is lowercase only
+	_, err := bad.Public(s.artifact, true, nil)
+	if !errors.Is(err, e2e.ErrFormat) || !strings.Contains(err.Error(), bad.Host) {
+		t.Fatalf("Public = %v, want ErrFormat naming the host %s", err, bad.Host)
+	}
+	latest := publicChain(t, s.ada, s.artifact).Latest
+	if latest.Seq != before || latest.Public {
+		t.Errorf("after the refusal: seq %d (was %d), public %v; want no new record", latest.Seq, before, latest.Public)
 	}
 }

@@ -87,6 +87,10 @@ a web app:
   a chat app is stored by that app, so the app's administrators can read the
   artifact too. Making the artifact private stops the link working, but
   cannot take back a copy someone already saved.
+- **A link holder has no pinned state.** The server can show them an older
+  prefix of the membership chain, such as one from before a record that
+  turned public writes off or removed an editor, as long as the artifact is
+  still public at the link's epoch. Turning a link off needs a new epoch.
 - **Artifact code can read its own artifact's key.** Every page of an artifact
   shares one origin, so code in the artifact can obtain the key it is
   decrypted with. That gives it nothing beyond what it can already read.

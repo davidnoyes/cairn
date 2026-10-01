@@ -457,7 +457,12 @@ characters separated by spaces.
   `o` is the `ownerFp` of the artifact's first membership record, 64 `hex`
   characters, so it stays the same across rotations and changes of owner. A
   visitor's client anchors the owner's key chain to it, never to keys the
-  server serves.
+  server serves. Before `/shared/` comes a bare `scheme://host[:port]`. The
+  scheme is `http` or `https`, in lowercase. The host is DNS-style labels or
+  a bracketed IPv6 literal. The port, when present, is from 1 to 65535 with
+  no leading zero. Each label is 1 to 63 characters of letters, digits,
+  hyphens, and underscores, and does not start or end with a hyphen. Labels
+  are separated by single dots.
 - **Link token.** Sent as the `X-Cairn-Link-Token` header, `b64(linkToken)`.
   The server stores `hex(SHA-256(linkToken))` and compares in constant time.
 - **File address.** `hex(HMAC-SHA256(fileKey, path))`.

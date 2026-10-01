@@ -309,6 +309,12 @@ first. Run `cairn public ARTIFACT on --writes on` to let a signed-in link
 holder write to the database and files. Turning a public link off needs a
 new epoch, which a later release adds.
 
+A link holder has no pinned state, so a server can show you an older part of
+the artifact's membership chain. For example, it can hide a later record
+that turned public writes off or removed an editor, as long as the artifact
+is still public at the link's epoch. To turn a link off, make the artifact
+private in a new epoch.
+
 Pins and the latest verified membership record of each artifact live in
 your keyring, sealed on the server. Each machine keeps a small anchor for
 it in its `cairn` config file, so a server that serves an older keyring, or a

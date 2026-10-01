@@ -58,13 +58,25 @@ func (l Link) check() error {
 }
 
 // isLinkHost reports whether s is exactly scheme://host[:port], with an
-// http or https scheme and nothing else. The host is a name or address
-// without user info.
-func isLinkHost(s string) bool { return linkHostRE.MatchString(s) }
+// http or https scheme and nothing else. The host is DNS-style labels (1 to
+// 63 of letters, digits, hyphens, and underscores, none starting or ending
+// with a hyphen, joined by single dots) or a bracketed IPv6 literal. The
+// port is 1 to 65535 with no leading zero. No user info.
+func isLinkHost(s string) bool {
+	m := linkHostRE.FindStringSubmatch(s)
+	if m == nil {
+		return false
+	}
+	if m[2] == "" {
+		return true
+	}
+	port, _ := strconv.Atoi(m[2])
+	return port <= 65535
+}
 
 // linkHostRE is the same pattern the JavaScript parseLink uses, so the two
-// agree on every host.
-var linkHostRE = regexp.MustCompile(`^https?://([A-Za-z0-9.-]+|\[[0-9a-fA-F:]+\])(:[0-9]{1,5})?$`)
+// agree on every host. Group 2 is the port; its range is checked apart.
+var linkHostRE = regexp.MustCompile(`^https?://((?:[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)(?:\.[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)*|\[[0-9a-fA-F:]+\])(?::([1-9][0-9]{0,4}))?$`)
 
 // isUUID reports whether s is a UUID in its one canonical form: lowercase
 // hex in 8-4-4-4-12 groups.
@@ -143,14 +155,24 @@ type LinkChainInput struct {
 	Keys    map[string]KeyPair
 }
 
+// LinkChain is what VerifyLinkChain verified: the chain, and Editors, the
+// keys of each editor the latest record lists whose served keys hash to the
+// fp it lists, by user ID. These are the writers a visitor trusts.
+type LinkChain struct {
+	Chain   *Chain
+	Editors map[string]KeyPair
+}
+
 // VerifyLinkChain checks a membership chain a visitor read through a public
 // link, which the server answers and so cannot be trusted. The chain must
 // verify with its first record anchored at the link's o, so only keys that
 // hash to o sign it. Its latest record must be public, at the link's epoch,
 // with the akCommit the link's key makes. A link for an older epoch is
-// ErrStaleLink. Each listed editor's keys must be served and hash to the fp
-// the record lists, so the visitor knows whose writes to trust.
-func VerifyLinkChain(in LinkChainInput) (*Chain, error) {
+// ErrStaleLink. A reader needs only the link's key and the chain, so an
+// editor whose keys are not served, or do not hash to the fp the record
+// lists, does not fail the open. That editor is left out of Editors, the
+// writers the visitor trusts.
+func VerifyLinkChain(in LinkChainInput) (*LinkChain, error) {
 	c, err := VerifyChain(ChainInput{Artifact: in.Link.Artifact, Records: in.Records, Owners: in.Owners, Offers: in.Offers, Anchor: in.Link.Owner})
 	if err != nil {
 		return nil, err
@@ -171,19 +193,20 @@ func VerifyLinkChain(in LinkChainInput) (*Chain, error) {
 	if commit != b.AKCommit {
 		return nil, fmt.Errorf("%w: the link's key does not match the chain's akCommit", ErrChain)
 	}
+	editors := map[string]KeyPair{}
 	for _, m := range b.Members {
 		if m.Role != "editor" {
 			continue
 		}
 		kp, ok := in.Keys[m.User]
 		if !ok {
-			return nil, fmt.Errorf("%w: no keys served for editor %q", ErrChain, m.User)
+			continue
 		}
 		x, errX := UnB64(kp.X25519)
 		ed, errEd := UnB64(kp.Ed25519)
-		if errX != nil || errEd != nil || hex.EncodeToString(Fingerprint(x, ed)) != m.FP {
-			return nil, fmt.Errorf("%w: the keys served for editor %q do not hash to the fp the record lists", ErrChain, m.User)
+		if errX == nil && errEd == nil && hex.EncodeToString(Fingerprint(x, ed)) == m.FP {
+			editors[m.User] = kp
 		}
 	}
-	return c, nil
+	return &LinkChain{Chain: c, Editors: editors}, nil
 }

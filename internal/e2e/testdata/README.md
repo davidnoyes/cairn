@@ -278,17 +278,19 @@ The overrides, and which primitives read them:
   (the link), and `records`, `owners`, `offers`, and `keys` (the answer, in
   wire form; `keys` holds the editors' keys the link scope serves). An
   accepted entry has `want` with `head`, `seq`, and `epoch` of the latest
-  record. A refused entry has `error`, which is any kind the `chain` section
-  names, or:
+  record, and `editors`, the sorted user IDs of the editors whose served
+  keys hash to the listed `fp`: the trusted writers. A refused entry has
+  `error`, which is any kind the `chain` section names, or:
 
   | `error` | Go | JavaScript |
   | --- | --- | --- |
   | `staleLink` | `ErrStaleLink` | `StaleLinkError` |
 
   The entries cover a chain whose first owner is not `o`, a chain of another
-  owner, substituted owner keys, editor keys that do not hash to the listed
-  fingerprint or are missing, the wrong AK, a stale link, a link ahead of
-  the chain, and a latest record that is private.
+  owner, substituted owner keys, the wrong AK, a stale link, a link ahead of
+  the chain, and a latest record that is private. Editor keys that are
+  missing or do not hash to the listed fingerprint are no error: the entry is
+  accepted, with that editor out of `editors`.
 
 ## Blob transforms
 

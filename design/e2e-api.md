@@ -586,9 +586,26 @@ A link holder can read the records, because every holder of `AK` checks
 `akCommit`. A link holder may not be signed in, so cannot read the user
 directory. For link scope the answer adds
 `"keys": {"user ID": {"x25519", "ed25519"}}` for every listed editor. The
-client checks each editor's keys against the records' `fp` values, and
-anchors the owner's chain at the link's `o`, never at keys the server
+client anchors the owner's chain at the link's `o`, never at keys the server
 serves.
+
+A reader needs only `AK` and the chain, so editor keys decide only whose
+writes a visitor trusts. The client checks each editor's keys against the
+records' `fp` values. It leaves an editor out of its trusted writers when
+the keys are missing, which happens after the server deletes the user, or do
+not hash to the listed `fp`, which happens after a rotation. The link still
+opens. Go `VerifyLinkChain` and JavaScript `verifyLinkChain` return the
+chain with the trusted editors' keys, by user ID.
+
+A link holder has no pinned state, so a server can show them an older
+prefix of the chain. For example, it can hide a later record that turned
+public writes off or removed an editor, as long as the artifact was still
+public at the link's epoch. Turning a link off needs a new epoch.
+
+Link verification must follow owner key rotations, which step 7 builds.
+`VerifyLinkChain` passes no `Linked` function to `VerifyChain` yet, so it
+requires each record's `ownerFp` to equal `o`. After a rotation, the owner's
+new records carry a new `ownerFp`, and the link would refuse them.
 
 #### Keys
 

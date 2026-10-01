@@ -353,12 +353,20 @@ func runPublic(args []string) error {
 		return err
 	}
 	var writes *bool
-	if *writesFlag != "" {
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "writes" {
+			writes = new(bool)
+		}
+	})
+	if writes != nil {
+		if *writesFlag == "" {
+			return errors.New("--writes takes on or off")
+		}
 		w, err := parseOnOff("--writes", *writesFlag)
 		if err != nil {
 			return err
 		}
-		writes = &w
+		*writes = w
 	}
 	if !on && writes != nil {
 		return client.ErrPublicWritesWithOff

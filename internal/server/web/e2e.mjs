@@ -2183,12 +2183,18 @@ export async function verifyChain(input) {
 
 // A public link is <host>/shared/<artifact>#k=<b64(AK)>&e=<epoch>&o=<hex(fp)>.
 // The key is in the fragment, which a browser never sends to the server.
-const LINK_HOST_RE = /^https?:\/\/([A-Za-z0-9.-]+|\[[0-9a-fA-F:]+\])(:[0-9]{1,5})?$/;
+// Group 2 is the port; its range is checked apart. The same pattern as
+// linkHostRE in internal/e2e/link.go: DNS-style labels of 1 to 63 letters,
+// digits, hyphens, and underscores, none starting or ending with a hyphen, or
+// a bracketed IPv6 literal.
+const LINK_HOST_RE =
+  /^https?:\/\/((?:[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)(?:\.[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)*|\[[0-9a-fA-F:]+\])(?::([1-9][0-9]{0,4}))?$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MAX_LINK_EPOCH = 9007199254740991n;
 
 function checkLink(l) {
-  if (!LINK_HOST_RE.test(l.host)) throw new FormatError(`link host ${l.host}`);
+  const m = LINK_HOST_RE.exec(l.host);
+  if (!m || (m[2] !== undefined && Number(m[2]) > 65535)) throw new FormatError(`link host ${l.host}`);
   if (!UUID_RE.test(l.artifact)) throw new FormatError(`link artifact ${l.artifact} is not a lowercase UUID`);
   if (l.ak.length !== 32) throw new FormatError(`link key is ${l.ak.length} bytes, not 32`);
   if (!Number.isSafeInteger(l.epoch) || l.epoch < 1) throw new FormatError(`link epoch ${l.epoch}`);
@@ -2236,9 +2242,12 @@ export function parseLink(s) {
 // is the link scope's editor keys. The chain must verify with its first
 // record anchored at the link's o, and its latest record must be public, at
 // the link's epoch, with the akCommit the link's key makes. A link for an
-// older epoch throws StaleLinkError. Each listed editor's keys must be served
-// and hash to the fp the record lists. Returns what verifyChain does.
-// Mirrors VerifyLinkChain in internal/e2e/link.go.
+// older epoch throws StaleLinkError. A reader needs only the link's key and
+// the chain, so an editor whose keys are not served, or do not hash to the fp
+// the record lists, does not fail the open; that editor is left out of
+// editors. Returns {chain, editors}: chain is what verifyChain returns, and
+// editors maps each editor's user ID to the keys that verified, the writers
+// the visitor trusts. Mirrors VerifyLinkChain in internal/e2e/link.go.
 export async function verifyLinkChain(input) {
   const { link } = input;
   const c = await verifyChain({
@@ -2255,19 +2264,18 @@ export async function verifyLinkChain(input) {
   if ((await akCommit(link.ak, link.artifact, link.epoch)) !== b.akCommit) {
     throw new ChainError("the link's key does not match the chain's akCommit");
   }
+  const editors = Object.create(null);
   for (const m of b.members) {
     if (m.role !== 'editor') continue;
     const kp = hasOwn(input.keys, m.user) ? input.keys[m.user] : null;
-    if (!kp) throw new ChainError(`no keys served for editor ${m.user}`);
-    let fp;
+    if (!kp) continue;
     try {
-      fp = toHex(await fingerprint(unb64(kp.x25519), unb64(kp.ed25519)));
+      if (toHex(await fingerprint(unb64(kp.x25519), unb64(kp.ed25519))) === m.fp) editors[m.user] = kp;
     } catch {
-      fp = null;
+      // keys that do not decode do not hash to the fp
     }
-    if (fp !== m.fp) throw new ChainError(`the keys served for editor ${m.user} do not hash to the fp the record lists`);
   }
-  return c;
+  return { chain: c, editors };
 }
 
 // signApproval signs an approval of user at fp, for artifact at epoch, as

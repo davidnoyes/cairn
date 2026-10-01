@@ -1512,10 +1512,12 @@ describe('linkChain', () => {
       }
       const got = await e2e.verifyLinkChain(input);
       assert.deepEqual(
-        { head: got.head, seq: got.latest.seq, epoch: got.latest.epoch },
+        { head: got.chain.head, seq: got.chain.latest.seq, epoch: got.chain.latest.epoch },
         { head: v.want.head, seq: v.want.seq, epoch: v.want.epoch },
         v.name,
       );
+      assert.deepEqual(Object.keys(got.editors).sort(), v.want.editors, `${v.name}: ${v.why}`);
+      for (const id of v.want.editors) assert.deepEqual(got.editors[id], v.keys[id], `${v.name}: keys of ${id}`);
     });
   }
 });

@@ -93,6 +93,16 @@ func TestPublicCommandRefusals(t *testing.T) {
 			t.Errorf("public %v: %v, want the on or off message", args, err)
 		}
 	}
+	// An empty --writes is given, so it is an error, not a flag left out.
+	for _, args := range [][]string{
+		{"no-such-artifact", "on", "--writes="},
+		{"no-such-artifact", "on", "--writes", ""},
+		{"no-such-artifact", "off", "--writes="},
+	} {
+		if _, err := runQuiet(t, runPublic, args...); err == nil || !strings.Contains(err.Error(), "--writes takes on or off") {
+			t.Errorf("public %q: %v, want \"--writes takes on or off\"", args, err)
+		}
+	}
 	if _, err := runQuiet(t, runPublic, "no-such-artifact", "off", "--writes", "on"); !errors.Is(err, client.ErrPublicWritesWithOff) {
 		t.Errorf("public off --writes on: %v, want ErrPublicWritesWithOff", err)
 	}

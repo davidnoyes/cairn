@@ -1035,6 +1035,25 @@ func TestLinkHashOnAPrivateArtifactOpensNothing(t *testing.T) {
 	wantStatus(t, anonWithLink(t, ts.URL, testLinkToken(t, o.id, 1)), "GET", "/api/artifacts/"+o.id, nil, http.StatusNotFound)
 }
 
+// TestLinkMatchesRefusesAPrivateArtifact calls linkMatches itself: through
+// HTTP the access check also requires a public artifact, so only a direct call
+// notices if linkMatches stops requiring it.
+func TestLinkMatchesRefusesAPrivateArtifact(t *testing.T) {
+	id := uuid.NewString()
+	token, err := e2e.UnB64(testLinkToken(t, id, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &store.Artifact{ID: id, Epoch: 1, PublicEpoch: 1, PublicTokenHash: testLinkHash(t, id, 1)}
+	if linkMatches(a, token) {
+		t.Error("a private artifact's stored token hash at the current epoch opened a link")
+	}
+	a.Public = true
+	if !linkMatches(a, token) {
+		t.Error("the same artifact, public, refused the right token")
+	}
+}
+
 func TestPushRecordsTheEpochItWasPushedUnder(t *testing.T) {
 	s, ts := testServer(t)
 	a := seedKeyedAccount(t, s, ts.URL, "a@example.com")

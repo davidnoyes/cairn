@@ -198,8 +198,6 @@ internal/e2e/link.go	Anchor: in.Link.Owner}	Anchor: in.Link.Owner, Linked: func(
 internal/server/web/e2e.mjs	anchor: link.o,	anchor: link.o, linked: () => true,	node --test internal/server/web/e2e_test.mjs
 internal/e2e/chain.go	hex.EncodeToString(Fingerprint(x, ed)) == fp	hex.EncodeToString(Fingerprint(x, ed)) != ""	go test ./internal/e2e -run 'TestVectors/link'
 internal/server/web/e2e.mjs	if (toHex(await fingerprint(x, ed)) === fp) keys.set(fp, ed);	keys.set(fp, ed);	node --test internal/server/web/e2e_test.mjs
-internal/e2e/link.go	|| hex.EncodeToString(Fingerprint(x, ed)) != m.FP	|| hex.EncodeToString(Fingerprint(x, ed)) == ""	go test ./internal/e2e -run 'TestVectors/link'
-internal/server/web/e2e.mjs	if (fp !== m.fp) throw new ChainError(	if (false) throw new ChainError(	node --test internal/server/web/e2e_test.mjs
 internal/e2e/link.go	if commit != b.AKCommit {	if commit == "" {	go test ./internal/e2e -run 'TestVectors/link'
 internal/server/web/e2e.mjs	(await akCommit(link.ak, link.artifact, link.epoch)) !== b.akCommit	(await akCommit(link.ak, link.artifact, link.epoch)) === ''	node --test internal/server/web/e2e_test.mjs
 internal/e2e/link.go	case in.Link.Epoch < b.Epoch:	case in.Link.Epoch < 0:	go test ./internal/e2e -run 'TestVectors/link'
@@ -262,3 +260,28 @@ internal/server/web/ui.mjs	if (err.name === 'NetworkError')	if (err instanceof T
 internal/server/web/ui.mjs	throw new NetworkError(err.message);	throw err;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	for (const control of form.elements) control.disabled = true;	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/serving.go	w.Header().Set("ETag", etag)	_ = etag	go test ./internal/server -run TestAppAssetsRevalidateWithAnETag
+
+# Public links: review fixes (host grammar, editor trust, link before write,
+# private artifact, empty --writes).
+internal/e2e/link.go	hex.EncodeToString(Fingerprint(x, ed)) == m.FP {	hex.EncodeToString(Fingerprint(x, ed)) != "" {	go test ./internal/e2e -run 'TestVectors/link'
+internal/server/web/e2e.mjs	unb64(kp.ed25519))) === m.fp)	unb64(kp.ed25519))) !== '')	node --test internal/server/web/e2e_test.mjs
+internal/e2e/link.go	return port <= 65535	return port <= 65536	go test ./internal/e2e -run 'TestVectors/link'
+internal/server/web/e2e.mjs	Number(m[2]) > 65535	Number(m[2]) > 65536	node --test internal/server/web/e2e_test.mjs
+internal/e2e/link.go	(?::([1-9][0-9]{0,4}))?$`)	(?::([0-9]{1,5}))?$`)	go test ./internal/e2e -run 'TestVectors/link'
+internal/server/web/e2e.mjs	(?::([1-9][0-9]{0,4}))?$/;	(?::([0-9]{1,5}))?$/;	node --test internal/server/web/e2e_test.mjs
+internal/e2e/link.go	{0,61}[A-Za-z0-9_])?)(?:\.	{0,62}[A-Za-z0-9_])?)(?:\.	go test ./internal/e2e -run 'TestVectors/link'
+internal/e2e/link.go	{0,61}[A-Za-z0-9_])?)*|	{0,62}[A-Za-z0-9_])?)*|	go test ./internal/e2e -run 'TestVectors/link'
+internal/e2e/link.go	{0,61}[A-Za-z0-9_])?)(?:\.	{0,61}[A-Za-z0-9_-])?)(?:\.	go test ./internal/e2e -run 'TestVectors/link'
+internal/e2e/link.go	{0,61}[A-Za-z0-9_])?)*|	{0,61}[A-Za-z0-9_-])?)*|	go test ./internal/e2e -run 'TestVectors/link'
+internal/e2e/link.go	^https?://((?:[A-Za-z0-9_](	^https?://((?:[A-Za-z0-9_-](	go test ./internal/e2e -run 'TestVectors/link'
+internal/e2e/link.go	(?:\.[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}	(?:\.[A-Za-z0-9_-](?:[A-Za-z0-9_-]{0,61}	go test ./internal/e2e -run 'TestVectors/link'
+internal/server/web/e2e.mjs	{0,61}[A-Za-z0-9_])?)(?:\.	{0,62}[A-Za-z0-9_])?)(?:\.	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	{0,61}[A-Za-z0-9_])?)*|	{0,62}[A-Za-z0-9_])?)*|	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	{0,61}[A-Za-z0-9_])?)(?:\.	{0,61}[A-Za-z0-9_-])?)(?:\.	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	{0,61}[A-Za-z0-9_])?)*|	{0,61}[A-Za-z0-9_-])?)*|	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	/^https?:\/\/((?:[A-Za-z0-9_](	/^https?:\/\/((?:[A-Za-z0-9_-](	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	(?:\.[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}	(?:\.[A-Za-z0-9_-](?:[A-Za-z0-9_-]{0,61}	node --test internal/server/web/e2e_test.mjs
+internal/client/public.go	return nil, fmt.Errorf("cannot make a link for host %s: %w", c.Host, err)	_ = err	go test ./internal/client -run 'TestPublic|TestSharingRecords|TestOpenLink'
+internal/server/sharing.go	!a.Public || token == nil	token == nil	go test ./internal/server -run TestLinkMatchesRefusesAPrivateArtifact
+cmd/cairn/share_cmds.go	if f.Name == "writes" {	if false {	go test ./cmd/cairn -run 'TestPublic'
+cmd/cairn/share_cmds.go	if *writesFlag == "" {	if false {	go test ./cmd/cairn -run 'TestPublic'

@@ -35,7 +35,8 @@ type PublicResult struct {
 // artifact going public is off. The caller must be the owner. Off on a
 // public artifact is ErrPublicOffNeedsNextEpoch, and off on a private one
 // writes nothing. The link is built from the epoch's AK, opened from the
-// owner's estate copy.
+// owner's estate copy, before any record is written, so a host the link
+// format refuses is an error with the artifact unchanged.
 func (c *Client) Public(artifactID string, on bool, writes *bool) (*PublicResult, error) {
 	if !on && writes != nil {
 		return nil, ErrPublicWritesWithOff
@@ -64,20 +65,22 @@ func (c *Client) Public(artifactID string, on bool, writes *bool) (*PublicResult
 		next.PublicWrites = *writes
 	}
 	res := &PublicResult{Public: true, PublicWrites: next.PublicWrites, Epoch: latest.Epoch}
-	if latest.Public && next.PublicWrites == latest.PublicWrites {
-		res.Unchanged = true
-	} else if err := c.putRecord(k, artifactID, va, next, nil); err != nil {
-		return nil, err
-	} else if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
-		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
-	}
+	// Build the link first: a host the link format refuses must fail before
+	// any record is written, or the artifact is public with no link.
 	aks, err := c.epochAKs(k, artifactID, va.Chain)
 	if err != nil {
 		return nil, err
 	}
 	res.Link, err = e2e.PublicLink(c.Host, artifactID, aks[latest.Epoch], latest.Epoch, va.Chain.Bodies[0].OwnerFP)
 	if err != nil {
+		return nil, fmt.Errorf("cannot make a link for host %s: %w", c.Host, err)
+	}
+	if latest.Public && next.PublicWrites == latest.PublicWrites {
+		res.Unchanged = true
+	} else if err := c.putRecord(k, artifactID, va, next, nil); err != nil {
 		return nil, err
+	} else if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
+		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
 	}
 	return res, nil
 }
@@ -96,10 +99,14 @@ func (c *Client) linkTokenHashFor(k *UnlockedKeys, artifactID string, chain *e2e
 	return e2e.LinkTokenHash(token), nil
 }
 
-// OpenedLink is what OpenLink verified: the link and the chain it opens.
+// OpenedLink is what OpenLink verified: the link, the chain it opens, and the
+// editors whose served keys verified, by user ID. Editors are the writers the
+// visitor trusts; an editor missing from it has no keys served or changed
+// them.
 type OpenedLink struct {
-	Link  *e2e.Link
-	Chain *e2e.Chain
+	Link    *e2e.Link
+	Chain   *e2e.Chain
+	Editors map[string]e2e.KeyPair
 }
 
 // OpenLink opens a public link as a visitor, with no account: it reads the
@@ -127,11 +134,11 @@ func (c *Client) OpenLink(l *e2e.Link) (*OpenedLink, error) {
 	if err != nil {
 		return nil, err
 	}
-	chain, err := e2e.VerifyLinkChain(e2e.LinkChainInput{
+	verified, err := e2e.VerifyLinkChain(e2e.LinkChainInput{
 		Link: *l, Records: m.Records, Owners: m.Owners, Offers: m.Offers, Keys: m.Keys,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("the link's artifact %s does not verify: %w", l.Artifact, err)
 	}
-	return &OpenedLink{Link: l, Chain: chain}, nil
+	return &OpenedLink{Link: l, Chain: verified.Chain, Editors: verified.Editors}, nil
 }
