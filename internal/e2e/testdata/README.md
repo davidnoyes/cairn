@@ -159,6 +159,43 @@ The overrides, and which primitives read them:
   `negative` entries (a non-URL character, padding, non-zero trailing bits
   in a partial group, or a carriage return or line feed anywhere) that
   `UnB64`/`unb64` must refuse.
+- **`chain`**: a membership chain that `VerifyChain`/`verifyChain` must
+  accept or refuse as a whole. Each entry has these fields:
+  - `name` and `why`.
+  - `artifact`: the artifact ID every record and offer must name.
+  - `records`: the membership envelopes, oldest first.
+  - `owners`: maps a fingerprint to an `{x25519, ed25519}` key pair.
+  - `offers`: maps a transfer value, the body hash of an offer, to the
+    offer envelope.
+  - `anchor`: the fingerprint the first record's `ownerFp` must equal.
+  - `currentOwnerFp`: the fingerprint the latest record's `ownerFp` must
+    equal, or empty for no check.
+  - `pin`: the keyring's `{epoch, seq, head}` entry, or `null`.
+
+  An accepted entry has `want` (`head`, `seq`, `epoch`, `handovers`), taken
+  from the generator's case and not from `VerifyChain`. A refused entry has
+  `error`, which names the error kind it must fail with:
+
+  | `error` | Go | JavaScript |
+  | --- | --- | --- |
+  | `chain` | `ErrChain` | `ChainError` |
+  | `rollback` | `ErrRollback` | `RollbackError` |
+  | `fork` | `ErrFork` | `ForkError` |
+  | `staleEpoch` | `ErrStaleEpoch` | `StaleEpochError` |
+  | `format` | `ErrFormat` | `FormatError` |
+  | `decrypt` | `ErrDecrypt` | `DecryptError` |
+
+  Like `signature.envelope` in the interop files, `records`, `offers`, and
+  `owners` hold the b64 wire form the membership endpoint serves, not hex.
+  The entries carry no `linked` hook, since a function isn't data, so every
+  entry runs with the default: two fingerprints link only when they're
+  equal. The Go and Node tests check `linked` directly.
+
+  Members and excluded entries sort by the UTF-8 bytes of their user IDs.
+  The `members-code-point-order` entry lists a user ID ending in U+FFFD
+  before one ending in U+1F600. UTF-8 bytes put them in that order, but
+  UTF-16 code units don't, so a verifier that compares them with `<` in
+  JavaScript refuses it.
 
 ## Blob transforms
 

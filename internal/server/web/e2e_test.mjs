@@ -1107,12 +1107,105 @@ test('importHKDFKey refuses a key that is not 32 bytes', async () => {
   }
 });
 
+// chainErrors maps each chain entry's error kind to the class verifyChain
+// throws for it; see testdata/README.md.
+const chainErrors = {
+  chain: e2e.ChainError,
+  rollback: e2e.RollbackError,
+  fork: e2e.ForkError,
+  staleEpoch: e2e.StaleEpochError,
+  format: e2e.FormatError,
+  decrypt: e2e.DecryptError,
+};
+
+function chainInput(v) {
+  return {
+    artifact: v.artifact,
+    records: v.records,
+    owners: v.owners,
+    offers: v.offers,
+    anchor: v.anchor,
+    currentOwnerFp: v.currentOwnerFp,
+    pin: v.pin,
+  };
+}
+
+// chain mirrors the Go chain vector check: verifyChain must accept each
+// valid chain with the same result, and refuse each other one with the
+// class for its error kind.
+test('chain', async () => {
+  for (const v of vf.chain) {
+    if (v.error) {
+      assert.ok(chainErrors[v.error], `${v.name}: unknown error kind ${v.error}`);
+      await assert.rejects(() => e2e.verifyChain(chainInput(v)), chainErrors[v.error], `${v.name}: ${v.why}`);
+      continue;
+    }
+    const got = await e2e.verifyChain(chainInput(v));
+    assert.deepEqual(
+      { head: got.head, seq: got.latest.seq, epoch: got.latest.epoch, handovers: got.handovers },
+      v.want,
+      v.name,
+    );
+    assert.equal(got.bodies.length, v.records.length, v.name);
+  }
+});
+
+// An administrator's handover to an unlisted user names the successor
+// record it needs, rather than reading like any other unlisted new owner.
+test('verifyChain: a handover to an unlisted user names the successor record', async () => {
+  const v = vf.chain.find((c) => c.name === 'handover-to-unlisted');
+  await assert.rejects(
+    () => e2e.verifyChain(chainInput(v)),
+    (err) => err instanceof e2e.ChainError && /successor record/.test(err.message),
+  );
+});
+
+// The rotation chain hook stands in for fingerprint equality at the anchor
+// and at each record; without it, a changed ownerFp is refused.
+test('verifyChain: linked replaces fingerprint equality', async () => {
+  const v = vf.chain.find((c) => c.name === 'owner-fp-changed');
+  const input = { ...chainInput(v), anchor: 'anchor-fp' };
+  await assert.rejects(() => e2e.verifyChain(input), e2e.ChainError);
+  const calls = [];
+  input.linked = (user, from, to) => {
+    calls.push([user, from, to]);
+    return true;
+  };
+  await e2e.verifyChain(input);
+  const fps = v.records.map((r) => JSON.parse(new TextDecoder().decode(e2e.unb64(r.body))).ownerFp);
+  assert.deepEqual(calls, [
+    ['u-alice', 'anchor-fp', fps[0]],
+    ['u-alice', fps[0], fps[1]],
+  ]);
+});
+
+test('checkEncryptEpoch refuses an epoch below the pinned one', () => {
+  const pin = { epoch: 3, seq: 5, head: 'h' };
+  e2e.checkEncryptEpoch(pin, 3);
+  e2e.checkEncryptEpoch(pin, 4);
+  e2e.checkEncryptEpoch(null, 1);
+  assert.throws(() => e2e.checkEncryptEpoch(pin, 2), e2e.StaleEpochError);
+});
+
+test('checkNewAk refuses an earlier epoch\'s AK', () => {
+  const earlier = [testKeyBytes(1), testKeyBytes(2)];
+  e2e.checkNewAk(testKeyBytes(3), earlier);
+  e2e.checkNewAk(testKeyBytes(3), []);
+  for (const ak of earlier) {
+    assert.throws(() => e2e.checkNewAk(new Uint8Array(ak), earlier), e2e.ReusedAkError);
+  }
+  // Equal in every byte the shorter one has, so only the length differs.
+  e2e.checkNewAk(testKeyBytes(1), [new Uint8Array(31).fill(1), new Uint8Array(33).fill(1)]);
+  assert.throws(() => e2e.checkNewAk(new Uint8Array(16), earlier), e2e.FormatError);
+  assert.throws(() => e2e.checkNewAk(Array.from(testKeyBytes(3)), earlier), e2e.FormatError);
+});
+
 test('vectors.json has no section this file does not check', () => {
   const handled = [
     'enc', 'derive', 'argon2', 'recoveryCode', 'apiKey', 'akCommit', 'seal',
     'blob', 'wrap', 'signature', 'rotation', 'ed25519Strict', 'x25519Strict',
     'fingerprint', 'linkToken', 'fileAddress', 'blindIndex', 'strictJSON',
-    'base64url', 'envelope',
+    'base64url', 'envelope', 'chain',
   ];
   const unhandled = Object.keys(vf).filter((k) => !handled.includes(k));
   assert.deepEqual(unhandled, []);

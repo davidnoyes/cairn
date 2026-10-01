@@ -6,9 +6,9 @@
 // byte for byte; see internal/e2e/testdata/vectors.json and e2e_test.mjs.
 //
 // All parsing and decryption failures throw an Error with a stable `name`
-// (DecryptError, FormatError, FloorError) rather than returning garbage.
-// verify() is the one exception: it returns a boolean, matching Go's
-// Verify.
+// (DecryptError, FormatError, FloorError, and the chain errors) rather than
+// returning garbage. verify() is the one exception: it returns a boolean,
+// matching Go's Verify.
 
 const subtle = globalThis.crypto.subtle;
 
@@ -30,6 +30,43 @@ export class FloorError extends Error {
   constructor(message) {
     super(message);
     this.name = 'FloorError';
+  }
+}
+
+// The membership chain errors, matching Go's ErrChain, ErrRollback,
+// ErrFork, ErrStaleEpoch, and ErrReusedAK. See verifyChain.
+export class ChainError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ChainError';
+  }
+}
+
+export class RollbackError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'RollbackError';
+  }
+}
+
+export class ForkError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ForkError';
+  }
+}
+
+export class StaleEpochError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'StaleEpochError';
+  }
+}
+
+export class ReusedAkError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ReusedAkError';
   }
 }
 
@@ -1858,4 +1895,229 @@ export async function openRotation(env, oldPub) {
   const bodyBytes = unb64(env.body);
   if (!(await verify(newPub, 'rotation', bodyBytes, newSig))) throw new DecryptError('bad newSig');
   return body;
+}
+
+// compareUtf8 orders two strings by their UTF-8 bytes, as Go compares
+// strings. JavaScript's < compares UTF-16 code units instead, which puts a
+// character above U+FFFF before one in U+E000 to U+FFFF.
+function compareUtf8(a, b) {
+  const x = textEncoder.encode(a);
+  const y = textEncoder.encode(b);
+  const n = Math.min(x.length, y.length);
+  for (let i = 0; i < n; i++) {
+    if (x[i] !== y[i]) return x[i] - y[i];
+  }
+  return x.length - y.length;
+}
+
+function hasOwn(obj, key) {
+  return obj != null && Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+// ownerKeys keeps the Ed25519 key of each pair that hashes to its
+// fingerprint, and drops the rest.
+async function ownerKeys(pairs) {
+  const keys = new Map();
+  for (const [fp, kp] of Object.entries(pairs ?? {})) {
+    try {
+      const x = unb64(kp.x25519);
+      const ed = unb64(kp.ed25519);
+      if (toHex(await fingerprint(x, ed)) === fp) keys.set(fp, ed);
+    } catch {
+      // A pair that does not decode cannot hash to its fingerprint.
+    }
+  }
+  return keys;
+}
+
+// openRecord verifies one record under the key its ownerFp names, and
+// checks the fields that do not depend on the record before it. The body is
+// decoded strictly before the signature is checked, only to read ownerFp;
+// openEnvelope then decodes the same bytes the same way, so the ownerFp it
+// returns is the one whose key verified the record. Mirrors openRecord in
+// internal/e2e/chain.go.
+async function openRecord(env, artifact, owners) {
+  const pre = decodeStrict(unb64(env.body), BODY_SCHEMAS.membership);
+  if (!owners.has(pre.ownerFp)) throw new ChainError(`no owner key for ownerFp ${pre.ownerFp}`);
+  const b = await openEnvelope(env, owners.get(pre.ownerFp), 'membership');
+  if (b.artifact !== artifact) throw new ChainError(`record for artifact ${b.artifact}`);
+  if (b.members === null || b.excluded === null) {
+    throw new ChainError('members and excluded must be arrays');
+  }
+  if (b.team !== 'none' && b.team !== 'viewer' && b.team !== 'editor') throw new ChainError(`team ${b.team}`);
+  if (!isHex64(b.akCommit)) throw new ChainError('akCommit is not 64 lowercase hex digits');
+  for (let i = 1; i < b.members.length; i++) {
+    if (compareUtf8(b.members[i - 1].user, b.members[i].user) >= 0) {
+      throw new ChainError('members not sorted by user ID, or duplicated');
+    }
+  }
+  for (let i = 1; i < b.excluded.length; i++) {
+    if (compareUtf8(b.excluded[i - 1].user, b.excluded[i].user) >= 0) {
+      throw new ChainError('excluded not sorted by user ID, or duplicated');
+    }
+  }
+  for (const m of b.members) {
+    if (m.user === b.owner) throw new ChainError('the owner is listed as a member');
+    if (m.role !== 'viewer' && m.role !== 'editor') throw new ChainError(`member ${m.user} has role ${m.role}`);
+    if (!isHex64(m.fp)) throw new ChainError(`member ${m.user} fp is not 64 lowercase hex digits`);
+    for (const e of b.excluded) {
+      if (e.user === m.user || e.fp === m.fp) {
+        throw new ChainError(`excluded entry ${e.user} matches member ${m.user}`);
+      }
+    }
+  }
+  for (const e of b.excluded) {
+    if (e.user === b.owner) throw new ChainError('the owner is excluded');
+  }
+  return b;
+}
+
+// isHex64 reports whether s is 64 lowercase hex digits: a SHA-256 hash or
+// fingerprint in its one canonical form.
+function isHex64(s) {
+  return s.length === 64 && isLowerHex(s);
+}
+
+function checkFirstRecord(b, anchor, linked) {
+  if (b.seq !== 1) throw new ChainError(`first record has seq ${b.seq}`);
+  if (b.prev !== '') throw new ChainError('first record has a prev');
+  if (b.epoch !== 1) throw new ChainError(`first record has epoch ${b.epoch}`);
+  if (b.transfer !== '' || b.handover !== '') {
+    throw new ChainError('first record sets transfer or handover');
+  }
+  if (!linked(b.owner, anchor, b.ownerFp)) {
+    throw new ChainError("first record's ownerFp does not reach the anchor");
+  }
+}
+
+// checkNextRecord checks b against prev, the record before it, whose body
+// bytes hash to prevHash, and notes an administrator's handover in
+// handovers.
+async function checkNextRecord(input, owners, linked, prev, prevHash, b, handovers) {
+  if (b.seq !== prev.seq + 1) throw new ChainError(`seq ${b.seq} follows ${prev.seq}`);
+  if (b.prev !== prevHash) throw new ChainError("prev is not the previous record's hash");
+  if (b.epoch === prev.epoch) {
+    if (b.akCommit !== prev.akCommit) throw new ChainError(`akCommit changed within epoch ${b.epoch}`);
+  } else if (b.epoch === prev.epoch + 1) {
+    if (b.akCommit === prev.akCommit) throw new ChainError(`epoch ${b.epoch} keeps the previous akCommit`);
+  } else {
+    throw new ChainError(`epoch ${b.epoch} follows ${prev.epoch}`);
+  }
+
+  if (b.owner === prev.owner) {
+    if (b.transfer !== '' || b.handover !== '') {
+      throw new ChainError('transfer or handover set without a change of owner');
+    }
+    if (!linked(b.owner, prev.ownerFp, b.ownerFp)) {
+      throw new ChainError("ownerFp does not follow from the previous record's");
+    }
+    return;
+  }
+
+  if ((b.transfer === '') === (b.handover === '')) {
+    throw new ChainError('a change of owner sets exactly one of transfer and handover');
+  }
+  if (b.handover !== '' && b.handover !== 'admin') throw new ChainError(`handover ${b.handover}`);
+  const listed = prev.members.find((m) => m.user === b.owner);
+  if (!listed) {
+    if (b.handover !== '') {
+      throw new ChainError(
+        'a handover to a user the previous record does not list needs a successor record, which this client does not check yet',
+      );
+    }
+    throw new ChainError('the new owner is not listed in the previous record');
+  }
+  if (listed.role !== 'editor') throw new ChainError(`the new owner is listed as ${listed.role}, not editor`);
+  if (!linked(b.owner, listed.fp, b.ownerFp)) {
+    throw new ChainError('ownerFp does not follow from the fp the previous record lists for the new owner');
+  }
+  if (b.handover !== '') {
+    handovers.push(b.seq);
+    return;
+  }
+
+  const offer = hasOwn(input.offers, b.transfer) ? input.offers[b.transfer] : null;
+  if (!offer || (await bodyHash(unb64(offer.body))) !== b.transfer) {
+    throw new ChainError(`no offer hashes to transfer ${b.transfer}`);
+  }
+  const t = await openEnvelope(offer, owners.get(prev.ownerFp), 'transfer');
+  if (t.artifact !== input.artifact) throw new ChainError(`offer for artifact ${t.artifact}`);
+  if (t.from !== prev.owner) throw new ChainError(`offer from ${t.from}, not the previous owner`);
+  if (t.to !== b.owner) throw new ChainError(`offer to ${t.to}, not the new owner`);
+  if (t.toFp !== listed.fp) throw new ChainError("offer's toFp is not the fp listed for the new owner");
+  if (t.prev !== prevHash) throw new ChainError("offer's prev is not the previous record's hash");
+}
+
+// verifyChain checks every record of a membership chain, as the client
+// rules in design/e2e-api.md ("Membership records" and "Ownership
+// transfer") require, and refuses the whole chain when any check fails.
+// input is {artifact, records, owners, offers, anchor, currentOwnerFp, pin,
+// linked}: records, owners, and offers as GET /api/artifacts/{id}/membership
+// serves them; anchor the fingerprint the first record's ownerFp must
+// reach; currentOwnerFp, when non-empty, the latest record's ownerFp; pin
+// the keyring's {epoch, seq, head}, or null on first sight; and linked an
+// optional (user, fromFp, toFp) => boolean rotation chain hook, which
+// defaults to fromFp === toFp. Returns {bodies, latest, head, handovers}.
+// A record that fails to parse throws FormatError, and one whose signature
+// fails DecryptError; every other broken rule throws ChainError,
+// RollbackError, ForkError, or StaleEpochError. Mirrors VerifyChain in
+// internal/e2e/chain.go.
+export async function verifyChain(input) {
+  const records = input.records ?? [];
+  if (records.length === 0) throw new ChainError('no records');
+  const linked = input.linked ?? ((_user, fromFp, toFp) => fromFp === toFp);
+  const owners = await ownerKeys(input.owners);
+  const bodies = [];
+  const handovers = [];
+  let prevHash = '';
+  for (let i = 0; i < records.length; i++) {
+    const b = await openRecord(records[i], input.artifact, owners);
+    if (i === 0) {
+      checkFirstRecord(b, input.anchor, linked);
+    } else {
+      await checkNextRecord(input, owners, linked, bodies[i - 1], prevHash, b, handovers);
+    }
+    bodies.push(b);
+    prevHash = await bodyHash(unb64(records[i].body));
+  }
+  const latest = bodies[bodies.length - 1];
+  if (input.currentOwnerFp && latest.ownerFp !== input.currentOwnerFp) {
+    throw new ChainError("the latest record is not signed by the current owner's key");
+  }
+  const pin = input.pin;
+  if (pin) {
+    if (!(pin.seq >= 1)) throw new FormatError(`pinned seq ${pin.seq}`);
+    if (records.length < pin.seq) throw new RollbackError(`${records.length} records, pinned seq ${pin.seq}`);
+    if ((await bodyHash(unb64(records[pin.seq - 1].body))) !== pin.head) {
+      throw new ForkError(`record ${pin.seq}`);
+    }
+    if (latest.epoch < pin.epoch) throw new StaleEpochError(`latest epoch ${latest.epoch}, pinned ${pin.epoch}`);
+  }
+  return { bodies, latest, head: prevHash, handovers };
+}
+
+// checkEncryptEpoch refuses to encrypt under an epoch older than the
+// highest one the keyring pins. A null pin allows any epoch.
+export function checkEncryptEpoch(pin, epoch) {
+  if (pin && epoch < pin.epoch) throw new StaleEpochError(`epoch ${epoch}, pinned ${pin.epoch}`);
+}
+
+// constantTimeEqual compares two byte arrays without stopping at the first
+// difference, as Go's subtle.ConstantTimeCompare does.
+function constantTimeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+
+// checkNewAk refuses a new epoch's AK that equals the AK of any earlier
+// epoch. The akCommit check cannot show this, because the commitment
+// includes the epoch. Both are raw bytes, not CryptoKeys.
+export function checkNewAk(ak, earlier) {
+  if (!(ak instanceof Uint8Array)) throw new FormatError('ak must be raw bytes');
+  checkKeyLen(ak);
+  for (const e of earlier) {
+    if (constantTimeEqual(ak, e)) throw new ReusedAkError('AK reused from an earlier epoch');
+  }
 }
