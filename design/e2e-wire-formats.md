@@ -9,6 +9,9 @@ byte for byte. The cross-language test vectors in
 ## Conventions
 
 - **Bytes in JSON** are base64url without padding, shown here as `b64(x)`.
+  Decoding is strict: only `A–Z`, `a–z`, `0–9`, `-`, and `_` are accepted,
+  and the unused bits of a final partial group must be zero, so each value
+  has exactly one accepted spelling.
 - **IDs** are the server's UUID strings: user, artifact, and version IDs.
 - **Integers inside derived inputs**, such as an epoch or a revision, are
   decimal ASCII with no leading zeros: epoch 3 is the string `3`.
@@ -253,7 +256,15 @@ body bytes, so no JSON canonicalization is needed:
 
 A verifier also refuses an Ed25519 public key of small order. The server
 refuses such a key, or an X25519 key of low order, when an account registers
-or rotates its keys.
+or rotates its keys. The rules are structural, so a non-canonical spelling of
+a bad key is refused too. With `p = 2^255 − 19`:
+
+- **Ed25519.** Refuse the key if its low 255 bits, read little-endian as `y`,
+  are at least `p`; if `x` is zero (`y` is 1 or `p − 1`) and the sign bit is
+  set; or if it is one of the eight canonical small-order points. A
+  signature's `S` must be less than the group order `L`.
+- **X25519.** Refuse the key if its full 32 bytes, read little-endian without
+  masking the top bit, are at least `p`, or if it is a low-order point.
 
 The `signer` field is not signed, so a verifier never takes the signing key
 from it or from the user directory alone:
@@ -272,8 +283,15 @@ Parsing is strict, because Go and JavaScript disagree on loose JSON. Go
 matches keys without regard to case and keeps the last of two duplicates. A
 verifier refuses a body that has a duplicate key at any depth, a key it does
 not expect, a key that differs from an expected one only in case, a missing
-key, or anything after the closing brace. The envelope itself is parsed the
+key, or anything after the closing brace. Keys are compared after decoding
+escapes, so `"a"` duplicates `"\u0061"`. The envelope itself is parsed the
 same way.
+
+The bytes must be valid UTF-8, with no leading byte-order mark and no
+unpaired surrogate escape: a `\u` escape for one half of a UTF-16 surrogate
+pair without the other half. Every number must be a non-negative integer with
+no leading zeros, fraction, or exponent, and no larger than `2^53 − 1`, the
+largest integer JavaScript holds exactly.
 
 | Purpose | Signed by | Body |
 | --- | --- | --- |
