@@ -183,8 +183,11 @@ parameters, so raising the defaults raises them for fake responses too.
    `202 {"status": "check-email"}`. For a verified account it emails a reset
    link.
 2. `POST /api/auth/reset/begin` with `{"token": "b64"}` checks the token
-   without using it, and returns `{"email", "mkRecovery", "x25519Pub",
-   "ed25519Pub"}`. The token stays valid for `complete`.
+   without using it, and returns `{"id", "email", "mkRecovery",
+   "x25519Pub", "ed25519Pub", "ed25519Priv"}`. The token stays valid for
+   `complete`. The `id` and the sealed `ed25519Priv` let a device that holds
+   only the link and the recovery code sign the proof. Opening the key needs
+   `MK`, so the response reveals no more than `mkRecovery` already does.
 3. `POST /api/auth/reset/complete` uses the token, in one of two modes:
    - **With the recovery code**:
 

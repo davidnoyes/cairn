@@ -27,8 +27,10 @@ echo "== build"
 pass "built $BIN"
 
 echo "== serve"
-# No bootstrap password: the admin account is claimed at first login below.
-"$BIN" serve --addr ":$PORT" --data-dir "$WORK/data" --admin-email admin@e2e.test &
+SERVER_LOG="$WORK/server.log"
+"$BIN" serve --addr ":$PORT" --data-dir "$WORK/data" \
+  --smtp-url log:// --admin-email admin@e2e.test --public-url "$HOST" \
+  >"$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 for i in $(seq 1 50); do
   curl -sf "$HOST/healthz" >/dev/null 2>&1 && break
@@ -38,17 +40,20 @@ curl -sf "$HOST/healthz" >/dev/null || fail "server did not start"
 pass "server healthy on $HOST"
 
 echo "== auth"
-# First login claims the unclaimed bootstrap admin (password chosen here).
-"$BIN" login --host "$HOST" --email admin@e2e.test \
-  --password admin-password-1 --confirm admin-password-1 >/dev/null
+# Sign up, confirm by pulling the verification link out of the log:// mailer,
+# then sign in. cairn login creates a device API key and saves it.
+echo "e2e-password-1" | "$BIN" signup --host "$HOST" --email admin@e2e.test --password-stdin >/dev/null
+VERIFY_LINK=$(grep -oE "$HOST/verify#token=[A-Za-z0-9_-]+" "$SERVER_LOG" | tail -1)
+[[ -n "$VERIFY_LINK" ]] || fail "no verification link in server log"
+"$BIN" confirm-email "$VERIFY_LINK" >/dev/null
+echo "e2e-password-1" | "$BIN" login --host "$HOST" --email admin@e2e.test --password-stdin >/dev/null
 "$BIN" whoami | grep -q admin@e2e.test || fail "whoami"
-pass "CLI first-login claim + whoami"
+pass "CLI signup + confirm-email + login + whoami"
 
-# API key flow: create a key via the admin API, then use it via env vars.
-TOKEN_JSON=$(curl -sf -X POST "$HOST/api/admin/keys" \
-  -H "Authorization: Bearer $(python3 -c "import json;print(json.load(open('$CAIRN_CONFIG'))['token'])")" \
-  -H 'Content-Type: application/json' -d '{"name":"e2e"}')
-API_KEY=$(echo "$TOKEN_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')
+# Headless use: the config file holds the full four-part API key; only its
+# first three parts (no keySecret) ever go on the wire as the bearer.
+API_KEY=$(python3 -c "import json;print(json.load(open('$CAIRN_CONFIG'))['apiKey'])")
+BEARER=$(echo "$API_KEY" | cut -d'_' -f1-3)
 CAIRN_HOST="$HOST" CAIRN_API_KEY="$API_KEY" "$BIN" whoami | grep -q admin@e2e.test || fail "API key auth"
 pass "API key auth"
 
@@ -61,7 +66,7 @@ pass "pushed guestbook ($AID / $VID)"
 
 echo "== resource reference"
 curl -sf -X POST "$HOST/api/artifacts/$AID/resources" \
-  -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $BEARER" -H 'Content-Type: application/json' \
   -d '{"type":"claude-session","value":"sess-e2e"}' >/dev/null
 curl -sf "$HOST/api/artifacts/sess-e2e" | grep -q "$AID" || fail "API lookup by resource value"
 pass "API resolves resource value to artifact"
@@ -108,6 +113,7 @@ curl -sf "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt" | grep -
   || fail "anonymous file read"
 pass "anonymous file read on public artifact"
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+  -H 'Content-Type: application/octet-stream' \
   "$HOST/api/artifacts/$AID/versions/$VID/files/evil.txt" --data-binary 'x')
 [[ "$STATUS" == "401" ]] || fail "anonymous file write not rejected ($STATUS)"
 pass "anonymous file write rejected"

@@ -384,14 +384,18 @@ type resetBeginRequest struct {
 }
 
 type resetBeginResponse struct {
-	Email      string `json:"email"`
-	MKRecovery string `json:"mkRecovery"`
-	X25519Pub  string `json:"x25519Pub"`
-	Ed25519Pub string `json:"ed25519Pub"`
+	ID          string `json:"id"`
+	Email       string `json:"email"`
+	MKRecovery  string `json:"mkRecovery"`
+	X25519Pub   string `json:"x25519Pub"`
+	Ed25519Pub  string `json:"ed25519Pub"`
+	Ed25519Priv string `json:"ed25519Priv"`
 }
 
 // handleResetBegin reads what a reset needs without consuming the token;
-// reset/complete still has to use it.
+// reset/complete still has to use it. The id and sealed Ed25519 key let a
+// device holding only the link and the recovery code sign the reset proof;
+// both are as safe to hand out as mkRecovery, since opening the key needs MK.
 func (s *Server) handleResetBegin(w http.ResponseWriter, r *http.Request) {
 	var req resetBeginRequest
 	if !readJSON(w, r, &req) {
@@ -418,10 +422,12 @@ func (s *Server) handleResetBegin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resetBeginResponse{
-		Email:      u.Email,
-		MKRecovery: e2e.B64(b.MKRecovery),
-		X25519Pub:  e2e.B64(b.X25519Pub),
-		Ed25519Pub: e2e.B64(b.Ed25519Pub),
+		ID:          u.ID,
+		Email:       u.Email,
+		MKRecovery:  e2e.B64(b.MKRecovery),
+		X25519Pub:   e2e.B64(b.X25519Pub),
+		Ed25519Pub:  e2e.B64(b.Ed25519Pub),
+		Ed25519Priv: e2e.B64(b.Ed25519Priv),
 	})
 }
 

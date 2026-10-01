@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/aloisdeniel/cairn/internal/client"
+	"github.com/aloisdeniel/cairn/internal/e2e"
 	"github.com/aloisdeniel/cairn/internal/versiondb"
 	"golang.org/x/term"
 )
@@ -34,56 +36,8 @@ func leadOrArg(lead string, fs *flag.FlagSet) string {
 	return fs.Arg(0)
 }
 
-func runLogin(args []string) error {
-	fs := flag.NewFlagSet("login", flag.ExitOnError)
-	host := fs.String("host", envOr("CAIRN_HOST", loadConfig().Host), "server URL, e.g. http://localhost:8787")
-	email := fs.String("email", "", "account email")
-	password := fs.String("password", "", "password (prompted when omitted)")
-	confirmFlag := fs.String("confirm", "", "password confirmation (first login only, for non-interactive use)")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if *host == "" {
-		return fmt.Errorf("--host is required (e.g. cairn login --host http://localhost:8787)")
-	}
-	reader := bufio.NewReader(os.Stdin)
-	if *email == "" {
-		fmt.Print("email: ")
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return err
-		}
-		*email = strings.TrimSpace(line)
-	}
-	confirm := *confirmFlag
-	if *password == "" {
-		p, err := readPassword("password: ")
-		if err != nil {
-			return err
-		}
-		*password = p
-	}
-	c := client.New(*host, "")
-	out, err := c.Login(*email, *password, confirm)
-	if err != nil && strings.Contains(err.Error(), "first login") {
-		// Unclaimed account: this login sets the password.
-		fmt.Println("First login: this password will become your account password.")
-		confirm, err = readPassword("confirm password: ")
-		if err != nil {
-			return err
-		}
-		out, err = c.Login(*email, *password, confirm)
-	}
-	if err != nil {
-		return err
-	}
-	if err := saveConfig(cliConfig{Host: c.Host, Token: out.Token}); err != nil {
-		return err
-	}
-	fmt.Printf("logged in to %s as %s\n", c.Host, out.User.Email)
-	return nil
-}
-
+// readPassword prompts and reads a password without echoing it to a
+// terminal, or reads a plain line when stdin isn't one.
 func readPassword(prompt string) (string, error) {
 	fmt.Print(prompt)
 	if term.IsTerminal(int(syscall.Stdin)) {
@@ -95,13 +49,146 @@ func readPassword(prompt string) (string, error) {
 	return strings.TrimRight(line, "\r\n"), err
 }
 
+// readPasswordOrStdin implements every command's --password-stdin flag: one
+// line from stdin, unprompted, for scripts and tests.
+func readPasswordOrStdin(stdin bool, prompt string) (string, error) {
+	if stdin {
+		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+		if err != nil && err != io.EOF {
+			return "", err
+		}
+		return strings.TrimRight(line, "\r\n"), nil
+	}
+	return readPassword(prompt)
+}
+
+func runSignup(args []string) error {
+	fs := flag.NewFlagSet("signup", flag.ExitOnError)
+	host := fs.String("host", envOr("CAIRN_HOST", ""), "server URL, e.g. http://localhost:8787")
+	email := fs.String("email", "", "account email")
+	name := fs.String("name", "", "display name")
+	pwStdin := fs.Bool("password-stdin", false, "read the password from stdin (one line); skips the recovery-code confirmation")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *host == "" || *email == "" {
+		return fmt.Errorf("usage: cairn signup --host <url> --email <email> [--name <name>]")
+	}
+	password, err := readPasswordOrStdin(*pwStdin, "password: ")
+	if err != nil {
+		return err
+	}
+	c := client.New(*host, "")
+	recoveryDisplay, err := c.Signup(*email, *name, password)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Save this recovery code. Nobody, including an administrator, can recover your account without your password or this code.")
+	fmt.Println()
+	fmt.Println("  " + recoveryDisplay)
+	fmt.Println()
+	if !*pwStdin {
+		if err := confirmRecoveryCode(recoveryDisplay); err != nil {
+			return err
+		}
+	}
+	fmt.Println("check your email to verify your account, then run: cairn confirm-email <link>")
+	return nil
+}
+
+// confirmRecoveryCode asks the user to retype one randomly chosen group of
+// the displayed recovery code, to prove they saved it.
+func confirmRecoveryCode(display string) error {
+	groups := strings.Split(display, "-")
+	idx := randIndex(len(groups))
+	fmt.Printf("To confirm you saved it, retype group %d of %d: ", idx+1, len(groups))
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil {
+		return err
+	}
+	if strings.ToUpper(strings.TrimSpace(line)) != groups[idx] {
+		return fmt.Errorf("that doesn't match the recovery code — save it and run signup again")
+	}
+	return nil
+}
+
+func randIndex(n int) int {
+	b := make([]byte, 1)
+	rand.Read(b)
+	return int(b[0]) % n
+}
+
+func runConfirmEmail(args []string) error {
+	fs := flag.NewFlagSet("confirm-email", flag.ExitOnError)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	link := fs.Arg(0)
+	if link == "" {
+		return fmt.Errorf("usage: cairn confirm-email <link>")
+	}
+	host, err := client.LinkHost(link)
+	if err != nil {
+		return err
+	}
+	if err := client.New(host, "").ConfirmEmail(link); err != nil {
+		return err
+	}
+	fmt.Println("email confirmed")
+	return nil
+}
+
+func runLogin(args []string) error {
+	fs := flag.NewFlagSet("login", flag.ExitOnError)
+	host := fs.String("host", envOr("CAIRN_HOST", loadConfig().Host), "server URL, e.g. http://localhost:8787")
+	email := fs.String("email", "", "account email")
+	pwStdin := fs.Bool("password-stdin", false, "read the password from stdin (one line)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *host == "" {
+		return fmt.Errorf("--host is required (e.g. cairn login --host http://localhost:8787)")
+	}
+	if *email == "" {
+		fmt.Print("email: ")
+		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+		if err != nil {
+			return err
+		}
+		*email = strings.TrimSpace(line)
+	}
+	password, err := readPasswordOrStdin(*pwStdin, "password: ")
+	if err != nil {
+		return err
+	}
+	c := client.New(*host, "")
+	out, err := c.Login(*email, password)
+	if err != nil {
+		return err
+	}
+	if err := saveConfig(cliConfig{Host: c.Host, Email: out.Email, APIKey: out.APIKey}); err != nil {
+		return err
+	}
+	fmt.Printf("logged in to %s as %s\n", c.Host, out.Email)
+	return nil
+}
+
 func runLogout(args []string) error {
 	cfg := loadConfig()
-	cfg.Token = ""
-	if err := saveConfig(cfg); err != nil {
+	var revokeErr error
+	if cfg.APIKey != "" {
+		if key, err := e2e.ParseAPIKey(cfg.APIKey); err == nil {
+			bearer, _ := apiKeyBearer(cfg.APIKey)
+			revokeErr = client.New(cfg.Host, bearer).Logout(key.KeyID)
+		}
+	}
+	if err := saveConfig(cliConfig{}); err != nil {
 		return err
 	}
 	fmt.Println("logged out")
+	if revokeErr != nil {
+		fmt.Fprintln(os.Stderr, "warning: could not revoke the device key on the server:", revokeErr)
+	}
 	return nil
 }
 
@@ -119,14 +206,160 @@ func runWhoami(args []string) error {
 	if err != nil {
 		return err
 	}
+	bundle, err := c.MeBundle()
+	if err != nil {
+		return err
+	}
+	fp := e2e.FormatFingerprint(e2e.Fingerprint(bundle.X25519Pub, bundle.Ed25519Pub))
 	if *jsonOut {
-		return printJSON(me)
+		return printJSON(map[string]any{"user": me, "fingerprint": fp})
 	}
 	role := "user"
 	if me.IsAdmin {
 		role = "admin"
 	}
 	fmt.Printf("%s (%s) — %s on %s\n", me.Email, me.Name, role, c.Host)
+	fmt.Printf("fingerprint: %s\n", fp)
+	return nil
+}
+
+func runForgot(args []string) error {
+	fs := flag.NewFlagSet("forgot", flag.ExitOnError)
+	host := fs.String("host", envOr("CAIRN_HOST", ""), "server URL")
+	email := fs.String("email", "", "account email")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *host == "" || *email == "" {
+		return fmt.Errorf("usage: cairn forgot --host <url> --email <email>")
+	}
+	if err := client.New(*host, "").Forgot(*email); err != nil {
+		return err
+	}
+	fmt.Println("if that address has an account, a reset link was sent")
+	return nil
+}
+
+func runReset(args []string) error {
+	fs := flag.NewFlagSet("reset", flag.ExitOnError)
+	recoveryCode := fs.String("recovery-code", "", "the saved recovery code")
+	noRecoveryCode := fs.Bool("no-recovery-code", false, "generate new keys instead; your existing artifacts become unreadable")
+	yes := fs.Bool("yes", false, "confirm --no-recovery-code when stdin is not a terminal")
+	pwStdin := fs.Bool("password-stdin", false, "read the new password from stdin (one line)")
+	lead, rest := splitLeadingArg(args)
+	if err := fs.Parse(rest); err != nil {
+		return err
+	}
+	link := leadOrArg(lead, fs)
+	if link == "" {
+		return fmt.Errorf("usage: cairn reset <link> (--recovery-code <code> | --no-recovery-code)")
+	}
+	if (*recoveryCode == "") == !*noRecoveryCode {
+		return fmt.Errorf("specify exactly one of --recovery-code or --no-recovery-code")
+	}
+	host, err := client.LinkHost(link)
+	if err != nil {
+		return err
+	}
+	c := client.New(host, "")
+
+	if *noRecoveryCode {
+		fmt.Fprintln(os.Stderr, "warning: without the recovery code, your existing artifacts become unreadable")
+		if !*yes && !term.IsTerminal(int(syscall.Stdin)) {
+			return fmt.Errorf("refusing to continue on a non-terminal without --yes")
+		}
+		if !*yes {
+			fmt.Print("continue? [y/N] ")
+			line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+			if strings.ToLower(strings.TrimSpace(line)) != "y" {
+				return fmt.Errorf("aborted")
+			}
+		}
+		password, err := readPasswordOrStdin(*pwStdin, "new password: ")
+		if err != nil {
+			return err
+		}
+		recoveryDisplay, err := c.ResetNew(link, password)
+		if err != nil {
+			return err
+		}
+		fmt.Println("Save this recovery code. Nobody, including an administrator, can recover your account without your password or this code.")
+		fmt.Println()
+		fmt.Println("  " + recoveryDisplay)
+		return nil
+	}
+
+	password, err := readPasswordOrStdin(*pwStdin, "new password: ")
+	if err != nil {
+		return err
+	}
+	if err := c.ResetRecovery(link, *recoveryCode, password); err != nil {
+		return err
+	}
+	fmt.Println("password reset")
+	return nil
+}
+
+func runKeys(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: cairn keys <list|revoke> [flags]")
+	}
+	sub, rest := args[0], args[1:]
+	switch sub {
+	case "list":
+		return keysList(rest)
+	case "revoke":
+		return keysRevoke(rest)
+	default:
+		return fmt.Errorf("unknown keys subcommand %q", sub)
+	}
+}
+
+func keysList(args []string) error {
+	fs := flag.NewFlagSet("keys list", flag.ExitOnError)
+	jsonOut := fs.Bool("json", false, "JSON output")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	c, err := apiClient()
+	if err != nil {
+		return err
+	}
+	keys, err := c.ListKeys()
+	if err != nil {
+		return err
+	}
+	if *jsonOut {
+		return printJSON(keys)
+	}
+	for _, k := range keys {
+		device := ""
+		if k.Device {
+			device = " (device)"
+		}
+		fmt.Printf("%s  %-16s%s  %s\n", k.ID, k.Name, device, k.CreatedAt)
+	}
+	return nil
+}
+
+func keysRevoke(args []string) error {
+	fs := flag.NewFlagSet("keys revoke", flag.ExitOnError)
+	lead, rest := splitLeadingArg(args)
+	if err := fs.Parse(rest); err != nil {
+		return err
+	}
+	id := leadOrArg(lead, fs)
+	if id == "" {
+		return fmt.Errorf("usage: cairn keys revoke <id>")
+	}
+	c, err := apiClient()
+	if err != nil {
+		return err
+	}
+	if err := c.RevokeKey(id); err != nil {
+		return err
+	}
+	fmt.Printf("revoked key %s\n", id)
 	return nil
 }
 

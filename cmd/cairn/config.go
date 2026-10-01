@@ -8,12 +8,16 @@ import (
 	"path/filepath"
 
 	"github.com/aloisdeniel/cairn/internal/client"
+	"github.com/aloisdeniel/cairn/internal/e2e"
 )
 
 // cliConfig is stored at ~/.config/cairn/config.json after `cairn login`.
+// APIKey is the full four-part key (cairn_<keyid>_<authSecret>_<keySecret>);
+// only its first two parts ever go on the wire, as the bearer.
 type cliConfig struct {
-	Host  string `json:"host"`
-	Token string `json:"token"`
+	Host   string `json:"host"`
+	Email  string `json:"email"`
+	APIKey string `json:"apiKey"`
 }
 
 func configPath() (string, error) {
@@ -54,27 +58,41 @@ func saveConfig(cfg cliConfig) error {
 }
 
 // apiClient builds a client from, in priority order: CAIRN_HOST/CAIRN_API_KEY
-// environment (headless agents), then the stored login.
+// environment (headless agents), then the stored login. CAIRN_API_KEY and the
+// config file both hold the full four-part key; only its bearer (the first
+// two parts) ever goes on the wire.
 func apiClient() (*client.Client, error) {
 	host := os.Getenv("CAIRN_HOST")
-	token := os.Getenv("CAIRN_API_KEY")
-	if host != "" && token != "" {
-		return client.New(host, token), nil
-	}
+	fullKey := os.Getenv("CAIRN_API_KEY")
 	cfg := loadConfig()
 	if host == "" {
 		host = cfg.Host
 	}
-	if token == "" {
-		token = cfg.Token
+	if fullKey == "" {
+		fullKey = cfg.APIKey
 	}
 	if host == "" {
 		return nil, errors.New("not logged in: run 'cairn login --host <url>' or set CAIRN_HOST and CAIRN_API_KEY")
 	}
-	if token == "" {
+	if fullKey == "" {
 		return nil, fmt.Errorf("no credentials for %s: run 'cairn login' or set CAIRN_API_KEY", host)
 	}
-	return client.New(host, token), nil
+	bearer, err := apiKeyBearer(fullKey)
+	if err != nil {
+		return nil, err
+	}
+	return client.New(host, bearer), nil
+}
+
+// apiKeyBearer extracts the bearer credential (cairn_<keyid>_<authSecret>)
+// from a presented full four-part API key; the key's keySecret never goes on
+// the wire.
+func apiKeyBearer(full string) (string, error) {
+	key, err := e2e.ParseAPIKey(full)
+	if err != nil {
+		return "", fmt.Errorf("malformed API key: %w", err)
+	}
+	return "cairn_" + key.KeyID + "_" + key.AuthSecret, nil
 }
 
 func printJSON(v any) error {
