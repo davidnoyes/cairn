@@ -13,6 +13,16 @@ type Artifact struct {
 	CreatedAt   string      `json:"createdAt"`
 	UpdatedAt   string      `json:"updatedAt"`
 	Resources   []*Resource `json:"resources,omitempty"`
+
+	// Sharing state, set from the latest membership record. OwnerID is
+	// empty for an artifact created without one; Epoch is 0 until the first
+	// record lands. PublicTokenHash and PublicEpoch are set only while public.
+	OwnerID         string `json:"owner,omitempty"`
+	Epoch           int    `json:"epoch"`
+	Team            string `json:"team"`
+	PublicWrites    bool   `json:"publicWrites"`
+	PublicTokenHash string `json:"-"`
+	PublicEpoch     int    `json:"-"`
 }
 
 // Resource associates external references (e.g. a Claude session ID) with an
@@ -36,13 +46,20 @@ type Version struct {
 	ContentDir string `json:"-"`
 	CreatedAt  string `json:"createdAt"`
 	UpdatedAt  string `json:"updatedAt"`
+
+	// PushedBy is the user who pushed the version, empty if unrecorded.
+	// Epoch is the epoch it was written under.
+	PushedBy string `json:"pushedBy,omitempty"`
+	Epoch    int    `json:"epoch"`
 }
 
-const artifactCols = `id, name, description, public, created_at, updated_at`
+const artifactCols = `id, name, description, public, created_at, updated_at,
+	COALESCE(owner_id, ''), epoch, team, public_writes, COALESCE(public_token_hash, ''), COALESCE(public_epoch, 0)`
 
 func scanArtifact(row interface{ Scan(...any) error }) (*Artifact, error) {
 	var a Artifact
-	if err := row.Scan(&a.ID, &a.Name, &a.Description, &a.Public, &a.CreatedAt, &a.UpdatedAt); err != nil {
+	if err := row.Scan(&a.ID, &a.Name, &a.Description, &a.Public, &a.CreatedAt, &a.UpdatedAt,
+		&a.OwnerID, &a.Epoch, &a.Team, &a.PublicWrites, &a.PublicTokenHash, &a.PublicEpoch); err != nil {
 		return nil, err
 	}
 	return &a, nil
@@ -72,11 +89,9 @@ func (s *Store) ArtifactByName(name string) (*Artifact, error) {
 // ArtifactsByResource returns the artifacts associated with a resource,
 // matched by resource value (e.g. a Claude session id) or resource row id.
 func (s *Store) ArtifactsByResource(ref string) ([]*Artifact, error) {
-	rows, err := s.db.Query(`SELECT DISTINCT a.id, a.name, a.description, a.public, a.created_at, a.updated_at
-		FROM artifacts a
-		JOIN artifact_resources r ON r.artifact_id = a.id
-		WHERE r.value = ? OR r.id = ?
-		ORDER BY a.created_at`, ref, ref)
+	rows, err := s.db.Query(`SELECT `+artifactCols+` FROM artifacts
+		WHERE id IN (SELECT artifact_id FROM artifact_resources WHERE value = ? OR id = ?)
+		ORDER BY created_at`, ref, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -158,11 +173,11 @@ func (s *Store) DeleteResource(artifactID, resourceID string) error {
 
 // Versions
 
-const versionCols = `id, artifact_id, name, changelog, seq, content_dir, created_at, updated_at`
+const versionCols = `id, artifact_id, name, changelog, seq, content_dir, created_at, updated_at, COALESCE(pushed_by, ''), epoch`
 
 func scanVersion(row interface{ Scan(...any) error }) (*Version, error) {
 	var v Version
-	if err := row.Scan(&v.ID, &v.ArtifactID, &v.Name, &v.Changelog, &v.Seq, &v.ContentDir, &v.CreatedAt, &v.UpdatedAt); err != nil {
+	if err := row.Scan(&v.ID, &v.ArtifactID, &v.Name, &v.Changelog, &v.Seq, &v.ContentDir, &v.CreatedAt, &v.UpdatedAt, &v.PushedBy, &v.Epoch); err != nil {
 		return nil, err
 	}
 	return &v, nil

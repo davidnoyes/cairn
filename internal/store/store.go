@@ -50,6 +50,10 @@ func (s *Store) DB() *sql.DB { return s.db }
 // data directory that already holds accounts would discard them.
 const accountsMigration = "migrations/002_accounts.sql"
 
+// sharingMigration adds ownership to artifacts; artifacts that predate it
+// have no owner, so it refuses a data directory that holds any.
+const sharingMigration = "migrations/003_sharing.sql"
+
 func (s *Store) migrate() error {
 	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {
 		return err
@@ -70,6 +74,15 @@ func (s *Store) migrate() error {
 		if name == accountsMigration {
 			var n int
 			if err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n); err != nil {
+				return err
+			}
+			if n > 0 {
+				return ErrLegacyData
+			}
+		}
+		if name == sharingMigration {
+			var n int
+			if err := s.db.QueryRow(`SELECT COUNT(*) FROM artifacts`).Scan(&n); err != nil {
 				return err
 			}
 			if n > 0 {
@@ -109,8 +122,12 @@ var ErrNotFound = sql.ErrNoRows
 // ErrExists is returned when a create would collide with an existing row.
 var ErrExists = errors.New("already exists")
 
+// ErrStale is returned when a membership record does not follow the latest
+// one: a wrong seq, or a prev that is not the hash of the latest body.
+var ErrStale = errors.New("record does not follow the latest record")
+
 // ErrLegacyData is returned by Open when the data directory holds accounts
-// from a Cairn version that predates this schema. Those accounts cannot be
+// or artifacts from a Cairn version that predates this schema. Those accounts cannot be
 // migrated automatically: start the server with a fresh data directory, or
 // run `cairn import` to bring the old accounts across.
 var ErrLegacyData = errors.New("this data directory holds accounts from an earlier version of Cairn; start with a fresh data directory, or run `cairn import`")
