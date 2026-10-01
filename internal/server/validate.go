@@ -79,6 +79,9 @@ func validateBundle(b store.Bundle) error {
 			return err
 		}
 	}
+	if e2e.CheckPublicKeys(b.X25519Pub, b.Ed25519Pub) != nil {
+		return errBadBundle
+	}
 	for _, sealed := range [][]byte{b.MKPassword, b.MKRecovery, b.X25519Priv, b.Ed25519Priv, b.EK} {
 		if err := validateSealedLen(sealed); err != nil {
 			return err

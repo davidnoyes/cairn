@@ -71,7 +71,10 @@ func TestResetRecoveryKeepsKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sig := e2e.Sign(seed, "reset", proofBody)
+	sig, err := e2e.Sign(seed, "reset", proofBody)
+	if err != nil {
+		t.Fatal(err)
+	}
 	newKDF, _ := json.Marshal(e2e.Params{Alg: "argon2id", Memory: 65536, Time: 3, Threads: 1, Salt: bytes.Repeat([]byte{0x09}, 16)})
 	newMKPassword := e2e.B64(bytes.Repeat([]byte{0x0a}, sealedKeyLen))
 
@@ -263,7 +266,11 @@ func TestResetRecoveryRejectsBadProof(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return e2e.B64(e2e.Sign(seed, "reset", body))
+		sig, err := e2e.Sign(seed, "reset", body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e2e.B64(sig)
 	}
 	complete := func(proof string) map[string]any {
 		return map[string]any{

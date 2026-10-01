@@ -124,3 +124,20 @@ func TestDecodeBundleRejectsBadB64(t *testing.T) {
 		t.Error("accepted malformed base64")
 	}
 }
+
+// TestValidateBundleRejectsLowOrderKeys: a low-order public key would let a
+// wrap or a signature be forged without the private key, so a bundle that
+// carries one is refused at upload.
+func TestValidateBundleRejectsLowOrderKeys(t *testing.T) {
+	identity := append([]byte{1}, make([]byte, 31)...) // the Ed25519 identity point
+	for name, mutate := range map[string]func(*store.Bundle){
+		"x25519 zero point":      func(b *store.Bundle) { b.X25519Pub = make([]byte, 32) },
+		"ed25519 identity point": func(b *store.Bundle) { b.Ed25519Pub = identity },
+	} {
+		b := validBundle()
+		mutate(&b)
+		if err := validateBundle(b); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}

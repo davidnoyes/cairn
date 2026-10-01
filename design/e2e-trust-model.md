@@ -49,7 +49,14 @@ a web app:
   who shares with whom, the public flag, timestamps, and approximate sizes.
 - **The server can delete data or serve an older copy.** Signatures and
   authenticated encryption stop content forged by anyone who is not a current
-  owner or editor, but they cannot prove that a copy is the latest one.
+  owner or editor, but they cannot prove that a copy is the latest one. Each
+  client remembers the newest keyring and membership record it has seen and
+  refuses an older one, which narrows this to data the client has not seen
+  before.
+- **Sign-in can reveal that an account exists, over time.** Prelogin answers
+  an unknown address with a stable fake salt. A real account's salt changes
+  when its password changes, and the fake one changes when someone signs up,
+  so a person who asks repeatedly can tell the two apart.
 - **The server could substitute a public key** the first time you share with
   someone. A fingerprint shows as unverified until you compare it with the
   person directly, and a later change raises a warning.
@@ -376,10 +383,13 @@ session, so the public link alone lets nobody write.
 Encryption alone proves only that the writer held `AK`, which every viewer and
 public-link holder does. Signatures prove who wrote it:
 
-- The owner signs each membership record: the epoch, the members with their
-  roles and fingerprints, and the public and public-writes settings.
+- The owner signs each membership record: the epoch, a commitment to the
+  epoch's `AK`, the members with their roles and fingerprints, and the public
+  and public-writes settings. A client refuses an `AK` that does not match
+  the commitment, so the server cannot plant a key it chose.
 - Whoever pushes a version signs its manifest. Whoever writes the database
-  signs the new revision.
+  signs the new revision. Whoever writes a stored file or a metadata record
+  signs that too.
 - Before rendering or writing, a client checks that each signer is the owner,
   or an editor under the current signed membership record.
 - A client remembers the highest epoch it has seen for each artifact, and

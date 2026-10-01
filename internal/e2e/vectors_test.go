@@ -2,9 +2,12 @@ package e2e
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
+	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +22,132 @@ var updateVectors = flag.Bool("update", false, "regenerate testdata/vectors.json
 
 func hexEnc(b []byte) string { return hex.EncodeToString(b) }
 
+// nonZeroTrailingBitsChar returns a base32 character other than avoid whose
+// value's low 2 bits are non-zero, for building a recovery-code negative
+// whose otherwise-valid encoding carries meaning in bits ParseRecoveryCode
+// must treat as padding.
+func nonZeroTrailingBitsChar(avoid byte) string {
+	if avoid != 'C' {
+		return "C" // value 2: low 2 bits are 10
+	}
+	return "D" // value 3: low 2 bits are 11
+}
+
+// edwards25519Order is L, the prime order of the Ed25519 base point, fixed
+// by RFC 8032: 2^252 + 27742317777372353535851937790883648493.
+var edwards25519Order = func() *big.Int {
+	l := new(big.Int).Lsh(big.NewInt(1), 252)
+	delta, _ := new(big.Int).SetString("27742317777372353535851937790883648493", 10)
+	return l.Add(l, delta)
+}()
+
+// nonCanonicalS returns sig with its S half (the last 32 bytes, a
+// little-endian integer) replaced by S+L: still congruent to S mod L, so it
+// signs the same thing under any verifier that only checks mod L, but no
+// longer a value a strict RFC 8032 verifier accepts.
+func nonCanonicalS(sig []byte) []byte {
+	s := new(big.Int).SetBytes(reverse(sig[32:64]))
+	s.Add(s, edwards25519Order)
+	out := append([]byte(nil), sig[:32]...)
+	sBytes := s.FillBytes(make([]byte, 32))
+	return append(out, reverse(sBytes)...)
+}
+
+func reverse(b []byte) []byte {
+	out := make([]byte, len(b))
+	for i, c := range b {
+		out[len(b)-1-i] = c
+	}
+	return out
+}
+
+// applyBlobCtxOverride returns base with whichever fields ov names replaced.
+func applyBlobCtxOverride(t testing.TB, base BlobContext, ov map[string]any) BlobContext {
+	t.Helper()
+	out := base
+	if v, ok := ov["artifact"]; ok {
+		out.Artifact = v.(string)
+	}
+	if v, ok := ov["version"]; ok {
+		out.Version = v.(string)
+	}
+	if v, ok := ov["kind"]; ok {
+		out.Kind = v.(string)
+	}
+	if v, ok := ov["name"]; ok {
+		out.Name = v.(string)
+	}
+	return out
+}
+
+// applyWrapCtxOverride returns base with whichever fields ov names replaced.
+func applyWrapCtxOverride(t testing.TB, base WrapContext, ov map[string]any) WrapContext {
+	t.Helper()
+	out := base
+	if v, ok := ov["purpose"]; ok {
+		out.Purpose = v.(string)
+	}
+	if v, ok := ov["artifact"]; ok {
+		out.Artifact = v.(string)
+	}
+	if v, ok := ov["epoch"]; ok {
+		out.Epoch = v.(uint64)
+	}
+	if v, ok := ov["recipientId"]; ok {
+		out.RecipientID = v.(string)
+	}
+	return out
+}
+
+// splitBlobChunks splits a blob's post-header bytes into chunks using the
+// same rule OpenBlob does: full blobFullChunkSize chunks while more than
+// that remains, the rest as the last chunk.
+func splitBlobChunks(rest []byte) [][]byte {
+	var chunks [][]byte
+	for len(rest) > 0 {
+		if len(rest) <= blobFullChunkSize {
+			chunks = append(chunks, rest)
+			rest = nil
+		} else {
+			chunks = append(chunks, rest[:blobFullChunkSize])
+			rest = rest[blobFullChunkSize:]
+		}
+	}
+	return chunks
+}
+
+// applyBlobTransform mutates a valid blob's bytes per the schema documented
+// in testdata/README.md, without ever producing a blob OpenBlob would
+// accept.
+func applyBlobTransform(t testing.TB, blob []byte, tr transform) []byte {
+	t.Helper()
+	header := blob[:blobHeaderSize]
+	chunks := splitBlobChunks(blob[blobHeaderSize:])
+	switch tr.Op {
+	case "truncate":
+		k := tr.Chunks.(int)
+		if k > len(chunks) {
+			k = len(chunks)
+		}
+		chunks = chunks[:k]
+	case "drop":
+		i := tr.Chunk
+		chunks = append(append([][]byte{}, chunks[:i]...), chunks[i+1:]...)
+	case "swap":
+		idx := tr.Chunks.([]int)
+		chunks[idx[0]], chunks[idx[1]] = chunks[idx[1]], chunks[idx[0]]
+	case "append":
+		chunks = append(chunks, hexDec(t, tr.Bytes))
+	case "flip":
+		out := append(append([]byte{}, header...), bytes.Join(chunks, nil)...)
+		out[tr.Offset] ^= 0x01
+		return out
+	default:
+		t.Fatalf("unknown blob transform op %q", tr.Op)
+	}
+	return append(append([]byte{}, header...), bytes.Join(chunks, nil)...)
+}
+
 func hexDec(t testing.TB, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)
@@ -28,25 +157,52 @@ func hexDec(t testing.TB, s string) []byte {
 	return b
 }
 
+// negative is the one schema every primitive's negative cases use: a reason,
+// plus whichever overrides apply to that primitive. Every field the positive
+// entry already has keeps its value; only the fields named here change, and
+// the operation must then fail. See testdata/README.md for which overrides
+// each primitive reads.
 type negative struct {
-	Why   string `json:"why"`
-	Input string `json:"input"`
+	Why       string           `json:"why"`
+	Input     string           `json:"input,omitempty"`     // replaces ciphertext, display string, or JSON text
+	Ctx       map[string]any   `json:"ctx,omitempty"`       // merged over the positive entry's ctx
+	Key       string           `json:"key,omitempty"`       // hex, replaces the key used to open/verify
+	Fields    []string         `json:"fields,omitempty"`    // hex, replaces seal's AD fields
+	Purpose   string           `json:"purpose,omitempty"`   // replaces a signature's purpose
+	Pub       string           `json:"pub,omitempty"`       // hex, replaces a signature's public key
+	Params    *argon2ParamsVec `json:"params,omitempty"`    // a complete, standalone Argon2id params object
+	NewSig    string           `json:"newSig,omitempty"`    // hex, replaces a rotation envelope's newSig
+	Transform *transform       `json:"transform,omitempty"` // applied to want, instead of a literal input
+}
+
+// transform mutates a blob's want bytes without storing a second literal
+// copy of a large ciphertext. Chunks is an int for "truncate" and a []int
+// for "swap"; which one applies depends on Op.
+type transform struct {
+	Op     string `json:"op"`
+	Chunks any    `json:"chunks,omitempty"`
+	Chunk  int    `json:"chunk,omitempty"`
+	Bytes  string `json:"bytes,omitempty"`
+	Offset int    `json:"offset,omitempty"`
 }
 
 type vectorFile struct {
-	Enc          []encVec         `json:"enc"`
-	Derive       []deriveVec      `json:"derive"`
-	Argon2       []argon2Vec      `json:"argon2"`
-	RecoveryCode []recoveryVec    `json:"recoveryCode"`
-	APIKey       []apiKeyVec      `json:"apiKey"`
-	Seal         []sealVec        `json:"seal"`
-	Blob         []blobVec        `json:"blob"`
-	Wrap         []wrapVec        `json:"wrap"`
-	Signature    []sigVec         `json:"signature"`
-	Fingerprint  []fingerprintVec `json:"fingerprint"`
-	LinkToken    []linkTokenVec   `json:"linkToken"`
-	FileAddress  []fileAddressVec `json:"fileAddress"`
-	BlindIndex   []blindIndexVec  `json:"blindIndex"`
+	Enc           []encVec           `json:"enc"`
+	Derive        []deriveVec        `json:"derive"`
+	Argon2        []argon2Vec        `json:"argon2"`
+	RecoveryCode  []recoveryVec      `json:"recoveryCode"`
+	APIKey        []apiKeyVec        `json:"apiKey"`
+	AKCommit      []akCommitVec      `json:"akCommit"`
+	Seal          []sealVec          `json:"seal"`
+	Blob          []blobVec          `json:"blob"`
+	Wrap          []wrapVec          `json:"wrap"`
+	Signature     []sigVec           `json:"signature"`
+	Rotation      []rotationVec      `json:"rotation"`
+	Ed25519Strict []ed25519StrictVec `json:"ed25519Strict"`
+	Fingerprint   []fingerprintVec   `json:"fingerprint"`
+	LinkToken     []linkTokenVec     `json:"linkToken"`
+	FileAddress   []fileAddressVec   `json:"fileAddress"`
+	BlindIndex    []blindIndexVec    `json:"blindIndex"`
 }
 
 type encVec struct {
@@ -74,7 +230,9 @@ type argon2ParamsVec struct {
 type argon2Vec struct {
 	Name      string          `json:"name"`
 	Password  string          `json:"password"`
+	Email     string          `json:"email"`
 	Params    argon2ParamsVec `json:"params"`
+	ArgonSalt string          `json:"argonSalt"`
 	Stretched string          `json:"stretched"`
 	AuthKey   string          `json:"authKey"`
 	Kek       string          `json:"kek"`
@@ -97,7 +255,42 @@ type apiKeyVec struct {
 	AuthSecret string     `json:"authSecret"`
 	KeySecret  string     `json:"keySecret"`
 	Kek        string     `json:"kek"`
+	AuthHash   string     `json:"authHash"`
 	Negative   []negative `json:"negative"`
+}
+
+type akCommitVec struct {
+	Name     string `json:"name"`
+	Ak       string `json:"ak"`
+	Artifact string `json:"artifact"`
+	Epoch    uint64 `json:"epoch"`
+	Want     string `json:"want"`
+}
+
+type rotationVec struct {
+	Name     string     `json:"name"`
+	OldSeed  string     `json:"oldSeed"`
+	OldPub   string     `json:"oldPub"`
+	NewSeed  string     `json:"newSeed"`
+	NewPub   string     `json:"newPub"`
+	Signer   string     `json:"signer"`
+	Body     string     `json:"body"`
+	Sig      string     `json:"sig"`
+	NewSig   string     `json:"newSig"`
+	Negative []negative `json:"negative"`
+}
+
+// ed25519StrictVec covers two different rejections under one name: a
+// small-order public key (Purpose/Body/Sig empty, since the key alone must
+// fail), and a genuine key with a non-canonical signature (Purpose, Body,
+// and Sig all set).
+type ed25519StrictVec struct {
+	Name    string `json:"name"`
+	Pub     string `json:"pub"`
+	Purpose string `json:"purpose,omitempty"`
+	Body    string `json:"body,omitempty"`
+	Sig     string `json:"sig,omitempty"`
+	Why     string `json:"why"`
 }
 
 type sealVec struct {
@@ -231,6 +424,8 @@ func generateVectors(t testing.TB) vectorFile {
 		LabelSig:         {[]byte("manifest"), []byte("body-bytes")},
 		LabelFingerprint: {bytes.Repeat([]byte{3}, 32), bytes.Repeat([]byte{4}, 32)},
 		LabelBlind:       {[]byte("session"), []byte("abc123")},
+		LabelAKCommit:    {[]byte("artifact-1"), []byte("3")},
+		LabelSalt:        {[]byte("ada@example.com"), bytes.Repeat([]byte{5}, 16)},
 	}
 	for _, label := range Labels() {
 		fields := fieldsByLabel[label]
@@ -244,36 +439,67 @@ func generateVectors(t testing.TB) vectorFile {
 		})
 	}
 
-	// argon2 at floor
+	// argon2 at floor. Every negative carries a complete, standalone params
+	// object (its own salt too), not a partial override merged over the
+	// positive one, so each case is self-contained.
 	{
 		password := []byte("correct horse battery staple")
+		email := "  Alice@Example.COM "
 		p := Params{Alg: "argon2id", Memory: floorMemory, Time: floorTime, Threads: 1, Salt: make([]byte, 16)}
 		newDRBG("vector-argon2-salt").Read(p.Salt)
-		stretched, err := Stretch(password, p)
+		stretched, err := Stretch(password, email, p)
 		if err != nil {
 			t.Fatal(err)
 		}
 		authKey, kek := PasswordKeys(stretched)
+		complete := func(alg string, m, tm uint32, pl uint8, saltLen int) *argon2ParamsVec {
+			s := make([]byte, saltLen)
+			newDRBG("vector-argon2-negative-salt").Read(s)
+			return &argon2ParamsVec{Alg: alg, Memory: m, Time: tm, Threads: pl, Salt: hexEnc(s)}
+		}
 		vf.Argon2 = []argon2Vec{{
 			Name:     "floor",
 			Password: hexEnc(password),
+			Email:    email,
 			Params: argon2ParamsVec{
 				Alg: p.Alg, Memory: p.Memory, Time: p.Time, Threads: p.Threads, Salt: hexEnc(p.Salt),
 			},
+			ArgonSalt: hexEnc(ArgonSalt(email, p.Salt)),
 			Stretched: hexEnc(stretched),
 			AuthKey:   hexEnc(authKey),
 			Kek:       hexEnc(kek),
 			Negative: []negative{
-				{Why: "memory one below the floor", Input: `{"alg":"argon2id","m":65535,"t":3,"p":1}`},
-				{Why: "time one below the floor", Input: `{"alg":"argon2id","m":65536,"t":2,"p":1}`},
-				{Why: "wrong algorithm", Input: `{"alg":"argon2i","m":65536,"t":3,"p":1}`},
+				{Why: "memory one below the floor", Params: complete("argon2id", floorMemory-1, floorTime, 1, 16)},
+				{Why: "time one below the floor", Params: complete("argon2id", floorMemory, floorTime-1, 1, 16)},
+				{Why: "wrong algorithm", Params: complete("argon2i", floorMemory, floorTime, 1, 16)},
+				{Why: "threads zero", Params: complete("argon2id", floorMemory, floorTime, 0, 16)},
+				{Why: "threads above range", Params: complete("argon2id", floorMemory, floorTime, 5, 16)},
+				{Why: "salt one byte below the floor", Params: complete("argon2id", floorMemory, floorTime, 1, 15)},
+				{Why: "salt one byte above the ceiling", Params: complete("argon2id", floorMemory, floorTime, 1, 65)},
+				{Why: "memory one above the ceiling", Params: complete("argon2id", ceilingMemory+1, floorTime, 1, 16)},
+				{Why: "time one above the ceiling", Params: complete("argon2id", floorMemory, ceilingTime+1, 1, 16)},
 			},
+		}}
+	}
+
+	// akCommit
+	{
+		ak := testKey("vector-akcommit-ak")
+		commit, err := AKCommit(ak, "artifact-1", 3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		vf.AKCommit = []akCommitVec{{
+			Name: "sample", Ak: hexEnc(ak), Artifact: "artifact-1", Epoch: 3, Want: commit,
 		}}
 	}
 
 	// recovery code
 	{
-		code, display := NewRecoveryCode(newDRBG("vector-recovery"))
+		code, display, err := NewRecoveryCode(newDRBG("vector-recovery"))
+		if err != nil {
+			t.Fatal(err)
+		}
 		kek := RecoveryKEK(code)
 		vf.RecoveryCode = []recoveryVec{{
 			Name:    "sample",
@@ -289,20 +515,31 @@ func generateVectors(t testing.TB) vectorFile {
 				{Why: "too short", Input: display[:len(display)-5]},
 				{Why: "invalid character", Input: "!" + display[1:]},
 				{Why: "empty", Input: ""},
+				{Why: "non-ASCII letter (long s)", Input: "ſ" + display[1:]},
+				{Why: "non-ASCII letter (dotless i)", Input: "ı" + display[1:]},
+				{Why: "disallowed digit 0", Input: "0" + display[1:]},
+				{Why: "disallowed digit 1", Input: "1" + display[1:]},
+				{Why: "disallowed digit 8", Input: "8" + display[1:]},
+				{Why: "non-zero trailing bits", Input: display[:len(display)-1] + nonZeroTrailingBitsChar(display[len(display)-1])},
 			},
 		}}
 	}
 
 	// API key
 	{
-		full, keyID, authSecret, keySecret := NewAPIKey(newDRBG("vector-apikey"))
+		full, keyID, authSecret, keySecret, err := NewAPIKey(newDRBG("vector-apikey"))
+		if err != nil {
+			t.Fatal(err)
+		}
 		kek := APIKeyKEK(keySecret, keyID)
 		vf.APIKey = []apiKeyVec{{
 			Name: "sample", Full: full, KeyID: keyID, AuthSecret: authSecret, KeySecret: hexEnc(keySecret), Kek: hexEnc(kek),
+			AuthHash: APIKeyAuthHash(authSecret),
 			Negative: []negative{
 				{Why: "missing prefix", Input: strings.TrimPrefix(full, "cairn_")},
 				{Why: "wrong number of parts", Input: full + "_extra"},
 				{Why: "empty", Input: ""},
+				{Why: "uppercase hex", Input: "cairn_" + strings.ToUpper(strings.TrimPrefix(full, "cairn_"))},
 			},
 		}}
 	}
@@ -339,34 +576,55 @@ func generateVectors(t testing.TB) vectorFile {
 			Name: c.name, Key: hexEnc(c.key), Fields: fieldHex, Nonce: hexEnc(sealed[1:13]), Pt: hexEnc(c.pt), Want: hexEnc(sealed),
 			Negative: []negative{
 				{Why: "flipped last bit", Input: hexEnc(flipped)},
-				{Why: "wrong key", Input: hexEnc(sealed)}, // paired with a different key in the Go/Node test
+				{Why: "wrong key", Key: hexEnc(testKey("vector-seal-wrong-key"))},
+				{Why: "wrong fields", Fields: append(append([]string{}, fieldHex...), hexEnc([]byte("extra-field")))},
 			},
 		})
 	}
 
 	// blobs
 	blobCases := []struct {
-		name string
-		n    int
+		name      string
+		n         int
+		negatives []negative
 	}{
-		{"size-0", 0},
-		{"size-1", 1},
-		{"size-65536", 65536},
-		{"size-65537", 65537},
-		{"size-204800", 204800},
+		{"size-0", 0, []negative{
+			{Why: "flipped bit in the only chunk", Transform: &transform{Op: "flip", Offset: blobHeaderSize}},
+			{Why: "truncated to header only", Transform: &transform{Op: "truncate", Chunks: 0}},
+		}},
+		{"size-1", 1, nil},
+		{"size-65535", 65535, nil},
+		{"size-65536", 65536, nil},
+		{"size-65537", 65537, nil},
+		// Two full chunks plus a short tail: exercises drop/swap/truncate at
+		// a real chunk boundary.
+		{"size-two-chunks-plus-tail", 2*BlobChunkSize + 1000, []negative{
+			{Why: "truncated after one chunk", Transform: &transform{Op: "truncate", Chunks: 1}},
+			{Why: "truncated after two chunks", Transform: &transform{Op: "truncate", Chunks: 2}},
+			{Why: "dropped chunk 1", Transform: &transform{Op: "drop", Chunk: 1}},
+			{Why: "swapped chunks 0 and 1", Transform: &transform{Op: "swap", Chunks: []int{0, 1}}},
+			{Why: "appended an extra chunk", Transform: &transform{Op: "append", Bytes: hexEnc(make([]byte, blobTagSize+16))}},
+			{Why: "flipped a salt byte", Transform: &transform{Op: "flip", Offset: 5}},
+			{Why: "flipped the magic", Transform: &transform{Op: "flip", Offset: 0}},
+			{Why: "wrong artifact", Ctx: map[string]any{"artifact": "other-artifact"}},
+			{Why: "wrong version", Ctx: map[string]any{"version": "other-version"}},
+			{Why: "wrong kind", Ctx: map[string]any{"kind": "other-kind"}},
+			{Why: "wrong name", Ctx: map[string]any{"name": "other-name"}},
+		}},
+		// An exact multiple of the chunk size: no short tail chunk at all.
+		{"size-exact-multiple", 131072, []negative{
+			{Why: "truncated after one chunk", Transform: &transform{Op: "truncate", Chunks: 1}},
+		}},
+		{"size-204800", 204800, nil},
 	}
 	ak := testKey("vector-blob-ak")
 	ctx := BlobContext{Artifact: "artifact-1", Version: "version-1", Kind: "content", Name: "index.html"}
 	ctxVec := blobCtxVec(ctx)
-	// Keep vectors.json small: only the two tiny sizes carry literal
-	// negative copies of their ciphertext. The 64 KiB-ish sizes keep a
-	// literal plaintext (required, to pin the chunk-boundary byte counts)
-	// but skip negatives; the ~200 KB size uses a plaintext rule instead of
-	// literal bytes and skips negatives too. Every negative case Go itself
-	// checks (flipped bit, truncation, dropped/reordered chunk, wrong
-	// context) is already exercised byte-for-byte in blob_test.go.
-	const negativeSizeLimit = 1
-	const literalPtLimit = 65537
+	// Keep vectors.json small: only sizes up to one chunk carry a literal
+	// plaintext; above that a ptRule stands in. Literal plaintext up to and
+	// including one full chunk is kept so the exact chunk-boundary byte
+	// counts are pinned at least once.
+	const literalPtLimit = BlobChunkSize
 	for _, c := range blobCases {
 		pt := fillBytes(c.n)
 		blob, err := SealBlob(newDRBG("vector-blob-"+c.name), ak, ctx, pt)
@@ -375,26 +633,32 @@ func generateVectors(t testing.TB) vectorFile {
 		}
 		v := blobVec{
 			Name: c.name, Ak: hexEnc(ak), Ctx: ctxVec, Salt: hexEnc(blob[len(blobMagic)+1 : blobHeaderSize]),
-			Want: hexEnc(blob),
+			Want: hexEnc(blob), Negative: c.negatives,
 		}
 		if c.n > literalPtLimit {
 			v.PtRule = &ptRule{Rule: "i mod 251", Len: c.n}
 		} else {
 			v.Pt = hexEnc(pt)
 		}
-		if c.n <= negativeSizeLimit {
-			mutated := append([]byte(nil), blob...)
-			mutated[blobHeaderSize] ^= 0x01
-			truncated := blob[:len(blob)-1]
-			v.Negative = []negative{
-				{Why: "flipped bit in first chunk", Input: hexEnc(mutated)},
-				{Why: "truncated by one byte", Input: hexEnc(truncated)},
-			}
-		}
 		vf.Blob = append(vf.Blob, v)
 	}
 
-	// wrap
+	// wrap. The two low-order ephemeral public keys are the Curve25519
+	// all-zero u-coordinate and a u-coordinate of order 8, computed from the
+	// birational map u=(1+y)/(1-y) over the Ed25519 small-order points in
+	// sign.go and confirmed separately: any clamped X25519 scalar times a
+	// point of order dividing 8 yields the all-zero shared secret, which
+	// crypto/ecdh and curve25519.X25519 both refuse.
+	order8EphPub, err := hex.DecodeString("5f9c95bca3508c24b1d0b1559c83ef5b04445cc4581c8e86d8224eddd09f1157")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lowOrderWrapped := func(ephPub []byte) string {
+		b := make([]byte, wrapSize)
+		b[0] = wrapVersion
+		copy(b[1:1+wrapPubSize], ephPub)
+		return hexEnc(b)
+	}
 	for _, purpose := range []string{"ak", "ek"} {
 		recipientPriv, recipientPub, err := GenerateX25519(newDRBG("vector-wrap-recipient-" + purpose))
 		if err != nil {
@@ -415,6 +679,14 @@ func generateVectors(t testing.TB) vectorFile {
 		if err != nil {
 			t.Fatal(err)
 		}
+		otherRecipientPriv, _, err := GenerateX25519(newDRBG("vector-wrap-other-recipient-" + purpose))
+		if err != nil {
+			t.Fatal(err)
+		}
+		otherPurpose := "ek"
+		if purpose == "ek" {
+			otherPurpose = "ak"
+		}
 		mutated := append([]byte(nil), wrapped...)
 		mutated[len(mutated)-1] ^= 0x01
 		vf.Wrap = append(vf.Wrap, wrapVec{
@@ -429,7 +701,13 @@ func generateVectors(t testing.TB) vectorFile {
 			Want:          hexEnc(wrapped),
 			Negative: []negative{
 				{Why: "flipped last bit", Input: hexEnc(mutated)},
-				{Why: "wrong epoch", Input: hexEnc(wrapped)}, // paired with ctx.Epoch+1 in the Go/Node test
+				{Why: "wrong purpose", Ctx: map[string]any{"purpose": otherPurpose}},
+				{Why: "wrong artifact", Ctx: map[string]any{"artifact": wctx.Artifact + "-other"}},
+				{Why: "wrong epoch", Ctx: map[string]any{"epoch": wctx.Epoch + 1}},
+				{Why: "wrong recipientId", Ctx: map[string]any{"recipientId": wctx.RecipientID + "-other"}},
+				{Why: "wrong recipient private key", Key: hexEnc(otherRecipientPriv)},
+				{Why: "all-zero ephemeral public key", Input: lowOrderWrapped(make([]byte, 32))},
+				{Why: "order-8 ephemeral public key", Input: lowOrderWrapped(order8EphPub)},
 			},
 		})
 	}
@@ -439,28 +717,114 @@ func generateVectors(t testing.TB) vectorFile {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fullFP := hexEnc(bytes.Repeat([]byte{0xaa}, 32))
 	sigCases := []struct {
 		purpose string
 		body    string
 	}{
-		{"membership", `{"v":1,"artifact":"artifact-1","epoch":3,"owner":"user-1","members":[{"user":"user-1","role":"editor","fp":"aabbccdd"}],"team":"none","public":false,"publicWrites":false,"prev":""}`},
+		{"membership", `{"v":1,"artifact":"artifact-1","epoch":3,"owner":"user-1","akCommit":"` + fullFP + `","members":[{"user":"user-1","role":"editor","fp":"` + fullFP + `"}],"team":"none","public":false,"publicWrites":false,"prev":""}`},
 		{"manifest", `{"v":1,"artifact":"artifact-1","version":"version-1","epoch":3,"files":[{"path":"index.html","blob":"blob-1","size":12,"sha256":"deadbeef"}]}`},
 		{"revision", `{"v":1,"artifact":"artifact-1","version":"version-1","revision":4,"epoch":3,"sha256":"deadbeef"}`},
 		{"vouch", `{"v":1,"artifact":"artifact-1","version":"version-1","manifest":"deadbeef"}`},
-		{"rotation", `{"v":1,"user":"user-1","old":{"x25519":"AAAA","ed25519":"BBBB"},"new":{"x25519":"CCCC","ed25519":"DDDD"}}`},
-		{"successor", `{"v":1,"user":"user-1","successor":"user-2","action":"nominate"}`},
+		{"successor", `{"v":1,"user":"user-1","seq":2,"successor":"user-2","action":"nominate"}`},
 		{"reset", `{"v":1,"user":"user-1","token":"5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8"}`},
+		{"record", `{"v":1,"artifact":"artifact-1","version":"version-1","kind":"file","name":"path/to/file","epoch":3,"sha256":"deadbeef"}`},
+	}
+	_, otherPub, err := GenerateEd25519(newDRBG("vector-sig-other-key"))
+	if err != nil {
+		t.Fatal(err)
 	}
 	for _, c := range sigCases {
 		body := []byte(c.body)
-		sig := Sign(sigSeed, c.purpose, body)
-		tampered := append([]byte(nil), body...)
-		tampered[0] = '0'
+		sig, err := Sign(sigSeed, c.purpose, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		otherPurpose := "manifest"
+		if c.purpose == "manifest" {
+			otherPurpose = "revision"
+		}
 		vf.Signature = append(vf.Signature, sigVec{
 			Name: c.purpose, Purpose: c.purpose, Seed: hexEnc(sigSeed), Pub: hexEnc(sigPub), Body: hexEnc(body), Signer: "user-1", Want: hexEnc(sig),
 			Negative: []negative{
-				{Why: "tampered body", Input: hexEnc(tampered)},
+				{Why: "wrong purpose", Purpose: otherPurpose},
+				{Why: "wrong pub", Pub: hexEnc(otherPub)},
 			},
+		})
+	}
+
+	// rotation: signed by the old key, and the same body signed again
+	// (Envelope.NewSig) by the new key. The "missing newSig" negative is
+	// exercised directly in envelope_test.go instead of through this file,
+	// since the schema's newSig override has no way to say "absent" as
+	// opposed to "not overridden".
+	{
+		oldSeed, oldPub, err := GenerateEd25519(newDRBG("vector-rotation-old"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		newSeed, newPub, err := GenerateEd25519(newDRBG("vector-rotation-new"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, x25519Pub, err := GenerateX25519(newDRBG("vector-rotation-x25519"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := RotationBody{
+			V: 1, User: "user-1", Seq: 2,
+			Old: KeyPair{X25519: B64(x25519Pub), Ed25519: B64(oldPub)},
+			New: KeyPair{X25519: B64(x25519Pub), Ed25519: B64(newPub)},
+		}
+		bodyBytes, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		env, err := SignRotation(oldSeed, newSeed, bodyBytes, "user-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		wrongSeed, _, err := GenerateEd25519(newDRBG("vector-rotation-wrong"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		wrongNewSig, err := Sign(wrongSeed, "rotation", bodyBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		vf.Rotation = []rotationVec{{
+			Name: "sample", OldSeed: hexEnc(oldSeed), OldPub: hexEnc(oldPub),
+			NewSeed: hexEnc(newSeed), NewPub: hexEnc(newPub), Signer: "user-1",
+			Body: hexEnc(bodyBytes), Sig: hexEnc(env.Sig), NewSig: hexEnc(env.NewSig),
+			Negative: []negative{
+				{Why: "newSig by a wrong key", NewSig: hexEnc(wrongNewSig)},
+			},
+		}}
+	}
+
+	// ed25519Strict: every hardcoded small-order public key must fail
+	// CheckPublicKeys and Verify, and a genuine signature with its S
+	// component replaced by S+L (still congruent mod L, so a cofactored or
+	// otherwise non-strict verifier might accept it) must fail too.
+	for i, p := range smallOrderEd25519 {
+		vf.Ed25519Strict = append(vf.Ed25519Strict, ed25519StrictVec{
+			Name: fmt.Sprintf("small-order-%d", i), Pub: hexEnc(p[:]), Why: "small-order Ed25519 public key",
+		})
+	}
+	{
+		strictSeed, strictPub, err := GenerateEd25519(newDRBG("vector-ed25519-strict-s"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := []byte("body for non-canonical S test")
+		sig, err := Sign(strictSeed, "manifest", body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		nonCanonical := nonCanonicalS(sig)
+		vf.Ed25519Strict = append(vf.Ed25519Strict, ed25519StrictVec{
+			Name: "non-canonical-s", Pub: hexEnc(strictPub), Purpose: "manifest", Body: hexEnc(body),
+			Sig: hexEnc(nonCanonical), Why: "non-canonical S (S + L)",
 		})
 	}
 
@@ -477,7 +841,10 @@ func generateVectors(t testing.TB) vectorFile {
 	// linkToken
 	{
 		lak := testKey("vector-linktoken-ak")
-		token := LinkToken(lak, "artifact-1", 3)
+		token, err := LinkToken(lak, "artifact-1", 3)
+		if err != nil {
+			t.Fatal(err)
+		}
 		vf.LinkToken = []linkTokenVec{{
 			Name: "sample", Ak: hexEnc(lak), Artifact: "artifact-1", Epoch: 3, Want: hexEnc(token), Hash: LinkTokenHash(token),
 		}}
@@ -560,7 +927,10 @@ func checkVectors(t *testing.T, vf vectorFile) {
 	t.Run("argon2", func(t *testing.T) {
 		for _, v := range vf.Argon2 {
 			p := Params{Alg: v.Params.Alg, Memory: v.Params.Memory, Time: v.Params.Time, Threads: v.Params.Threads, Salt: hexDec(t, v.Params.Salt)}
-			stretched, err := Stretch(hexDec(t, v.Password), p)
+			if hexEnc(ArgonSalt(v.Email, p.Salt)) != v.ArgonSalt {
+				t.Errorf("%s: ArgonSalt mismatch", v.Name)
+			}
+			stretched, err := Stretch(hexDec(t, v.Password), v.Email, p)
 			if err != nil {
 				t.Fatalf("%s: Stretch: %v", v.Name, err)
 			}
@@ -571,15 +941,29 @@ func checkVectors(t *testing.T, vf vectorFile) {
 			if hexEnc(authKey) != v.AuthKey || hexEnc(kek) != v.Kek {
 				t.Errorf("%s: authKey/kek mismatch", v.Name)
 			}
+			// Every negative carries its own complete params object; none of
+			// it is merged with the positive entry's salt or other fields.
 			for _, neg := range v.Negative {
-				var np Params
-				if err := json.Unmarshal([]byte(neg.Input), &np); err != nil {
-					continue // malformed JSON is itself a valid failure case
+				if neg.Params == nil {
+					t.Errorf("%s negative %q: missing params", v.Name, neg.Why)
+					continue
 				}
-				np.Salt = p.Salt
+				np := Params{Alg: neg.Params.Alg, Memory: neg.Params.Memory, Time: neg.Params.Time, Threads: neg.Params.Threads, Salt: hexDec(t, neg.Params.Salt)}
 				if err := np.CheckFloor(); err == nil {
 					t.Errorf("%s negative %q: floor check accepted it", v.Name, neg.Why)
 				}
+			}
+		}
+	})
+
+	t.Run("akCommit", func(t *testing.T) {
+		for _, v := range vf.AKCommit {
+			got, err := AKCommit(hexDec(t, v.Ak), v.Artifact, v.Epoch)
+			if err != nil {
+				t.Fatalf("%s: AKCommit: %v", v.Name, err)
+			}
+			if got != v.Want {
+				t.Errorf("%s: AKCommit mismatch", v.Name)
 			}
 		}
 	})
@@ -644,14 +1028,22 @@ func checkVectors(t *testing.T, vf vectorFile) {
 				t.Errorf("%s: Open failed: %v", v.Name, err)
 			}
 			for _, neg := range v.Negative {
-				input := hexDec(t, neg.Input)
-				var err error
-				if neg.Why == "wrong key" {
-					_, err = Open(testKey("wrong-key-for-vectors"), fields, input)
-				} else {
-					_, err = Open(key, fields, input)
+				input := sealed
+				if neg.Input != "" {
+					input = hexDec(t, neg.Input)
 				}
-				if err == nil {
+				useKey := key
+				if neg.Key != "" {
+					useKey = hexDec(t, neg.Key)
+				}
+				useFields := fields
+				if neg.Fields != nil {
+					useFields = nil
+					for _, f := range neg.Fields {
+						useFields = append(useFields, hexDec(t, f))
+					}
+				}
+				if _, err := Open(useKey, useFields, input); err == nil {
 					t.Errorf("%s negative %q: Open succeeded", v.Name, neg.Why)
 				}
 			}
@@ -676,7 +1068,17 @@ func checkVectors(t *testing.T, vf vectorFile) {
 				t.Errorf("%s: OpenBlob plaintext mismatch", v.Name)
 			}
 			for _, neg := range v.Negative {
-				if _, err := OpenBlob(ak, ctx, hexDec(t, neg.Input)); err == nil {
+				useCtx := ctx
+				if neg.Ctx != nil {
+					useCtx = applyBlobCtxOverride(t, ctx, neg.Ctx)
+				}
+				input := blob
+				if neg.Transform != nil {
+					input = applyBlobTransform(t, blob, *neg.Transform)
+				} else if neg.Input != "" {
+					input = hexDec(t, neg.Input)
+				}
+				if _, err := OpenBlob(ak, useCtx, input); err == nil {
 					t.Errorf("%s negative %q: OpenBlob succeeded", v.Name, neg.Why)
 				}
 			}
@@ -696,10 +1098,18 @@ func checkVectors(t *testing.T, vf vectorFile) {
 			}
 			for _, neg := range v.Negative {
 				useCtx := ctx
-				if neg.Why == "wrong epoch" {
-					useCtx.Epoch++
+				if neg.Ctx != nil {
+					useCtx = applyWrapCtxOverride(t, ctx, neg.Ctx)
 				}
-				if _, err := Unwrap(hexDec(t, v.RecipientPriv), useCtx, hexDec(t, neg.Input)); err == nil {
+				usePriv := hexDec(t, v.RecipientPriv)
+				if neg.Key != "" {
+					usePriv = hexDec(t, neg.Key)
+				}
+				input := wrapped
+				if neg.Input != "" {
+					input = hexDec(t, neg.Input)
+				}
+				if _, err := Unwrap(usePriv, useCtx, input); err == nil {
 					t.Errorf("%s negative %q: Unwrap succeeded", v.Name, neg.Why)
 				}
 			}
@@ -719,9 +1129,64 @@ func checkVectors(t *testing.T, vf vectorFile) {
 				t.Errorf("%s: Envelope.Verify failed", v.Name)
 			}
 			for _, neg := range v.Negative {
-				if Verify(pub, v.Purpose, hexDec(t, neg.Input), sig) {
+				usePurpose := v.Purpose
+				if neg.Purpose != "" {
+					usePurpose = neg.Purpose
+				}
+				usePub := pub
+				if neg.Pub != "" {
+					usePub = hexDec(t, neg.Pub)
+				}
+				if Verify(usePub, usePurpose, body, sig) {
 					t.Errorf("%s negative %q: Verify succeeded", v.Name, neg.Why)
 				}
+			}
+		}
+	})
+
+	t.Run("rotation", func(t *testing.T) {
+		for _, v := range vf.Rotation {
+			body := hexDec(t, v.Body)
+			env := Envelope{Body: body, Sig: hexDec(t, v.Sig), Signer: v.Signer, NewSig: hexDec(t, v.NewSig)}
+			var out RotationBody
+			if err := OpenRotation(env, hexDec(t, v.OldPub), &out); err != nil {
+				t.Errorf("%s: OpenRotation failed: %v", v.Name, err)
+			}
+			for _, neg := range v.Negative {
+				useEnv := env
+				if neg.NewSig != "" {
+					useEnv.NewSig = hexDec(t, neg.NewSig)
+				}
+				var negOut RotationBody
+				if err := OpenRotation(useEnv, hexDec(t, v.OldPub), &negOut); err == nil {
+					t.Errorf("%s negative %q: OpenRotation succeeded", v.Name, neg.Why)
+				}
+			}
+		}
+	})
+
+	t.Run("ed25519Strict", func(t *testing.T) {
+		for _, v := range vf.Ed25519Strict {
+			pub := hexDec(t, v.Pub)
+			if len(pub) != 32 {
+				t.Fatalf("%s: pub is %d bytes, want 32", v.Name, len(pub))
+			}
+			if v.Sig != "" {
+				// A genuine key, with a non-canonical signature.
+				if Verify(pub, v.Purpose, hexDec(t, v.Body), hexDec(t, v.Sig)) {
+					t.Errorf("%s (%s): Verify accepted it", v.Name, v.Why)
+				}
+				continue
+			}
+			// A small-order key must fail on its own, for any purpose, body,
+			// and signature.
+			x25519Pub := testKey("ed25519-strict-x25519-" + v.Name)
+			if err := CheckPublicKeys(x25519Pub, pub); err == nil {
+				t.Errorf("%s (%s): CheckPublicKeys accepted a small-order Ed25519 key", v.Name, v.Why)
+			}
+			sig := make([]byte, ed25519.SignatureSize)
+			if Verify(pub, "manifest", []byte("body"), sig) {
+				t.Errorf("%s (%s): Verify accepted a small-order Ed25519 key", v.Name, v.Why)
 			}
 		}
 	})
@@ -740,7 +1205,10 @@ func checkVectors(t *testing.T, vf vectorFile) {
 
 	t.Run("linkToken", func(t *testing.T) {
 		for _, v := range vf.LinkToken {
-			got := LinkToken(hexDec(t, v.Ak), v.Artifact, v.Epoch)
+			got, err := LinkToken(hexDec(t, v.Ak), v.Artifact, v.Epoch)
+			if err != nil {
+				t.Fatalf("%s: LinkToken: %v", v.Name, err)
+			}
 			if hexEnc(got) != v.Want {
 				t.Errorf("%s: LinkToken mismatch", v.Name)
 			}

@@ -4,9 +4,18 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
+
+func TestSignRejectsWrongSeedLength(t *testing.T) {
+	for _, n := range []int{0, 16, 31, 33} {
+		if _, err := Sign(make([]byte, n), "manifest", []byte("body")); !errors.Is(err, ErrFormat) {
+			t.Errorf("len(seed)=%d: got %v, want ErrFormat", n, err)
+		}
+	}
+}
 
 func TestGenerateEd25519Lengths(t *testing.T) {
 	seed, pub, err := GenerateEd25519(newDRBG("gen-ed25519"))
@@ -38,7 +47,10 @@ func TestSignVerifyRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := []byte(`{"v":1,"artifact":"a1"}`)
-	sig := Sign(seed, "manifest", body)
+	sig, err := Sign(seed, "manifest", body)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !Verify(pub, "manifest", body, sig) {
 		t.Fatal("Verify rejected a genuine signature")
 	}
@@ -50,7 +62,10 @@ func TestVerifyRejectsWrongPurpose(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := []byte("body")
-	sig := Sign(seed, "manifest", body)
+	sig, err := Sign(seed, "manifest", body)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if Verify(pub, "revision", body, sig) {
 		t.Fatal("Verify accepted a signature under the wrong purpose")
 	}
@@ -61,7 +76,10 @@ func TestVerifyRejectsWrongBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sig := Sign(seed, "manifest", []byte("original"))
+	sig, err := Sign(seed, "manifest", []byte("original"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if Verify(pub, "manifest", []byte("tampered"), sig) {
 		t.Fatal("Verify accepted a signature over a different body")
 	}
@@ -73,7 +91,10 @@ func TestVerifyRejectsFlippedSigBit(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := []byte("body")
-	sig := Sign(seed, "manifest", body)
+	sig, err := Sign(seed, "manifest", body)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i := range sig {
 		mutated := append([]byte(nil), sig...)
 		mutated[i] ^= 0x01
@@ -93,7 +114,10 @@ func TestVerifyRejectsWrongKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := []byte("body")
-	sig := Sign(seed, "manifest", body)
+	sig, err := Sign(seed, "manifest", body)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if Verify(otherPub, "manifest", body, sig) {
 		t.Fatal("Verify accepted a signature under another key's public key")
 	}
@@ -117,7 +141,10 @@ func TestEnvelopeRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := []byte(`{"v":1,"artifact":"a1"}`)
-	env := NewEnvelope(seed, "user-1", "manifest", body)
+	env, err := NewEnvelope(seed, "user-1", "manifest", body)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !env.Verify(pub, "manifest") {
 		t.Fatal("Envelope.Verify rejected a genuine envelope")
 	}
@@ -132,7 +159,10 @@ func TestEnvelopeJSONRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := []byte(`{"v":1,"artifact":"a1"}`)
-	env := NewEnvelope(seed, "user-1", "manifest", body)
+	env, err := NewEnvelope(seed, "user-1", "manifest", body)
+	if err != nil {
+		t.Fatal(err)
+	}
 	b, err := json.Marshal(env)
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +184,10 @@ func TestEnvelopeJSONIsBase64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	env := NewEnvelope(seed, "user-1", "manifest", []byte(`{"v":1}`))
+	env, err := NewEnvelope(seed, "user-1", "manifest", []byte(`{"v":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
 	b, err := json.Marshal(env)
 	if err != nil {
 		t.Fatal(err)
@@ -178,7 +211,10 @@ func TestEnvelopeVerifyRejectsTamperedBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	env := NewEnvelope(seed, "user-1", "manifest", []byte("original"))
+	env, err := NewEnvelope(seed, "user-1", "manifest", []byte("original"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	env.Body = []byte("tampered")
 	if env.Verify(pub, "manifest") {
 		t.Fatal("Verify accepted a tampered envelope body")

@@ -112,7 +112,9 @@ func TestUnwrapRejectsEachContextFieldChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = otherPriv
+	if _, err := Unwrap(otherPriv, ctx, wrapped); !errors.Is(err, ErrDecrypt) {
+		t.Fatalf("wrong recipient private key: got %v, want ErrDecrypt", err)
+	}
 	variants := []WrapContext{
 		{Purpose: "ek", Artifact: ctx.Artifact, Epoch: ctx.Epoch, RecipientID: ctx.RecipientID, RecipientPub: ctx.RecipientPub},
 		{Purpose: ctx.Purpose, Artifact: "artifact-2", Epoch: ctx.Epoch, RecipientID: ctx.RecipientID, RecipientPub: ctx.RecipientPub},
@@ -166,7 +168,7 @@ func TestUnwrapRejectsAllZeroSharedSecret(t *testing.T) {
 	// Hand-craft a wrapped value whose embedded ephemeral public key is the
 	// all-zero low-order point, so the shared secret is zero whatever priv
 	// is.
-	wrapped := make([]byte, wrapMinSize)
+	wrapped := make([]byte, wrapSize)
 	wrapped[0] = wrapVersion
 	if _, err := Unwrap(recipientPriv, ctx, wrapped); !errors.Is(err, ErrDecrypt) {
 		t.Fatalf("got %v, want ErrDecrypt", err)
@@ -177,5 +179,30 @@ func TestWrapRejectsWrongRecipientPubLength(t *testing.T) {
 	ctx := testWrapContext(make([]byte, 16))
 	if _, err := Wrap(newDRBG("wrap-eph-7"), ctx, testKey("wrapped-key-7")); !errors.Is(err, ErrFormat) {
 		t.Fatalf("got %v, want ErrFormat", err)
+	}
+}
+
+func TestWrapRejectsWrongKeyLength(t *testing.T) {
+	_, recipientPub := testWrapParties(t)
+	ctx := testWrapContext(recipientPub)
+	for _, n := range []int{0, 16, 31, 33} {
+		if _, err := Wrap(newDRBG("wrap-eph-8"), ctx, make([]byte, n)); !errors.Is(err, ErrFormat) {
+			t.Errorf("len(key)=%d: got %v, want ErrFormat", n, err)
+		}
+	}
+}
+
+func TestUnwrapRejectsWrongLengthExactly(t *testing.T) {
+	recipientPriv, recipientPub := testWrapParties(t)
+	ctx := testWrapContext(recipientPub)
+	wrapped, err := Wrap(newDRBG("wrap-eph-9"), ctx, testKey("wrapped-key-9"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// One byte longer than the fixed 81-byte wrap size must fail even though
+	// the old "at least wrapMinSize" check would have accepted it.
+	extended := append(append([]byte(nil), wrapped...), 0x00)
+	if _, err := Unwrap(recipientPriv, ctx, extended); !errors.Is(err, ErrDecrypt) {
+		t.Fatalf("one byte too long: got %v, want ErrDecrypt", err)
 	}
 }

@@ -28,3 +28,11 @@ internal/server/handlers_users.go	if u.Disabled || u.VerifiedAt == "" {	if false
 internal/server/server.go	Handler:           s.Handler(),	Handler:           s.mux,	go test ./internal/server -run TestRunAppliesRequestProtection
 internal/server/handlers_auth.go	s.cfg.PublicURL + "/reset#token="	"http://" + "evil.example" + "/reset#token="	go test ./internal/server -run TestResetLinkUsesPublicURLNotHost
 internal/server/handlers_auth.go	s.deliverMail(u.Email, "Your Cairn password was reset"	s.sendMail(u.Email, "Your Cairn password was reset"	go test ./internal/server -run TestResetNoticeIgnoresMailLimit
+internal/e2e/seal.go	len(key) != keyLen	false	go test ./internal/e2e -run TestNewGCMRejectsWrongKeyLength
+internal/e2e/keys.go	last&0x03 != 0	last&0x03 != 0 && false	go test ./internal/e2e -run TestRecoveryCodeParseRejectsNonZeroTrailingBits
+internal/e2e/envelope.go	if top.seen[key] {	if false {	go test ./internal/e2e -run TestOpenEnvelopeRejectsDuplicateKey
+internal/e2e/envelope.go	if !reflect.DeepEqual(original, roundTripped) {	if false && reflect.DeepEqual(original, roundTripped) {	go test ./internal/e2e -run TestOpenEnvelopeRejectsCaseVariantKey
+internal/e2e/keys.go	if p.Memory > ceilingMemory {	if false {	go test ./internal/e2e -run TestParamsCheckFloorCeiling
+internal/e2e/envelope.go	if len(env.NewSig) == 0 {	if false {	go test ./internal/e2e -run TestOpenRotationRejectsMissingNewSig
+internal/e2e/seal.go	commit := Derive(ak, nil, LabelAKCommit, []byte(artifact), epochBytes(epoch))	commit := Derive(ak, nil, LabelFileKey, []byte(artifact), epochBytes(epoch))	go test ./internal/e2e -run TestVectors
+internal/server/validate.go	if e2e.CheckPublicKeys(b.X25519Pub, b.Ed25519Pub) != nil {	if false {	go test ./internal/server -run TestValidateBundleRejectsLowOrderKeys

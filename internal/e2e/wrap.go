@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"bytes"
 	"crypto/ecdh"
 	"io"
 
@@ -37,7 +38,10 @@ const (
 	wrapVersion = 0x01
 	wrapPubSize = 32
 	wrapTagSize = 16
-	wrapMinSize = 1 + wrapPubSize + wrapTagSize
+	// wrapSize is the only valid length of a wrapped value: every key this
+	// package wraps is 32 bytes, so the ciphertext is always
+	// version(1) + ephPub(32) + plaintext(32) + tag(16).
+	wrapSize = 1 + wrapPubSize + keyLen + wrapTagSize
 )
 
 // x25519Shared is the X25519 scalar multiplication. curve25519.X25519's only
@@ -61,6 +65,9 @@ func Wrap(rnd io.Reader, ctx WrapContext, key []byte) ([]byte, error) {
 	if len(ctx.RecipientPub) != wrapPubSize {
 		return nil, ErrFormat
 	}
+	if err := checkKeyLen(key); err != nil {
+		return nil, err
+	}
 	ephPriv, ephPub, err := GenerateX25519(rnd)
 	if err != nil {
 		return nil, err
@@ -82,10 +89,16 @@ func Wrap(rnd io.Reader, ctx WrapContext, key []byte) ([]byte, error) {
 	return out, nil
 }
 
-// Unwrap decrypts a key wrapped with Wrap. ctx.RecipientPub must be the
-// recipient's own public key, matching priv.
+// Unwrap decrypts a key wrapped with Wrap. The recipient's public key is
+// derived from priv rather than trusted from ctx.RecipientPub, so a caller
+// who passes a priv/ctx pair that don't match fails closed instead of
+// deriving a wrap key under the wrong public key.
 func Unwrap(priv []byte, ctx WrapContext, wrapped []byte) ([]byte, error) {
-	if len(wrapped) < wrapMinSize || wrapped[0] != wrapVersion || len(priv) != wrapPubSize {
+	if len(wrapped) != wrapSize || wrapped[0] != wrapVersion || len(priv) != wrapPubSize {
+		return nil, ErrDecrypt
+	}
+	recipientPub, err := x25519PublicFromPrivate(priv)
+	if err != nil || !bytes.Equal(recipientPub, ctx.RecipientPub) {
 		return nil, ErrDecrypt
 	}
 	ephPub := wrapped[1 : 1+wrapPubSize]
@@ -107,5 +120,18 @@ func Unwrap(priv []byte, ctx WrapContext, wrapped []byte) ([]byte, error) {
 	if err != nil {
 		return nil, ErrDecrypt
 	}
+	if len(pt) != keyLen {
+		return nil, ErrDecrypt
+	}
 	return pt, nil
+}
+
+// x25519PublicFromPrivate computes the X25519 public key matching a private
+// scalar, the same way GenerateX25519 derives pub from seed.
+func x25519PublicFromPrivate(priv []byte) ([]byte, error) {
+	key, err := ecdh.X25519().NewPrivateKey(priv)
+	if err != nil {
+		return nil, err
+	}
+	return key.PublicKey().Bytes(), nil
 }
