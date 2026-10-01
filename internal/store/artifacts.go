@@ -185,13 +185,17 @@ func scanVersion(row interface{ Scan(...any) error }) (*Version, error) {
 	return &v, nil
 }
 
-func (s *Store) CreateVersion(artifactID, name, changelog, contentDir string) (*Version, error) {
+// CreateVersion inserts the next version, stamped with its pusher and the
+// artifact's epoch. The INSERT reads the epoch itself, so no epoch change can
+// land between the read and the write.
+func (s *Store) CreateVersion(artifactID, name, changelog, contentDir, pushedBy string) (*Version, error) {
 	t := now()
-	v := &Version{ID: uuid.NewString(), ArtifactID: artifactID, Name: name, Changelog: changelog, ContentDir: contentDir, CreatedAt: t, UpdatedAt: t}
-	err := s.db.QueryRow(`INSERT INTO versions (id, artifact_id, name, changelog, seq, content_dir, created_at, updated_at)
-		VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM versions WHERE artifact_id = ?), ?, ?, ?)
-		RETURNING seq`,
-		v.ID, v.ArtifactID, v.Name, v.Changelog, artifactID, v.ContentDir, v.CreatedAt, v.UpdatedAt).Scan(&v.Seq)
+	v := &Version{ID: uuid.NewString(), ArtifactID: artifactID, Name: name, Changelog: changelog, ContentDir: contentDir, CreatedAt: t, UpdatedAt: t, PushedBy: pushedBy}
+	err := s.db.QueryRow(`INSERT INTO versions (id, artifact_id, name, changelog, seq, content_dir, created_at, updated_at, pushed_by, epoch)
+		VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM versions WHERE artifact_id = ?), ?, ?, ?, NULLIF(?, ''),
+			(SELECT epoch FROM artifacts WHERE id = ?))
+		RETURNING seq, epoch`,
+		v.ID, v.ArtifactID, v.Name, v.Changelog, artifactID, v.ContentDir, v.CreatedAt, v.UpdatedAt, pushedBy, artifactID).Scan(&v.Seq, &v.Epoch)
 	if err != nil {
 		return nil, err
 	}
@@ -225,8 +229,9 @@ func (s *Store) ListVersions(artifactID string) ([]*Version, error) {
 }
 
 // SwapVersionContent atomically points a version at a freshly extracted
-// content dir (re-upload). Returns the previous content dir for cleanup.
-func (s *Store) SwapVersionContent(artifactID, versionID, contentDir, name, changelog string) (string, error) {
+// content dir (re-upload), restamping its pusher and the artifact's epoch in
+// the same transaction. Returns the previous content dir for cleanup.
+func (s *Store) SwapVersionContent(artifactID, versionID, contentDir, name, changelog, pushedBy string) (string, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return "", err
@@ -236,8 +241,9 @@ func (s *Store) SwapVersionContent(artifactID, versionID, contentDir, name, chan
 	if err := tx.QueryRow(`SELECT content_dir FROM versions WHERE id = ? AND artifact_id = ?`, versionID, artifactID).Scan(&prev); err != nil {
 		return "", err
 	}
-	if _, err := tx.Exec(`UPDATE versions SET content_dir = ?, name = ?, changelog = ?, updated_at = ? WHERE id = ?`,
-		contentDir, name, changelog, now(), versionID); err != nil {
+	if _, err := tx.Exec(`UPDATE versions SET content_dir = ?, name = ?, changelog = ?, updated_at = ?, pushed_by = NULLIF(?, ''),
+		epoch = (SELECT epoch FROM artifacts WHERE id = ?) WHERE id = ?`,
+		contentDir, name, changelog, now(), pushedBy, artifactID, versionID); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(); err != nil {

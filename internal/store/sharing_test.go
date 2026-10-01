@@ -452,7 +452,7 @@ func TestVersionPusherAndWriteEpochs(t *testing.T) {
 	s := testStore(t)
 	o := testAccount(t, s, "o@x.y")
 	a := ownedArtifact(t, s, o)
-	v, err := s.CreateVersion(a.ID, "v1", "", "c1")
+	v, err := s.CreateVersion(a.ID, "v1", "", "c1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -460,12 +460,6 @@ func TestVersionPusherAndWriteEpochs(t *testing.T) {
 		t.Fatalf("defaults: %+v", v)
 	}
 	err = s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
-		if err := tx.SetVersionWriter(v.ID, o.ID, 3); err != nil {
-			return err
-		}
-		if err := tx.SetVersionWriter("missing", o.ID, 3); !errors.Is(err, ErrNotFound) {
-			t.Errorf("missing version: %v", err)
-		}
 		if err := tx.RecordWrite(v.ID, "db", "", 3, o.ID); err != nil {
 			return err
 		}
@@ -478,15 +472,50 @@ func TestVersionPusherAndWriteEpochs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, _ := s.VersionByID(a.ID, v.ID)
-	if got.PushedBy != o.ID || got.Epoch != 3 {
-		t.Fatalf("version writer: %+v", got)
-	}
 	var n, ep int
 	s.db.QueryRow(`SELECT COUNT(*) FROM version_writes WHERE version_id = ?`, v.ID).Scan(&n)
 	s.db.QueryRow(`SELECT epoch FROM version_writes WHERE version_id = ? AND kind = 'file'`, v.ID).Scan(&ep)
 	if n != 2 || ep != 3 {
 		t.Fatalf("version_writes: n=%d epoch=%d", n, ep)
+	}
+}
+
+// A push stamps its pusher and the artifact's epoch in the same statement
+// that stores the version, so no epoch change can land between the two.
+func TestVersionWritesStampThePusherAndEpoch(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	a := ownedArtifact(t, s, o)
+	if err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error { return tx.AppendRecord(record(1, "", 2, "b1")) }); err != nil {
+		t.Fatal(err)
+	}
+	v, err := s.CreateVersion(a.ID, "v1", "", "c1", o.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.PushedBy != o.ID || v.Epoch != 2 {
+		t.Errorf("created: %+v, want pushedBy %s at epoch 2", v, o.ID)
+	}
+	if got, _ := s.VersionByID(a.ID, v.ID); got.PushedBy != o.ID || got.Epoch != 2 {
+		t.Errorf("stored: %+v", got)
+	}
+
+	// A swap by someone else, after the epoch moved, restamps both.
+	p := testAccount(t, s, "p@x.y")
+	if err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+		latest, err := tx.LatestRecord()
+		if err != nil {
+			return err
+		}
+		return tx.AppendRecord(record(2, latest.BodyHash, 3, "b2"))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SwapVersionContent(a.ID, v.ID, "c2", "v1", "", p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.VersionByID(a.ID, v.ID); got.PushedBy != p.ID || got.Epoch != 3 {
+		t.Errorf("after swap: %+v, want pushedBy %s at epoch 3", got, p.ID)
 	}
 }
 
@@ -557,7 +586,7 @@ func TestDeleteUserCascadesTheirSharingRows(t *testing.T) {
 	m := testAccount(t, s, "m@x.y")
 	other := testAccount(t, s, "other@x.y")
 	a := ownedArtifact(t, s, o)
-	v, err := s.CreateVersion(a.ID, "v1", "", "c1")
+	v, err := s.CreateVersion(a.ID, "v1", "", "c1", m.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -579,7 +608,7 @@ func TestDeleteUserCascadesTheirSharingRows(t *testing.T) {
 		if err := tx.PutOffer(Offer{To: m.ID, By: "admin"}); err != nil {
 			return err
 		}
-		return tx.SetVersionWriter(v.ID, m.ID, 1)
+		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -719,14 +748,11 @@ func TestVersionWritesRefuseAVersionOnAnotherArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	vb, err := s.CreateVersion(b.ID, "v1", "", "c1")
+	vb, err := s.CreateVersion(b.ID, "v1", "", "c1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
-		if err := tx.SetVersionWriter(vb.ID, o.ID, 5); !errors.Is(err, ErrNotFound) {
-			t.Errorf("SetVersionWriter(other artifact's version) = %v, want ErrNotFound", err)
-		}
 		if err := tx.RecordWrite(vb.ID, "db", "", 5, o.ID); !errors.Is(err, ErrNotFound) {
 			t.Errorf("RecordWrite(other artifact's version) = %v, want ErrNotFound", err)
 		}

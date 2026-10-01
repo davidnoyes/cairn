@@ -64,7 +64,7 @@ on the spot. (Automation can still pre-set the admin password with
 
 ```sh
 ./cairn login --host http://localhost:8787 --email you@example.com
-./cairn push examples/guestbook --artifact guestbook --create --public \
+./cairn push examples/guestbook --artifact guestbook --create \
     --name v1 --changelog "first version"
 ./cairn open guestbook            # prints the URL
 ```
@@ -182,7 +182,7 @@ POST   /api/auth/login                      {email, password[, confirm]}
 GET    /api/me
 GET    /api/users                           directory: id, name, email (any authed user)
 GET    /api/artifacts                       ?name= ?limit= ?offset=
-POST   /api/artifacts                       {name, description, public}
+POST   /api/artifacts                       {id, name, description, membership, wraps, estate}
 GET|PATCH|DELETE /api/artifacts/{id}
 POST   /api/artifacts/{id}/resources        {type, value}
 DELETE /api/artifacts/{id}/resources/{rid}

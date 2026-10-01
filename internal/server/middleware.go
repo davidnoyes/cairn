@@ -38,6 +38,8 @@ type ctxKey int
 const (
 	userCtxKey ctxKey = iota
 	apiKeyCtxKey
+	artifactCtxKey
+	accessCtxKey
 )
 
 // apiKeyBearerPrefix starts every API key bearer credential:

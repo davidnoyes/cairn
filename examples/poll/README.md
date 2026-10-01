@@ -13,5 +13,5 @@ votes table survives re-uploads).
 python3 -m http.server -d examples/poll   # then open http://localhost:8000
 
 # publish
-cairn push examples/poll --artifact poll --create --public
+cairn push examples/poll --artifact poll --create
 ```

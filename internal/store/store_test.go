@@ -38,11 +38,11 @@ func TestArtifactsAndVersions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v1, err := s.CreateVersion(a.ID, "v1", "initial", "c1")
+	v1, err := s.CreateVersion(a.ID, "v1", "initial", "c1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	v2, err := s.CreateVersion(a.ID, "v2", "more", "c2")
+	v2, err := s.CreateVersion(a.ID, "v2", "more", "c2", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestArtifactsAndVersions(t *testing.T) {
 	if err != nil || latest.ID != v2.ID {
 		t.Fatalf("LatestVersion: %v %+v", err, latest)
 	}
-	prev, err := s.SwapVersionContent(a.ID, v2.ID, "c3", "v2b", "fixed")
+	prev, err := s.SwapVersionContent(a.ID, v2.ID, "c3", "v2b", "fixed", "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2086,7 +2086,9 @@ export async function verifyChain(input) {
   }
   const pin = input.pin;
   if (pin) {
-    if (!(pin.seq >= 1)) throw new FormatError(`pinned seq ${pin.seq}`);
+    if (!Number.isInteger(pin.epoch) || pin.epoch < 1) throw new FormatError(`pinned epoch ${pin.epoch}`);
+    if (!Number.isInteger(pin.seq) || pin.seq < 1) throw new FormatError(`pinned seq ${pin.seq}`);
+    if (typeof pin.head !== 'string') throw new FormatError('pinned head is not a string');
     if (records.length < pin.seq) throw new RollbackError(`${records.length} records, pinned seq ${pin.seq}`);
     if ((await bodyHash(unb64(records[pin.seq - 1].body))) !== pin.head) {
       throw new ForkError(`record ${pin.seq}`);

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1032,6 +1033,89 @@ func TestLinkHashOnAPrivateArtifactOpensNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantStatus(t, anonWithLink(t, ts.URL, testLinkToken(t, o.id, 1)), "GET", "/api/artifacts/"+o.id, nil, http.StatusNotFound)
+}
+
+func TestPushRecordsTheEpochItWasPushedUnder(t *testing.T) {
+	s, ts := testServer(t)
+	a := seedKeyedAccount(t, s, ts.URL, "a@example.com")
+	o := newArtifact(t, a, "epochs")
+	o.apply(o.nextEpoch())
+	zip := zipFrom(t, map[string]string{"index.html": "<h1>hi</h1>"})
+	base := "/api/artifacts/" + o.id + "/versions"
+
+	type written struct {
+		ID       string `json:"id"`
+		PushedBy string `json:"pushedBy"`
+		Epoch    int    `json:"epoch"`
+	}
+	pushed := decode[written](t, a.upload("POST", base, zip, nil))
+	if pushed.PushedBy != a.id || pushed.Epoch != 2 {
+		t.Errorf("create answer: %+v, want pushedBy %s at epoch 2", pushed, a.id)
+	}
+	var got written
+	a.mustDo("GET", base+"/"+pushed.ID, nil, &got, http.StatusOK)
+	if got.PushedBy != a.id || got.Epoch != 2 {
+		t.Errorf("stored version: %+v, want pushedBy %s at epoch 2", got, a.id)
+	}
+
+	// A replacement after another epoch change records the new epoch.
+	o.apply(o.nextEpoch())
+	replaced := decode[written](t, a.upload("PUT", base+"/"+pushed.ID, zip, nil))
+	if replaced.PushedBy != a.id || replaced.Epoch != 3 {
+		t.Errorf("replace answer: %+v, want pushedBy %s at epoch 3", replaced, a.id)
+	}
+}
+
+func TestConcurrentMembershipWritesOnOnePrev(t *testing.T) {
+	s, ts := testServer(t)
+	a := seedKeyedAccount(t, s, ts.URL, "a@example.com")
+	b := seedKeyedAccount(t, s, ts.URL, "b@example.com")
+	c := seedKeyedAccount(t, s, ts.URL, "c@example.com")
+	o := newArtifact(t, a, "race")
+	path := "/api/artifacts/" + o.id + "/membership"
+
+	// Two different valid records that both follow the same latest one.
+	var reqs [2]map[string]any
+	for i, u := range []actor{b, c} {
+		rec := o.next()
+		rec.Members = []e2e.Member{{User: u.id, Role: "viewer", FP: u.keys.fp()}}
+		reqs[i] = o.change(rec)
+	}
+
+	var codes [2]int
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := range reqs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			codes[i], _ = status(a.testClient, "PUT", path, reqs[i])
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	winner := 0
+	switch {
+	case codes[0] == http.StatusOK && codes[1] == http.StatusConflict:
+	case codes[1] == http.StatusOK && codes[0] == http.StatusConflict:
+		winner = 1
+	default:
+		t.Fatalf("statuses = %v, want one 200 and one 409", codes)
+	}
+
+	var got struct {
+		Records []e2e.Envelope `json:"records"`
+	}
+	a.mustDo("GET", path, nil, &got, http.StatusOK)
+	if len(got.Records) != 2 {
+		t.Fatalf("stored chain has %d records, want 2", len(got.Records))
+	}
+	want := e2e.BodyHash(reqs[winner]["membership"].(e2e.Envelope).Body)
+	if e2e.BodyHash(got.Records[1].Body) != want {
+		t.Errorf("stored record is not the winner's (request %d)", winner)
+	}
 }
 
 func TestMembershipOwnersAreKeyedByTheirOwnFingerprint(t *testing.T) {

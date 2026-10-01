@@ -21,8 +21,6 @@ func (e errAmbiguousResource) Error() string {
 	return fmt.Sprintf("resource %q is associated with %d artifacts; use the artifact id", e.ref, e.count)
 }
 
-const artifactCtxKey ctxKey = 100
-
 // requestArtifact returns the artifact attached by artifactRoute (never nil
 // inside wrapped handlers).
 func requestArtifact(r *http.Request) *store.Artifact {

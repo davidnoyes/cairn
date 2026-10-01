@@ -24,8 +24,6 @@ import (
 // errBadCredentials marks credentials that are present but invalid.
 var errBadCredentials = errors.New("invalid credentials")
 
-const accessCtxKey ctxKey = 101
-
 // requestAccess returns the access.Request attached by artifactRoute.
 func requestAccess(r *http.Request) access.Request {
 	req, _ := r.Context().Value(accessCtxKey).(access.Request)
@@ -569,19 +567,4 @@ func (s *Server) handleGetKeys(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, v)
-}
-
-// recordPusher records who pushed version vid, and the epoch it was pushed
-// under. A failure is logged: the version itself has landed.
-func (s *Server) recordPusher(artifactID, vid, userID string) {
-	err := s.store.WithArtifact(artifactID, func(tx *store.ArtifactTx) error {
-		a, err := tx.Artifact()
-		if err != nil {
-			return err
-		}
-		return tx.SetVersionWriter(vid, userID, a.Epoch)
-	})
-	if err != nil {
-		s.log.Error("record pusher", "artifact", artifactID, "version", vid, "err", err)
-	}
 }

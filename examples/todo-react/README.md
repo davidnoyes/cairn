@@ -26,7 +26,7 @@ npm run typecheck    # tsc --noEmit
 npm run dev          # build + serve dist/ on http://localhost:8000
 
 # publish (push the built dist/, not the source)
-cairn push dist --artifact todos --create --public
+cairn push dist --artifact todos --create
 # iterate: rebuild, then re-push in place — the shared database survives
 npm run build && cairn push dist --artifact todos --overwrite latest
 ```

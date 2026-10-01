@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -83,8 +84,8 @@ func TestUnlockRefusals(t *testing.T) {
 	host, full := keyedLogin(t)
 
 	// A bearer-only client has no keySecret to open MK with.
-	if _, err := bearerFor(t, host, full).Unlock(); err == nil {
-		t.Error("bearer-only client unlocked")
+	if _, err := bearerFor(t, host, full).Unlock(); err == nil || !strings.Contains(err.Error(), "needs the full API key") {
+		t.Errorf("bearer-only client: %v, want the full-API-key refusal", err)
 	}
 
 	// A wrong keySecret cannot open the device key's MK.
@@ -93,8 +94,16 @@ func TestUnlockRefusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	key.KeySecret = bytes.Repeat([]byte{7}, len(key.KeySecret))
-	if _, err := NewWithKey(host, key).Unlock(); err == nil {
-		t.Error("wrong keySecret unlocked")
+	if _, err := NewWithKey(host, key).Unlock(); err == nil || !strings.Contains(err.Error(), "opening MK with the API key") {
+		t.Errorf("wrong keySecret: %v, want the MK-open refusal", err)
+	}
+
+	// A bundle answer with no sealed MK for this key cannot be opened.
+	proxy := tamperingProxy(t, host, "/api/me/bundle", func(m map[string]json.RawMessage) {
+		delete(m, "apiKey")
+	})
+	if _, err := keyedFor(t, proxy, full).Unlock(); err == nil || !strings.Contains(err.Error(), "no sealed MK") {
+		t.Errorf("bundle without apiKey: %v, want the no-sealed-MK refusal", err)
 	}
 }
 
@@ -252,8 +261,8 @@ func TestCreateArtifactVerifiesTheChain(t *testing.T) {
 			}
 			m["owners"] = mustJSON(t, owners)
 		})
-		if _, err := keyedFor(t, proxy, full).CreateArtifact("swapped", ""); err == nil {
-			t.Error("a chain whose owner keys were swapped was accepted")
+		if _, err := keyedFor(t, proxy, full).CreateArtifact("swapped", ""); err == nil || !strings.Contains(err.Error(), "does not verify") || !errors.Is(err, e2e.ErrChain) || !strings.Contains(err.Error(), "no owner key") {
+			t.Errorf("a chain whose owner keys were swapped: %v, want a verification failure (no owner key)", err)
 		}
 	})
 
@@ -274,8 +283,8 @@ func TestCreateArtifactVerifiesTheChain(t *testing.T) {
 			m["records"] = mustJSON(t, []e2e.Envelope{env})
 			m["owners"] = mustJSON(t, map[string]e2e.KeyPair{fp: pair})
 		})
-		if _, err := keyedFor(t, proxy, full).CreateArtifact("forged", ""); err == nil {
-			t.Error("a chain anchored at another key was accepted")
+		if _, err := keyedFor(t, proxy, full).CreateArtifact("forged", ""); err == nil || !strings.Contains(err.Error(), "does not verify") || !errors.Is(err, e2e.ErrChain) {
+			t.Errorf("a chain anchored at another key: %v, want a verification failure (ErrChain)", err)
 		}
 	})
 }
@@ -294,8 +303,8 @@ func TestUnlockRefusesMismatchedPublicKeys(t *testing.T) {
 			proxy := tamperingProxy(t, host, "/api/me/bundle", func(m map[string]json.RawMessage) {
 				m[field] = mustJSON(t, pub)
 			})
-			if _, err := keyedFor(t, proxy, full).Unlock(); err == nil {
-				t.Errorf("a bundle with a foreign %s unlocked", field)
+			if _, err := keyedFor(t, proxy, full).Unlock(); err == nil || !strings.Contains(err.Error(), "published public keys do not match") {
+				t.Errorf("a bundle with a foreign %s: %v, want the public-key mismatch refusal", field, err)
 			}
 		})
 	}

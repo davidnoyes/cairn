@@ -646,21 +646,6 @@ func (t *ArtifactTx) AcceptedOffers() (map[string]*Offer, error) {
 
 // Versions and the epoch of each write
 
-// SetVersionWriter records who pushed a version and the epoch it was written
-// under. A version that is not on this artifact is ErrNotFound.
-func (t *ArtifactTx) SetVersionWriter(versionID, userID string, epoch int) error {
-	res, err := t.tx.Exec(`UPDATE versions SET pushed_by = ?, epoch = ? WHERE id = ? AND artifact_id = ?`, userID, epoch, versionID, t.id)
-	if err != nil {
-		return err
-	}
-	if n, err := res.RowsAffected(); err != nil {
-		return err
-	} else if n == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
 // RecordWrite records the epoch a database revision (kind "db", key "") or a
 // file (kind "file", key = path) of a version was last written under, and by
 // whom. A later write to the same target replaces the earlier row. A version

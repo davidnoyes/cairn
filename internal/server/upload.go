@@ -30,15 +30,11 @@ func (s *Server) handleUploadVersion(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	v, err := s.store.CreateVersion(a.ID, name, changelog, contentDir)
+	v, err := s.store.CreateVersion(a.ID, name, changelog, contentDir, requestUser(r).ID)
 	if err != nil {
 		os.RemoveAll(s.layout.ContentDir(a.ID, contentDir))
 		s.writeStoreError(w, err, "version")
 		return
-	}
-	s.recordPusher(a.ID, v.ID, requestUser(r).ID)
-	if pushed, err := s.store.VersionByID(a.ID, v.ID); err == nil {
-		v = pushed
 	}
 	s.log.Info("version uploaded", "artifact", a.ID, "version", v.ID, "seq", v.Seq, "by", requestUser(r).Email)
 	writeJSON(w, http.StatusCreated, v)
@@ -64,7 +60,7 @@ func (s *Server) handleReplaceVersion(w http.ResponseWriter, r *http.Request) {
 	if changelog == "" {
 		changelog = v.Changelog
 	}
-	prev, err := s.store.SwapVersionContent(v.ArtifactID, v.ID, contentDir, name, changelog)
+	prev, err := s.store.SwapVersionContent(v.ArtifactID, v.ID, contentDir, name, changelog, requestUser(r).ID)
 	if err != nil {
 		os.RemoveAll(s.layout.ContentDir(v.ArtifactID, contentDir))
 		s.writeStoreError(w, err, "version")
@@ -73,7 +69,6 @@ func (s *Server) handleReplaceVersion(w http.ResponseWriter, r *http.Request) {
 	// Open file handles on the old dir keep serving until closed (POSIX);
 	// new requests resolve the new pointer.
 	os.RemoveAll(s.layout.ContentDir(v.ArtifactID, prev))
-	s.recordPusher(v.ArtifactID, v.ID, requestUser(r).ID)
 	v, _ = s.store.VersionByID(v.ArtifactID, v.ID)
 	s.log.Info("version replaced", "artifact", v.ArtifactID, "version", v.ID, "by", requestUser(r).Email)
 	writeJSON(w, http.StatusOK, v)

@@ -9,7 +9,7 @@
 // relies on logic of its own: applyOverrides merges generically, and each
 // section's loop below reads only the fields that primitive's operation
 // takes.
-import { test } from 'node:test';
+import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as e2e from './e2e.mjs';
@@ -1133,20 +1133,44 @@ function chainInput(v) {
 // chain mirrors the Go chain vector check: verifyChain must accept each
 // valid chain with the same result, and refuse each other one with the
 // class for its error kind.
-test('chain', async () => {
+describe('chain', () => {
   for (const v of vf.chain) {
-    if (v.error) {
-      assert.ok(chainErrors[v.error], `${v.name}: unknown error kind ${v.error}`);
-      await assert.rejects(() => e2e.verifyChain(chainInput(v)), chainErrors[v.error], `${v.name}: ${v.why}`);
-      continue;
-    }
-    const got = await e2e.verifyChain(chainInput(v));
-    assert.deepEqual(
-      { head: got.head, seq: got.latest.seq, epoch: got.latest.epoch, handovers: got.handovers },
-      v.want,
-      v.name,
-    );
-    assert.equal(got.bodies.length, v.records.length, v.name);
+    test(v.name, async () => {
+      if (v.error) {
+        assert.ok(chainErrors[v.error], `${v.name}: unknown error kind ${v.error}`);
+        await assert.rejects(() => e2e.verifyChain(chainInput(v)), chainErrors[v.error], `${v.name}: ${v.why}`);
+        return;
+      }
+      const got = await e2e.verifyChain(chainInput(v));
+      assert.deepEqual(
+        { head: got.head, seq: got.latest.seq, epoch: got.latest.epoch, handovers: got.handovers },
+        v.want,
+        v.name,
+      );
+      assert.equal(got.bodies.length, v.records.length, v.name);
+    });
+  }
+});
+
+// A pin that is not {epoch >= 1, seq >= 1, head string} is refused as a
+// format error before it is compared with anything; null or undefined is no
+// pin at all.
+test('verifyChain: a malformed pin is a format error', async () => {
+  const v = vf.chain.find((c) => !c.error);
+  const good = { epoch: 1, seq: 1, head: 'h' };
+  for (const bad of [
+    { seq: 1, head: 'h' },
+    { ...good, epoch: '1' },
+    { ...good, epoch: 0 },
+    { ...good, seq: 1.5 },
+    { ...good, seq: 0 },
+    { ...good, head: 7 },
+    { epoch: 1, seq: 1 },
+  ]) {
+    await assert.rejects(() => e2e.verifyChain({ ...chainInput(v), pin: bad }), e2e.FormatError, JSON.stringify(bad));
+  }
+  for (const none of [null, undefined]) {
+    await e2e.verifyChain({ ...chainInput(v), pin: none });
   }
 });
 
