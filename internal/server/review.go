@@ -35,16 +35,6 @@ func viewVersions(vs []*store.Version, vouches map[string]store.Envelope) []*ver
 	return out
 }
 
-// vouchesOf returns an artifact's stored vouches, keyed by version ID.
-func (s *Server) vouchesOf(artifactID string) (map[string]store.Envelope, error) {
-	var out map[string]store.Envelope
-	err := s.store.WithArtifact(artifactID, func(tx *store.ArtifactTx) (err error) {
-		out, err = tx.Vouches()
-		return err
-	})
-	return out, err
-}
-
 type reviewEntryView struct {
 	ID        string  `json:"id"`
 	Seq       int     `json:"seq"`

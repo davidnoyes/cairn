@@ -204,9 +204,12 @@ func (s *Store) CreateVersion(artifactID, name, changelog, contentDir, pushedBy 
 		declaredEpoch, declaredEpoch).Scan(&v.Seq, &v.Epoch)
 	if errors.Is(err, sql.ErrNoRows) {
 		// No row means no such artifact, or an epoch other than the declared one.
-		var epoch int
-		if aerr := s.db.QueryRow(`SELECT epoch FROM artifacts WHERE id = ?`, artifactID).Scan(&epoch); aerr != nil {
+		var exists bool
+		if aerr := s.db.QueryRow(`SELECT EXISTS (SELECT 1 FROM artifacts WHERE id = ?)`, artifactID).Scan(&exists); aerr != nil {
 			return nil, aerr
+		}
+		if !exists {
+			return nil, ErrNotFound
 		}
 		return nil, ErrEpochMoved
 	}

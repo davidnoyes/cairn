@@ -294,7 +294,7 @@ internal/server/web/account.mjs	x25519Raw?.fill(0);	;	node --test internal/serve
 internal/server/web/account.mjs	ed25519Raw?.fill(0);	;	node --test internal/server/web/account_test.mjs
 internal/store/artifacts.go	FROM artifacts WHERE id = ? AND (? = 0 OR epoch = ?)	FROM artifacts WHERE id = ? AND (? = 0 OR epoch = epoch OR ? = 0)	go test ./internal/store -run TestVersionWritesDeclareTheirEpoch
 internal/store/artifacts.go	AND (? = 0 OR (SELECT epoch FROM artifacts WHERE id = ?) = ?)	AND (? = 0 OR (SELECT epoch FROM artifacts WHERE id = ?) = ? OR 1)	go test ./internal/store -run TestVersionWritesDeclareTheirEpoch
-internal/server/epoch.go	if a.Epoch != declared {	if a.Epoch == 0 {	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
+internal/server/epoch.go	return s.store.UnderEpoch(artifactID, declared, write)	return s.store.UnderEpoch(artifactID, 0, write)	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
 internal/server/epoch.go	if declared == 0 {	if declared >= 0 {	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
 internal/server/epoch.go	v[0] == '0'	v[0] == 'z'	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
 internal/server/epoch.go	len(vals) == 0	len(vals) == 0 || vals[0] == ""	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
@@ -322,3 +322,9 @@ internal/client/review.go	case v.PushedBy != "" && v.PushedBy == latest.Owner:	c
 internal/client/review.go	return m.User == v.PushedBy && m.Role == "editor"	return m.User == v.PushedBy && m.Role == "zzz"	go test ./internal/client -run 'TestReviewReports'
 internal/client/review.go	if latest := va.Chain.Latest; latest.Owner != k.UserID || latest.OwnerFP != k.FP {	if latest := va.Chain.Latest; false && latest.Owner != k.UserID {	go test ./internal/client -run 'TestVouchRefuses'
 internal/store/artifacts.go	DELETE FROM version_vouches WHERE version_id = ?	SELECT 1 WHERE ? IS NULL	go test ./internal/store -run TestSwapVersionContentDropsTheVouch
+
+# Epoch writes and vouches: review fixes (per-artifact lock, not found, epoch 409 only)
+internal/store/sharing.go	s.locks[id] = l	_ = id	go test ./internal/store -run TestUnderEpochHoldsOnlyItsArtifact
+internal/store/sharing.go	if epoch != declared {	if false {	go test ./internal/store -run TestUnderEpoch
+internal/store/artifacts.go	if !exists {	if false {	go test ./internal/store -run TestCreateVersionOnAMissingArtifactIsNotFound
+internal/client/client.go	&& strings.Contains(apiErr.Message, "moved to a new epoch")	&& true	go test ./internal/client -run TestPushKeepsAnotherConflict

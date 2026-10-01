@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"sync"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
 	"github.com/google/uuid"
@@ -99,9 +100,9 @@ type AccessState struct {
 	Wraps    []Wrap
 }
 
-// ArtifactTx is a transaction that holds the lock on one artifact. Pushes,
-// revisions, file writes, approvals and membership changes all run in one, so
-// none can land between a check and an epoch change.
+// ArtifactTx is a transaction that holds the lock on one artifact. Approvals
+// and membership changes run in one, so none can land between a check and an
+// epoch change; database and file writes use UnderEpoch instead.
 //
 // The store uses a single connection, so a transaction excludes every other
 // store call until it ends: a function passed to WithArtifact must use only
@@ -109,6 +110,47 @@ type AccessState struct {
 type ArtifactTx struct {
 	tx *sql.Tx
 	id string
+}
+
+// artifactLock returns artifact id's in-process lock. WithArtifact takes it
+// exclusively, so an epoch only changes while it is held; UnderEpoch shares
+// it, so writes run in parallel but never across an epoch change.
+func (s *Store) artifactLock(id string) *sync.RWMutex {
+	s.locksMu.Lock()
+	defer s.locksMu.Unlock()
+	if s.locks == nil {
+		s.locks = map[string]*sync.RWMutex{}
+	}
+	l, ok := s.locks[id]
+	if !ok {
+		l = &sync.RWMutex{}
+		s.locks[id] = l
+	}
+	return l
+}
+
+// UnderEpoch runs write if artifact id is at the declared epoch, and keeps
+// the epoch from changing until write returns. Unlike WithArtifact it holds
+// no database transaction, so write may be slow: it delays changes to this
+// artifact only. A missing artifact is ErrNotFound, another epoch
+// ErrEpochMoved. write must not call WithArtifact on this artifact.
+func (s *Store) UnderEpoch(id string, declared int, write func()) error {
+	l := s.artifactLock(id)
+	l.RLock()
+	defer l.RUnlock()
+	var epoch int
+	err := s.db.QueryRow(`SELECT epoch FROM artifacts WHERE id = ?`, id).Scan(&epoch)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if epoch != declared {
+		return ErrEpochMoved
+	}
+	write()
+	return nil
 }
 
 // ArtifactID is the artifact this transaction locks.
@@ -121,6 +163,9 @@ func (t *ArtifactTx) ArtifactID() string { return t.id }
 // (a Store call inside it deadlocks) and stay short: extract uploads, copy
 // files, and hash large bodies before calling WithArtifact, not inside fn.
 func (s *Store) WithArtifact(id string, fn func(*ArtifactTx) error) error {
+	l := s.artifactLock(id)
+	l.Lock()
+	defer l.Unlock()
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -704,9 +749,9 @@ func (t *ArtifactTx) PutVouch(versionID string, env Envelope) error {
 	return nil
 }
 
-// Vouches returns the stored vouches, keyed by version ID.
-func (t *ArtifactTx) Vouches() (map[string]Envelope, error) {
-	rows, err := t.tx.Query(`SELECT version_id, body, sig, signer FROM version_vouches WHERE artifact_id = ?`, t.id)
+// Vouches returns an artifact's stored vouches, keyed by version ID.
+func (s *Store) Vouches(artifactID string) (map[string]Envelope, error) {
+	rows, err := s.db.Query(`SELECT version_id, body, sig, signer FROM version_vouches WHERE artifact_id = ?`, artifactID)
 	if err != nil {
 		return nil, err
 	}

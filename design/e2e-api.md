@@ -505,22 +505,24 @@ pusher.
 
 A version push, a database revision, and a file write each declare the epoch
 they were written under. The server refuses any epoch but the current one
-with `409`, inside the transaction that holds the artifact row lock, so a
-write cannot land under the old epoch after an epoch change.
+with `409`, while it holds the artifact's lock, so a write cannot land under
+the old epoch after an epoch change.
 
 Until content is encrypted, the epoch travels in the `X-Cairn-Epoch` request
 header, a positive decimal without leading zeros (anything else is `400`),
 and the header is optional: `cairn.js` does not send it. A write that omits
 it takes the current epoch. Milestone 4 makes it required on a version push,
 and milestone 5 on a database revision and a file write. A push compares the
-epoch in the same statement that writes the version. A database exec or
-batch and a file write run under the artifact row lock, so no epoch change
-lands during one that declares an epoch. Their data lives outside the
-metadata database, so the write and the lock's commit are not one
-transaction: a failed commit leaves a write that was checked but not
-recorded. A database exec or batch holds the lock for as long as it runs,
-and a file write holds it only for the move into place. Milestone 5 moves
-these writes into the metadata store, which closes that.
+epoch in the same statement that writes the version.
+
+A database exec or batch and a file write that declare an epoch share the
+artifact's lock with each other. A membership change takes it exclusively,
+so no epoch change lands during one of these writes. The lock is held in
+the server process, not in the metadata database, so a slow statement
+delays changes to its own artifact only. A database exec or batch holds it
+for as long as it runs, and a file write only for the move into place. The
+server does not yet record the epoch of these writes. Milestone 5 moves them
+into the metadata store and records it.
 
 #### Creating an artifact
 

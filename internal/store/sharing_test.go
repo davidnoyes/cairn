@@ -1058,15 +1058,11 @@ func TestSwapVersionContentDropsTheVouch(t *testing.T) {
 		t.Fatal(err)
 	}
 	vouches := func() int {
-		var n int
-		if err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
-			vs, err := tx.Vouches()
-			n = len(vs)
-			return err
-		}); err != nil {
+		vs, err := s.Vouches(a.ID)
+		if err != nil {
 			t.Fatal(err)
 		}
-		return n
+		return len(vs)
 	}
 	if err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
 		return tx.PutVouch(v.ID, Envelope{Body: []byte("vb"), Sig: []byte("vs"), Signer: o.ID})
@@ -1081,5 +1077,77 @@ func TestSwapVersionContentDropsTheVouch(t *testing.T) {
 	}
 	if n := vouches(); n != 0 {
 		t.Errorf("%d vouches after the swap, want 0", n)
+	}
+}
+
+func TestUnderEpoch(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	a := ownedArtifact(t, s, o)
+	cur, err := s.ArtifactByID(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ran := false
+	if err := s.UnderEpoch(a.ID, cur.Epoch+1, func() { ran = true }); !errors.Is(err, ErrEpochMoved) || ran {
+		t.Errorf("another epoch: err %v, ran %v; want ErrEpochMoved and no write", err, ran)
+	}
+	if err := s.UnderEpoch("no-such-artifact", 1, func() { ran = true }); !errors.Is(err, ErrNotFound) || ran {
+		t.Errorf("no artifact: err %v, ran %v; want ErrNotFound and no write", err, ran)
+	}
+	if err := s.UnderEpoch(a.ID, cur.Epoch, func() { ran = true }); err != nil || !ran {
+		t.Errorf("current epoch: err %v, ran %v; want the write", err, ran)
+	}
+}
+
+// A write under its epoch may be slow, so it holds its own artifact's lock
+// but not the store: other store calls go on, and only a change to that
+// artifact waits for it.
+func TestUnderEpochHoldsOnlyItsArtifact(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	a := ownedArtifact(t, s, o)
+	cur, err := s.ArtifactByID(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locked := make(chan struct{})
+	err = s.UnderEpoch(a.ID, cur.Epoch, func() {
+		other := make(chan error, 1)
+		go func() { _, err := s.UserByID(o.ID); other <- err }()
+		select {
+		case err := <-other:
+			if err != nil {
+				t.Errorf("store call during the write: %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Error("a store call waited for the write")
+		}
+		go func() {
+			s.WithArtifact(a.ID, func(*ArtifactTx) error { return nil })
+			close(locked)
+		}()
+		select {
+		case <-locked:
+			t.Error("WithArtifact on the same artifact ran during the write")
+		case <-time.After(200 * time.Millisecond):
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-locked:
+	case <-time.After(2 * time.Second):
+		t.Error("WithArtifact still waiting after the write")
+	}
+}
+
+func TestCreateVersionOnAMissingArtifactIsNotFound(t *testing.T) {
+	s := testStore(t)
+	for _, declared := range []int{0, 3} {
+		if _, err := s.CreateVersion("no-such-artifact", "v1", "", "c1", "", declared); !errors.Is(err, ErrNotFound) {
+			t.Errorf("declared %d: %v, want ErrNotFound", declared, err)
+		}
 	}
 }

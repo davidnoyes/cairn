@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
-	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 // Reviewing a removed editor's versions: GET /review and PUT /vouch. See
@@ -229,16 +228,11 @@ func TestDeletingAVersionLeavesNoVouch(t *testing.T) {
 	w := newReviewWorld(t)
 	w.owner.mustDo("PUT", w.o.vouchPath(w.byRemoved), map[string]any{"vouch": w.o.vouchBy(w.owner, w.byRemoved)}, nil, http.StatusOK)
 	w.owner.mustDo("DELETE", "/api/artifacts/"+w.o.id+"/versions/"+w.byRemoved, nil, nil, http.StatusOK)
-	var n int
-	err := w.s.store.WithArtifact(w.o.id, func(tx *store.ArtifactTx) error {
-		vs, err := tx.Vouches()
-		n = len(vs)
-		return err
-	})
+	vs, err := w.s.store.Vouches(w.o.id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 0 {
+	if n := len(vs); n != 0 {
 		t.Errorf("%d vouches remain after deleting the version", n)
 	}
 }

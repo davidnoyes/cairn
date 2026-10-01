@@ -3,8 +3,6 @@ package server
 import (
 	"net/http"
 	"strconv"
-
-	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 // epochHeader is how a write declares the epoch it was made under.
@@ -27,25 +25,14 @@ func declaredEpoch(w http.ResponseWriter, r *http.Request) (int, bool) {
 	return int(n), true
 }
 
-// underEpoch runs write while it holds the artifact row lock, the one every
-// membership change takes, and refuses with store.ErrEpochMoved unless the
-// artifact is at the declared epoch. With no declared epoch (0) it just runs
-// write. write must not call the store, and it must not write to the client:
-// the lock stalls every other store call until it returns.
+// underEpoch runs write unless the artifact has moved past the declared
+// epoch, and keeps the epoch from changing until write returns (see
+// store.UnderEpoch). With no declared epoch (0) it just runs write. write must
+// not write to the client.
 func (s *Server) underEpoch(artifactID string, declared int, write func()) error {
 	if declared == 0 {
 		write()
 		return nil
 	}
-	return s.store.WithArtifact(artifactID, func(tx *store.ArtifactTx) error {
-		a, err := tx.Artifact()
-		if err != nil {
-			return err
-		}
-		if a.Epoch != declared {
-			return store.ErrEpochMoved
-		}
-		write()
-		return nil
-	})
+	return s.store.UnderEpoch(artifactID, declared, write)
 }

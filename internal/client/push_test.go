@@ -20,6 +20,7 @@ type recordingTransport struct {
 	mu      sync.Mutex
 	epochs  []string
 	status  int
+	body    string // the error answered with status; the epoch one if empty
 	forward http.RoundTripper
 }
 
@@ -29,9 +30,13 @@ func (rt *recordingTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		rt.epochs = append(rt.epochs, req.Header.Get("X-Cairn-Epoch"))
 		rt.mu.Unlock()
 		if rt.status != 0 {
+			body := rt.body
+			if body == "" {
+				body = "the artifact moved to a new epoch; run the command again"
+			}
 			return &http.Response{
 				StatusCode: rt.status, Header: http.Header{}, Request: req,
-				Body: io.NopCloser(strings.NewReader(`{"error":"the artifact moved to a new epoch"}`)),
+				Body: io.NopCloser(strings.NewReader(`{"error":"` + body + `"}`)),
 			}, nil
 		}
 	}
@@ -110,5 +115,20 @@ func TestPushNamesAMovedEpoch(t *testing.T) {
 	_, err = c.Push(a.ID, "", siteDir(t), "v1", "")
 	if !errors.Is(err, ErrEpochMoved) || !strings.Contains(err.Error(), "run the command again") {
 		t.Errorf("Push on a 409: %v, want ErrEpochMoved asking to run the command again", err)
+	}
+}
+
+// Only the epoch 409 is ErrEpochMoved: any other conflict keeps its message.
+func TestPushKeepsAnotherConflict(t *testing.T) {
+	c := authedClient(t)
+	a, err := c.CreateArtifact("site", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := recordWrites(c, http.StatusConflict)
+	rt.body = "reference matches more than one artifact"
+	_, err = c.Push(a.ID, "", siteDir(t), "v1", "")
+	if errors.Is(err, ErrEpochMoved) || err == nil || !strings.Contains(err.Error(), rt.body) {
+		t.Errorf("Push on another 409: %v, want the server's message", err)
 	}
 }

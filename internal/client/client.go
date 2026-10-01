@@ -252,7 +252,7 @@ func (c *Client) Push(artifactID, versionID, dir, name, changelog string) (*stor
 	hdr := http.Header{"X-Cairn-Epoch": {strconv.Itoa(epoch)}}
 	err = c.doWithHeaders(method, path, tmp, mw.FormDataContentType(), hdr, &out)
 	var apiErr *APIError
-	if errors.As(err, &apiErr) && apiErr.Status == http.StatusConflict {
+	if errors.As(err, &apiErr) && apiErr.Status == http.StatusConflict && strings.Contains(apiErr.Message, "moved to a new epoch") {
 		return nil, ErrEpochMoved
 	}
 	return &out, err

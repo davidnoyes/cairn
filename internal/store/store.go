@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"sort"
+	"sync"
 	"time"
 
 	"modernc.org/sqlite"
@@ -20,6 +21,11 @@ var migrationsFS embed.FS
 // Store wraps the metadata database.
 type Store struct {
 	db *sql.DB
+
+	// locks holds one lock per artifact, taken by WithArtifact and
+	// UnderEpoch. Entries are never removed: there is one per artifact.
+	locksMu sync.Mutex
+	locks   map[string]*sync.RWMutex
 }
 
 // Open opens (creating if needed) the metadata database at path and applies

@@ -181,7 +181,7 @@ func (s *Server) handleListVersions(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "versions")
 		return
 	}
-	vouches, err := s.vouchesOf(id)
+	vouches, err := s.store.Vouches(id)
 	if err != nil {
 		s.writeStoreError(w, err, "versions")
 		return
@@ -196,7 +196,7 @@ func (s *Server) handleGetVersion(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "version")
 		return
 	}
-	vouches, err := s.vouchesOf(id)
+	vouches, err := s.store.Vouches(id)
 	if err != nil {
 		s.writeStoreError(w, err, "version")
 		return
