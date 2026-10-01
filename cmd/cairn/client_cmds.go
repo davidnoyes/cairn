@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/aloisdeniel/cairn/internal/client"
 	"github.com/aloisdeniel/cairn/internal/e2e"
@@ -175,18 +176,37 @@ func runLogin(args []string) error {
 	return nil
 }
 
+// logoutTimeout bounds logout's revoke call so a black-holed host can't hang
+// it. It is a variable so tests can shorten it; only logout uses it, since
+// pushes of large uploads must not get a short timeout.
+var logoutTimeout = 15 * time.Second
+
 func runLogout(args []string) error {
+	fs := flag.NewFlagSet("logout", flag.ExitOnError)
+	force := fs.Bool("force", false, "log out locally even if the key could not be revoked on the server")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 	cfg := loadConfig()
-	key, err := e2e.ParseAPIKey(cfg.APIKey)
-	if err == nil {
-		bearer := "cairn_" + key.KeyID + "_" + key.AuthSecret
-		if err := client.New(cfg.Host, bearer).Logout(key.KeyID); err != nil {
-			var apiErr *client.APIError
-			// A 401 means the key was already invalid (revoked elsewhere, or
-			// expired); there's nothing left to revoke, so log out anyway.
-			// Any other failure leaves the key live, so keep the config.
-			if !(errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized) {
-				return fmt.Errorf("could not revoke key %s on %s: %w; you are still logged in", key.KeyID, cfg.Host, err)
+	if cfg.APIKey != "" {
+		key, err := e2e.ParseAPIKey(cfg.APIKey)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "stored API key is unreadable; clearing it without revoking")
+		} else {
+			c := client.New(cfg.Host, bearerOf(key))
+			c.HTTP = &http.Client{Timeout: logoutTimeout}
+			if err := c.Logout(key.KeyID); err != nil {
+				var apiErr *client.APIError
+				// A 401 means the key was already invalid (revoked elsewhere, or
+				// expired); there's nothing left to revoke, so log out anyway.
+				// Any other failure leaves the key live, so keep the config
+				// unless --force.
+				if !(errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized) {
+					if !*force {
+						return fmt.Errorf("could not revoke key %s on %s: %w; you are still logged in (use --force to log out locally anyway)", key.KeyID, cfg.Host, err)
+					}
+					fmt.Fprintf(os.Stderr, "key %s may still be valid; revoke it from another device with `cairn keys revoke %s`\n", key.KeyID, key.KeyID)
+				}
 			}
 		}
 	}

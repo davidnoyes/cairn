@@ -93,7 +93,12 @@ func apiKeyBearer(full string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("malformed API key: %w", err)
 	}
-	return "cairn_" + key.KeyID + "_" + key.AuthSecret, nil
+	return bearerOf(key), nil
+}
+
+// bearerOf is the on-the-wire credential for a parsed key.
+func bearerOf(k e2e.APIKey) string {
+	return "cairn_" + k.KeyID + "_" + k.AuthSecret
 }
 
 func printJSON(v any) error {

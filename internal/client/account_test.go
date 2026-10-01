@@ -345,49 +345,50 @@ func TestResetRecoveryWrongCodeRefused(t *testing.T) {
 	}
 }
 
-// unreachableHost never answers, so a test against it only passes if the
-// password check ran before any network call was attempted.
+// unreachableHost refuses every connection. A network error also satisfies
+// err != nil, so tests against it must assert the specific password error
+// (errors.Is) to prove the check ran before any network call.
 const unreachableHost = "http://127.0.0.1:1"
 
 func TestSignupRejectsEmptyPassword(t *testing.T) {
-	if _, err := New(unreachableHost, "").Signup("ada@example.com", "Ada", ""); err == nil {
-		t.Fatal("Signup with an empty password succeeded")
+	if _, err := New(unreachableHost, "").Signup("ada@example.com", "Ada", ""); !errors.Is(err, ErrEmptyPassword) {
+		t.Fatalf("Signup with an empty password: err = %v, want ErrEmptyPassword", err)
 	}
 }
 
 func TestSignupRejectsWeakPassword(t *testing.T) {
-	if _, err := New(unreachableHost, "").Signup("ada@example.com", "Ada", "password1"); err == nil {
-		t.Fatal("Signup with a weak password succeeded")
+	if _, err := New(unreachableHost, "").Signup("ada@example.com", "Ada", "password1"); !errors.Is(err, ErrWeakPassword) {
+		t.Fatalf("Signup with a weak password: err = %v, want ErrWeakPassword", err)
 	}
 }
 
 func TestResetRecoveryRejectsEmptyPassword(t *testing.T) {
-	if err := New(unreachableHost, "").ResetRecovery("irrelevant", "AAAA", ""); err == nil {
-		t.Fatal("ResetRecovery with an empty password succeeded")
+	if err := New(unreachableHost, "").ResetRecovery("irrelevant", "AAAA", ""); !errors.Is(err, ErrEmptyPassword) {
+		t.Fatalf("ResetRecovery with an empty password: err = %v, want ErrEmptyPassword", err)
 	}
 }
 
 func TestResetRecoveryRejectsWeakPassword(t *testing.T) {
-	if err := New(unreachableHost, "").ResetRecovery("irrelevant", "AAAA", "password1"); err == nil {
-		t.Fatal("ResetRecovery with a weak password succeeded")
+	if err := New(unreachableHost, "").ResetRecovery("irrelevant", "AAAA", "password1"); !errors.Is(err, ErrWeakPassword) {
+		t.Fatalf("ResetRecovery with a weak password: err = %v, want ErrWeakPassword", err)
 	}
 }
 
 func TestResetNewRejectsEmptyPassword(t *testing.T) {
-	if _, err := New(unreachableHost, "").ResetNew("irrelevant", ""); err == nil {
-		t.Fatal("ResetNew with an empty password succeeded")
+	if _, err := New(unreachableHost, "").ResetNew("irrelevant", ""); !errors.Is(err, ErrEmptyPassword) {
+		t.Fatalf("ResetNew with an empty password: err = %v, want ErrEmptyPassword", err)
 	}
 }
 
 func TestResetNewRejectsWeakPassword(t *testing.T) {
-	if _, err := New(unreachableHost, "").ResetNew("irrelevant", "password1"); err == nil {
-		t.Fatal("ResetNew with a weak password succeeded")
+	if _, err := New(unreachableHost, "").ResetNew("irrelevant", "password1"); !errors.Is(err, ErrWeakPassword) {
+		t.Fatalf("ResetNew with a weak password: err = %v, want ErrWeakPassword", err)
 	}
 }
 
 func TestLoginRejectsEmptyPassword(t *testing.T) {
-	if _, err := New(unreachableHost, "").Login("ada@example.com", ""); err == nil {
-		t.Fatal("Login with an empty password succeeded")
+	if _, err := New(unreachableHost, "").Login("ada@example.com", ""); !errors.Is(err, ErrEmptyPassword) {
+		t.Fatalf("Login with an empty password: err = %v, want ErrEmptyPassword", err)
 	}
 }
 

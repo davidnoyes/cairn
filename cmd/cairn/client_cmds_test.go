@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aloisdeniel/cairn/internal/client"
 	"github.com/aloisdeniel/cairn/internal/e2e"
@@ -471,5 +473,223 @@ func TestKeysRevokeOwnKeyLogsOut(t *testing.T) {
 	}
 	if cfg := loadConfig(); cfg != (cliConfig{}) {
 		t.Errorf("loadConfig() = %+v, want cleared", cfg)
+	}
+}
+
+// captureStderr is captureStdout for os.Stderr.
+func captureStderr(t *testing.T) func() string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = w
+	return func() string {
+		w.Close()
+		os.Stderr = old
+		data, _ := io.ReadAll(r)
+		return string(data)
+	}
+}
+
+// saveDummyLogin stores a config holding dummyFullAPIKey for host.
+func saveDummyLogin(t *testing.T, host string) cliConfig {
+	t.Helper()
+	t.Setenv("CAIRN_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	cfg := cliConfig{Host: host, Email: "ada@example.com", APIKey: dummyFullAPIKey}
+	if err := saveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+func TestRunLogoutForceClearsConfigAndWarnsWhenRevokeFails(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	ts.Close() // refuses every connection
+	saveDummyLogin(t, ts.URL)
+
+	doneErr := captureStderr(t)
+	doneOut := captureStdout(t)
+	err := runLogout([]string{"--force"})
+	stdout, stderr := doneOut(), doneErr()
+	if err != nil {
+		t.Fatalf("runLogout --force: %v", err)
+	}
+	if got := loadConfig(); got != (cliConfig{}) {
+		t.Errorf("loadConfig() = %+v, want cleared", got)
+	}
+	want := "key 0011223344556677 may still be valid; revoke it from another device with `cairn keys revoke 0011223344556677`"
+	if !strings.Contains(stderr, want) {
+		t.Errorf("stderr = %q, want it to contain %q", stderr, want)
+	}
+	if !strings.Contains(stdout, "logged out") {
+		t.Errorf("stdout = %q, want logged out", stdout)
+	}
+}
+
+func TestRunLogoutForceStaysQuietWhenRevokeSucceeds(t *testing.T) {
+	host, m := newTestServer(t)
+	email, password := "ada@example.com", "correct horse battery staple"
+	signupVerify(t, host, m, email, password)
+	out, err := client.New(host, "").Login(email, password)
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	t.Setenv("CAIRN_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	if err := saveConfig(cliConfig{Host: host, Email: email, APIKey: out.APIKey}); err != nil {
+		t.Fatal(err)
+	}
+	doneErr := captureStderr(t)
+	doneOut := captureStdout(t)
+	err = runLogout([]string{"--force"})
+	doneOut()
+	if stderr := doneErr(); err != nil || stderr != "" {
+		t.Errorf("runLogout --force = %v, stderr %q; want success and silence", err, stderr)
+	}
+}
+
+func TestRunLogoutFailureErrorMentionsForce(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	ts.Close()
+	saveDummyLogin(t, ts.URL)
+	err := runLogout(nil)
+	if err == nil || !strings.HasSuffix(err.Error(), "; you are still logged in (use --force to log out locally anyway)") {
+		t.Errorf("runLogout error = %v, want the --force hint at the end", err)
+	}
+}
+
+func TestRunLogoutServerErrorKeepsConfigAndNamesKey(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"boom"}`, http.StatusInternalServerError)
+	}))
+	t.Cleanup(ts.Close)
+	want := saveDummyLogin(t, ts.URL)
+
+	err := runLogout(nil)
+	if err == nil {
+		t.Fatal("runLogout against a 500 succeeded")
+	}
+	if !strings.Contains(err.Error(), "could not revoke key 0011223344556677") {
+		t.Errorf("runLogout error = %v, want it to name the key id", err)
+	}
+	if got := loadConfig(); got != want {
+		t.Errorf("loadConfig() = %+v, want unchanged %+v", got, want)
+	}
+}
+
+func TestRunLogoutTimesOutOnBlackHoledHost(t *testing.T) {
+	release := make(chan struct{})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-time.After(10 * time.Second):
+		}
+	}))
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { close(release) })
+	want := saveDummyLogin(t, ts.URL)
+	old := logoutTimeout
+	logoutTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { logoutTimeout = old })
+
+	start := time.Now()
+	err := runLogout(nil)
+	if err == nil {
+		t.Fatal("runLogout against a blocked host succeeded")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("runLogout took %v, want it bounded by the timeout", elapsed)
+	}
+	if got := loadConfig(); got != want {
+		t.Errorf("loadConfig() = %+v, want unchanged %+v", got, want)
+	}
+}
+
+func TestRunLogoutUnreadableKeyWarnsAndClears(t *testing.T) {
+	t.Setenv("CAIRN_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	if err := saveConfig(cliConfig{Host: "http://example.test", Email: "ada@example.com", APIKey: "not-a-key"}); err != nil {
+		t.Fatal(err)
+	}
+	doneErr := captureStderr(t)
+	doneOut := captureStdout(t)
+	err := runLogout(nil)
+	doneOut()
+	stderr := doneErr()
+	if err != nil {
+		t.Fatalf("runLogout: %v", err)
+	}
+	if !strings.Contains(stderr, "stored API key is unreadable; clearing it without revoking") {
+		t.Errorf("stderr = %q, want the unreadable-key warning", stderr)
+	}
+	if got := loadConfig(); got != (cliConfig{}) {
+		t.Errorf("loadConfig() = %+v, want cleared", got)
+	}
+}
+
+func TestRunLogoutEmptyConfigIsSilent(t *testing.T) {
+	t.Setenv("CAIRN_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	doneErr := captureStderr(t)
+	doneOut := captureStdout(t)
+	err := runLogout(nil)
+	doneOut()
+	if stderr := doneErr(); err != nil || stderr != "" {
+		t.Errorf("runLogout on an empty config = %v, stderr %q; want success and silence", err, stderr)
+	}
+}
+
+func TestKeysRevokeOtherKeyLeavesConfigIntact(t *testing.T) {
+	host, m := newTestServer(t)
+	email, password := "ada@example.com", "correct horse battery staple"
+	signupVerify(t, host, m, email, password)
+	here, err := client.New(host, "").Login(email, password)
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	other, err := client.New(host, "").Login(email, password)
+	if err != nil {
+		t.Fatalf("second Login: %v", err)
+	}
+	otherKey, err := e2e.ParseAPIKey(other.APIKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CAIRN_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	want := cliConfig{Host: host, Email: email, APIKey: here.APIKey}
+	if err := saveConfig(want); err != nil {
+		t.Fatal(err)
+	}
+
+	done := captureStdout(t)
+	err = keysRevoke([]string{otherKey.KeyID})
+	got := done()
+	if err != nil {
+		t.Fatalf("keysRevoke: %v", err)
+	}
+	if strings.Contains(got, "logged out") {
+		t.Errorf("keysRevoke output = %q, want no logged-out text", got)
+	}
+	if cfg := loadConfig(); cfg != want {
+		t.Errorf("loadConfig() = %+v, want unchanged %+v", cfg, want)
+	}
+}
+
+func TestReadPasswordOrStdinStripsCRLF(t *testing.T) {
+	withStdin(t, "pw\r\n")
+	got, err := readPasswordOrStdin(true, "password: ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "pw" {
+		t.Errorf("readPasswordOrStdin = %q, want %q", got, "pw")
+	}
+}
+
+func TestRunLoginEmptyStdinRefused(t *testing.T) {
+	t.Setenv("CAIRN_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	withStdin(t, "")
+	err := runLogin([]string{"--host", "http://127.0.0.1:1", "--email", "ada@example.com", "--password-stdin"})
+	if !errors.Is(err, client.ErrEmptyPassword) {
+		t.Errorf("runLogin with empty stdin: err = %v, want ErrEmptyPassword", err)
 	}
 }

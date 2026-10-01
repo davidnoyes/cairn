@@ -195,7 +195,7 @@ type LoginResult struct {
 // caller to save; it never touches the wire.
 func (c *Client) Login(email, password string) (*LoginResult, error) {
 	if password == "" {
-		return nil, fmt.Errorf("password must not be empty")
+		return nil, ErrEmptyPassword
 	}
 	email = e2e.NormalizeEmail(email)
 	var params e2e.Params

@@ -16,7 +16,7 @@ Client:
   cairn signup           Generate keys, sign up, and print the recovery code
   cairn confirm-email    Follow an emailed verification link
   cairn login            Sign in, create a device key, and save it
-  cairn logout           Revoke the device key and forget it
+  cairn logout           Revoke the device key and forget it (--force: forget it even if the revoke fails)
   cairn whoami           Show the authenticated user and their fingerprint
   cairn forgot           Ask for a password reset link
   cairn reset            Set a new password from an emailed reset link
