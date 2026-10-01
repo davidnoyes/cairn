@@ -10,12 +10,12 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/aloisdeniel/cairn/internal/auth"
 	"github.com/aloisdeniel/cairn/internal/clock"
+	"github.com/aloisdeniel/cairn/internal/e2e"
 	"github.com/aloisdeniel/cairn/internal/mail"
 	"github.com/aloisdeniel/cairn/internal/store"
 	"github.com/aloisdeniel/cairn/internal/versiondb"
@@ -65,7 +65,7 @@ func (c *Config) applyDefaults() {
 	}
 	c.AdminEmail = normalizeEmail(c.AdminEmail)
 	for i, d := range c.SignupDomains {
-		c.SignupDomains[i] = strings.ToLower(strings.TrimSpace(d))
+		c.SignupDomains[i] = e2e.NormalizeEmail(d)
 	}
 }
 

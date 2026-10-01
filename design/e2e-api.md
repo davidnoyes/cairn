@@ -32,9 +32,12 @@ startup, with a message that points at `cairn import`.
 
 ### Common rules
 
-- **Addresses** are trimmed and lowercased before every lookup and
-  comparison. The domain is everything after the last `@`. A domain matches
-  `--signup-domain` exactly; subdomains are not included.
+- **Addresses** are normalized before every lookup and comparison, as
+  `normalize` in [wire formats](e2e-wire-formats.md#password-stretching)
+  describes. Only ASCII letters are lowercased, so two addresses that differ
+  by any other case belong to different accounts. The domain is everything
+  after the last `@`. A domain matches `--signup-domain`, normalized the same
+  way, exactly; subdomains are not included.
 - **Errors** are `{"error": "message"}` with the status shown. Rate-limited
   requests get `429` with a `Retry-After` header in seconds.
 - **Request protection** applies to every `POST`, `PUT`, `PATCH`, and `DELETE`

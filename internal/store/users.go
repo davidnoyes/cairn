@@ -3,9 +3,9 @@ package store
 import (
 	"database/sql"
 	"errors"
-	"strings"
 	"time"
 
+	"github.com/aloisdeniel/cairn/internal/e2e"
 	"github.com/google/uuid"
 )
 
@@ -34,10 +34,11 @@ func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	return &u, nil
 }
 
-// normalizeEmail lowercases and trims an address the way every lookup and
-// comparison expects it.
+// normalizeEmail trims an address and folds its ASCII case, as the wire
+// spec's normalize does, for every lookup and comparison. Unicode case is
+// kept: addresses that differ only by it are different accounts.
 func normalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
+	return e2e.NormalizeEmail(email)
 }
 
 // CreateAccount creates a new unverified account and its key bundle in one

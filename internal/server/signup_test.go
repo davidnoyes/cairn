@@ -148,3 +148,76 @@ func TestSignupUnverifiedReplaced(t *testing.T) {
 	}
 	c.mustDo("POST", "/api/auth/login", map[string]any{"email": "ada@example.com", "authKey": e2e.B64(testAuthKey("second-pw")), "client": "cli"}, nil, http.StatusOK)
 }
+
+// TestSignInFoldsASCIIOnly covers addresses that differ only by a Unicode
+// case: the wire spec's normalize folds ASCII alone, so they are different
+// accounts, as their salts already are.
+func TestSignInFoldsASCIIOnly(t *testing.T) {
+	s, ts := newTestServer(t, func(c *Config) { c.SignupDomains = []string{"example.com"} })
+	body := signupAndCapture(t, ts.URL, mailer(s), "ÉLAN@example.com", "pw")
+	c := &testClient{t: t, base: ts.URL}
+	c.mustDo("POST", "/api/auth/verify", map[string]string{"token": extractFragmentToken(t, body)}, nil, http.StatusOK)
+
+	signIn := func(email string, out any) int {
+		return c.do("POST", "/api/auth/login", map[string]any{"email": email, "authKey": e2e.B64(testAuthKey("pw")), "client": "cli"}, out).StatusCode
+	}
+	var unknown, lower struct {
+		Error string `json:"error"`
+	}
+	unknownStatus := signIn("nobody@example.com", &unknown)
+	if status := signIn("élan@example.com", &lower); status != unknownStatus || lower != unknown {
+		t.Errorf("élan@example.com: %d %+v, want %d %+v as for an unknown user", status, lower, unknownStatus, unknown)
+	}
+
+	var out struct {
+		User struct {
+			Email string `json:"email"`
+		} `json:"user"`
+	}
+	if status := signIn("ÉLAN@EXAMPLE.COM", &out); status != http.StatusOK || out.User.Email != "Élan@example.com" {
+		t.Errorf("ÉLAN@EXAMPLE.COM: %d %+v, want 200 as Élan@example.com", status, out)
+	}
+}
+
+// TestSignupDomainsFoldASCIIOnly checks a --signup-domain is folded the same
+// way as the address it is compared with.
+func TestSignupDomainsFoldASCIIOnly(t *testing.T) {
+	_, ts := newTestServer(t, func(c *Config) { c.SignupDomains = []string{"EXAMPLE.COM", "ÉXAMPLE.org"} })
+	c := &testClient{t: t, base: ts.URL}
+	for _, tc := range []struct {
+		email string
+		want  int
+	}{
+		{"ada@example.com", http.StatusAccepted},
+		{"x@ÉXAMPLE.ORG", http.StatusAccepted},
+		{"y@éxample.org", http.StatusForbidden},
+	} {
+		resp := c.do("POST", "/api/auth/signup", map[string]any{
+			"email": tc.email, "name": "X", "authKey": e2e.B64(testAuthKey("pw")), "bundle": testBundleWire(),
+		}, nil)
+		if resp.StatusCode != tc.want {
+			t.Errorf("signup %s: status %d, want %d", tc.email, resp.StatusCode, tc.want)
+		}
+	}
+}
+
+// TestAdminEmailFoldsASCIIOnly checks --admin-email is folded the same way as
+// the address signing up.
+func TestAdminEmailFoldsASCIIOnly(t *testing.T) {
+	s, ts := newTestServer(t, func(c *Config) { c.AdminEmail = "ÉLAN@Example.com" })
+	c := &testClient{t: t, base: ts.URL}
+	signup := func(email string) int {
+		return c.do("POST", "/api/auth/signup", map[string]any{
+			"email": email, "name": "X", "authKey": e2e.B64(testAuthKey("pw")), "bundle": testBundleWire(),
+		}, nil).StatusCode
+	}
+	if status := signup("élan@example.com"); status != http.StatusForbidden {
+		t.Errorf("élan@example.com: status %d, want 403", status)
+	}
+	if status := signup("ÉLAN@EXAMPLE.COM"); status != http.StatusAccepted {
+		t.Fatalf("ÉLAN@EXAMPLE.COM: status %d, want 202", status)
+	}
+	if u, err := s.store.UserByEmail("Élan@example.com"); err != nil || !u.IsAdmin {
+		t.Errorf("admin account: %v %+v, want an admin", err, u)
+	}
+}

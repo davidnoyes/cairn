@@ -34,6 +34,19 @@ func TestCaptureRecordsMessages(t *testing.T) {
 	}
 }
 
+// TestCaptureLastFoldsASCIIOnly matches addresses as the server normalizes
+// them: a Unicode case difference is a different address.
+func TestCaptureLastFoldsASCIIOnly(t *testing.T) {
+	c := &Capture{}
+	c.Send(context.Background(), Message{To: "Élan@example.com", Subject: "upper"})
+	if m, ok := c.Last("ÉLAN@EXAMPLE.COM"); !ok || m.Subject != "upper" {
+		t.Errorf("Last(ÉLAN@EXAMPLE.COM) = %+v, %v; want subject upper", m, ok)
+	}
+	if m, ok := c.Last("élan@example.com"); ok {
+		t.Errorf("Last(élan@example.com) = %+v; want no message", m)
+	}
+}
+
 func TestCaptureConcurrentSend(t *testing.T) {
 	c := &Capture{}
 	ctx := context.Background()

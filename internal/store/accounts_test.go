@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/aloisdeniel/cairn/internal/e2e"
 )
 
 func TestCreateAccount(t *testing.T) {
@@ -42,6 +44,39 @@ func TestCreateAccountReplacesUnverified(t *testing.T) {
 	got, err := s.UserByEmail("a@b.c")
 	if err != nil || got.ID != second.ID || got.Name != "Second" {
 		t.Fatalf("UserByEmail after replace: %v %+v", err, got)
+	}
+}
+
+// TestCreateAccountFoldsASCIIOnly pins addresses to the wire spec's
+// normalize: only ASCII letters fold, so accounts that differ by a Unicode
+// case are distinct, as their salts already are.
+func TestCreateAccountFoldsASCIIOnly(t *testing.T) {
+	s := testStore(t)
+	want := e2e.NormalizeEmail("ÉLAN@Example.com") // "Élan@example.com"
+	u, err := s.CreateAccount("ÉLAN@Example.com", "Upper", "hash", testBundle("u"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Email != want {
+		t.Errorf("stored email = %q, want %q", u.Email, want)
+	}
+	got, err := s.UserByEmail("ÉLAN@EXAMPLE.COM")
+	if err != nil || got.ID != u.ID || got.Email != want {
+		t.Fatalf("UserByEmail(ÉLAN@EXAMPLE.COM) = %v %+v, want %s as %q", err, got, u.ID, want)
+	}
+
+	other, err := s.CreateAccount("élan@example.com", "Lower", "hash", testBundle("l"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.ID == u.ID {
+		t.Fatal("élan@example.com reused the ÉLAN@Example.com account")
+	}
+	if _, err := s.UserByID(u.ID); err != nil {
+		t.Errorf("élan@example.com replaced the ÉLAN@Example.com account: %v", err)
+	}
+	if got, err := s.UserByEmail("élan@example.com"); err != nil || got.ID != other.ID {
+		t.Errorf("UserByEmail(élan@example.com) = %v %+v, want %s", err, got, other.ID)
 	}
 }
 

@@ -21,10 +21,11 @@ import (
 // maxNameLen is signup's limit on a display name.
 const maxNameLen = 200
 
-// normalizeEmail lowercases and trims an address the way every lookup,
-// comparison, mail, and the prelogin salt expects it.
+// normalizeEmail trims an address and folds its ASCII case, as the wire
+// spec's normalize does, for every lookup, comparison, mail, and the prelogin
+// salt. Unicode case is kept, so it agrees with the client's salt.
 func normalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
+	return e2e.NormalizeEmail(email)
 }
 
 // dummyAuthHash is bcrypt of a fixed, never-presented value. Sign-in for an

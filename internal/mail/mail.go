@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/aloisdeniel/cairn/internal/e2e"
 )
 
 // Message is one plain-text email.
@@ -105,12 +107,13 @@ func (c *Capture) All() []Message {
 	return append([]Message(nil), c.msgs...)
 }
 
-// Last returns the most recent message to an address, compared without case.
+// Last returns the most recent message to an address, compared after
+// e2e.NormalizeEmail, as the server compares addresses.
 func (c *Capture) Last(to string) (Message, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for i := len(c.msgs) - 1; i >= 0; i-- {
-		if strings.EqualFold(c.msgs[i].To, to) {
+		if e2e.NormalizeEmail(c.msgs[i].To) == e2e.NormalizeEmail(to) {
 			return c.msgs[i], true
 		}
 	}
