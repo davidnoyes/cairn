@@ -23,58 +23,101 @@ to the crypto code shows up as a failing test, not a silent drift.
 - Every top-level key is a list of entries for one primitive or format.
   Each entry has a `name`, its inputs, its expected output (`want`), and
   usually a `negative` list.
-- A `negative` entry has a `why` (a short, human-readable reason) and an
-  `input`: an already-malformed value — ciphertext, a display string, JSON
-  text — that the corresponding operation must reject. Some entries note in
-  their own comment (in `vectors_test.go`) that a negative case is checked
-  against a varied context field instead of a different input; the schema
-  still carries `why` and `input` for those, with the paired context change
-  applied by the test itself (for example, the `wrap` vectors' "wrong epoch"
-  case re-derives with `epoch + 1` rather than storing a second ciphertext).
+
+## The negative schema
+
+Every `negative` entry has a `why` (a short, human-readable reason) and zero
+or more overrides. An override replaces one field from the positive entry;
+every field it doesn't name keeps the positive entry's value. The operation
+must then fail. No negative case relies on logic the test applies on its own
+behalf: every override is data, read generically by one applier function per
+primitive.
+
+The overrides, and which primitives read them:
+
+- **`input`**: replaces the ciphertext, display string, or JSON text passed
+  to the operation. Used by `recoveryCode`, `apiKey`, `seal`, `blob`, and
+  `wrap`.
+- **`ctx`**: a partial object merged over the positive entry's `ctx`. Used by
+  `blob` (`artifact`, `version`, `kind`, `name`) and `wrap` (`purpose`,
+  `artifact`, `epoch`, `recipientId`).
+- **`key`**: hex, replaces the key the operation opens or verifies with.
+  Used by `seal` (the AES-256-GCM key) and `wrap` (the recipient's X25519
+  private key).
+- **`fields`**: hex strings, replaces `seal`'s associated-data fields.
+- **`purpose`**: replaces a `signature` entry's purpose.
+- **`pub`**: hex, replaces a `signature` entry's public key.
+- **`params`**: a complete, standalone Argon2id params object (its own
+  `salt` too, not a partial merge), used only by `argon2`.
+- **`newSig`**: hex, replaces a `rotation` entry's `newSig`.
+- **`transform`**: applied to `want` instead of a literal `input`, so a
+  large blob doesn't need a second literal copy for every negative case. See
+  "Blob transforms" below.
 
 ## Top-level keys
 
 - **`enc`**: canonical encoding. `fields` (hex strings) and `want`
   (`Enc(fields...)`, hex).
-- **`derive`**: HKDF. One entry per label in the wire-format spec's label
-  table: `label`, `ikm`, `salt`, `fields`, `want` (32 bytes).
-- **`argon2`**: Argon2id at the floor parameters. `password`, `params`
-  (`alg`, `m`, `t`, `p`, `salt`, all plain values — not the base64url the
-  real prelogin JSON uses, to keep this file consistently hex/plain),
-  `stretched`, `authKey`, `kek`. `negative` entries are JSON parameter
-  objects that fail the floor check.
+- **`derive`**: an HKDF derivation, one entry per label in the wire-format
+  spec's label table: `label`, `ikm`, `salt`, `fields`, `want` (32 bytes).
+- **`argon2`**: an Argon2id run at the floor parameters. `password`, `email` (the
+  address the salt and the stretch are bound to), `params` (`alg`, `m`, `t`,
+  `p`, `salt`, all plain values — not the base64url the real prelogin JSON
+  uses, to keep this file consistently hex/plain), `argonSalt`
+  (`ArgonSalt(email, params.salt)`), `stretched`, `authKey`, `kek`.
+- **`akCommit`**: `ak`, `artifact`, `epoch`, `want` (the hex commitment).
 - **`recoveryCode`**: `code` (16 bytes), `display` (the canonical grouped
   form), `variants` (other strings that must parse to the same code, such as
-  lowercase or space-separated), `kek`. `negative` entries are display
-  strings that must fail to parse.
-- **`apiKey`**: `full`, `keyId`, `authSecret`, `keySecret`, `kek`.
-  `negative` entries are full key strings that must fail to parse.
+  lowercase or space-separated), `kek`.
+- **`apiKey`**: `full`, `keyId`, `authSecret`, `keySecret`, `kek`, `authHash`
+  (`APIKeyAuthHash(authSecret)`).
 - **`seal`**: one entry per row of the wire-format spec's sealed-value
   table. `key`, `fields`, `nonce` (the nonce embedded in `want`, for
   reference only — a verifier reads it from `want` itself), `pt`, `want`
-  (the sealed value). A `negative` entry's `why` of `"wrong key"` means: try
-  to open `input` with a different key than `key`, not the one given.
-- **`blob`**: one entry per tested size. `ak`, `ctx` (`artifact`, `version`,
-  `kind`, `name`), `salt`, `pt` or `ptRule`, `want` (the full blob). A
-  `ptRule` (`{"rule": "i mod 251", "len": N}`) replaces `pt` for the larger
-  sizes, so the file doesn't carry a large plaintext literally: byte `i` of
-  the plaintext is `i mod 251`. Only the smallest sizes carry `negative`
-  entries; every other negative shape (dropped or reordered chunk, changed
-  context, wrong key, and so on) is covered once, byte-for-byte, in
-  `blob_test.go`, and is independent of blob size.
+  (the sealed value).
+- **`blob`**: one entry per tested size or shape. `ak`, `ctx` (`artifact`,
+  `version`, `kind`, `name`), `salt`, `pt` or `ptRule`, `want` (the full
+  blob). A `ptRule` (`{"rule": "i mod 251", "len": N}`) replaces `pt` for
+  the larger sizes, so the file doesn't carry a large plaintext literally:
+  byte `i` of the plaintext is `i mod 251`.
 - **`wrap`**: one entry per purpose (`ak`, `ek`). `ctx` (`purpose`,
   `artifact`, `epoch`, `recipientId`, `recipientPub`), `recipientPriv`,
   `ephPriv` (the ephemeral private key `want` was wrapped with — not part of
   the wire format, kept so a reader can confirm the ephemeral public key
-  inside `want` independently), `key` (the wrapped key), `want`. A
-  `negative` entry's `why` of `"wrong epoch"` means: retry `Unwrap` with
-  `ctx.epoch + 1`.
+  inside `want` independently), `key` (the wrapped key), `want`.
 - **`signature`**: one entry per purpose in the wire-format spec's
   signature table, with a realistic body for that purpose. `purpose`,
   `seed`, `pub`, `body`, `signer`, `want` (the signature).
+- **`rotation`**: a rotation envelope. `sig` is signed by the old Ed25519
+  key, and `newSig` by the new one, over the same body. `oldSeed`, `oldPub`,
+  `newSeed`, `newPub`, `signer`, `body`, `sig`, `newSig`. The
+  "missing newSig" case isn't a vector here, since the schema has no way to
+  say an override makes a field absent rather than unset; it's a direct Go
+  test (`envelope_test.go`) instead.
+- **`ed25519Strict`**: `pub` and `why`. Most entries are one of the
+  hardcoded small-order encodings, with `purpose`, `body`, and `sig` empty,
+  and must fail both `CheckPublicKeys` and `Verify` on their own. One entry
+  is a genuine key with a non-canonical signature instead: `purpose`,
+  `body`, and `sig` (the S component replaced by S + L) are all set, and
+  only `Verify` applies.
 - **`fingerprint`**: `x25519Pub`, `ed25519Pub`, `want` (32 bytes), `display`
   (the formatted short form).
 - **`linkToken`**: `ak`, `artifact`, `epoch`, `want`, `hash`
   (`LinkTokenHash(want)`).
 - **`fileAddress`**: `fileKey`, `path`, `want`.
 - **`blindIndex`**: `indexKey`, `type`, `value`, `want`.
+
+## Blob transforms
+
+A `blob` negative's `transform` mutates `want` instead of storing a second
+literal ciphertext:
+
+- `{"op": "truncate", "chunks": k}`: keep the header plus the first `k`
+  full 65,552-byte chunks, dropping everything after them.
+- `{"op": "drop", "chunk": i}`: remove chunk `i` (0-indexed), keeping every
+  other chunk in place.
+- `{"op": "swap", "chunks": [i, j]}`: swap chunks `i` and `j`.
+- `{"op": "append", "bytes": hex}`: append an extra, independently-sealed
+  chunk's worth of bytes after the real last chunk.
+- `{"op": "flip", "offset": n}`: flip byte `n` of the full blob (header plus
+  chunks) by XORing it with `0x01`.

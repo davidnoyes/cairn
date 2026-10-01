@@ -279,3 +279,26 @@ func TestSealBlobFreshSaltPerWrite(t *testing.T) {
 		t.Fatal("two writes of the same content produced identical ciphertext")
 	}
 }
+
+func TestSealBlobRejectsWrongKeyLength(t *testing.T) {
+	ctx := testBlobCtx()
+	for _, n := range []int{0, 16, 31, 33} {
+		if _, err := SealBlob(newDRBG("blob-salt-badkey"), make([]byte, n), ctx, []byte("x")); !errors.Is(err, ErrFormat) {
+			t.Errorf("len(ak)=%d: got %v, want ErrFormat", n, err)
+		}
+	}
+}
+
+func TestOpenBlobRejectsWrongKeyLength(t *testing.T) {
+	ak := testKey("blob-ak-goodkey")
+	ctx := testBlobCtx()
+	blob, err := SealBlob(newDRBG("blob-salt-goodkey"), ak, ctx, []byte("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []int{0, 16, 31, 33} {
+		if _, err := OpenBlob(make([]byte, n), ctx, blob); !errors.Is(err, ErrFormat) {
+			t.Errorf("len(ak)=%d: got %v, want ErrFormat", n, err)
+		}
+	}
+}

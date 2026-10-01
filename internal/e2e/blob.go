@@ -61,6 +61,9 @@ func chunkNonce(i uint64, last bool) []byte {
 // SealBlob encrypts pt as a fresh blob under ak and ctx, with a random
 // 32-byte salt.
 func SealBlob(rnd io.Reader, ak []byte, ctx BlobContext, pt []byte) ([]byte, error) {
+	if err := checkKeyLen(ak); err != nil {
+		return nil, err
+	}
 	salt := make([]byte, blobSaltSize)
 	if _, err := io.ReadFull(rnd, salt); err != nil {
 		return nil, err
@@ -91,6 +94,9 @@ func SealBlob(rnd io.Reader, ak []byte, ctx BlobContext, pt []byte) ([]byte, err
 // OpenBlob decrypts a blob sealed with SealBlob, checking the header, the
 // context, and every chunk's authentication tag and position.
 func OpenBlob(ak []byte, ctx BlobContext, blob []byte) ([]byte, error) {
+	if err := checkKeyLen(ak); err != nil {
+		return nil, err
+	}
 	if len(blob) < blobHeaderSize || string(blob[:len(blobMagic)]) != blobMagic || blob[len(blobMagic)] != blobVersion {
 		return nil, ErrFormat
 	}

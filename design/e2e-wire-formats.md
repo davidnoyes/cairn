@@ -45,6 +45,13 @@ labels. No two are equal, and a test enforces it.
 | `cairn/v1/fingerprint` | The fingerprint hash input |
 | `cairn/v1/blind` | The blind-index input |
 | `cairn/v1/prelogin` | The fake salt for an unknown account |
+| `cairn/v1/salt` | The Argon2id salt, bound to the account's email |
+| `cairn/v1/ak-commit` | The commitment to `AK` in a membership record |
+
+The `v1` in every label is tied to the `0x01` version byte that starts a
+sealed value, a blob header, and a wrapped key. A later format version must
+change the labels as well as the version byte, so a value can never be read
+under the rules of a version it was not written for.
 
 Raw keys are never used for two purposes. `MK` and `EK` are only ever HKDF
 input; everything they protect goes through a key derived from them.
@@ -62,7 +69,16 @@ prelogin:
 - **Floor.** Clients refuse `alg` other than `argon2id`, `m` below 65536,
   `t` below 3, `p` outside 1 to 4, or a salt shorter than 16 bytes or longer
   than 64. The server can raise the parameters, never lower them.
-- `stretched = Argon2id(password, salt, t, m, p)`, 32 bytes.
+- **Ceiling.** Clients also refuse `m` greater than 1048576, which is 1 GiB,
+  and `t` greater than 10, so a hostile server cannot exhaust the client's
+  memory or hang it.
+- `email = normalize(address)`: leading and trailing ASCII whitespace
+  removed, and ASCII `A` to `Z` lowercased. Nothing else changes, because
+  Unicode case mapping differs between Go and JavaScript.
+- `argonSalt = SHA-256(enc("cairn/v1/salt", email, salt))`. Binding the salt
+  to the email means a server that hands every account the same salt still
+  cannot precompute one table for all of them.
+- `stretched = Argon2id(password, argonSalt, t, m, p)`, 32 bytes.
 - `authKey = derive(stretched, "", "cairn/v1/auth")`.
 - `kek = derive(stretched, "", "cairn/v1/kek")`.
 
@@ -73,7 +89,10 @@ The client sends `b64(authKey)` to the server, which stores its bcrypt hash.
 - 16 random bytes, encoded as RFC 4648 base32 in uppercase without padding,
   then split into groups of four with hyphens: 26 characters as six groups of
   four and one of two, in the shape `XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XX`.
-- Parsing ignores case, spaces, and hyphens, and fails on anything else.
+- Parsing first refuses any character outside `A` to `Z`, `a` to `z`, `2` to
+  `7`, space, and hyphen. It then ignores case, spaces, and hyphens. It also
+  refuses a final character whose two unused low bits are not zero, so each
+  code has exactly one spelling.
 - `recoveryKek = derive(code, "", "cairn/v1/recovery")`, over the 16 bytes.
 
 ## API keys
@@ -83,9 +102,11 @@ cairn_<keyid>_<authSecret>_<keySecret>
 ```
 
 - `keyid` is 8 random bytes, `authSecret` 16, and `keySecret` 32, each in
-  `hex`, so the underscore separator never appears inside a part.
+  `hex`, so the underscore separator never appears inside a part. Parsing
+  refuses uppercase hexadecimal.
 - The bearer sent to the server is `cairn_<keyid>_<authSecret>`. The server
-  stores `hex(SHA-256(authSecret))`, where `authSecret` is the hex string.
+  stores `hex(SHA-256(authSecret))`, where `authSecret` is the hex string,
+  not the 16 bytes it encodes.
 - `apiKeyKek = derive(keySecret, "", "cairn/v1/api-key", keyid)`, over the 32
   raw bytes of `keySecret`. It seals the key's copy of `MK`.
 
@@ -98,6 +119,11 @@ cairn_<keyid>_<authSecret>_<keySecret>
 | `ekSealKey` | `derive(EK, "", "cairn/v1/ek-seal")` |
 | `linkToken` | `derive(AK, "", "cairn/v1/link-token", artifact, epoch)` |
 | `fileKey` | `derive(AK, "", "cairn/v1/file-key", artifact, epoch)` |
+| `akCommit` | `hex(derive(AK, "", "cairn/v1/ak-commit", artifact, epoch))` |
+
+Every key in this table, and every key that seals, wraps, or encrypts a blob,
+is exactly 32 bytes. An implementation refuses a key of any other length
+rather than falling back to a shorter cipher.
 
 ## Sealed values
 
@@ -110,7 +136,9 @@ ad = enc("cairn/v1/seal", fields…)
 ```
 
 The nonce is random. Opening checks the version byte and fails on any
-authentication error. Every sealed value in the system:
+authentication error. The plaintext of every sealed key is 32 bytes.
+
+Every sealed value in the system:
 
 | Value | Key | Fields |
 | --- | --- | --- |
@@ -122,6 +150,25 @@ authentication error. Every sealed value in the system:
 | `EK` | `mkSealKey` | `ek` |
 | The user's keyring, JSON | `mkSealKey` | `keyring` |
 | An artifact's `AK`, the owner's estate copy | `ekSealKey` | `estate`, artifact, epoch |
+
+### The keyring
+
+The keyring holds the user's pins and their record of each artifact's epoch.
+The server stores it sealed, so it cannot read it, but it could serve an
+older copy, which would drop a pin and turn a changed key into one that looks
+new. The keyring therefore carries a revision:
+
+```json
+{"v": 1, "rev": 12, "pins": {}, "epochs": {}}
+```
+
+- `rev` is an integer that goes up by one on every write.
+- Each client keeps the highest `rev` it has seen for the account, in
+  IndexedDB in the browser and in the configuration file for the command
+  line, and refuses a keyring with a lower one.
+- `epochs` maps an artifact ID to the highest epoch seen. A client never
+  encrypts under an older epoch, and refuses a membership record older than
+  the one it has seen.
 
 ## Blobs
 
@@ -176,7 +223,15 @@ wrapped   = 0x01 ‖ eph.public(32) ‖ AES-GCM(wrapKey, nonce = 12 zero bytes, 
 ```
 
 The wrap key is used once, because the ephemeral key is fresh, so the zero
-nonce is safe. A wrapped 32-byte key is 81 bytes.
+nonce is safe. A wrapped 32-byte key is 81 bytes. Unwrapping refuses any
+other length, and computes `recipientPub` from the recipient's own private
+key rather than taking it from the caller.
+
+A wrap proves nothing about who made it: anyone with the recipient's public
+key, the server included, can wrap a key of their choosing. So an unwrapped
+`AK` is not used until its `akCommit` matches the one in the current
+owner-signed membership record. This applies to every holder of `AK`,
+including a visitor with a public link.
 
 | Purpose | `artifact` | `epoch` |
 | --- | --- | --- |
@@ -196,18 +251,39 @@ body bytes, so no JSON canonicalization is needed:
 {"body": "b64(JSON bytes)", "sig": "b64(64 bytes)", "signer": "user ID"}
 ```
 
+A verifier also refuses an Ed25519 public key of small order. The server
+refuses such a key, or an X25519 key of low order, when an account registers
+or rotates its keys.
+
+The `signer` field is not signed, so a verifier never takes the signing key
+from it or from the user directory alone:
+
+- **The owner's key** comes from the verifier's own pin for the owner. On a
+  first visit the pin starts unverified, as the trust model describes.
+- **Anyone else's key** must hash to the `fp` listed for that user in the
+  current owner-signed membership record. `fp` is the full 32-byte
+  fingerprint in `hex`, never the 20-byte display form.
+
 A verifier checks the signature first, then parses the body, then checks that
 every field in the body matches the context it expected, such as the artifact
 ID and the epoch. It refuses a body with `v` other than 1.
 
+Parsing is strict, because Go and JavaScript disagree on loose JSON. Go
+matches keys without regard to case and keeps the last of two duplicates. A
+verifier refuses a body that has a duplicate key at any depth, a key it does
+not expect, a key that differs from an expected one only in case, a missing
+key, or anything after the closing brace. The envelope itself is parsed the
+same way.
+
 | Purpose | Signed by | Body |
 | --- | --- | --- |
-| `membership` | The owner | `{"v":1,"artifact","epoch","owner","members":[{"user","role","fp"}],"team","public","publicWrites","prev"}` |
+| `membership` | The owner | `{"v":1,"artifact","epoch","owner","akCommit","members":[{"user","role","fp"}],"team","public","publicWrites","prev"}` |
 | `manifest` | Whoever pushed | `{"v":1,"artifact","version","epoch","files":[{"path","blob","size","sha256"}]}` |
 | `revision` | Whoever wrote the database | `{"v":1,"artifact","version","revision","epoch","sha256"}` |
 | `vouch` | The owner | `{"v":1,"artifact","version","manifest"}` |
-| `rotation` | The old signing key | `{"v":1,"user","old":{"x25519","ed25519"},"new":{"x25519","ed25519"}}` |
-| `successor` | The user | `{"v":1,"user","successor","action"}` |
+| `record` | Whoever wrote the blob | `{"v":1,"artifact","version","kind","name","epoch","sha256"}` |
+| `rotation` | The old and the new signing keys | `{"v":1,"user","seq","old":{"x25519","ed25519"},"new":{"x25519","ed25519"}}` |
+| `successor` | The user | `{"v":1,"user","seq","successor","action"}` |
 | `reset` | The user, with their existing key | `{"v":1,"user","token"}` |
 
 - In a membership record, `role` is `viewer` or `editor`, `team` is `none`,
@@ -216,7 +292,22 @@ ID and the epoch. It refuses a body with `v` other than 1.
 - In a manifest, `blob` is the blob ID the server stores the file under,
   `size` is the plaintext size, and `sha256` is `hex(SHA-256)` of the
   encrypted blob, so a viewer, who holds `AK`, cannot swap a file.
+- A membership record's `akCommit` is the commitment to the epoch's `AK`.
+  A client refuses an `AK` whose commitment does not match.
 - In a revision, `sha256` is `hex(SHA-256)` of the encrypted database blob.
+- A `record` covers each blob that no manifest or revision covers: a stored
+  file, its `file-meta` record, and each `meta` record. `kind` and `name` are
+  the blob's context, and `sha256` is `hex(SHA-256)` of the encrypted blob.
+  Without it, anyone holding `AK`, which includes every viewer and every
+  public-link holder, could forge a file or a name. A record's signer must be
+  allowed to write that kind of blob, by the same rule as a database
+  revision.
+- `seq` in a rotation or a successor record is an integer that goes up by one
+  for each record of that purpose the user signs. A verifier refuses a `seq`
+  no higher than the last it accepted, so an old record cannot be replayed.
+- A rotation envelope carries a second signature, `newSig`, made by the new
+  Ed25519 key over the same message. It proves the user holds the new key, so
+  nobody can rotate a user onto a key that belongs to someone else.
 - A vouch's `manifest` is `hex(SHA-256)` of the manifest envelope's body.
 - A reset's `token` is `hex(SHA-256)` of the reset token from the emailed
   link, so the proof cannot be replayed with another link.
@@ -245,6 +336,10 @@ characters separated by spaces.
 `internal/e2e/testdata/vectors.json` is generated by Go from a seeded random
 source, and checked by a Go test and a Node test. Each entry has its inputs,
 its expected output, and negative cases that must fail: a flipped bit, a
-truncated or reordered stream, and a blob or wrap moved to another context.
+stream truncated at a chunk boundary, a dropped, reordered, or appended
+chunk, and a blob, seal, wrap, or signature moved to another context. Every
+negative case is spelled out in the file itself, so neither test needs logic
+of its own to build one. `internal/e2e/testdata/README.md` describes the
+format.
 Each side also produces fresh output with real randomness for the other to
 read, so agreement is tested in both directions.

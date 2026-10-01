@@ -40,7 +40,12 @@ startup, with a message that points at `cairn import`.
 - **Request protection** applies to every `POST`, `PUT`, `PATCH`, and `DELETE`
   under `/api/` that does not carry an `Authorization` header, including the
   unauthenticated endpoints below:
-  - `Content-Type` must be `application/json`, otherwise `415`.
+  - `Content-Type` must be `application/json`, or `application/octet-stream`
+    for a file or an encrypted blob, otherwise `415`. A browser cannot send
+    either type to another site without a preflight request, which Cairn
+    never approves. A `DELETE` with no body skips this check, because a
+    browser cannot send a `DELETE` to another site without a preflight
+    either.
   - If `Sec-Fetch-Site` is present, it must be `same-origin`. If it is absent
     and `Origin` is present, `Origin` must equal the public URL's origin.
     Otherwise `403`.
@@ -148,7 +153,10 @@ or gets `400` for an unknown, used, or expired token.
 object. For an address with no verified account it returns the default
 parameters and the salt `HMAC-SHA256(serverSecret,
 enc("cairn/v1/prelogin", email))`, cut to 16 bytes, so the response looks
-the same and stays stable across calls.
+the same and stays stable across calls. `email` is normalized first, as the
+wire-format spec describes, so changing the case of an address does not
+change the fake salt. The fake response always uses the current default
+parameters, so raising the defaults raises them for fake responses too.
 
 `POST /api/auth/login`:
 

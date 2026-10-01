@@ -20,3 +20,10 @@ internal/e2e/seal.go	gcm.Open(nil, nonce, ct, sealAD(fields))	gcm.Open(nil, nonc
 internal/e2e/wrap.go	unwrapKey := wrapKey(shared, ctx, ephPub)	unwrapKey := wrapKey(shared, WrapContext{}, ephPub)	go test ./internal/e2e -run TestWrapUnwrapRoundTrip
 internal/e2e/wrap.go	if sharedIsZero {	if !sharedIsZero {	go test ./internal/e2e -run TestWrapRejectsAllZeroSharedSecret
 internal/e2e/sign.go	return ed25519.Verify(pub, msg, sig)	return true || ed25519.Verify(pub, msg, sig)	go test ./internal/e2e -run 'TestVerifyRejectsWrongBody|TestEnvelopeVerifyRejectsTamperedBody'
+internal/e2e/seal.go	len(key) != keyLen	false	go test ./internal/e2e -run TestNewGCMRejectsWrongKeyLength
+internal/e2e/keys.go	last&0x03 != 0	last&0x03 != 0 && false	go test ./internal/e2e -run TestRecoveryCodeParseRejectsNonZeroTrailingBits
+internal/e2e/envelope.go	if top.seen[key] {	if false {	go test ./internal/e2e -run TestOpenEnvelopeRejectsDuplicateKey
+internal/e2e/envelope.go	if !reflect.DeepEqual(original, roundTripped) {	if false && reflect.DeepEqual(original, roundTripped) {	go test ./internal/e2e -run TestOpenEnvelopeRejectsCaseVariantKey
+internal/e2e/keys.go	if p.Memory > ceilingMemory {	if false {	go test ./internal/e2e -run TestParamsCheckFloorCeiling
+internal/e2e/envelope.go	if len(env.NewSig) == 0 {	if false {	go test ./internal/e2e -run TestOpenRotationRejectsMissingNewSig
+internal/e2e/seal.go	commit := Derive(ak, nil, LabelAKCommit, []byte(artifact), epochBytes(epoch))	commit := Derive(ak, nil, LabelFileKey, []byte(artifact), epochBytes(epoch))	go test ./internal/e2e -run TestVectors

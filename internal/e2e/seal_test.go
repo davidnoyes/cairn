@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"testing"
 )
@@ -10,6 +11,17 @@ func testKey(seed string) []byte {
 	k := make([]byte, 32)
 	newDRBG(seed).Read(k)
 	return k
+}
+
+func TestNewGCMRejectsWrongKeyLength(t *testing.T) {
+	for _, n := range []int{0, 16, 31, 33} {
+		if _, err := Seal(newDRBG("seal-badkey"), make([]byte, n), nil, []byte("x")); !errors.Is(err, ErrFormat) {
+			t.Errorf("Seal len(key)=%d: got %v, want ErrFormat", n, err)
+		}
+		if _, err := Open(make([]byte, n), nil, make([]byte, 20)); !errors.Is(err, ErrDecrypt) {
+			t.Errorf("Open len(key)=%d: got %v, want ErrDecrypt", n, err)
+		}
+	}
 }
 
 func TestSealOpenRoundTrip(t *testing.T) {
@@ -160,21 +172,61 @@ func TestSealedValueMovedToAnotherKeyFails(t *testing.T) {
 
 func TestMKSealKeyIndexKeyDiffer(t *testing.T) {
 	mk := testKey("mk")
-	if bytes.Equal(MKSealKey(mk), IndexKey(mk)) {
+	a, err := MKSealKey(mk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := IndexKey(mk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(a, b) {
 		t.Fatal("mkSealKey and indexKey must differ")
 	}
 }
 
 func TestEKSealKeyDeterministic(t *testing.T) {
 	ek := testKey("ek")
-	if !bytes.Equal(EKSealKey(ek), EKSealKey(ek)) {
+	a, err := EKSealKey(ek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := EKSealKey(ek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(a, b) {
 		t.Fatal("EKSealKey not deterministic")
+	}
+}
+
+func TestDerivedKeysRejectWrongKeyLength(t *testing.T) {
+	for _, n := range []int{0, 16, 31, 33} {
+		bad := make([]byte, n)
+		if _, err := MKSealKey(bad); !errors.Is(err, ErrFormat) {
+			t.Errorf("MKSealKey len=%d: got %v, want ErrFormat", n, err)
+		}
+		if _, err := IndexKey(bad); !errors.Is(err, ErrFormat) {
+			t.Errorf("IndexKey len=%d: got %v, want ErrFormat", n, err)
+		}
+		if _, err := EKSealKey(bad); !errors.Is(err, ErrFormat) {
+			t.Errorf("EKSealKey len=%d: got %v, want ErrFormat", n, err)
+		}
+		if _, err := LinkToken(bad, "artifact-1", 1); !errors.Is(err, ErrFormat) {
+			t.Errorf("LinkToken len=%d: got %v, want ErrFormat", n, err)
+		}
+		if _, err := FileKey(bad, "artifact-1", 1); !errors.Is(err, ErrFormat) {
+			t.Errorf("FileKey len=%d: got %v, want ErrFormat", n, err)
+		}
 	}
 }
 
 func TestLinkTokenBoundToArtifactAndEpoch(t *testing.T) {
 	ak := testKey("ak")
-	a := LinkToken(ak, "artifact-1", 1)
+	a, err := LinkToken(ak, "artifact-1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	cases := []struct {
 		name     string
 		artifact string
@@ -184,7 +236,10 @@ func TestLinkTokenBoundToArtifactAndEpoch(t *testing.T) {
 		{"epoch", "artifact-1", 2},
 	}
 	for _, c := range cases {
-		b := LinkToken(ak, c.artifact, c.epoch)
+		b, err := LinkToken(ak, c.artifact, c.epoch)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if bytes.Equal(a, b) {
 			t.Fatalf("changing %s did not change linkToken", c.name)
 		}
@@ -193,8 +248,14 @@ func TestLinkTokenBoundToArtifactAndEpoch(t *testing.T) {
 
 func TestFileKeyBoundToArtifactAndEpoch(t *testing.T) {
 	ak := testKey("ak-2")
-	a := FileKey(ak, "artifact-1", 1)
-	b := FileKey(ak, "artifact-1", 2)
+	a, err := FileKey(ak, "artifact-1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := FileKey(ak, "artifact-1", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if bytes.Equal(a, b) {
 		t.Fatal("changing epoch did not change fileKey")
 	}
@@ -218,6 +279,46 @@ func TestFileAddressBoundToPath(t *testing.T) {
 	b := FileAddress(fk, "/b.txt")
 	if a == b {
 		t.Fatal("FileAddress ignored the path")
+	}
+}
+
+func TestAKCommitDeterministic(t *testing.T) {
+	ak := testKey("ak-commit")
+	a, err := AKCommit(ak, "artifact-1", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := AKCommit(ak, "artifact-1", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a != b {
+		t.Fatal("AKCommit not deterministic")
+	}
+	if _, err := hex.DecodeString(a); err != nil {
+		t.Fatalf("AKCommit is not hex: %v", err)
+	}
+}
+
+func TestAKCommitDiffersByArtifactAndEpoch(t *testing.T) {
+	ak := testKey("ak-commit-2")
+	a, err := AKCommit(ak, "artifact-1", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, err := AKCommit(ak, "artifact-2", 3); err != nil || a == b {
+		t.Fatalf("changing artifact did not change AKCommit (err=%v)", err)
+	}
+	if b, err := AKCommit(ak, "artifact-1", 4); err != nil || a == b {
+		t.Fatalf("changing epoch did not change AKCommit (err=%v)", err)
+	}
+}
+
+func TestAKCommitRejectsWrongKeyLength(t *testing.T) {
+	for _, n := range []int{0, 16, 31, 33} {
+		if _, err := AKCommit(make([]byte, n), "artifact-1", 3); !errors.Is(err, ErrFormat) {
+			t.Fatalf("len(ak)=%d: got %v, want ErrFormat", n, err)
+		}
 	}
 }
 

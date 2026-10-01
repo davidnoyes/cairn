@@ -6,27 +6,76 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"strconv"
 )
+
+// keyLen is the length every raw symmetric key (MK, EK, AK, and keys derived
+// from them by this package) must be. A wrong length is refused before it
+// ever reaches a cipher, rather than silently truncated or rejected only by
+// aes.NewCipher's own error.
+const keyLen = 32
+
+func checkKeyLen(key []byte) error {
+	if len(key) != keyLen {
+		return fmt.Errorf("%w: key length %d, want %d", ErrFormat, len(key), keyLen)
+	}
+	return nil
+}
 
 // epochBytes encodes an epoch as decimal ASCII with no leading zeros.
 func epochBytes(epoch uint64) []byte {
 	return []byte(strconv.FormatUint(epoch, 10))
 }
 
-// Keys derived from MK, EK, and AK.
+// Keys derived from MK, EK, and AK. Each requires a 32-byte input key, the
+// length every MK, EK, and AK is fixed at; a wrong length is a caller bug,
+// not a runtime condition to tolerate.
 
-func MKSealKey(mk []byte) []byte { return Derive(mk, nil, LabelMKSeal) }
-func IndexKey(mk []byte) []byte  { return Derive(mk, nil, LabelIndex) }
-func EKSealKey(ek []byte) []byte { return Derive(ek, nil, LabelEKSeal) }
-
-func LinkToken(ak []byte, artifact string, epoch uint64) []byte {
-	return Derive(ak, nil, LabelLinkToken, []byte(artifact), epochBytes(epoch))
+func MKSealKey(mk []byte) ([]byte, error) {
+	if err := checkKeyLen(mk); err != nil {
+		return nil, err
+	}
+	return Derive(mk, nil, LabelMKSeal), nil
 }
 
-func FileKey(ak []byte, artifact string, epoch uint64) []byte {
-	return Derive(ak, nil, LabelFileKey, []byte(artifact), epochBytes(epoch))
+func IndexKey(mk []byte) ([]byte, error) {
+	if err := checkKeyLen(mk); err != nil {
+		return nil, err
+	}
+	return Derive(mk, nil, LabelIndex), nil
+}
+
+func EKSealKey(ek []byte) ([]byte, error) {
+	if err := checkKeyLen(ek); err != nil {
+		return nil, err
+	}
+	return Derive(ek, nil, LabelEKSeal), nil
+}
+
+func LinkToken(ak []byte, artifact string, epoch uint64) ([]byte, error) {
+	if err := checkKeyLen(ak); err != nil {
+		return nil, err
+	}
+	return Derive(ak, nil, LabelLinkToken, []byte(artifact), epochBytes(epoch)), nil
+}
+
+func FileKey(ak []byte, artifact string, epoch uint64) ([]byte, error) {
+	if err := checkKeyLen(ak); err != nil {
+		return nil, err
+	}
+	return Derive(ak, nil, LabelFileKey, []byte(artifact), epochBytes(epoch)), nil
+}
+
+// AKCommit is a public commitment to an artifact's AK at a given epoch, so a
+// party without AK can confirm two sources agree on it without learning it.
+func AKCommit(ak []byte, artifact string, epoch uint64) (string, error) {
+	if err := checkKeyLen(ak); err != nil {
+		return "", err
+	}
+	commit := Derive(ak, nil, LabelAKCommit, []byte(artifact), epochBytes(epoch))
+	return hex.EncodeToString(commit), nil
 }
 
 // LinkTokenHash is what the server stores for a public link's token.
@@ -53,7 +102,7 @@ func BlindIndex(indexKey []byte, typ, value string) string {
 // account, so the response looks like a real one and stays stable.
 func PreloginSalt(serverSecret []byte, email string) []byte {
 	mac := hmac.New(sha256.New, serverSecret)
-	mac.Write(Enc([]byte(LabelPrelogin), []byte(email)))
+	mac.Write(Enc([]byte(LabelPrelogin), []byte(NormalizeEmail(email))))
 	return mac.Sum(nil)[:16]
 }
 
@@ -107,6 +156,9 @@ func Open(key []byte, fields [][]byte, sealed []byte) ([]byte, error) {
 }
 
 func newGCM(key []byte) (cipher.AEAD, error) {
+	if err := checkKeyLen(key); err != nil {
+		return nil, err
+	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err

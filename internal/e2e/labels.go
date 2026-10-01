@@ -24,6 +24,8 @@ const (
 	LabelFingerprint = "cairn/v1/fingerprint"
 	LabelBlind       = "cairn/v1/blind"
 	LabelPrelogin    = "cairn/v1/prelogin"
+	LabelAKCommit    = "cairn/v1/ak-commit"
+	LabelSalt        = "cairn/v1/salt"
 )
 
 // Labels returns every label in the spec's table.
@@ -45,6 +47,8 @@ func Labels() []string {
 		LabelFingerprint,
 		LabelBlind,
 		LabelPrelogin,
+		LabelAKCommit,
+		LabelSalt,
 	}
 }
 
