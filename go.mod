@@ -3,6 +3,7 @@ module github.com/aloisdeniel/cairn
 go 1.25.0
 
 require (
+	filippo.io/edwards25519 v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/trustelem/zxcvbn v1.0.1
 	golang.org/x/crypto v0.54.0

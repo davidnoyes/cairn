@@ -42,8 +42,10 @@ The overrides, and which primitives read them:
   `blob` (`artifact`, `version`, `kind`, `name`) and `wrap` (`purpose`,
   `artifact`, `epoch`, `recipientId`).
 - **`key`**: hex, replaces the key the operation opens or verifies with.
-  Used by `seal` (the AES-256-GCM key) and `wrap` (the recipient's X25519
-  private key).
+  Used by `seal` (the AES-256-GCM key), `wrap` (the recipient's X25519
+  private key), and `fileAddress` and `blindIndex` (the HMAC key). In
+  `fileAddress` and `blindIndex`, every `key` is the wrong length, and the
+  operation must fail with `ErrFormat`/`FormatError`, not produce a MAC.
 - **`fields`**: hex strings, replaces `seal`'s associated-data fields.
 - **`purpose`**: replaces a `signature` entry's purpose.
 - **`pub`**: hex, replaces a `signature` entry's public key.
@@ -74,7 +76,10 @@ The overrides, and which primitives read them:
 - **`seal`**: one entry per row of the wire-format spec's sealed-value
   table. `key`, `fields`, `nonce` (the nonce embedded in `want`, for
   reference only — a verifier reads it from `want` itself), `pt`, `want`
-  (the sealed value).
+  (the sealed value). Every row but the keyring seals a 32-byte key, so its
+  `want` is 61 bytes and `OpenKey`/`openKey` must open it. The keyring isn't
+  a key, so `OpenKey`/`openKey` must refuse it with `ErrDecrypt`/
+  `DecryptError`, and only the generic `Open`/`open` opens it.
 - **`blob`**: one entry per tested size or shape. `ak`, `ctx` (`artifact`,
   `version`, `kind`, `name`), `salt`, `pt` or `ptRule`, `want` (the full
   blob). A `ptRule` (`{"rule": "i mod 251", "len": N}`) replaces `pt` for
@@ -84,28 +89,72 @@ The overrides, and which primitives read them:
   `artifact`, `epoch`, `recipientId`, `recipientPub`), `recipientPriv`,
   `ephPriv` (the ephemeral private key `want` was wrapped with — not part of
   the wire format, kept so a reader can confirm the ephemeral public key
-  inside `want` independently), `key` (the wrapped key), `want`.
+  inside `want` independently), `key` (the wrapped key), `want`. The
+  negatives include an `input` whose ephemeral public key is non-canonical:
+  one with the high bit set, and one encoding the base point as u = p+9.
+  Each is otherwise a valid wrap under the canonical key it reduces to, so
+  only a canonical-encoding check on the ephemeral public key refuses it.
 - **`signature`**: one entry per purpose in the wire-format spec's
   signature table, with a realistic body for that purpose. `purpose`,
   `seed`, `pub`, `body`, `signer`, `want` (the signature).
 - **`rotation`**: a rotation envelope. `sig` is signed by the old Ed25519
   key, and `newSig` by the new one, over the same body. `oldSeed`, `oldPub`,
-  `newSeed`, `newPub`, `signer`, `body`, `sig`, `newSig`. The
-  "missing newSig" case isn't a vector here, since the schema has no way to
-  say an override makes a field absent rather than unset; it's a direct Go
-  test (`envelope_test.go`) instead.
-- **`ed25519Strict`**: `pub` and `why`. Most entries are one of the
-  hardcoded small-order encodings, with `purpose`, `body`, and `sig` empty,
-  and must fail both `CheckPublicKeys` and `Verify` on their own. One entry
-  is a genuine key with a non-canonical signature instead: `purpose`,
-  `body`, and `sig` (the S component replaced by S + L) are all set, and
-  only `Verify` applies.
+  `newSeed`, `newPub`, `signer`, `body`, `sig`, `newSig`. An entry with a
+  `refuse` string has two valid signatures over a body that names a bad new
+  key, such as a low-order X25519 key. `OpenRotation`/`openRotation` must
+  refuse that entry as a whole with `ErrFormat`/`FormatError`, and `refuse`
+  says why. In the `mixed-order-new-ed25519` entry, `newPub` is a prime-order
+  point plus a point of order 8, and `newSeed` is the seed of the prime-order
+  part. `newSig` passes the cofactorless equation under `newPub`, so only the
+  torsion check refuses it. The "missing newSig" case isn't a vector here,
+  since the schema has no way to say an override makes a field absent rather
+  than unset; it's a direct Go test (`envelope_test.go`) instead.
+- **`ed25519Strict`**: `pub` and `why`. Entries come in two kinds:
+  - **A bad key.** `purpose`, `body`, and `sig` are empty, and the key alone
+    must fail both `CheckPublicKeys` and `Verify`, including the universal
+    R=B,S=1 forgery. The keys are the hardcoded small-order encodings, the
+    known non-canonical encodings of them (a y coordinate >= p, or x=0 with
+    the sign bit set), a point on the curve with a torsion component, and a
+    canonical y with no matching x.
+  - **A bad signature.** `purpose`, `body`, and `sig` are all set, and only
+    `Verify` applies. The signatures are: S replaced by S + L; R the
+    identity, of order 8, or the identity encoded with y = p+1; R a
+    non-identity point encoded with y = p+k (`r-non-canonical-point`); R
+    with a torsion component; and a signature under a key with a torsion
+    component that passes the cofactorless equation.
+
+  Each bad signature must also fail before the curve equation runs:
+  `signatureEncodingOK` in Go, and `verify` with `subtle.verify` stubbed in
+  JS. A verifier that relied on the equation would accept some of them.
+- **`x25519Strict`**: `pub`, `why`, and `accept`. An entry without `accept`
+  is a non-canonical (high bit set, or u >= p) or low-order X25519 public
+  key that must fail `CheckPublicKeys` on its own. An entry with
+  `accept: true` must pass: `mixed-order` is a canonical key with a torsion
+  component, which X25519 clamping makes harmless.
 - **`fingerprint`**: `x25519Pub`, `ed25519Pub`, `want` (32 bytes), `display`
   (the formatted short form).
 - **`linkToken`**: `ak`, `artifact`, `epoch`, `want`, `hash`
   (`LinkTokenHash(want)`).
-- **`fileAddress`**: `fileKey`, `path`, `want`.
-- **`blindIndex`**: `indexKey`, `type`, `value`, `want`.
+- **`fileAddress`**: `fileKey`, `path`, `want`, and `negative` entries with
+  a 16-, 31-, or 33-byte `key`.
+- **`blindIndex`**: `indexKey`, `type`, `value`, `want`, and `negative`
+  entries with a 16-, 31-, or 33-byte `key`.
+- **`strictJSON`**: a raw body or envelope byte string `DecodeStrict`/
+  `decodeStrict` must refuse. `purpose` (which `BODY_SCHEMAS` entry to decode
+  `body` against), `body` (hex, since some entries are invalid UTF-8), `why`.
+  The surrogate entries cover an unpaired high surrogate escape, a lone low
+  surrogate escape, and a high surrogate escape followed by a plain character
+  or by a second high surrogate escape.
+- **`envelope`**: a raw `{body, sig, signer, newSig}` envelope that
+  `Envelope.UnmarshalJSON`/`decodeEnvelope` must accept or refuse. `json`
+  (the text itself, not hex), `accept`, `why`. A refused entry must fail
+  with `ErrFormat`/`FormatError`. An accepted entry must re-encode to exactly
+  `json`. The refused entries include an explicit `"newSig":""`, since
+  `newSig` may be absent but never present and empty.
+- **`base64url`**: `bytes` (hex) and its canonical `encoded` form, plus
+  `negative` entries (a non-URL character, padding, non-zero trailing bits
+  in a partial group, or a carriage return or line feed anywhere) that
+  `UnB64`/`unb64` must refuse.
 
 ## Blob transforms
 
@@ -121,3 +170,29 @@ literal ciphertext:
   chunk's worth of bytes after the real last chunk.
 - `{"op": "flip", "offset": n}`: flip byte `n` of the full blob (header plus
   chunks) by XORing it with `0x01`.
+
+## Interop files
+
+`internal/e2e/interop_test.go` and `internal/server/web/e2e_interop.mjs` check
+agreement in both directions, with real randomness rather than vectors.json's
+seeded one. `node e2e_interop.mjs emit` prints a JSON file in the shape below;
+`node e2e_interop.mjs check FILE` verifies and opens every item in a file of
+that shape, from either side, exiting non-zero on any failure. The Go test
+runs both: it checks a freshly emitted Node file with this package, and asks
+Node to check a freshly emitted Go file.
+
+Every byte value is hex, as above, with one exception: `signature.envelope`
+is the real `{body, sig, signer}` b64 JSON wire form (see "Signatures" in
+`design/e2e-wire-formats.md`), not hex, since that is what the field actually
+carries on the wire.
+
+Top-level keys: `seal` (`key`, `fields`, `pt`, `sealed`); `blob` and
+`blobMultiChunk` (`ak`, `ctx`, `pt`, `blob`), the second with a plaintext
+spanning several chunks; `wrap` (`ctx`, `recipientPriv`, `key`, `wrapped`);
+`signature` (`purpose`, `seed`, `pub`, `body`, `signer`, `sig`, `envelope`);
+`recoveryCode` (`code`, `display`, `kek`); `apiKey` (`full`, `keyId`,
+`authSecret`, `keySecret`, `kek`); `akCommit` (`ak`, `artifact`, `epoch`,
+`want`); `rotation` (`oldSeed`, `oldPub`, `newSeed`, `newPub`, `signer`,
+`body`, `sig`, `newSig`); `stretch` (`email`, `password`, `params`,
+`argonSalt`, `stretched`, `authKey`, `kek`) — run at floor Argon2id
+parameters, so the Node side's WebAssembly run stays fast.

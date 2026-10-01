@@ -25,17 +25,25 @@ var (
 	ErrFormat = errors.New("e2e: malformed input")
 )
 
-var b64 = base64.RawURLEncoding
+// b64 is base64.RawURLEncoding.Strict(): the URL-safe alphabet, no padding,
+// and — the part plain RawURLEncoding leaves out — a decode error on any
+// input whose unused trailing bits in a partial group aren't zero. Without
+// Strict, two different strings could decode to the same bytes, which would
+// let a value be presented more than one way.
+var b64 = base64.RawURLEncoding.Strict()
 
 // B64 encodes b as base64url without padding.
 func B64(b []byte) string {
 	return b64.EncodeToString(b)
 }
 
-// UnB64 decodes a base64url-no-pad string.
+// UnB64 decodes a base64url-no-pad string, refusing anything outside the
+// URL-safe alphabet, any padding, and non-zero trailing bits. The decoder
+// skips CR and LF even in Strict mode, so the result is also re-encoded and
+// compared: only the one canonical spelling of a value decodes.
 func UnB64(s string) ([]byte, error) {
 	b, err := b64.DecodeString(s)
-	if err != nil {
+	if err != nil || B64(b) != s {
 		return nil, ErrFormat
 	}
 	return b, nil

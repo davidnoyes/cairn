@@ -8,7 +8,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"strings"
+
+	"filippo.io/edwards25519"
 )
 
 // GenerateEd25519 reads a 32-byte seed from rnd and derives an Ed25519 key
@@ -33,28 +36,86 @@ func Sign(seed []byte, purpose string, body []byte) ([]byte, error) {
 	return ed25519.Sign(priv, msg), nil
 }
 
-// Verify checks a signature produced by Sign. It refuses a public key of the
-// wrong length and a public key that is one of the small-order Ed25519
-// encodings, which would let a forged "signature" verify against more than
-// one message under a cofactored verifier.
+// Verify checks a signature produced by Sign. Before the curve equation it
+// runs signatureEncodingOK, so it accepts exactly the signatures every
+// strict verifier (cofactored or not) accepts, and the browser module
+// agrees with it whichever WebCrypto implementation runs there.
 func Verify(pub []byte, purpose string, body, sig []byte) bool {
-	if len(pub) != ed25519.PublicKeySize || isSmallOrderEd25519(pub) {
+	if !signatureEncodingOK(pub, sig) {
 		return false
 	}
 	msg := Enc([]byte(LabelSig), []byte(purpose), body)
 	return ed25519.Verify(pub, msg, sig)
 }
 
-// smallOrderEd25519 is the well-known list of Ed25519 public key encodings
-// whose decoded point has order dividing 8: the four points of the curve's
-// torsion subgroup that aren't the identity, plus the non-canonical
-// encodings of those with y < 19 (y+p is still < 2^255 and so still decodes,
-// to the same point, on a decoder that doesn't reject y >= p). Computed
-// directly from the curve equation -x^2+y^2 = 1+dx^2y^2 (d = -121665/121666
-// mod 2^255-19) and confirmed by scalar multiplication that each point P
-// satisfies 8P = the identity and 4P != the identity (for the order-8
-// points) — this is the same list documented by, among others, libsodium's
-// small-order point table and "Taming the many EdDSAs".
+// signatureEncodingOK is every check Verify makes before the curve
+// equation: the public key A and the signature's R (its first 32 bytes) must
+// each be the canonical encoding of a point of prime order L (see
+// isPrimeOrderEd25519), and S (its last 32 bytes) must be below L.
+// crypto/ed25519 already refuses some of these through its own equation,
+// but a cofactored verifier accepts a signature with a small-order or
+// mixed-order R or A that a cofactorless one refuses; refusing them here
+// makes the result the same under both. Split out so a test can show each
+// check refuses on its own.
+func signatureEncodingOK(pub, sig []byte) bool {
+	if len(pub) != ed25519.PublicKeySize || len(sig) != ed25519.SignatureSize {
+		return false
+	}
+	if !isPrimeOrderEd25519(pub) || !isPrimeOrderEd25519(sig[:32]) {
+		return false
+	}
+	_, err := edwards25519.NewScalar().SetCanonicalBytes(sig[32:])
+	return err == nil
+}
+
+// isPrimeOrderEd25519 reports whether enc is the canonical encoding of a
+// curve point in the prime-order subgroup other than the identity: not
+// refused by isSmallOrderEd25519, on the curve, and torsion-free. A
+// mixed-order point (a prime-order point plus one of the small-order ones)
+// passes the first two, so it needs the third: [L]P = O, computed as
+// [L-1]P + P because a Scalar only holds values below L. The inputs are
+// public, so the variable-time multiplication is fine.
+func isPrimeOrderEd25519(enc []byte) bool {
+	if len(enc) != 32 || isSmallOrderEd25519(enc) {
+		return false
+	}
+	p, err := new(edwards25519.Point).SetBytes(enc)
+	if err != nil {
+		return false
+	}
+	q := new(edwards25519.Point).VarTimeDoubleScalarBaseMult(scalarLMinus1, p, edwards25519.NewScalar())
+	q.Add(q, p)
+	return q.Equal(edwards25519.NewIdentityPoint()) == 1
+}
+
+// scalarLMinus1 is L-1, the largest value a Scalar holds: -1 mod L.
+var scalarLMinus1 = func() *edwards25519.Scalar {
+	one := make([]byte, 32)
+	one[0] = 1
+	s, err := edwards25519.NewScalar().SetCanonicalBytes(one)
+	if err != nil {
+		panic("e2e: scalar 1 is not canonical")
+	}
+	return s.Negate(s)
+}()
+
+// smallOrderEd25519 is the 8 canonical Ed25519 public key encodings whose
+// decoded point has order dividing 8: the identity, the order-2 point, the
+// two order-4 points, and the four order-8 points — the four points of the
+// curve's torsion subgroup that aren't the identity, plus the identity
+// itself. Computed directly from the curve equation -x^2+y^2 = 1+dx^2y^2 (d =
+// -121665/121666 mod p, p = 2^255-19) and confirmed by scalar multiplication
+// that each point P satisfies 8P = the identity and 4P != the identity (for
+// the order-8 points) — this is the same list documented by, among others,
+// libsodium's small-order point table and "Taming the many EdDSAs".
+//
+// Every other invalid or non-canonical encoding — a y coordinate >= p, or
+// the impossible combination x=0 with the sign bit set — is rejected
+// structurally by isSmallOrderEd25519 below instead of by a longer list:
+// several decoders accept such an encoding anyway by reducing y mod p, which
+// silently maps it onto one of these 8 points or another one entirely, so
+// every out-of-range or x=0-with-sign-bit encoding must be refused on its
+// own, not just the specific ones a fixed list happens to name.
 var smallOrderEd25519 = [][32]byte{
 	hexArray32("0100000000000000000000000000000000000000000000000000000000000000"),
 	hexArray32("ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"),
@@ -64,11 +125,6 @@ var smallOrderEd25519 = [][32]byte{
 	hexArray32("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa"),
 	hexArray32("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a"),
 	hexArray32("26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05"),
-	// Non-canonical: y+p for the two points above with y < 19 (identity and
-	// the two order-4 points), still < 2^255 and so still decodable.
-	hexArray32("eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"),
-	hexArray32("edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"),
-	hexArray32("edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
 }
 
 func hexArray32(s string) [32]byte {
@@ -81,9 +137,44 @@ func hexArray32(s string) [32]byte {
 	return a
 }
 
+// edwards25519P is the field prime shared by Curve25519 and Ed25519:
+// 2^255 - 19.
+var edwards25519P = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 255), big.NewInt(19))
+
+var edwards25519PMinus1 = new(big.Int).Sub(edwards25519P, big.NewInt(1))
+
+// leToBigInt interprets b as a little-endian unsigned integer, the byte
+// order every key and coordinate in this package uses, unlike math/big's own
+// SetBytes which assumes big-endian.
+func leToBigInt(b []byte) *big.Int {
+	rev := make([]byte, len(b))
+	for i, c := range b {
+		rev[len(b)-1-i] = c
+	}
+	return new(big.Int).SetBytes(rev)
+}
+
+// isSmallOrderEd25519 rejects a public key encoding a verifier must never
+// accept: a non-canonical y coordinate (the low 255 bits, little-endian, >=
+// p), the impossible combination x=0 with the sign bit set (only y=1 or
+// y=p-1 give x=0, so a set sign bit there is not an encoding this curve ever
+// produces), or one of the 8 canonical small-order points above. The first
+// two checks are structural rather than a longer hardcoded list, because a
+// decoder that doesn't itself reject an out-of-range y will still decode one
+// to some point by reducing mod p.
 func isSmallOrderEd25519(pub []byte) bool {
 	if len(pub) != 32 {
 		return false
+	}
+	signSet := pub[31]&0x80 != 0
+	yBytes := append([]byte(nil), pub...)
+	yBytes[31] &= 0x7f
+	y := leToBigInt(yBytes)
+	if y.Cmp(edwards25519P) >= 0 {
+		return true
+	}
+	if signSet && (y.Cmp(big.NewInt(1)) == 0 || y.Cmp(edwards25519PMinus1) == 0) {
+		return true
 	}
 	var a [32]byte
 	copy(a[:], pub)
@@ -95,21 +186,40 @@ func isSmallOrderEd25519(pub []byte) bool {
 	return false
 }
 
-// CheckPublicKeys rejects a malformed or low-order X25519 or Ed25519 public
-// key, so a user's keyring can never be made to hold a key an attacker chose
-// to force a predictable shared secret or a universally-valid signature.
+// isNonCanonicalX25519 rejects an X25519 public key that isn't the unique
+// canonical encoding of its u-coordinate: the high bit of the last byte set,
+// or the full 32-byte little-endian value >= p (2^255-19). RFC 7748 permits
+// an implementation to mask the high bit and reduce mod p instead of
+// rejecting, which would let two different byte strings be accepted as the
+// same key — checking the raw, unmasked value catches both cases in one
+// comparison, since a set high bit alone already puts the value at or above
+// 2^255 > p.
+func isNonCanonicalX25519(pub []byte) bool {
+	return leToBigInt(pub).Cmp(edwards25519P) >= 0
+}
+
+// CheckPublicKeys rejects a malformed, non-canonical, or low-order X25519 or
+// Ed25519 public key, so a user's keyring can never be made to hold a key an
+// attacker chose to force a predictable shared secret or a universally-valid
+// signature.
 //
-// An X25519 key is checked by attempting ECDH with a fresh ephemeral key:
-// crypto/ecdh returns an error exactly when the result would be the all-zero
-// output RFC 7748 requires implementations to reject, which is what every
-// low-order point produces. An Ed25519 key is checked against the hardcoded
-// small-order list.
+// An X25519 key is checked for canonical form, then by attempting ECDH with
+// a fresh ephemeral key: crypto/ecdh returns an error exactly when the
+// result would be the all-zero output RFC 7748 requires implementations to
+// reject, which is what every low-order point produces. An Ed25519 key must
+// be a canonical, on-curve, torsion-free point; see isPrimeOrderEd25519.
+// X25519 needs no torsion check: a clamped scalar is a multiple of 8, so
+// the torsion component of a mixed-order key never reaches the shared
+// secret.
 func CheckPublicKeys(x25519Pub, ed25519Pub []byte) error {
 	if len(x25519Pub) != 32 {
 		return fmt.Errorf("%w: x25519 public key length %d, want 32", ErrFormat, len(x25519Pub))
 	}
 	if len(ed25519Pub) != 32 {
 		return fmt.Errorf("%w: ed25519 public key length %d, want 32", ErrFormat, len(ed25519Pub))
+	}
+	if isNonCanonicalX25519(x25519Pub) {
+		return fmt.Errorf("%w: x25519 public key is not canonically encoded", ErrFormat)
 	}
 	pub, err := ecdh.X25519().NewPublicKey(x25519Pub)
 	if err != nil {
@@ -122,8 +232,8 @@ func CheckPublicKeys(x25519Pub, ed25519Pub []byte) error {
 	if _, err := fresh.ECDH(pub); err != nil {
 		return fmt.Errorf("%w: x25519 public key is low-order", ErrFormat)
 	}
-	if isSmallOrderEd25519(ed25519Pub) {
-		return fmt.Errorf("%w: ed25519 public key is low-order", ErrFormat)
+	if !isPrimeOrderEd25519(ed25519Pub) {
+		return fmt.Errorf("%w: ed25519 public key is not a canonical point of prime order", ErrFormat)
 	}
 	return nil
 }

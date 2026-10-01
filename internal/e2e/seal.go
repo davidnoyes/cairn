@@ -84,18 +84,26 @@ func LinkTokenHash(token []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// FileAddress addresses a stored file by its path under fileKey.
-func FileAddress(fileKey []byte, path string) string {
+// FileAddress addresses a stored file by its path under fileKey, which must
+// be 32 bytes (ErrFormat otherwise).
+func FileAddress(fileKey []byte, path string) (string, error) {
+	if err := checkKeyLen(fileKey); err != nil {
+		return "", err
+	}
 	mac := hmac.New(sha256.New, fileKey)
 	mac.Write([]byte(path))
-	return hex.EncodeToString(mac.Sum(nil))
+	return hex.EncodeToString(mac.Sum(nil)), nil
 }
 
 // BlindIndex is the lookup hash for a resource value of the given type.
-func BlindIndex(indexKey []byte, typ, value string) string {
+// indexKey must be 32 bytes (ErrFormat otherwise).
+func BlindIndex(indexKey []byte, typ, value string) (string, error) {
+	if err := checkKeyLen(indexKey); err != nil {
+		return "", err
+	}
 	mac := hmac.New(sha256.New, indexKey)
 	mac.Write(Enc([]byte(LabelBlind), []byte(typ), []byte(value)))
-	return hex.EncodeToString(mac.Sum(nil))
+	return hex.EncodeToString(mac.Sum(nil)), nil
 }
 
 // PreloginSalt is the salt prelogin returns for an address with no verified
@@ -153,6 +161,20 @@ func Open(key []byte, fields [][]byte, sealed []byte) ([]byte, error) {
 		return nil, ErrDecrypt
 	}
 	return pt, nil
+}
+
+// sealedKeySize is the only length of a sealed 32-byte key:
+// version(1) + nonce(12) + key(32) + tag(16).
+const sealedKeySize = 1 + gcmNonceSize + keyLen + 16
+
+// OpenKey opens a sealed 32-byte key (MK, EK, or an AK): Open, plus
+// ErrDecrypt for a sealed value of any length but sealedKeySize, so the
+// plaintext it returns is always 32 bytes.
+func OpenKey(key []byte, fields [][]byte, sealed []byte) ([]byte, error) {
+	if len(sealed) != sealedKeySize {
+		return nil, ErrDecrypt
+	}
+	return Open(key, fields, sealed)
 }
 
 func newGCM(key []byte) (cipher.AEAD, error) {

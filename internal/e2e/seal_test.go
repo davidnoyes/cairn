@@ -170,6 +170,53 @@ func TestSealedValueMovedToAnotherKeyFails(t *testing.T) {
 	}
 }
 
+func TestOpenKey(t *testing.T) {
+	key := testKey("openkey-key")
+	fields := [][]byte{[]byte("mk"), []byte("user-1")}
+	mk := testKey("openkey-mk")
+	sealed, err := Seal(newDRBG("openkey-nonce"), key, fields, mk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sealed) != 61 {
+		t.Fatalf("sealed key is %d bytes, want 61", len(sealed))
+	}
+	got, err := OpenKey(key, fields, sealed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, mk) {
+		t.Fatalf("OpenKey = %x, want %x", got, mk)
+	}
+
+	// A genuine seal of any other plaintext length opens under Open but
+	// not under OpenKey.
+	for _, n := range []int{0, 16, 31, 33, 64} {
+		other, err := Seal(newDRBG("openkey-nonce"), key, fields, make([]byte, n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Open(key, fields, other); err != nil {
+			t.Fatalf("Open len(pt)=%d: %v", n, err)
+		}
+		if _, err := OpenKey(key, fields, other); !errors.Is(err, ErrDecrypt) {
+			t.Errorf("OpenKey len(pt)=%d: got %v, want ErrDecrypt", n, err)
+		}
+	}
+
+	if _, err := OpenKey(testKey("openkey-other"), fields, sealed); !errors.Is(err, ErrDecrypt) {
+		t.Errorf("OpenKey wrong key: got %v, want ErrDecrypt", err)
+	}
+	if _, err := OpenKey(key, [][]byte{[]byte("mk"), []byte("user-2")}, sealed); !errors.Is(err, ErrDecrypt) {
+		t.Errorf("OpenKey wrong fields: got %v, want ErrDecrypt", err)
+	}
+	badVersion := bytes.Clone(sealed)
+	badVersion[0] = 0x02
+	if _, err := OpenKey(key, fields, badVersion); !errors.Is(err, ErrDecrypt) {
+		t.Errorf("OpenKey version 0x02: got %v, want ErrDecrypt", err)
+	}
+}
+
 func TestMKSealKeyIndexKeyDiffer(t *testing.T) {
 	mk := testKey("mk")
 	a, err := MKSealKey(mk)
@@ -275,8 +322,11 @@ func TestLinkTokenHashDeterministic(t *testing.T) {
 
 func TestFileAddressBoundToPath(t *testing.T) {
 	fk := testKey("filekey")
-	a := FileAddress(fk, "/a.txt")
-	b := FileAddress(fk, "/b.txt")
+	a, errA := FileAddress(fk, "/a.txt")
+	b, errB := FileAddress(fk, "/b.txt")
+	if errA != nil || errB != nil {
+		t.Fatal(errA, errB)
+	}
 	if a == b {
 		t.Fatal("FileAddress ignored the path")
 	}
@@ -324,7 +374,10 @@ func TestAKCommitRejectsWrongKeyLength(t *testing.T) {
 
 func TestBlindIndexBoundToTypeAndValue(t *testing.T) {
 	ik := testKey("indexkey")
-	a := BlindIndex(ik, "session", "abc123")
+	a, err := BlindIndex(ik, "session", "abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
 	cases := []struct {
 		name, typ, value string
 	}{
@@ -332,7 +385,10 @@ func TestBlindIndexBoundToTypeAndValue(t *testing.T) {
 		{"value", "session", "xyz789"},
 	}
 	for _, c := range cases {
-		b := BlindIndex(ik, c.typ, c.value)
+		b, err := BlindIndex(ik, c.typ, c.value)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if a == b {
 			t.Fatalf("changing %s did not change BlindIndex", c.name)
 		}

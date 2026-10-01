@@ -216,6 +216,46 @@ func TestOpenRotationRejectsMissingNewSig(t *testing.T) {
 	}
 }
 
+// A rotation envelope proves control of the new key only through newSig,
+// which OpenEnvelope does not check, so OpenEnvelope must refuse the purpose.
+func TestOpenEnvelopeRefusesRotation(t *testing.T) {
+	oldSeed, oldPub, err := GenerateEd25519(newDRBG("rotation-generic-old"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	newSeed, newPub, err := GenerateEd25519(newDRBG("rotation-generic-new"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, x25519Pub, err := GenerateX25519(newDRBG("rotation-generic-x25519"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodyBytes, err := json.Marshal(RotationBody{
+		V: 1, User: "user-1", Seq: 1,
+		Old: KeyPair{X25519: B64(x25519Pub), Ed25519: B64(oldPub)},
+		New: KeyPair{X25519: B64(x25519Pub), Ed25519: B64(newPub)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := SignRotation(oldSeed, newSeed, bodyBytes, "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out RotationBody
+	if err := OpenRotation(env, oldPub, &out); err != nil {
+		t.Fatalf("OpenRotation: %v", err)
+	}
+	if err := OpenEnvelope(env, oldPub, "rotation", &out); !errors.Is(err, ErrFormat) {
+		t.Fatalf("OpenEnvelope(rotation): got %v, want ErrFormat", err)
+	}
+	env.NewSig = nil
+	if err := OpenEnvelope(env, oldPub, "rotation", &out); !errors.Is(err, ErrFormat) {
+		t.Fatalf("OpenEnvelope(rotation) without newSig: got %v, want ErrFormat", err)
+	}
+}
+
 func TestCheckPublicKeysAcceptsGenuineKeys(t *testing.T) {
 	_, x25519Pub, err := GenerateX25519(newDRBG("checkpub-x25519"))
 	if err != nil {
@@ -266,5 +306,38 @@ func TestCheckPublicKeysRejectsLowOrderEd25519(t *testing.T) {
 		if err := CheckPublicKeys(x25519Pub, p[:]); !errors.Is(err, ErrFormat) {
 			t.Errorf("small-order ed25519 #%d: got %v, want ErrFormat", i, err)
 		}
+	}
+}
+
+// TestCheckStrictNumber pins the number rule directly: a non-negative integer
+// lexeme with no leading zero, no sign, fraction or exponent, at most 2^53-1.
+func TestCheckStrictNumber(t *testing.T) {
+	for _, ok := range []string{"0", "1", "42", "9007199254740991"} {
+		if err := checkStrictNumber(ok); err != nil {
+			t.Errorf("checkStrictNumber(%q) = %v, want nil", ok, err)
+		}
+	}
+	for _, bad := range []string{
+		"", "-0", "-1", "+1", "01", "00", "1.0", "1.5", "1e0", "1E0",
+		"9007199254740992", "18446744073709551616",
+	} {
+		if err := checkStrictNumber(bad); !errors.Is(err, ErrFormat) {
+			t.Errorf("checkStrictNumber(%q) = %v, want ErrFormat", bad, err)
+		}
+	}
+}
+
+// TestCheckStrictBytesBOM refuses a leading UTF-8 BOM, and only a leading one:
+// the same code point inside a string is an ordinary character.
+func TestCheckStrictBytesBOM(t *testing.T) {
+	bom := "\xEF\xBB\xBF"
+	if err := checkStrictBytes([]byte(`{"a":1}`)); err != nil {
+		t.Errorf("plain object: %v", err)
+	}
+	if err := checkStrictBytes([]byte(`{"a":"` + bom + `"}`)); err != nil {
+		t.Errorf("U+FEFF inside a string: %v", err)
+	}
+	if err := checkStrictBytes([]byte(bom + `{"a":1}`)); !errors.Is(err, ErrFormat) {
+		t.Errorf("leading BOM: %v, want ErrFormat", err)
 	}
 }
