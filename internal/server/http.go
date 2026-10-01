@@ -49,11 +49,18 @@ func (s *Server) writeStoreError(w http.ResponseWriter, err error, what string) 
 	writeError(w, http.StatusInternalServerError, "internal error")
 }
 
+// readJSON decodes a request body strictly: an unknown field, or anything
+// after the closing brace, is a 400 rather than being silently ignored.
 func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return false
+	}
+	if dec.More() {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: trailing data")
 		return false
 	}
 	return true

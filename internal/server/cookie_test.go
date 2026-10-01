@@ -7,19 +7,21 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/aloisdeniel/cairn/internal/mail"
 )
 
-// cookieTestServer boots a server with the given base URL so tests can drive
-// s.secure without touching the shared testServer helper.
-func cookieTestServer(t *testing.T, baseURL string) *Server {
+// cookieTestServer boots a server with the given public URL so tests can
+// drive s.secure without touching the shared testServer helper.
+func cookieTestServer(t *testing.T, publicURL string) *Server {
 	t.Helper()
 	s, err := New(Config{
-		DataDir:       t.TempDir(),
-		BaseURL:       baseURL,
-		AdminEmail:    "admin@example.com",
-		AdminPassword: "admin-password",
-		TokenTTL:      time.Hour,
-		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		DataDir:    t.TempDir(),
+		PublicURL:  publicURL,
+		AdminEmail: "admin@example.com",
+		TokenTTL:   time.Hour,
+		Mail:       &mail.Capture{},
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	if err != nil {
 		t.Fatal(err)

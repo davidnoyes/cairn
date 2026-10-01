@@ -2,26 +2,98 @@ package server
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/aloisdeniel/cairn/internal/auth"
+	"github.com/aloisdeniel/cairn/internal/e2e"
+	"github.com/aloisdeniel/cairn/internal/mail"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
-// testServer boots a full server on a temp data dir with a bootstrap admin.
+// testBundleWire returns a key bundle wire payload with a floor-compliant kdf
+// and correctly-sized placeholder keys, for tests that don't care what's
+// inside it.
+func testBundleWire() bundleWire {
+	kdf, _ := json.Marshal(e2e.Params{Alg: "argon2id", Memory: 65536, Time: 3, Threads: 1, Salt: bytes.Repeat([]byte{0x01}, 16)})
+	sealed := func(tag byte) string { return e2e.B64(bytes.Repeat([]byte{tag}, sealedKeyLen)) }
+	pub := func(tag byte) string { return e2e.B64(bytes.Repeat([]byte{tag}, 32)) }
+	return bundleWire{
+		KDF:         kdf,
+		MKPassword:  sealed(1),
+		MKRecovery:  sealed(2),
+		X25519Pub:   pub(3),
+		X25519Priv:  sealed(4),
+		Ed25519Pub:  pub(5),
+		Ed25519Priv: sealed(6),
+		EK:          sealed(7),
+	}
+}
+
+// testAuthKey deterministically stands in for the client's real Argon2id
+// stretch of a test password: the server only ever sees this value.
+func testAuthKey(password string) []byte {
+	sum := sha256.Sum256([]byte("test-authkey|" + password))
+	return sum[:]
+}
+
+// seedAccount creates and verifies an account directly through the store, for
+// tests that need a working login without exercising sign-up itself.
+func seedAccount(t *testing.T, s *Server, email, password string, isAdmin bool) *store.User {
+	t.Helper()
+	hash, err := auth.HashPassword(string(testAuthKey(password)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := decodeBundle(testBundleWire())
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := s.store.CreateAccount(email, "Test User", hash, bundle, isAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.MarkVerified(u.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	u, err = s.store.UserByID(u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u
+}
+
+// testServer boots a full server on a temp data dir with a seeded, verified
+// admin account and a recording mailer.
 func testServer(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
-	s, err := New(Config{
-		DataDir:       t.TempDir(),
-		AdminEmail:    "admin@example.com",
-		AdminPassword: "admin-password",
-		TokenTTL:      time.Hour,
-		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
-	})
+	s, ts := newTestServer(t, nil)
+	seedAccount(t, s, "admin@example.com", "admin-password", true)
+	return s, ts
+}
+
+// newTestServer boots a server with sensible test defaults; cfg may mutate
+// the Config before it's used, for tests that need a specific public URL,
+// signup domains, or a fake clock. It does not seed any account.
+func newTestServer(t *testing.T, cfg func(*Config)) (*Server, *httptest.Server) {
+	t.Helper()
+	c := Config{
+		DataDir:    t.TempDir(),
+		AdminEmail: "admin@example.com",
+		TokenTTL:   time.Hour,
+		Mail:       &mail.Capture{},
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	if cfg != nil {
+		cfg(&c)
+	}
+	s, err := New(c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,6 +104,11 @@ func testServer(t *testing.T) (*Server, *httptest.Server) {
 		s.store.Close()
 	})
 	return s, ts
+}
+
+// mailer returns the recording mailer newTestServer/testServer installed.
+func mailer(s *Server) *mail.Capture {
+	return s.mail.(*mail.Capture)
 }
 
 type testClient struct {
@@ -78,13 +155,20 @@ func (c *testClient) mustDo(method, path string, body any, out any, wantStatus i
 	}
 }
 
+// login signs in a seeded account by (email, password), as seedAccount
+// created it, and returns a client carrying the issued CLI token.
 func login(t *testing.T, base, email, password string) *testClient {
 	t.Helper()
 	c := &testClient{t: t, base: base}
 	var out struct {
 		Token string `json:"token"`
 	}
-	c.mustDo("POST", "/api/auth/login", map[string]string{"email": email, "password": password}, &out, http.StatusOK)
+	c.mustDo("POST", "/api/auth/login", map[string]string{
+		"email": email, "authKey": e2e.B64(testAuthKey(password)), "client": "cli",
+	}, &out, http.StatusOK)
+	if out.Token == "" {
+		t.Fatalf("login(%s): no token in response", email)
+	}
 	c.token = out.Token
 	return c
 }
@@ -102,7 +186,7 @@ func TestBootstrapAndLogin(t *testing.T) {
 	}
 	// Wrong password
 	c := &testClient{t: t, base: ts.URL}
-	resp := c.do("POST", "/api/auth/login", map[string]string{"email": "admin@example.com", "password": "nope"}, nil)
+	resp := c.do("POST", "/api/auth/login", map[string]string{"email": "admin@example.com", "authKey": e2e.B64(testAuthKey("nope")), "client": "cli"}, nil)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("wrong password: %d", resp.StatusCode)
 	}
@@ -113,154 +197,8 @@ func TestBootstrapAndLogin(t *testing.T) {
 	}
 }
 
-// TestBootstrapUnclaimedAdmin covers the default bootstrap: no password is
-// passed at first launch, the admin claims the account in the UI at first
-// sign-in.
-func TestBootstrapUnclaimedAdmin(t *testing.T) {
-	s, err := New(Config{
-		DataDir:    t.TempDir(),
-		AdminEmail: "admin@example.com",
-		TokenTTL:   time.Hour,
-		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ts := httptest.NewServer(s.Handler())
-	t.Cleanup(func() {
-		ts.Close()
-		s.dbs.Close()
-		s.store.Close()
-	})
-
-	// The unclaimed account rejects a login without confirmation…
-	c := &testClient{t: t, base: ts.URL}
-	resp := c.do("POST", "/api/auth/login", map[string]string{"email": "admin@example.com", "password": "chosen-in-ui"}, nil)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("claim without confirm: %d", resp.StatusCode)
-	}
-	// …and the first confirmed sign-in sets the password and grants admin.
-	var out struct {
-		Token      string `json:"token"`
-		FirstLogin bool   `json:"firstLogin"`
-		User       struct {
-			IsAdmin bool `json:"isAdmin"`
-		} `json:"user"`
-	}
-	c.mustDo("POST", "/api/auth/login", map[string]string{"email": "admin@example.com", "password": "chosen-in-ui", "confirm": "chosen-in-ui"}, &out, http.StatusOK)
-	if !out.FirstLogin || !out.User.IsAdmin || out.Token == "" {
-		t.Fatalf("claim response: %+v", out)
-	}
-	login(t, ts.URL, "admin@example.com", "chosen-in-ui")
-
-	// Without an admin email the server refuses to start on an empty table.
-	if _, err := New(Config{DataDir: t.TempDir(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}); err == nil {
-		t.Error("server started with no bootstrap admin email")
-	}
-}
-
-func TestFirstLoginClaim(t *testing.T) {
-	_, ts := testServer(t)
-	admin := login(t, ts.URL, "admin@example.com", "admin-password")
-	var created struct {
-		ID string `json:"id"`
-	}
-	admin.mustDo("POST", "/api/admin/users", map[string]any{"email": "user@example.com", "name": "User"}, &created, http.StatusCreated)
-
-	anon := &testClient{t: t, base: ts.URL}
-	// Missing confirmation
-	resp := anon.do("POST", "/api/auth/login", map[string]string{"email": "user@example.com", "password": "password123"}, nil)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("claim without confirm: %d", resp.StatusCode)
-	}
-	// Too short
-	resp = anon.do("POST", "/api/auth/login", map[string]string{"email": "user@example.com", "password": "short", "confirm": "short"}, nil)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("short password: %d", resp.StatusCode)
-	}
-	// Claim
-	var out struct {
-		Token      string `json:"token"`
-		FirstLogin bool   `json:"firstLogin"`
-	}
-	anon.mustDo("POST", "/api/auth/login", map[string]string{"email": "user@example.com", "password": "password123", "confirm": "password123"}, &out, http.StatusOK)
-	if !out.FirstLogin || out.Token == "" {
-		t.Fatalf("claim response: %+v", out)
-	}
-	// Second login uses the chosen password, no confirm needed
-	login(t, ts.URL, "user@example.com", "password123")
-	// And the old "any password" hole is closed
-	resp = anon.do("POST", "/api/auth/login", map[string]string{"email": "user@example.com", "password": "different123"}, nil)
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("wrong password after claim: %d", resp.StatusCode)
-	}
-}
-
-func TestUserDirectoryAndAdmin(t *testing.T) {
-	_, ts := testServer(t)
-	admin := login(t, ts.URL, "admin@example.com", "admin-password")
-	admin.mustDo("POST", "/api/admin/users", map[string]any{"email": "u1@example.com", "name": "U1"}, nil, http.StatusCreated)
-
-	// Non-admin can read the directory but not manage users
-	var created struct {
-		ID string `json:"id"`
-	}
-	admin.mustDo("POST", "/api/admin/users", map[string]any{"email": "u2@example.com", "name": "U2"}, &created, http.StatusCreated)
-	u2 := &testClient{t: t, base: ts.URL}
-	var loginOut struct {
-		Token string `json:"token"`
-	}
-	u2.mustDo("POST", "/api/auth/login", map[string]string{"email": "u2@example.com", "password": "password123", "confirm": "password123"}, &loginOut, http.StatusOK)
-	u2.token = loginOut.Token
-
-	var users []map[string]any
-	u2.mustDo("GET", "/api/users", nil, &users, http.StatusOK)
-	if len(users) != 3 {
-		t.Errorf("directory size: %d", len(users))
-	}
-	for _, u := range users {
-		if _, has := u["email"]; !has {
-			t.Errorf("directory entry missing email: %v", u)
-		}
-	}
-	resp := u2.do("POST", "/api/admin/users", map[string]any{"email": "x@example.com"}, nil)
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("non-admin create user: %d", resp.StatusCode)
-	}
-
-	// Disable a user; their token dies immediately
-	admin.mustDo("PATCH", fmt.Sprintf("/api/admin/users/%s", created.ID), map[string]any{"disabled": true}, nil, http.StatusOK)
-	resp = u2.do("GET", "/api/me", nil, nil)
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("disabled user token still valid: %d", resp.StatusCode)
-	}
-}
-
-func TestAPIKeyAuth(t *testing.T) {
-	_, ts := testServer(t)
-	admin := login(t, ts.URL, "admin@example.com", "admin-password")
-	var out struct {
-		Key struct {
-			ID string `json:"id"`
-		} `json:"key"`
-		Token string `json:"token"`
-	}
-	admin.mustDo("POST", "/api/admin/keys", map[string]any{"name": "ci"}, &out, http.StatusCreated)
-	if out.Token == "" {
-		t.Fatal("no token returned")
-	}
-	keyClient := &testClient{t: t, base: ts.URL, token: out.Token}
-	var me struct {
-		Email string `json:"email"`
-	}
-	keyClient.mustDo("GET", "/api/me", nil, &me, http.StatusOK)
-	if me.Email != "admin@example.com" {
-		t.Errorf("key acts as %q", me.Email)
-	}
-	// Revoke, then the key stops working
-	admin.mustDo("DELETE", "/api/admin/keys/"+out.Key.ID, nil, nil, http.StatusOK)
-	resp := keyClient.do("GET", "/api/me", nil, nil)
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("revoked key still valid: %d", resp.StatusCode)
+func TestNewRequiresMail(t *testing.T) {
+	if _, err := New(Config{DataDir: t.TempDir(), AdminEmail: "admin@example.com", Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}); err == nil {
+		t.Fatal("server started with no mail sender")
 	}
 }

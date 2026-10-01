@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"net/url"
@@ -32,33 +35,96 @@ func (s *Server) sessionCookieName() string {
 
 type ctxKey int
 
-const userCtxKey ctxKey = iota
+const (
+	userCtxKey ctxKey = iota
+	apiKeyCtxKey
+)
 
-// currentUser resolves the request identity from, in order: the Authorization
-// bearer credential (JWT or API key) or the session cookie. It returns
-// (nil, nil) for anonymous requests and an error only for credentials that are
-// present but invalid.
+// apiKeyBearerPrefix starts every API key bearer credential:
+// cairn_<keyid 16 hex>_<authSecret 32 hex>.
+const apiKeyBearerPrefix = "cairn_"
+
+// isAPIKeyBearer reports whether a presented Authorization bearer credential
+// looks like an API key rather than a sign-in JWT.
+func isAPIKeyBearer(token string) bool {
+	return strings.HasPrefix(token, apiKeyBearerPrefix)
+}
+
+// isLowerHex reports whether s is non-empty and every character is a lowercase
+// hex digit; the wire format refuses uppercase hexadecimal.
+func isLowerHex(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// parseAPIKeyBearer splits a presented bearer credential into its key id and
+// auth secret, refusing anything but cairn_<16 lowercase hex>_<32 lowercase
+// hex>.
+func parseAPIKeyBearer(token string) (keyID, authSecret string, ok bool) {
+	rest, found := strings.CutPrefix(token, apiKeyBearerPrefix)
+	if !found {
+		return "", "", false
+	}
+	keyID, authSecret, found = strings.Cut(rest, "_")
+	if !found || len(keyID) != 16 || len(authSecret) != 32 || !isLowerHex(keyID) || !isLowerHex(authSecret) {
+		return "", "", false
+	}
+	return keyID, authSecret, true
+}
+
+// extractCredential reads the bearer credential from the Authorization
+// header, or failing that the session cookie, reporting whether it looks like
+// an API key. An absent credential is ("", false, nil); a header present but
+// not a Bearer scheme is an error.
+func extractCredential(r *http.Request, cookieName string) (cred string, isAPIKey bool, err error) {
+	if h := r.Header.Get("Authorization"); h != "" {
+		c, ok := strings.CutPrefix(h, "Bearer ")
+		if !ok {
+			return "", false, errors.New("unsupported Authorization scheme")
+		}
+		return c, isAPIKeyBearer(c), nil
+	}
+	if c, err := r.Cookie(cookieName); err == nil {
+		return c.Value, false, nil
+	}
+	return "", false, nil
+}
+
+// currentUser resolves the request identity under the "Any" rule: the
+// Authorization bearer credential (sign-in JWT or API key), or the session
+// cookie. It returns (nil, nil) for anonymous requests and an error only for
+// credentials that are present but invalid.
 func (s *Server) currentUser(r *http.Request) (*store.User, error) {
 	if u, ok := r.Context().Value(userCtxKey).(*store.User); ok {
 		return u, nil
 	}
-	cred := ""
-	if h := r.Header.Get("Authorization"); h != "" {
-		var ok bool
-		cred, ok = strings.CutPrefix(h, "Bearer ")
-		if !ok {
-			return nil, errors.New("unsupported Authorization scheme")
-		}
-	} else if c, err := r.Cookie(s.sessionCookieName()); err == nil {
-		cred = c.Value
+	u, _, err := s.resolveAny(r)
+	return u, err
+}
+
+// resolveAny is currentUser's underlying resolution, also returning the
+// matched API key (nil for a cookie or JWT credential) so callers that need
+// it, such as GET /api/me/bundle, can tell the two apart.
+func (s *Server) resolveAny(r *http.Request) (*store.User, *store.APIKey, error) {
+	cred, isKey, err := extractCredential(r, s.sessionCookieName())
+	if err != nil {
+		return nil, nil, err
 	}
 	if cred == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
-	if auth.IsAPIKey(cred) {
+	if isKey {
 		return s.userFromAPIKey(cred)
 	}
-	return s.userFromJWT(cred)
+	u, err := s.userFromJWT(cred)
+	return u, nil, err
 }
 
 func (s *Server) userFromJWT(token string) (*store.User, error) {
@@ -76,23 +142,30 @@ func (s *Server) userFromJWT(token string) (*store.User, error) {
 	return u, nil
 }
 
-func (s *Server) userFromAPIKey(token string) (*store.User, error) {
-	id, secret, ok := auth.ParseAPIKey(token)
+// userFromAPIKey looks the key up by id and compares the SHA-256 of the
+// presented auth secret (the hex string, not the bytes it decodes to) in
+// constant time, refusing a revoked key or a disabled or unverified user. On
+// success it touches the key's last-used time.
+func (s *Server) userFromAPIKey(token string) (*store.User, *store.APIKey, error) {
+	keyID, authSecret, ok := parseAPIKeyBearer(token)
 	if !ok {
-		return nil, errors.New("malformed API key")
+		return nil, nil, errors.New("malformed API key")
 	}
-	key, err := s.store.APIKeyByID(id)
+	key, err := s.store.APIKeyByID(keyID)
 	if err != nil {
-		return nil, errors.New("unknown API key")
+		return nil, nil, errors.New("invalid API key")
 	}
-	if key.RevokedAt != "" || key.SecretHash != auth.HashAPIKeySecret(secret) {
-		return nil, errors.New("invalid API key")
+	sum := sha256.Sum256([]byte(authSecret))
+	hash := hex.EncodeToString(sum[:])
+	if key.RevokedAt != "" || subtle.ConstantTimeCompare([]byte(hash), []byte(key.SecretHash)) != 1 {
+		return nil, nil, errors.New("invalid API key")
 	}
 	u, err := s.store.UserByID(key.UserID)
-	if err != nil || u.Disabled {
-		return nil, errors.New("invalid API key")
+	if err != nil || u.Disabled || u.VerifiedAt == "" {
+		return nil, nil, errors.New("invalid API key")
 	}
-	return u, nil
+	s.store.TouchAPIKey(key.ID, s.clk.Now())
+	return u, key, nil
 }
 
 // withUser stores the resolved user in the request context so handlers can
@@ -101,23 +174,63 @@ func withUser(r *http.Request, u *store.User) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), userCtxKey, u))
 }
 
-// requestUser returns the user attached by requireAuth/requireAdmin (never nil
-// inside those handlers).
+// requestUser returns the user attached by requireAuth/requireSession/
+// requireAdmin (never nil inside those handlers).
 func requestUser(r *http.Request) *store.User {
 	u, _ := r.Context().Value(userCtxKey).(*store.User)
 	return u
 }
 
-// requireAuth rejects anonymous or invalidly-authenticated API requests.
+// withAPIKey stores the API key that authenticated the request, when there
+// is one, so a handler like GET /api/me/bundle can add its sealed MK.
+func withAPIKey(r *http.Request, k *store.APIKey) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), apiKeyCtxKey, k))
+}
+
+// requestAPIKey returns the API key attached by requireAuth, or nil when the
+// request authenticated with a cookie or a sign-in JWT instead.
+func requestAPIKey(r *http.Request) *store.APIKey {
+	k, _ := r.Context().Value(apiKeyCtxKey).(*store.APIKey)
+	return k
+}
+
+// requireAuth implements the "Any" auth rule: a session cookie, a sign-in
+// JWT, or an API key.
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u, err := s.currentUser(r)
+		u, key, err := s.resolveAny(r)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
 		if u == nil {
 			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		r = withUser(r, u)
+		if key != nil {
+			r = withAPIKey(r, key)
+		}
+		next(w, r)
+	}
+}
+
+// requireSession implements the "Session" auth rule: a session cookie or a
+// sign-in JWT, but never an API key.
+func (s *Server) requireSession(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cred, isKey, err := extractCredential(r, s.sessionCookieName())
+		if err != nil || isKey {
+			writeError(w, http.StatusUnauthorized, "invalid credentials")
+			return
+		}
+		if cred == "" {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		u, err := s.userFromJWT(cred)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
 		next(w, withUser(r, u))

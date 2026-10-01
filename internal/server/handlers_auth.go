@@ -1,88 +1,135 @@
 package server
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/aloisdeniel/cairn/internal/auth"
+	"github.com/aloisdeniel/cairn/internal/e2e"
+	"github.com/aloisdeniel/cairn/internal/mail"
 	"github.com/aloisdeniel/cairn/internal/store"
 )
 
-const minPasswordLen = 8
+// maxNameLen is signup's limit on a display name.
+const maxNameLen = 200
 
-type loginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	// Confirm is required only when claiming an account at first login, as a
-	// guard against typos becoming the password.
-	Confirm string `json:"confirm,omitempty"`
+// normalizeEmail lowercases and trims an address the way every lookup,
+// comparison, mail, and the prelogin salt expects it.
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
-type loginResponse struct {
-	Token string      `json:"token"`
-	User  *store.User `json:"user"`
-	// FirstLogin signals the UI that this login claimed the account.
-	FirstLogin bool `json:"firstLogin,omitempty"`
-}
+// dummyAuthHash is bcrypt of a fixed, never-presented value. Sign-in for an
+// unknown account still runs bcrypt against it, so the response time doesn't
+// reveal whether the address has one.
+var dummyAuthHash = mustHashPassword("cairn/v1/no-such-account")
 
-// handleLogin implements email/password login. Cairn's trust model: accounts
-// are created by admins without a password, and the first login sets it.
-func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var req loginRequest
-	if !readJSON(w, r, &req) {
-		return
-	}
-	req.Email = strings.TrimSpace(req.Email)
-	u, err := s.store.UserByEmail(req.Email)
+func mustHashPassword(s string) string {
+	h, err := auth.HashPassword(s)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			writeError(w, http.StatusUnauthorized, "invalid email or password")
-			return
-		}
-		s.writeStoreError(w, err, "user")
-		return
+		panic(err)
 	}
-	if u.Disabled {
-		writeError(w, http.StatusForbidden, "account disabled")
-		return
-	}
-	firstLogin := u.PasswordHash == ""
-	if firstLogin {
-		if len(req.Password) < minPasswordLen {
-			writeError(w, http.StatusBadRequest, "first login: choose a password of at least 8 characters")
-			return
-		}
-		if req.Confirm != req.Password {
-			writeError(w, http.StatusBadRequest, "first login: password confirmation does not match")
-			return
-		}
-		hash, err := auth.HashPassword(req.Password)
-		if err != nil {
-			s.writeStoreError(w, err, "password")
-			return
-		}
-		if err := s.store.SetPassword(u.ID, hash, false); err != nil {
-			s.writeStoreError(w, err, "user")
-			return
-		}
-		s.log.Info("account claimed at first login", "email", u.Email)
-	} else if !auth.CheckPassword(u.PasswordHash, req.Password) {
-		writeError(w, http.StatusUnauthorized, "invalid email or password")
-		return
-	}
-	token, err := s.issueToken(u)
-	if err != nil {
-		s.writeStoreError(w, err, "token")
-		return
-	}
-	s.setSessionCookie(w, token, s.cfg.TokenTTL)
-	writeJSON(w, http.StatusOK, loginResponse{Token: token, User: u, FirstLogin: firstLogin})
+	return h
 }
 
+// domainAllowed reports whether email may sign up: its domain is one of
+// cfg.SignupDomains, or it is exactly cfg.AdminEmail.
+func (s *Server) domainAllowed(email string) bool {
+	if email == s.cfg.AdminEmail {
+		return true
+	}
+	i := strings.LastIndex(email, "@")
+	if i < 0 {
+		return false
+	}
+	domain := email[i+1:]
+	for _, d := range s.cfg.SignupDomains {
+		if domain == d {
+			return true
+		}
+	}
+	return false
+}
+
+// newLinkToken generates a 32-byte random token for a verification or reset
+// link, returning the raw bytes (shown once, in the link) and the hex-SHA-256
+// hash the store keeps.
+func newLinkToken() (raw []byte, hash string, err error) {
+	raw = make([]byte, 32)
+	if _, err = rand.Read(raw); err != nil {
+		return nil, "", err
+	}
+	return raw, hashToken(raw), nil
+}
+
+func hashToken(raw []byte) string {
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// sendMail delivers an email unless the per-address rate limit (three an
+// hour, across sign-up, verification, and reset) is already spent, in which
+// case the caller's "answer as if it succeeded" response is unaffected and
+// the message is simply dropped.
+func (s *Server) sendMail(to, subject, body string) {
+	if !s.mailLimit.take(to) {
+		return
+	}
+	if err := s.mail.Send(context.Background(), mail.Message{To: to, Subject: subject, Body: body}); err != nil {
+		s.log.Error("send mail", "to", to, "err", err)
+	}
+}
+
+func (s *Server) sendVerifyLink(u *store.User) {
+	if err := s.store.DeleteTokens(u.ID, "verify"); err != nil {
+		s.log.Error("delete old verify tokens", "err", err)
+	}
+	raw, hash, err := newLinkToken()
+	if err != nil {
+		s.log.Error("generate verify token", "err", err)
+		return
+	}
+	if err := s.store.CreateToken(hash, u.ID, "verify", s.clk.Now().Add(24*time.Hour)); err != nil {
+		s.log.Error("store verify token", "err", err)
+		return
+	}
+	link := s.cfg.PublicURL + "/verify#token=" + e2e.B64(raw)
+	s.sendMail(u.Email, "Verify your Cairn account", "Follow this link to verify your account:\n\n"+link+"\n\nThis link expires in 24 hours.")
+}
+
+func (s *Server) sendResetLink(u *store.User) {
+	if err := s.store.DeleteTokens(u.ID, "reset"); err != nil {
+		s.log.Error("delete old reset tokens", "err", err)
+	}
+	raw, hash, err := newLinkToken()
+	if err != nil {
+		s.log.Error("generate reset token", "err", err)
+		return
+	}
+	if err := s.store.CreateToken(hash, u.ID, "reset", s.clk.Now().Add(30*time.Minute)); err != nil {
+		s.log.Error("store reset token", "err", err)
+		return
+	}
+	link := s.cfg.PublicURL + "/reset#token=" + e2e.B64(raw)
+	s.sendMail(u.Email, "Reset your Cairn password", "Follow this link to reset your password:\n\n"+link+"\n\nThis link expires in 30 minutes.")
+}
+
+func (s *Server) sendResetNotice(u *store.User) {
+	s.sendMail(u.Email, "Your Cairn password was reset", "Your password was just reset. If this wasn't you, contact your administrator.")
+}
+
+// issueToken signs a session JWT for u, carrying its current token version so
+// a password change or account disable revokes it instantly.
 func (s *Server) issueToken(u *store.User) (string, error) {
-	nowT := time.Now()
+	nowT := s.clk.Now()
 	return auth.SignJWT(s.secret, auth.Claims{
 		UserID:       u.ID,
 		IsAdmin:      u.IsAdmin,
@@ -92,213 +139,408 @@ func (s *Server) issueToken(u *store.User) (string, error) {
 	})
 }
 
+// checkSignInLimits reports whether email or the client IP has already
+// failed enough times in the last 15 minutes that even a correct key must be
+// refused.
+func (s *Server) checkSignInLimits(email, ip string) (time.Duration, bool) {
+	if ra, blocked := s.signIn.account.blocked(email); blocked {
+		return ra, true
+	}
+	if ra, blocked := s.signIn.ip.blocked(ip); blocked {
+		return ra, true
+	}
+	return 0, false
+}
+
+func (s *Server) recordSignInFailure(email, ip string) {
+	s.signIn.account.record(email)
+	s.signIn.ip.record(ip)
+}
+
+// meView is the projection of a user returned at /api/me and after login.
+type meView struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	IsAdmin   bool   `json:"isAdmin"`
+	CreatedAt string `json:"createdAt"`
+	ResetAt   string `json:"resetAt,omitempty"`
+}
+
+func toMeView(u *store.User) meView {
+	return meView{ID: u.ID, Email: u.Email, Name: u.Name, IsAdmin: u.IsAdmin, CreatedAt: u.CreatedAt, ResetAt: u.ResetAt}
+}
+
+// Sign-up and verification
+
+type signupRequest struct {
+	Email   string     `json:"email"`
+	Name    string     `json:"name"`
+	AuthKey string     `json:"authKey"`
+	Bundle  bundleWire `json:"bundle"`
+}
+
+// handleSignup creates an unverified account, or re-sends a link for one
+// that is still unverified. A verified account at the address changes
+// nothing; its owner is mailed instead. The response is always 202, so
+// sign-up never reveals which addresses already have an account.
+func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
+	var req signupRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	email := normalizeEmail(req.Email)
+	if len(req.Name) > maxNameLen {
+		writeError(w, http.StatusBadRequest, "name is too long")
+		return
+	}
+	if !s.domainAllowed(email) {
+		writeError(w, http.StatusForbidden, "this email domain may not sign up")
+		return
+	}
+	bundle, err := decodeBundle(req.Bundle)
+	if err != nil || validateBundle(bundle) != nil {
+		writeError(w, http.StatusBadRequest, "malformed key bundle")
+		return
+	}
+	authKey, err := e2e.UnB64(req.AuthKey)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "malformed authKey")
+		return
+	}
+	authHash, err := auth.HashPassword(string(authKey))
+	if err != nil {
+		s.writeStoreError(w, err, "account")
+		return
+	}
+
+	existing, err := s.store.UserByEmail(email)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		s.writeStoreError(w, err, "account")
+		return
+	}
+	if err == nil && existing.VerifiedAt != "" {
+		s.sendMail(email, "Someone tried to sign up with your email",
+			fmt.Sprintf("Someone tried to create a Cairn account with %s, which already has one. If this wasn't you, you can ignore this message.", email))
+	} else {
+		isAdmin := email == s.cfg.AdminEmail
+		u, cerr := s.store.CreateAccount(email, req.Name, authHash, bundle, isAdmin)
+		if cerr != nil {
+			s.writeStoreError(w, cerr, "account")
+			return
+		}
+		s.sendVerifyLink(u)
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "check-email"})
+}
+
+type verifyRequest struct {
+	Token string `json:"token"`
+}
+
+func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
+	var req verifyRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	raw, err := e2e.UnB64(req.Token)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid or expired token")
+		return
+	}
+	tok, err := s.store.UseToken(hashToken(raw), "verify", s.clk.Now())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid or expired token")
+		return
+	}
+	if err := s.store.MarkVerified(tok.UserID, s.clk.Now()); err != nil {
+		s.writeStoreError(w, err, "account")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// Sign-in
+
+type preloginRequest struct {
+	Email string `json:"email"`
+}
+
+// handlePrelogin returns the kdf parameters a verified account registered,
+// or a stable fake salt under the current defaults for anything else, so the
+// response never reveals whether the address has a verified account.
+func (s *Server) handlePrelogin(w http.ResponseWriter, r *http.Request) {
+	var req preloginRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	email := normalizeEmail(req.Email)
+	if u, err := s.store.UserByEmail(email); err == nil && u.VerifiedAt != "" {
+		if b, err := s.store.BundleFor(u.ID); err == nil {
+			writeJSON(w, http.StatusOK, b.KDF)
+			return
+		}
+	}
+	params := e2e.Params{Alg: "argon2id", Memory: 65536, Time: 3, Threads: 1, Salt: e2e.PreloginSalt(s.preloginSecret, email)}
+	writeJSON(w, http.StatusOK, params)
+}
+
+type loginRequest struct {
+	Email   string `json:"email"`
+	AuthKey string `json:"authKey"`
+	Client  string `json:"client"`
+}
+
+type loginResponse struct {
+	User   meView     `json:"user"`
+	Bundle bundleWire `json:"bundle"`
+	Token  string     `json:"token,omitempty"`
+}
+
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	var req loginRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	email := normalizeEmail(req.Email)
+	ip := clientIP(r)
+	if retryAfter, blocked := s.checkSignInLimits(email, ip); blocked {
+		writeRateLimited(w, retryAfter)
+		return
+	}
+	authKey, err := e2e.UnB64(req.AuthKey)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "malformed authKey")
+		return
+	}
+	u, err := s.store.UserByEmail(email)
+	if err != nil {
+		auth.CheckPassword(dummyAuthHash, string(authKey)) // timing only; result unused
+		s.recordSignInFailure(email, ip)
+		writeError(w, http.StatusUnauthorized, "invalid email or password")
+		return
+	}
+	if !auth.CheckPassword(u.AuthHash, string(authKey)) {
+		s.recordSignInFailure(email, ip)
+		writeError(w, http.StatusUnauthorized, "invalid email or password")
+		return
+	}
+	if u.VerifiedAt == "" {
+		writeError(w, http.StatusForbidden, "verify your email first")
+		return
+	}
+	if u.Disabled {
+		writeError(w, http.StatusForbidden, "account deactivated")
+		return
+	}
+	bundle, err := s.store.BundleFor(u.ID)
+	if err != nil {
+		s.writeStoreError(w, err, "bundle")
+		return
+	}
+	token, err := s.issueToken(u)
+	if err != nil {
+		s.writeStoreError(w, err, "token")
+		return
+	}
+	s.setSessionCookie(w, token, s.cfg.TokenTTL)
+	resp := loginResponse{User: toMeView(u), Bundle: encodeBundle(*bundle)}
+	if req.Client == "cli" {
+		resp.Token = token
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	s.clearSessionCookie(w)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, requestUser(r))
-}
+// Password reset
 
-// publicUser is the user-directory projection every authenticated user may
-// see.
-type publicUser struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
+type forgotRequest struct {
 	Email string `json:"email"`
 }
 
-func toPublicUser(u *store.User) publicUser {
-	return publicUser{ID: u.ID, Name: u.Name, Email: u.Email}
-}
-
-// handleUsers serves the global user directory: id, name and email of every
-// user, readable by any authenticated user (deliberately unrestricted so
-// artifacts can attribute shared data).
-func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := s.store.ListUsers()
-	if err != nil {
-		s.writeStoreError(w, err, "users")
-		return
-	}
-	out := make([]publicUser, 0, len(users))
-	for _, u := range users {
-		out = append(out, toPublicUser(u))
-	}
-	writeJSON(w, http.StatusOK, paginate(r, out))
-}
-
-func (s *Server) handleUserByID(w http.ResponseWriter, r *http.Request) {
-	u, err := s.store.UserByID(r.PathValue("id"))
-	if err != nil {
-		s.writeStoreError(w, err, "user")
-		return
-	}
-	writeJSON(w, http.StatusOK, toPublicUser(u))
-}
-
-// Admin: user management
-
-type createUserRequest struct {
-	Email   string `json:"email"`
-	Name    string `json:"name"`
-	IsAdmin bool   `json:"isAdmin"`
-}
-
-func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
-	var req createUserRequest
+func (s *Server) handleForgot(w http.ResponseWriter, r *http.Request) {
+	var req forgotRequest
 	if !readJSON(w, r, &req) {
 		return
 	}
-	req.Email = strings.TrimSpace(req.Email)
-	if req.Email == "" || !strings.Contains(req.Email, "@") {
-		writeError(w, http.StatusBadRequest, "a valid email is required")
-		return
+	email := normalizeEmail(req.Email)
+	if u, err := s.store.UserByEmail(email); err == nil && u.VerifiedAt != "" {
+		s.sendResetLink(u)
 	}
-	u, err := s.store.CreateUser(req.Email, req.Name, req.IsAdmin)
-	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE") {
-			writeError(w, http.StatusConflict, "a user with this email already exists")
-			return
-		}
-		s.writeStoreError(w, err, "user")
-		return
-	}
-	s.log.Info("user created", "email", u.Email, "by", requestUser(r).Email)
-	writeJSON(w, http.StatusCreated, u)
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "check-email"})
 }
 
-func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := s.store.ListUsers()
-	if err != nil {
-		s.writeStoreError(w, err, "users")
-		return
-	}
-	writeJSON(w, http.StatusOK, users)
-}
-
-type updateUserRequest struct {
-	Name     *string `json:"name"`
-	IsAdmin  *bool   `json:"isAdmin"`
-	Disabled *bool   `json:"disabled"`
-}
-
-func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	u, err := s.store.UserByID(id)
-	if err != nil {
-		s.writeStoreError(w, err, "user")
-		return
-	}
-	var req updateUserRequest
-	if !readJSON(w, r, &req) {
-		return
-	}
-	name, isAdmin := u.Name, u.IsAdmin
-	if req.Name != nil {
-		name = *req.Name
-	}
-	if req.IsAdmin != nil {
-		isAdmin = *req.IsAdmin
-	}
-	if err := s.store.UpdateUser(id, name, isAdmin); err != nil {
-		s.writeStoreError(w, err, "user")
-		return
-	}
-	if req.Disabled != nil && *req.Disabled != u.Disabled {
-		if id == requestUser(r).ID {
-			writeError(w, http.StatusBadRequest, "cannot disable your own account")
-			return
-		}
-		if err := s.store.SetUserDisabled(id, *req.Disabled); err != nil {
-			s.writeStoreError(w, err, "user")
-			return
-		}
-	}
-	u, err = s.store.UserByID(id)
-	if err != nil {
-		s.writeStoreError(w, err, "user")
-		return
-	}
-	writeJSON(w, http.StatusOK, u)
-}
-
-// handleAdminResetPassword returns the account to the unclaimed state: the
-// user chooses a new password at their next login.
-func (s *Server) handleAdminResetPassword(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.ClearPassword(r.PathValue("id")); err != nil {
-		s.writeStoreError(w, err, "user")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
-}
-
-func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if id == requestUser(r).ID {
-		writeError(w, http.StatusBadRequest, "cannot delete your own account")
-		return
-	}
-	if err := s.store.DeleteUser(id); err != nil {
-		s.writeStoreError(w, err, "user")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
-}
-
-// Admin: API keys
-
-type createKeyRequest struct {
-	UserID string `json:"userId"`
-	Name   string `json:"name"`
-}
-
-type createKeyResponse struct {
-	Key *store.APIKey `json:"key"`
-	// Token is shown exactly once; only its hash is stored.
+type resetBeginRequest struct {
 	Token string `json:"token"`
 }
 
-func (s *Server) handleAdminCreateKey(w http.ResponseWriter, r *http.Request) {
-	var req createKeyRequest
+type resetBeginResponse struct {
+	Email      string `json:"email"`
+	MKRecovery string `json:"mkRecovery"`
+	X25519Pub  string `json:"x25519Pub"`
+	Ed25519Pub string `json:"ed25519Pub"`
+}
+
+// handleResetBegin reads what a reset needs without consuming the token;
+// reset/complete still has to use it.
+func (s *Server) handleResetBegin(w http.ResponseWriter, r *http.Request) {
+	var req resetBeginRequest
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = requestUser(r).ID
-	}
-	if _, err := s.store.UserByID(req.UserID); err != nil {
-		s.writeStoreError(w, err, "user")
-		return
-	}
-	id, token, secretHash, err := auth.NewAPIKey()
+	raw, err := e2e.UnB64(req.Token)
 	if err != nil {
-		s.writeStoreError(w, err, "key")
+		writeError(w, http.StatusBadRequest, "invalid or expired token")
 		return
 	}
-	key, err := s.store.CreateAPIKey(id, req.UserID, req.Name, secretHash)
+	tok, err := s.store.PeekToken(hashToken(raw), "reset", s.clk.Now())
 	if err != nil {
-		s.writeStoreError(w, err, "key")
+		writeError(w, http.StatusBadRequest, "invalid or expired token")
 		return
 	}
-	s.log.Info("api key created", "key", key.ID, "user", req.UserID, "by", requestUser(r).Email)
-	writeJSON(w, http.StatusCreated, createKeyResponse{Key: key, Token: token})
+	u, err := s.store.UserByID(tok.UserID)
+	if err != nil {
+		s.writeStoreError(w, err, "account")
+		return
+	}
+	b, err := s.store.BundleFor(u.ID)
+	if err != nil {
+		s.writeStoreError(w, err, "bundle")
+		return
+	}
+	writeJSON(w, http.StatusOK, resetBeginResponse{
+		Email:      u.Email,
+		MKRecovery: e2e.B64(b.MKRecovery),
+		X25519Pub:  e2e.B64(b.X25519Pub),
+		Ed25519Pub: e2e.B64(b.Ed25519Pub),
+	})
 }
 
-func (s *Server) handleAdminListKeys(w http.ResponseWriter, r *http.Request) {
-	keys, err := s.store.ListAPIKeys()
-	if err != nil {
-		s.writeStoreError(w, err, "keys")
-		return
-	}
-	writeJSON(w, http.StatusOK, keys)
+// resetCompleteRequest covers both reset modes; a field only one of them
+// uses is simply absent from the other's body, which strict decoding allows.
+type resetCompleteRequest struct {
+	Token      string          `json:"token"`
+	Mode       string          `json:"mode"`
+	AuthKey    string          `json:"authKey"`
+	KDF        json.RawMessage `json:"kdf,omitempty"`
+	MKPassword string          `json:"mkPassword,omitempty"`
+	Proof      string          `json:"proof,omitempty"`
+	Bundle     *bundleWire     `json:"bundle,omitempty"`
 }
 
-func (s *Server) handleAdminRevokeKey(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.RevokeAPIKey(r.PathValue("id")); err != nil {
-		s.writeStoreError(w, err, "key")
+// resetProofBody is the body a reset proof signs over, exactly
+// {"v":1,"user","token"} from design/e2e-wire-formats.md; token is
+// hex(SHA-256(the reset token)), so the proof can't be replayed with another
+// link.
+type resetProofBody struct {
+	V     int    `json:"v"`
+	User  string `json:"user"`
+	Token string `json:"token"`
+}
+
+func (s *Server) handleResetComplete(w http.ResponseWriter, r *http.Request) {
+	var req resetCompleteRequest
+	if !readJSON(w, r, &req) {
 		return
 	}
+	raw, err := e2e.UnB64(req.Token)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid or expired token")
+		return
+	}
+	tokenHash := hashToken(raw)
+	tok, err := s.store.UseToken(tokenHash, "reset", s.clk.Now())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid or expired token")
+		return
+	}
+	u, err := s.store.UserByID(tok.UserID)
+	if err != nil {
+		s.writeStoreError(w, err, "account")
+		return
+	}
+	authKey, err := e2e.UnB64(req.AuthKey)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "malformed authKey")
+		return
+	}
+	authHash, err := auth.HashPassword(string(authKey))
+	if err != nil {
+		s.writeStoreError(w, err, "account")
+		return
+	}
+
+	switch req.Mode {
+	case "recovery":
+		s.handleResetRecovery(w, req, u, tokenHash, authHash)
+	case "new":
+		s.handleResetNew(w, req, u, authHash)
+	default:
+		writeError(w, http.StatusBadRequest, "unknown reset mode")
+		return
+	}
+}
+
+// handleResetRecovery replaces authKey, kdf, and mkPassword after verifying
+// the reset proof against the user's existing Ed25519 key. The key pairs,
+// the recovery wrap, and API keys are untouched.
+func (s *Server) handleResetRecovery(w http.ResponseWriter, req resetCompleteRequest, u *store.User, tokenHash, authHash string) {
+	if _, err := validateKDF(req.KDF); err != nil {
+		writeError(w, http.StatusBadRequest, "malformed key bundle")
+		return
+	}
+	mkPassword, err := e2e.UnB64(req.MKPassword)
+	if err != nil || validateSealedLen(mkPassword) != nil {
+		writeError(w, http.StatusBadRequest, "malformed key bundle")
+		return
+	}
+	proof, err := e2e.UnB64(req.Proof)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid proof")
+		return
+	}
+	b, err := s.store.BundleFor(u.ID)
+	if err != nil {
+		s.writeStoreError(w, err, "bundle")
+		return
+	}
+	body, err := json.Marshal(resetProofBody{V: 1, User: u.ID, Token: tokenHash})
+	if err != nil {
+		s.writeStoreError(w, err, "proof")
+		return
+	}
+	if !e2e.Verify(b.Ed25519Pub, "reset", body, proof) {
+		writeError(w, http.StatusBadRequest, "invalid proof")
+		return
+	}
+	if err := s.store.SetPassword(u.ID, authHash, string(req.KDF), mkPassword); err != nil {
+		s.writeStoreError(w, err, "account")
+		return
+	}
+	s.sendResetNotice(u)
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// handleResetNew archives the current bundle and every API key's wrapped MK,
+// revokes those keys, and stores a fresh bundle.
+func (s *Server) handleResetNew(w http.ResponseWriter, req resetCompleteRequest, u *store.User, authHash string) {
+	if req.Bundle == nil {
+		writeError(w, http.StatusBadRequest, "malformed key bundle")
+		return
+	}
+	bundle, err := decodeBundle(*req.Bundle)
+	if err != nil || validateBundle(bundle) != nil {
+		writeError(w, http.StatusBadRequest, "malformed key bundle")
+		return
+	}
+	if err := s.store.ResetAccount(u.ID, authHash, bundle, s.clk.Now()); err != nil {
+		s.writeStoreError(w, err, "account")
+		return
+	}
+	s.sendResetNotice(u)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

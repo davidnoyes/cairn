@@ -31,11 +31,17 @@ func NewLayout(root string) (Layout, error) {
 	return l, nil
 }
 
-func (l Layout) MetaDB() string      { return filepath.Join(l.Root, "cairn.db") }
-func (l Layout) SecretFile() string  { return filepath.Join(l.Root, "secret.key") }
-func (l Layout) ContentRoot() string { return filepath.Join(l.Root, "content") }
-func (l Layout) DBRoot() string      { return filepath.Join(l.Root, "dbs") }
-func (l Layout) TmpRoot() string     { return filepath.Join(l.Root, "tmp") }
+func (l Layout) MetaDB() string     { return filepath.Join(l.Root, "cairn.db") }
+func (l Layout) SecretFile() string { return filepath.Join(l.Root, "secret.key") }
+
+// PreloginSecretFile holds the server secret used to derive the fake salt
+// prelogin returns for an address with no verified account (see
+// e2e.PreloginSalt). It is persisted the same way as SecretFile so the fake
+// salt stays stable across restarts.
+func (l Layout) PreloginSecretFile() string { return filepath.Join(l.Root, "prelogin.key") }
+func (l Layout) ContentRoot() string        { return filepath.Join(l.Root, "content") }
+func (l Layout) DBRoot() string             { return filepath.Join(l.Root, "dbs") }
+func (l Layout) TmpRoot() string            { return filepath.Join(l.Root, "tmp") }
 
 func (l Layout) ContentDir(artifactID, contentDir string) string {
 	return filepath.Join(l.ContentRoot(), artifactID, contentDir)

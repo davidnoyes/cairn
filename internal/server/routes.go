@@ -9,24 +9,38 @@ func (s *Server) routes() {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	// Auth
+	// Auth: sign-up, verification, sign-in and reset are all unauthenticated.
+	mux.HandleFunc("POST /api/auth/signup", s.handleSignup)
+	mux.HandleFunc("POST /api/auth/verify", s.handleVerify)
+	mux.HandleFunc("POST /api/auth/prelogin", s.handlePrelogin)
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
-	mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
+	mux.HandleFunc("POST /api/auth/logout", s.requireSession(s.handleLogout))
+	mux.HandleFunc("POST /api/auth/forgot", s.handleForgot)
+	mux.HandleFunc("POST /api/auth/reset/begin", s.handleResetBegin)
+	mux.HandleFunc("POST /api/auth/reset/complete", s.handleResetComplete)
+
+	// Signed-in account
 	mux.HandleFunc("GET /api/me", s.requireAuth(s.handleMe))
+	mux.HandleFunc("GET /api/me/bundle", s.requireAuth(s.handleMeBundle))
+	mux.HandleFunc("PUT /api/me/password", s.requireSession(s.handleMePassword))
+	mux.HandleFunc("PUT /api/me/recovery", s.requireSession(s.handleMeRecovery))
+	mux.HandleFunc("GET /api/me/archives", s.requireAuth(s.handleMeArchives))
+
+	// API keys: the user's own only.
+	mux.HandleFunc("GET /api/keys", s.requireAuth(s.handleListKeys))
+	mux.HandleFunc("POST /api/keys", s.requireSession(s.handleCreateKey))
+	mux.HandleFunc("DELETE /api/keys/{id}", s.requireAuth(s.handleRevokeKey))
 
 	// User directory (any authenticated user)
 	mux.HandleFunc("GET /api/users", s.requireAuth(s.handleUsers))
 	mux.HandleFunc("GET /api/users/{id}", s.requireAuth(s.handleUserByID))
 
-	// Admin: users and API keys
+	// Admin: grant or remove a role, deactivate, or delete. No endpoint here
+	// sets a password, creates an account, or creates an API key for someone
+	// else.
 	mux.HandleFunc("GET /api/admin/users", s.requireAdmin(s.handleAdminListUsers))
-	mux.HandleFunc("POST /api/admin/users", s.requireAdmin(s.handleAdminCreateUser))
 	mux.HandleFunc("PATCH /api/admin/users/{id}", s.requireAdmin(s.handleAdminUpdateUser))
-	mux.HandleFunc("POST /api/admin/users/{id}/reset-password", s.requireAdmin(s.handleAdminResetPassword))
 	mux.HandleFunc("DELETE /api/admin/users/{id}", s.requireAdmin(s.handleAdminDeleteUser))
-	mux.HandleFunc("GET /api/admin/keys", s.requireAdmin(s.handleAdminListKeys))
-	mux.HandleFunc("POST /api/admin/keys", s.requireAdmin(s.handleAdminCreateKey))
-	mux.HandleFunc("DELETE /api/admin/keys/{id}", s.requireAdmin(s.handleAdminRevokeKey))
 
 	// Artifacts: reads follow the public/private flag, writes need auth.
 	// The {id} segment accepts an artifact id or a resource reference
@@ -56,10 +70,10 @@ func (s *Server) routes() {
 	mux.HandleFunc("PUT /api/artifacts/{id}/versions/{vid}/files/{path...}", s.requireAuth(s.withArtifact(s.handleFileUpload)))
 	mux.HandleFunc("DELETE /api/artifacts/{id}/versions/{vid}/files/{path...}", s.requireAuth(s.withArtifact(s.handleFileDelete)))
 
-	// Pages
+	// Pages. Account pages send the app CSP: scripts load only from files.
 	mux.HandleFunc("GET /", s.handleRoot)
-	mux.HandleFunc("GET /login", s.handleLoginPage)
-	mux.HandleFunc("GET /admin", s.handleAdminPage)
+	mux.HandleFunc("GET /login", withAppCSP(s.handleLoginPage))
+	mux.HandleFunc("GET /admin", withAppCSP(s.handleAdminPage))
 	mux.HandleFunc("GET /logout", s.handleLogoutPage)
 	mux.HandleFunc("GET /cairn.js", s.serveCairnJS)
 	mux.HandleFunc("GET /mermaid.js", s.serveMermaidJS)

@@ -25,6 +25,9 @@ func TestLayout(t *testing.T) {
 	if l.SecretFile() != filepath.Join(root, "secret.key") {
 		t.Errorf("SecretFile: %q", l.SecretFile())
 	}
+	if l.PreloginSecretFile() != filepath.Join(root, "prelogin.key") {
+		t.Errorf("PreloginSecretFile: %q", l.PreloginSecretFile())
+	}
 	if l.ContentDir("a1", "c1") != filepath.Join(root, "content", "a1", "c1") {
 		t.Errorf("ContentDir: %q", l.ContentDir("a1", "c1"))
 	}
