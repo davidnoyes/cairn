@@ -53,6 +53,9 @@ a web app:
   client remembers the newest keyring and membership record it has seen and
   refuses an older one, which narrows this to data the client has not seen
   before.
+- **An editor's approval grants the whole history.** When an editor
+  approves a team member, that person receives every epoch's `AK`, so they
+  can read every earlier version, not only the ones after they joined.
 - **Sign-in can reveal that an account exists, over time.** Prelogin answers
   an unknown address with a stable fake salt. A real account's salt changes
   when its password changes, and the fake one changes when someone signs up,
@@ -99,7 +102,7 @@ EK (random 256-bit estate key)
   └─ wrapped to the successor's X25519 public key, if the user nominated one
 
 AK (random 256-bit artifact key, one per artifact per epoch)
-  ├─ wrapped to each member's X25519 public key (owner included)
+  ├─ wrapped to each member's X25519 public key; the owner reaches it through EK
   ├─ carried after the # of a public link, never sent to the server
   ├─ derives linkToken, which the server stores as a hash
   ├─ derives fileKey, which addresses files as HMAC(fileKey, path)
@@ -306,6 +309,10 @@ members' clients check it and show "keys rotated" without a warning, because
 only the real user could have signed it. Use it after a leaked API key, a lost
 device, a leaked recovery code, or a successor release.
 
+Rotation also moves every artifact you own to a new epoch, unless you opt out,
+because whoever held your old keys could read the old epoch's `AK`. Owners of
+artifacts shared with you are asked whether to start a new epoch too.
+
 ## Ownership, sharing, and epochs
 
 New metadata:
@@ -391,15 +398,24 @@ public-link holder does. Signatures prove who wrote it:
   signs the new revision. Whoever writes a stored file or a metadata record
   signs that too.
 - Before rendering or writing, a client checks that each signer is the owner,
-  or an editor under the current signed membership record.
+  or an editor under the current signed membership record. While public
+  writes are on, any signed-in link holder may write the database and
+  records, so that data proves nothing about who wrote it.
 - A client remembers the highest epoch it has seen for each artifact, and
   never encrypts under an older one. The server cannot trick editors into
   writing under a key a removed member still holds.
 
 ### Epochs and revocation
 
-When the owner removes a member or makes a public artifact private, the
-client creates a new `AK` epoch and wraps it to the remaining members:
+The owner's client creates a new `AK` epoch and wraps it to the remaining
+members whenever someone who held the old `AK` should lose it:
+
+- The owner removes a member, or demotes an editor to viewer.
+- The owner makes a public artifact private.
+- The owner stops a team share while a team member holds a wrap.
+- The owner rotates their keys, unless they opt out.
+
+A new epoch works like this:
 
 1. The owner's client re-encrypts the latest version, its database, and its
    files under the new epoch. Earlier versions stay under their old keys,
@@ -423,8 +439,15 @@ fingerprint, and pins it in the owner's own encrypted keyring:
   person or on a call, as Signal does with safety numbers, then marks it
   verified.
 - **Changed.** When a pinned key changes, the client warns before sharing
-  again. A rotation that the old key signed shows as "keys rotated" instead.
-  A reset without the recovery code shows as a warning with its date.
+  again. A reset without the recovery code shows as a warning with its date.
+- **Rotated.** A rotation that the old key signed shows as **keys rotated**,
+  without a warning. It still drops a verified pin to unverified, shown as
+  **rotated, not re-verified**, because a stolen old key could have signed
+  it. Compare the new fingerprint again to restore the verified state.
+- **Forked.** The client remembers the last rotation it accepted for each
+  pin. Two different rotations with the same sequence number raise a hard
+  warning, because they mean someone other than the user signed with the old
+  key.
 
 This is what protects shares if an operator edits the database to take over
 an account. Recovery with the recovery code keeps the original key pairs, so

@@ -166,9 +166,25 @@ new. The keyring therefore carries a revision:
 - Each client keeps the highest `rev` it has seen for the account, in
   IndexedDB in the browser and in the configuration file for the command
   line, and refuses a keyring with a lower one.
-- `epochs` maps an artifact ID to the highest epoch seen. A client never
-  encrypts under an older epoch, and refuses a membership record older than
-  the one it has seen.
+- The server also stores a `rev` next to the sealed keyring. A client trusts
+  the `rev` inside the sealed keyring, and refuses a keyring whose inner and
+  outer `rev` differ. A new device has no stored `rev` to compare against, so
+  it accepts whatever keyring the server serves first.
+- `pins` maps a user ID to `{"fp", "state", "rotSeq", "rotHead"}`. `state` is
+  `unverified` or `verified`. `rotSeq` is the `seq` of the last rotation
+  record the client accepted for that user, and `rotHead` is `hex(SHA-256)`
+  of its body, or `0` and empty before any rotation. A rotation moves `fp`
+  to the new key and sets `state` to `unverified`.
+- A client that sees a rotation record with the stored `rotSeq` whose body
+  hashes to anything but `rotHead` has found a fork: two different rotations
+  with the same `seq`. It raises a hard warning and refuses to use the pin
+  until the person at the client accepts a key again.
+- `epochs` maps an artifact ID to `{"epoch", "seq", "head"}`: the highest
+  epoch seen, the `seq` of the latest membership record accepted, and `head`,
+  `hex(SHA-256)` of that record's body. A client never encrypts under an
+  older epoch. It refuses a membership chain shorter than the stored `seq`,
+  and a chain whose record at that `seq` hashes to anything but `head`,
+  because that is a fork.
 
 ## Blobs
 
@@ -259,10 +275,19 @@ The `signer` field is not signed, so a verifier never takes the signing key
 from it or from the user directory alone:
 
 - **The owner's key** comes from the verifier's own pin for the owner. On a
-  first visit the pin starts unverified, as the trust model describes.
+  first visit the pin starts unverified, as the trust model describes. The
+  latest membership record must verify under the owner's current key,
+  reached from the pin through the owner's rotation chain. An older record
+  verifies under the key its `ownerFp` names, which must be the pinned key
+  or a key in that chain.
 - **Anyone else's key** must hash to the `fp` listed for that user in the
-  current owner-signed membership record. `fp` is the full 32-byte
-  fingerprint in `hex`, never the 20-byte display form.
+  current owner-signed membership record, or be reached from that key by a
+  rotation chain that verifies. `fp` is the full 32-byte fingerprint in
+  `hex`, never the 20-byte display form. The owner updates a rotated
+  member's `fp` in a later record, when the owner's client next sees them.
+- **While `publicWrites` is on**, clients accept a database revision and a
+  `record` from any signer, because a signed-in link holder may write. Such
+  data carries no proof of who wrote it.
 
 A verifier checks the signature first, then parses the body, then checks that
 every field in the body matches the context it expected, such as the artifact
@@ -277,7 +302,8 @@ same way.
 
 | Purpose | Signed by | Body |
 | --- | --- | --- |
-| `membership` | The owner | `{"v":1,"artifact","epoch","owner","akCommit","members":[{"user","role","fp"}],"team","public","publicWrites","prev"}` |
+| `membership` | The owner | `{"v":1,"artifact","epoch","seq","owner","ownerFp","akCommit","members":[{"user","role","fp"}],"excluded":[user IDs],"team","public","publicWrites","prev","transfer","handover"}` |
+| `transfer` | The current owner | `{"v":1,"artifact","from","to","toFp","prev"}` |
 | `manifest` | Whoever pushed | `{"v":1,"artifact","version","epoch","files":[{"path","blob","size","sha256"}]}` |
 | `revision` | Whoever wrote the database | `{"v":1,"artifact","version","revision","epoch","sha256"}` |
 | `vouch` | The owner | `{"v":1,"artifact","version","manifest"}` |
@@ -289,11 +315,26 @@ same way.
 - In a membership record, `role` is `viewer` or `editor`, `team` is `none`,
   `viewer`, or `editor`, and `prev` is `hex(SHA-256)` of the previous
   record's body, or empty for the first. Members are sorted by user ID.
+- A membership record's `seq` is 1 for the first record and goes up by one
+  for each record after it. `ownerFp` is the fingerprint of the key that
+  signed the record. `excluded` lists users an owner removed, sorted by user
+  ID, and never overlaps `members`.
+- `transfer` is empty, or `hex(SHA-256)` of the body of the `transfer` offer
+  that the record accepts. `handover` is empty, or `admin` when the record
+  accepts an administrator's offer. At most one of the two is set, and only
+  in a record that changes the owner.
+- A `transfer` offer names the current owner as `from` and an editor as `to`.
+  `toFp` is the `fp` listed for that editor, and `prev` is `hex(SHA-256)` of
+  the latest membership record's body, so the offer is valid against that
+  record only.
 - In a manifest, `blob` is the blob ID the server stores the file under,
   `size` is the plaintext size, and `sha256` is `hex(SHA-256)` of the
   encrypted blob, so a viewer, who holds `AK`, cannot swap a file.
 - A membership record's `akCommit` is the commitment to the epoch's `AK`.
-  A client refuses an `AK` whose commitment does not match.
+  A client refuses an `AK` whose commitment does not match. The commitment
+  includes the epoch, so it cannot show that a new epoch's `AK` is fresh. A
+  client therefore also refuses a new epoch's `AK` that equals the `AK` of
+  any earlier epoch.
 - In a revision, `sha256` is `hex(SHA-256)` of the encrypted database blob.
 - A `record` covers each blob that no manifest or revision covers: a stored
   file, its `file-meta` record, and each `meta` record. `kind` and `name` are

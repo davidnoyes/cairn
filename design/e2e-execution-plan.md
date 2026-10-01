@@ -132,6 +132,8 @@ The checks with mutations:
 - The Argon2id parameter floor.
 - Signature and signer checks on versions, revisions, and membership records.
 - The highest-epoch check.
+- The membership chain checks: `seq`, `prev`, fork, exclusion, and owner
+  change.
 - Every row of the permission table.
 - `linkToken` comparison.
 - Content-origin token scope.
@@ -264,23 +266,44 @@ Integration tests written first:
   nothing written afterward.
 - A client refuses to encrypt under an epoch older than the highest it pinned.
 - A changed key blocks a silent re-share. A rotation signed by the old key
-  shows "keys rotated" instead.
+  shows "keys rotated" instead, and drops a verified pin to unverified. Two
+  different rotation records with the same `seq` raise a hard warning.
+- Rotating keys moves every artifact the user owns to a new epoch, and
+  `--keep-epochs` keeps them. Owners of artifacts shared with the user see
+  them as `rotated`.
 - Ownership transfer needs the owner's consent while the owner is active.
+- A removed member, or a team member a new epoch drops, is excluded:
+  `pending` omits them, approving them gets `409`, and the editor's client
+  refuses before it asks. Only an owner record that lists them again lets
+  them back in.
+- Demoting an editor needs the next epoch and puts their versions up for
+  review.
+- A client refuses a membership chain shorter than the `seq` in its keyring,
+  a fork at that `seq`, a broken `prev` link, an epoch that skips, and a
+  changed `akCommit` within an epoch.
+- A client refuses a new epoch whose `AK` equals an earlier epoch's.
+- A push, revision, or file write that declares an old epoch gets `409`.
 
 Steps, each test first:
 
 1. Ownership, members, wrapped keys, and estate-key wraps in the schema.
-2. The permission table as one function, tested row by row.
-3. Signed membership records and the highest-epoch check.
+2. The permission table as one function, tested row by row. The rows include
+   an approval refused with `409` while the record's `team` is `none`, and a
+   listed member whose key changed refused a write.
+3. Signed membership records, with `seq`, `ownerFp`, and `excluded`, and the
+   highest-epoch check.
 4. Pins and verification states in the user's encrypted keyring.
 5. Team shares with approval, and public links.
 6. Epochs and revocation, including the editor-removal review list.
 7. **Rotate keys.**
+8. The content-origin token's allowlist, tested with a token the test mints.
 
 Security regressions added: approval required for a new team member, and a
-key change never treated as a new member (H2); a viewer cannot wrap (H2);
-stale-epoch encryption refused (H6); link-derived tokens are public-scoped
-(H3).
+key change never treated as a new member (H2); a viewer cannot wrap (H2); an
+excluded user cannot be approved again (H2); stale-epoch encryption refused
+(H6); every route outside the content-origin token's allowlist answers `404`
+to it (H6); link-derived tokens are public-scoped (H3); an owner change with
+no valid offer and no administrator flag is refused by clients (L6).
 
 ## Milestone 4 — encrypted content and isolation
 
@@ -424,24 +447,24 @@ fix is removed.
 | Finding | Test | Milestone |
 | --- | --- | --- |
 | H1 separate content domain | Startup refuses a shared registrable domain; forged cross-site and form-encoded requests refused; a hostile artifact cannot reach the session | 2, 4 |
-| H2 key directory | New pins start unverified; team joiners need approval; viewers never wrap; nomination needs the successor's code | 3, 7 |
+| H2 key directory | New pins start unverified; team joiners need approval; viewers never wrap; excluded users cannot be approved again; nomination needs the successor's code | 3, 7 |
 | H3 shell phishing | Top navigation blocked; navigation messages validated; `safeNext` rejects `/\evil.com`; no password prompt over an artifact | 0, 4, 6 |
 | H4 app-origin rendering | Hostile names render as text everywhere; CSP and Trusted Types headers present | 2, 6 |
 | H5 successor veto | Refusal works after deactivation; deactivation during a request is shown | 7 |
-| H6 token scope and forgery | Content-origin token cannot share or publish; unsigned or wrongly signed versions refused; stale epoch refused | 3, 4, 5 |
+| H6 token scope and forgery | Content-origin token gets `404` from every route outside its allowlist; unsigned or wrongly signed versions refused; stale epoch refused; a rolled-back or forked membership chain refused; a reused `AK` refused | 3, 4, 5 |
 | H7 STREAM construction | Negative vectors for truncation, reordering, and moved blobs; no key and nonce reuse across rewrites | 1 |
 | M1 code-less reset | Archived wraps survive and restore | 2 |
 | M2 estate key | Successor cannot open shared artifacts; rotation required after release | 7 |
 | M3 stretching and sign-in | Parameter floor; fake prelogin; rate limits; timing for unknown users | 1, 2 |
 | M4 deploy integrity | Worker update headers; `cairn verify` detects a changed file; unsigned image refused | 4, 8 |
 | M5 import hygiene | No temporary files after an interrupt | 9 |
-| M6 key rotation | Rotation invalidates API keys, recovery code, and successor wrap | 3 |
+| M6 key rotation | Rotation invalidates API keys, recovery code, and successor wrap; it moves owned artifacts to a new epoch; a verified pin drops to unverified; a rotation fork raises a hard warning | 3 |
 | L1 keys in memory only | No content-origin storage writes | 4 |
 | L2 key in the address bar | Key removed; `linkToken` only in a header | 4 |
 | L3 emailed links | Links built from `--public-url` | 2 |
 | L4 database restore | Last 10 revisions kept and restorable | 5 |
 | L5 recovery code guidance | Sign-up asks for one group back | 6 |
-| L6 ownership transfer | Consent needed while the owner is active | 3 |
+| L6 ownership transfer | Consent needed while the owner is active; clients refuse an owner change with no valid owner-signed offer and no administrator flag | 3 |
 
 ## Dependencies and risks
 
