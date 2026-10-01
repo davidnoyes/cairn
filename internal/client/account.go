@@ -122,6 +122,9 @@ func generateAccount(email, password string) (authKey []byte, wire bundleWire, r
 // function. It returns the recovery code's display form, shown once.
 func (c *Client) Signup(email, name, password string) (recoveryDisplay string, err error) {
 	email = e2e.NormalizeEmail(email)
+	if err := CheckNewPassword(password, email, name); err != nil {
+		return "", err
+	}
 	authKey, wire, recoveryDisplay, err := generateAccount(email, password)
 	if err != nil {
 		return "", err
@@ -191,6 +194,9 @@ type LoginResult struct {
 // away. The full four-part key, including keySecret, is returned for the
 // caller to save; it never touches the wire.
 func (c *Client) Login(email, password string) (*LoginResult, error) {
+	if password == "" {
+		return nil, fmt.Errorf("password must not be empty")
+	}
 	email = e2e.NormalizeEmail(email)
 	var params e2e.Params
 	if err := c.doJSON("POST", "/api/auth/prelogin", map[string]string{"email": email}, &params); err != nil {
@@ -391,8 +397,16 @@ type resetProofBody struct {
 // keeping the account's key pairs. It proves control of MK by opening the
 // existing Ed25519 key that reset/begin returns sealed, and signing with it.
 func (c *Client) ResetRecovery(link, recoveryCode, newPassword string) error {
+	// Checked once before any network call, then again below with the
+	// account's email, which only reset/begin reveals.
+	if err := CheckNewPassword(newPassword); err != nil {
+		return err
+	}
 	info, token, err := c.resetBegin(link)
 	if err != nil {
+		return err
+	}
+	if err := CheckNewPassword(newPassword, info.Email); err != nil {
 		return err
 	}
 	code, err := e2e.ParseRecoveryCode(recoveryCode)
@@ -454,8 +468,16 @@ func (c *Client) ResetRecovery(link, recoveryCode, newPassword string) error {
 // after seeing the key-change warning. Returns the new recovery code's
 // display form.
 func (c *Client) ResetNew(link, newPassword string) (recoveryDisplay string, err error) {
+	// Checked once before any network call, then again below with the
+	// account's email, which only reset/begin reveals.
+	if err := CheckNewPassword(newPassword); err != nil {
+		return "", err
+	}
 	info, token, err := c.resetBegin(link)
 	if err != nil {
+		return "", err
+	}
+	if err := CheckNewPassword(newPassword, info.Email); err != nil {
 		return "", err
 	}
 	authKey, wire, recoveryDisplay, err := generateAccount(info.Email, newPassword)

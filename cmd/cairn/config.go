@@ -13,7 +13,8 @@ import (
 
 // cliConfig is stored at ~/.config/cairn/config.json after `cairn login`.
 // APIKey is the full four-part key (cairn_<keyid>_<authSecret>_<keySecret>);
-// only its first two parts ever go on the wire, as the bearer.
+// only the two-part bearer `cairn_<keyId>_<authSecret>` ever goes on the
+// wire; the keySecret never leaves this machine.
 type cliConfig struct {
 	Host   string `json:"host"`
 	Email  string `json:"email"`

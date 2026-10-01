@@ -2,8 +2,10 @@ package client
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -111,13 +113,22 @@ func TestLoginBeforeVerifyRefused(t *testing.T) {
 	}
 }
 
+// TestLoginWrongPassword drives the raw HTTP request the way Login's second
+// step does, so it proves the server itself refuses a wrong authKey (401)
+// rather than relying on the client failing to decrypt MK with the wrong kek
+// — which would pass even if the server's password check were disabled.
 func TestLoginWrongPassword(t *testing.T) {
 	host, m := newTestServer(t)
 	email, password := "ada@example.com", "correct horse battery staple"
 	signupVerify(t, host, m, email, password)
 
-	if _, err := New(host, "").Login(email, "wrong password"); err == nil {
-		t.Fatal("Login with the wrong password succeeded")
+	wrongAuthKey := make([]byte, 32) // all-zero: never matches the real stretched key
+	err := New(host, "").doJSON("POST", "/api/auth/login", map[string]any{
+		"email": email, "authKey": e2e.B64(wrongAuthKey), "client": "cli",
+	}, nil)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusUnauthorized {
+		t.Fatalf("login with the wrong authKey = %v, want a 401 APIError", err)
 	}
 }
 
@@ -328,9 +339,55 @@ func TestResetRecoveryWrongCodeRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	link := verifyLink(t, m, email)
-	err := New(host, "").ResetRecovery(link, "AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA", "new password")
+	err := New(host, "").ResetRecovery(link, "AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA", "a brand new password")
 	if err == nil {
 		t.Fatal("a wrong recovery code was accepted")
+	}
+}
+
+// unreachableHost never answers, so a test against it only passes if the
+// password check ran before any network call was attempted.
+const unreachableHost = "http://127.0.0.1:1"
+
+func TestSignupRejectsEmptyPassword(t *testing.T) {
+	if _, err := New(unreachableHost, "").Signup("ada@example.com", "Ada", ""); err == nil {
+		t.Fatal("Signup with an empty password succeeded")
+	}
+}
+
+func TestSignupRejectsWeakPassword(t *testing.T) {
+	if _, err := New(unreachableHost, "").Signup("ada@example.com", "Ada", "password1"); err == nil {
+		t.Fatal("Signup with a weak password succeeded")
+	}
+}
+
+func TestResetRecoveryRejectsEmptyPassword(t *testing.T) {
+	if err := New(unreachableHost, "").ResetRecovery("irrelevant", "AAAA", ""); err == nil {
+		t.Fatal("ResetRecovery with an empty password succeeded")
+	}
+}
+
+func TestResetRecoveryRejectsWeakPassword(t *testing.T) {
+	if err := New(unreachableHost, "").ResetRecovery("irrelevant", "AAAA", "password1"); err == nil {
+		t.Fatal("ResetRecovery with a weak password succeeded")
+	}
+}
+
+func TestResetNewRejectsEmptyPassword(t *testing.T) {
+	if _, err := New(unreachableHost, "").ResetNew("irrelevant", ""); err == nil {
+		t.Fatal("ResetNew with an empty password succeeded")
+	}
+}
+
+func TestResetNewRejectsWeakPassword(t *testing.T) {
+	if _, err := New(unreachableHost, "").ResetNew("irrelevant", "password1"); err == nil {
+		t.Fatal("ResetNew with a weak password succeeded")
+	}
+}
+
+func TestLoginRejectsEmptyPassword(t *testing.T) {
+	if _, err := New(unreachableHost, "").Login("ada@example.com", ""); err == nil {
+		t.Fatal("Login with an empty password succeeded")
 	}
 }
 
@@ -359,5 +416,41 @@ func TestLinkHost(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("LinkHost(%q) = %q, want %q", tc.link, got, tc.want)
 		}
+	}
+}
+
+// TestResetNewWeighsTheAccountEmail sets the new password to the account's own
+// email. It scores 3 or more on its own, so only the check reset makes once
+// reset/begin has returned the email can refuse it.
+func TestResetNewWeighsTheAccountEmail(t *testing.T) {
+	host, m := newTestServer(t)
+	email := "qzvx.kelmorth@example.com"
+	if err := CheckNewPassword(email); err != nil {
+		t.Fatalf("precondition: the email alone should pass, got %v", err)
+	}
+	signupVerify(t, host, m, email, "correct horse battery staple")
+	if err := New(host, "").Forgot(email); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(host, "").ResetNew(verifyLink(t, m, email), email); err == nil {
+		t.Fatal("ResetNew accepted the account's email as its new password")
+	}
+}
+
+func TestResetRecoveryWeighsTheAccountEmail(t *testing.T) {
+	host, m := newTestServer(t)
+	email := "qzvx.kelmorth@example.com"
+	recovery, err := New(host, "").Signup(email, "Q", "correct horse battery staple")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := New(host, "").ConfirmEmail(verifyLink(t, m, email)); err != nil {
+		t.Fatal(err)
+	}
+	if err := New(host, "").Forgot(email); err != nil {
+		t.Fatal(err)
+	}
+	if err := New(host, "").ResetRecovery(verifyLink(t, m, email), recovery, email); err == nil {
+		t.Fatal("ResetRecovery accepted the account's email as its new password")
 	}
 }

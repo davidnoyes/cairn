@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,20 +177,23 @@ func runLogin(args []string) error {
 
 func runLogout(args []string) error {
 	cfg := loadConfig()
-	var revokeErr error
-	if cfg.APIKey != "" {
-		if key, err := e2e.ParseAPIKey(cfg.APIKey); err == nil {
-			bearer, _ := apiKeyBearer(cfg.APIKey)
-			revokeErr = client.New(cfg.Host, bearer).Logout(key.KeyID)
+	key, err := e2e.ParseAPIKey(cfg.APIKey)
+	if err == nil {
+		bearer := "cairn_" + key.KeyID + "_" + key.AuthSecret
+		if err := client.New(cfg.Host, bearer).Logout(key.KeyID); err != nil {
+			var apiErr *client.APIError
+			// A 401 means the key was already invalid (revoked elsewhere, or
+			// expired); there's nothing left to revoke, so log out anyway.
+			// Any other failure leaves the key live, so keep the config.
+			if !(errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized) {
+				return fmt.Errorf("could not revoke key %s on %s: %w; you are still logged in", key.KeyID, cfg.Host, err)
+			}
 		}
 	}
 	if err := saveConfig(cliConfig{}); err != nil {
 		return err
 	}
 	fmt.Println("logged out")
-	if revokeErr != nil {
-		fmt.Fprintln(os.Stderr, "warning: could not revoke the device key on the server:", revokeErr)
-	}
 	return nil
 }
 
@@ -358,6 +363,14 @@ func keysRevoke(args []string) error {
 	}
 	if err := c.RevokeKey(id); err != nil {
 		return err
+	}
+	cfg := loadConfig()
+	if key, err := e2e.ParseAPIKey(cfg.APIKey); err == nil && key.KeyID == id {
+		if err := saveConfig(cliConfig{}); err != nil {
+			return err
+		}
+		fmt.Printf("revoked key %s; this was this device's login, so you are now logged out\n", id)
+		return nil
 	}
 	fmt.Printf("revoked key %s\n", id)
 	return nil

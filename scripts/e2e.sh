@@ -29,7 +29,7 @@ pass "built $BIN"
 echo "== serve"
 SERVER_LOG="$WORK/server.log"
 "$BIN" serve --addr ":$PORT" --data-dir "$WORK/data" \
-  --smtp-url log:// --admin-email admin@e2e.test --public-url "$HOST" \
+  --smtp-url log:// --admin-email admin@e2e.test --signup-domain e2e.test --public-url "$HOST" \
   >"$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 for i in $(seq 1 50); do
@@ -50,8 +50,9 @@ echo "e2e-password-1" | "$BIN" login --host "$HOST" --email admin@e2e.test --pas
 "$BIN" whoami | grep -q admin@e2e.test || fail "whoami"
 pass "CLI signup + confirm-email + login + whoami"
 
-# Headless use: the config file holds the full four-part API key; only its
-# first three parts (no keySecret) ever go on the wire as the bearer.
+# Headless use: the config file holds the full four-part API key; only the
+# two-part bearer `cairn_<keyId>_<authSecret>` ever goes on the wire; the
+# keySecret never leaves this machine.
 API_KEY=$(python3 -c "import json;print(json.load(open('$CAIRN_CONFIG'))['apiKey'])")
 BEARER=$(echo "$API_KEY" | cut -d'_' -f1-3)
 CAIRN_HOST="$HOST" CAIRN_API_KEY="$API_KEY" "$BIN" whoami | grep -q admin@e2e.test || fail "API key auth"
@@ -144,6 +145,36 @@ echo "== backup"
 "$BIN" backup --data-dir "$WORK/data" --out "$WORK/backup" >/dev/null
 [[ -f "$WORK/backup/cairn.db" ]] || fail "backup missing metadata db"
 pass "backup produced"
+
+echo "== keys + password reset"
+"$BIN" keys list | grep -q "(device)" || fail "keys list"
+pass "keys list shows the device key"
+
+# A second account, so resetting its password doesn't disturb admin@e2e.test's
+# session above.
+SIGNUP2_OUT="$WORK/signup2.txt"
+echo "reset-flow-strong-pw-1" | "$BIN" signup --host "$HOST" --email reset@e2e.test --password-stdin >"$SIGNUP2_OUT"
+RECOVERY_CODE=$(sed -n 's/^  \([A-Z2-7-]*\)$/\1/p' "$SIGNUP2_OUT")
+[[ -n "$RECOVERY_CODE" ]] || fail "no recovery code in signup output"
+VERIFY_LINK2=$(grep -oE "$HOST/verify#token=[A-Za-z0-9_-]+" "$SERVER_LOG" | tail -1)
+"$BIN" confirm-email "$VERIFY_LINK2" >/dev/null
+pass "second account signed up, with a saved recovery code"
+
+"$BIN" forgot --host "$HOST" --email reset@e2e.test >/dev/null
+RESET_LINK=$(grep -oE "$HOST/reset#token=[A-Za-z0-9_-]+" "$SERVER_LOG" | tail -1)
+[[ -n "$RESET_LINK" ]] || fail "no reset link in server log"
+echo "reset-flow-even-stronger-pw-2" | "$BIN" reset "$RESET_LINK" --recovery-code "$RECOVERY_CODE" --password-stdin >/dev/null
+pass "password reset via recovery code"
+
+echo "reset-flow-even-stronger-pw-2" | "$BIN" login --host "$HOST" --email reset@e2e.test --password-stdin >/dev/null
+"$BIN" whoami | grep -q reset@e2e.test || fail "login with the new password"
+pass "login with the reset password"
+
+"$BIN" logout >/dev/null
+if "$BIN" whoami >/dev/null 2>&1; then
+  fail "whoami succeeded after logout"
+fi
+pass "logout revokes the device key; whoami now fails"
 
 echo
 echo "all e2e checks passed"
