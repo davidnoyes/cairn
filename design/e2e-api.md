@@ -268,7 +268,9 @@ form-action 'self'; require-trusted-types-for 'script'
 
 Milestone 4 adds `frame-src` for the content domain. The pages do password
 stretching in a worker, keep unwrapped keys in IndexedDB as non-extractable
-`CryptoKey` objects, and clear IndexedDB at sign-out. The sign-up and reset
+`CryptoKey` objects, and clear IndexedDB at sign-out. Sign-out keeps the
+[keyring anchor](e2e-wire-formats.md#the-keyring) in `localStorage`, because
+it holds nothing secret and the next sign-in needs it. The sign-up and reset
 pages refuse a password that the vendored strength estimator scores below 3.
 
 ### Commands
@@ -281,7 +283,7 @@ which reads one line. Scripts and tests use it.
 | `cairn signup --host URL --email E [--name N]` | Generates keys, signs up, and prints the recovery code |
 | `cairn confirm-email LINK` | Follows a verification link |
 | `cairn login --host URL --email E` | Signs in, creates a device key, and saves it |
-| `cairn logout` | Revokes the device key and forgets it |
+| `cairn logout` | Revokes the device key and forgets it, but keeps the keyring anchor |
 | `cairn whoami` | Prints the user and their fingerprint |
 | `cairn forgot --host URL --email E` | Asks for a reset link |
 | `cairn reset LINK (--recovery-code CODE \| --no-recovery-code)` | Sets a new password; keeps the keys only with the code |
@@ -293,7 +295,8 @@ which reads one line. Scripts and tests use it.
 user's own artifacts become unreadable, and needs `--yes` when standard input
 is not a terminal.
 
-The config file stores the host, the email, and the full four-part API key.
+The config file stores the host, the email, the full four-part API key, and
+the keyring anchor for each account, which `cairn logout` keeps.
 `CAIRN_API_KEY` holds the same four-part string.
 
 ## Ownership and sharing
@@ -311,8 +314,8 @@ The server checks each request against these access levels:
 1. **Owner.** The caller is `artifacts.owner_id`.
 2. **Member.** The caller is listed in the latest membership record, as
    `editor` or `viewer`. A member whose current fingerprint differs from the
-   record's `fp` for them can read but not write, until the owner lists them
-   again under the new fingerprint.
+   record's `fp` for them, after a rotation or a reset, can read but not
+   write, until the owner lists them again under the new fingerprint.
 3. **Team member.** The record's `team` is not `none`, the caller holds a
    wrap for the current epoch, and the record does not list them. This is
    `viewer` access until the owner lists them. A team member without a wrap
@@ -346,6 +349,9 @@ works on an allowlist, and every other route under `/api/` refuses it with
 - Reads of its own artifact's versions, database, and files.
 - Writes to its own artifact's database and files, where the role allows
   them.
+- `GET /api/artifacts/{id}/membership` for its own artifact, and
+  `GET /api/users/{id}` for each user its latest record lists.
+- `GET /api/me`.
 
 Milestone 3 builds the allowlist check, and tests it with a token the test
 mints, so the list is fixed before milestone 4 issues real tokens.
@@ -370,13 +376,15 @@ only when all of these hold:
 - `members` is sorted by user ID, has no duplicates, and does not list the
   owner. Each role is `viewer` or `editor`, and `team` is `none`, `viewer`, or
   `editor`.
-- `excluded` is sorted by user ID, has no duplicates, and lists neither the
-  owner nor a member.
+- `excluded` is sorted by user ID and has no duplicates. No entry names the
+  owner, and no entry matches a member by user ID, fingerprint, or
+  normalized email.
 - For each member the previous record does not list, and each member whose
   `fp` differs from the previous record's, `fp` is the fingerprint of that
-  user's current keys. Such a member must be a verified, active user. The
-  server does not check `fp` for anyone else, so a member who rotates their
-  keys stays listed under the old `fp` until the owner updates it.
+  user's current keys. Such a member must be a verified, active user, and no
+  other user ID may share their fingerprint or normalized email. The server
+  does not check `fp` for anyone else, so a member who rotates their keys
+  stays listed under the old `fp` until the owner updates it.
 - `epoch` is either the current epoch or the next one.
 - `transfer` and `handover` are empty. Only an accepted transfer sets them.
 
@@ -391,12 +399,15 @@ a member, demote an editor, make a public artifact private, or change `team`
 to `none` while a team member holds a wrap. It is allowed at any other time.
 
 A next-epoch record must list or exclude every team member who holds a wrap.
-The owner's client lists them automatically, with the role that `team`
-grants, unless the owner chooses to drop them. Every user a record removes or
-drops goes into `excluded`, and stays there until an owner record lists them
-again. The server refuses a record that leaves a removed member or a team
-member out of both lists, and a record that drops a user from `excluded`
-without listing them.
+The owner's client lists, with the role that `team` grants, each one whose
+approval passes the checks in [Team approval](#team-approval), and asks the
+owner about the rest. Every user a record removes or drops goes into
+`excluded`, with their fingerprint and normalized email, and stays there
+until an owner record lists them again. The server refuses a record that
+leaves a removed member or a team member out of both lists, and a record that
+drops a user from `excluded` without listing them. The owner's client lists a
+user who matches an entry only when the owner shares with them by name, which
+drops the entry.
 
 Each change carries the wraps it needs, and the server refuses a change whose
 wraps do not match exactly:
@@ -430,10 +441,12 @@ them can land between the checks and an epoch change.
 Clients check every record again, and refuse the whole chain when any check
 fails:
 
-- Each record verifies under the owner's key, as
-  [wire formats](e2e-wire-formats.md#signatures) describes: the latest under
-  the owner's current key, and older ones under the key their `ownerFp`
-  names, which must be in the owner's rotation chain.
+- Each record verifies under the key of the owner it names, as
+  [wire formats](e2e-wire-formats.md#signatures) describes. That owner's
+  chain is anchored at the client's pin for the creator or the public link's
+  `o` for the first record, and at the `fp` the preceding record lists for
+  each later owner. The latest record verifies under the current owner's
+  current key.
 - Each `prev` is the hash of the record before it, and `seq` goes up by one.
 - Each `epoch` is the previous one or one more, and `akCommit` changes
   exactly when `epoch` does.
@@ -534,26 +547,36 @@ Each public record replaces both, and the server deletes both when the
 artifact becomes private. A public artifact that moves to a new epoch needs
 the new epoch's hash, so the old link stops working.
 
-A record that removes or demotes the user a transfer offer names closes the
-offer.
+Any new membership record closes an open offer, because it moves `prev`.
 
 The answer is `200 {"epoch"}`.
 
-`GET /api/artifacts/{id}/membership` returns:
+`GET /api/artifacts/{id}/membership` returns, in every scope:
 
 ```json
-{"records": [envelope, ...], "offers": {"64 hex": envelope}}
+{"records": [envelope, ...], "offers": {"64 hex": envelope},
+ "owners": {"64 hex": {"x25519", "ed25519"}},
+ "rotations": {"user ID": [envelope, ...]},
+ "successors": {"seq": envelope}}
 ```
 
-`offers` maps the `transfer` hash in each accepting record to the offer
-envelope it accepted. A link holder can read the records, because every
-holder of `AK` checks `akCommit`. A link holder may not be signed in, so
-cannot read the user directory. For link scope the answer adds
-`"keys": {"user ID": {"x25519", "ed25519"}}` for the owner and every listed
-editor, and `"rotations": [envelope, ...]`, the owner's rotation records, so
-older records verify. The client checks each editor's keys against the
-records' `fp` values. It pins the owner's keys on first use, as it would for
-any first visit.
+- `offers` maps the `transfer` hash in each accepting record to the offer
+  envelope it accepted.
+- `owners` holds the public keys behind every distinct `ownerFp` in the
+  chain, keyed by fingerprint. The client hashes each pair itself, and
+  ignores a pair that does not hash to its key.
+- `rotations` holds the rotation records, oldest first, of every owner the
+  chain names and every member the latest record lists.
+- `successors` maps the `seq` of each record whose `handover` is `admin` to
+  the previous owner's latest `successor` record, when there is one.
+
+A link holder can read the records, because every holder of `AK` checks
+`akCommit`. A link holder may not be signed in, so cannot read the user
+directory. For link scope the answer adds
+`"keys": {"user ID": {"x25519", "ed25519"}}` for every listed editor. The
+client checks each editor's keys against the records' `fp` values, and
+anchors the owner's chain at the link's `o`, never at keys the server
+serves.
 
 #### Keys
 
@@ -571,15 +594,15 @@ owner the estate copies, with an empty `wraps`:
 about:
 
 ```json
-[{"id", "name", "email", "x25519Pub", "ed25519Pub", "state"}]
+[{"id", "name", "email", "x25519Pub", "ed25519Pub", "state", "approval"}]
 ```
 
 - `new`: the record's `team` is not `none`, and this verified, active user
-  holds no wrap for the current epoch, is not listed, and is not excluded.
+  holds no wrap for the current epoch, is not listed, and matches no
+  `excluded` entry by user ID, fingerprint, or normalized email.
 - `approved`: shown to the owner only. The user holds a wrap for the current
-  epoch through an approval, and is not listed. The owner's client
-  lists them in its next membership record, with the role that `team`
-  grants, without asking.
+  epoch through an approval, and is not listed. `approval` is the signed
+  `approval` envelope stored with it, and is `null` in every other state.
 - `keyChanged`: the user holds a wrap, or is listed, under a fingerprint that
   is no longer theirs, and no rotation record the server holds explains the
   change.
@@ -592,14 +615,35 @@ The client checks `GET /api/users/{id}/rotations` itself in both changed
 states, and treats a `rotated` user whose chain does not verify as
 `keyChanged`. Excluded users never appear.
 
+The server's word that a user is `approved` is not enough. The owner's client
+lists an approved user in its next membership record, with the role that
+`team` grants, only when all four of these hold:
+
+1. The approval's signer is the owner, or an editor in the current record:
+   their key hashes to the listed `fp`, or a rotation chain links it to that
+   key.
+2. `artifact` is this artifact, and `epoch` is the current epoch.
+3. `user` is the user, and `fp` is the fingerprint of the keys the server
+   serves for them.
+4. The user matches no `excluded` entry by user ID, fingerprint, or
+   normalized email, and no other user ID in the directory shares their
+   fingerprint or normalized email.
+
+When any check fails, the client asks the owner about that user by name and
+fingerprint, as for a `new` user. It never lists them without asking.
+
 `POST /api/artifacts/{id}/keys` approves a `new` user, after the person at
 the client has confirmed their name and fingerprint:
 
 ```json
-{"user": "ID", "fp": "64 hex", "wraps": [{"epoch": 1, "wrapped": "b64"}]}
+{"user": "ID", "fp": "64 hex", "approval": envelope,
+ "wraps": [{"epoch": 1, "wrapped": "b64"}]}
 ```
 
-The server refuses the request with:
+`approval` is an `approval` envelope the caller signed. Before it asks, the
+caller's client makes the fourth check in the list, and refuses a user who
+fails it. The server stores `approval` with the wraps, and refuses the
+request with:
 
 - `403` from a viewer or a team member, because a viewer's client never wraps
   keys.
@@ -607,9 +651,13 @@ The server refuses the request with:
 - `409` when the user already holds a wrap or is listed. A changed key is
   never a new member. The owner shares again through a membership record that
   lists the new fingerprint.
-- `409` when the record excludes the user. The editor's client refuses to
-  approve an excluded user before it asks.
+- `409` when the user matches an `excluded` entry by user ID, fingerprint,
+  or normalized email, or another user ID shares their fingerprint or
+  normalized email.
 - `409` when `fp` is not the user's current fingerprint.
+- `400` when `approval` does not verify under the caller's current key, or
+  its `artifact`, `epoch`, `user`, or `fp` differs from the artifact, the
+  current epoch, or the request.
 - `400` unless `wraps` covers every epoch.
 
 The server runs these checks in one transaction that locks the artifact row.
@@ -660,12 +708,18 @@ manifest. `GET /api/artifacts/{id}/versions/{vid}` returns `pushedBy` and
 1. The owner offers ownership with `POST /api/artifacts/{id}/transfer`
    `{"to": "user ID", "offer": envelope}`. `offer` is a `transfer` envelope
    the owner signed, with `prev` set to the hash of the latest record's body.
-   The user must be a listed editor. A new offer replaces the old one.
+   The user must be a listed editor. While an offer is open, a new one also
+   carries `membership`, a same-epoch record that closes the old offer, and
+   its `prev` names that record.
 2. An administrator can make an offer with
    `POST /api/admin/artifacts/{id}/transfer` `{"to": "user ID"}`, only while
    the owner's account is deactivated. Otherwise the answer is `409`, because
-   an active owner must agree. The server emails the owner that an
-   administrator offered their artifact to someone else.
+   an active owner must agree. The user must be a listed editor, or the
+   owner's successor after the server has released the estate copy to them.
+   A successor who is not a member opens every epoch's `AK` from the
+   owner's estate copies, through the `EK` released to them. The server
+   emails the owner that an administrator offered their artifact to someone
+   else.
 3. The offered user accepts with `POST /api/artifacts/{id}/transfer/accept`:
    `{"membership", "wraps", "estate", "linkTokenHash"}`, as for a membership
    change.
@@ -684,7 +738,9 @@ administrator's offer. The server checks it as any other record, but under
 the new owner's key. Accept also re-checks, in one transaction that locks
 the artifact row:
 
-- The user is still a listed editor, and their `fp` still matches.
+- The user is still a listed editor, and their `fp` still matches. For an
+  administrator's offer to the released successor, the user is still the
+  owner's successor instead.
 - An owner's offer still names the latest record as `prev`. Any membership
   change since the offer makes it stale, and the owner offers again.
 - For an administrator's offer, the owner is still deactivated.
@@ -697,26 +753,53 @@ the new owner's `EK`. On success the server changes the owner, deletes the
 previous owner's estate copies and the new owner's wraps, closes the offer,
 and emails the previous owner.
 
-Clients accept a change of owner only when both hold:
+Clients accept a change of owner only when the record sets either
+`transfer` or `handover`, and the new owner's key hashes to the `fp` the
+immediately preceding record lists for them as `editor`. When `handover` is
+`admin` and the new owner is not listed, their key must instead hash to the
+fingerprint in the previous owner's verified successor record, described
+next. Without such a record, a client refuses the change.
 
-- The new owner's key hashes to the `fp` the immediately preceding record
-  lists for them as `editor`.
-- The record's `transfer` is the hash of an offer, from `offers`, that the
-  previous owner signed against that preceding record. Or the record's
-  `handover` is `admin`.
+When `transfer` is set, it must be the hash of an offer in `offers`, and the
+client checks that the offer:
 
-An administrator's handover is treated like a key change. The client shows
-this warning, and goes on only when the person at the client acknowledges
-it:
+- Verifies under the previous owner's key whose fingerprint is the preceding
+  record's `ownerFp`, reached through the previous owner's rotation chain.
+- Names this artifact as `artifact`, and the previous owner as `from`.
+- Names the new owner as `to`, and as `toFp` the `fp` the preceding record
+  lists for them, where they are an `editor`.
+- Has `prev` equal to the hash of the preceding record's body.
+
+When `handover` is `admin`, the change is silent only when the new owner is
+the previous owner's nominated successor. The client checks the record in
+`successors`: it verifies under the previous owner's key, reached through
+their rotation chain, its `user` is the previous owner, its `successor` is
+the new owner, its `successorFp` is the new owner's fingerprint, and its
+`action` is `nominate`. Successor records arrive in
+milestone 7, so until then every handover shows the notice. The client
+cannot tell whether the server withheld a later record that removed the
+nomination.
+
+Otherwise every member's client, on every device, shows this notice on the
+artifact each time it opens it:
 
 ```text
-ownership taken over by an administrator; the previous owner did not sign this
+ownership was handed over by an administrator on DATE
 ```
 
-The command line needs `--accept-new-owner`. Once the client stores a `seq`
-past that record, it does not ask again.
+`DATE` is the day the server recorded for the accepting record. The notice
+cannot be dismissed for good. A client refuses to write to the artifact until
+the person at the client acknowledges the handover, which the keyring records
+as `ack`. In the web app the person chooses **Don't ask again**; the command
+line needs `--accept-new-owner` once. Either one unblocks writing and nothing
+more, so the notice still shows. A link-scope visitor gets no prompt, and
+sees the same notice. There is no waiting period, because a deactivated owner
+cannot sign in to refuse.
 
-Either side withdraws or declines with `DELETE /api/artifacts/{id}/transfer`.
+The owner withdraws an offer with `DELETE /api/artifacts/{id}/transfer`
+`{"membership": envelope}`, a same-epoch record. It moves `prev`, so the old
+offer can never be accepted. The offered user declines with the same call and
+no body.
 
 `GET /api/admin/users/{id}/artifacts` returns
 `[{"id", "editors": [{"id", "name"}]}]`, so an administrator can choose an
@@ -733,8 +816,13 @@ stored `rev`. Otherwise the answer is `409 {"error", "rev"}`, so a second
 device reads again and merges instead of overwriting.
 
 The outer `rev` is only for this check. Clients trust the `rev` sealed inside
-the keyring, and refuse a keyring whose two values differ. A new device has
-no stored `rev` to compare against.
+the keyring, and refuse a keyring whose two values differ. They also keep the
+anchor that [wire formats](e2e-wire-formats.md#the-keyring) describes, and
+refuse a keyring older than it. Sign-out in the browser and `cairn logout`
+both keep the anchor. A new device has no anchor, so it has no rollback
+protection until it first reads the keyring.
+
+A keyring that fails to open is an error, never an empty keyring.
 
 #### Rotating keys
 
@@ -767,18 +855,27 @@ The server checks:
   than the stored `rev`.
 - `wraps` replaces every wrap the caller holds, one for one.
 - `records` holds one new head record for every artifact the caller owns,
-  signed by the new key, with `ownerFp` set to the new fingerprint. Each is
-  checked as a membership change, at either epoch. Its `wraps` and
-  `linkTokenHash` are the ones that change needs.
+  signed by the new key, with `ownerFp` set to the new fingerprint. Inside
+  the transaction, the server verifies each one under the bundle's new
+  Ed25519 key, not the stored one, and checks it as a membership change, at
+  either epoch. Its `wraps` and `linkTokenHash` are the ones that change
+  needs.
 - `estate` replaces every estate copy of every artifact the caller owns,
   sealed under the new `EK`, and adds the copy of each new epoch.
 
 In one transaction, which locks the caller's user row and every artifact row
 it touches, the server stores the new bundle and keyring, replaces the wraps
 and estate copies, adds the records, revokes every API key, deletes the
-successor's copy, and stores the rotation record. The token version
-increases, and the answer sets a new cookie. The client then shows the new
-recovery code.
+successor's copy, and stores the rotation record. It also closes every open
+transfer offer made by or to the caller, because the new head records move
+`prev` and the caller's fingerprint changes. The token version increases,
+and the answer sets a new cookie.
+
+The client then shows the new recovery code, and the new public link of
+every public artifact that moved to a new epoch, because each old link stops
+working. It also warns about every artifact transferred to or from the
+caller in the last 30 days, because whoever held the old key could have
+signed an offer or accepted one.
 
 Owners of artifacts shared with the rotating user see them as `rotated` in
 `pending`, and are asked whether to start a new epoch too.
@@ -810,20 +907,23 @@ address.
 | `cairn vouch ARTIFACT VERSION` | Vouches for a version |
 | `cairn transfer ARTIFACT USER` | Offers ownership to an editor |
 | `cairn transfer accept\|decline ARTIFACT` | Answers an offer |
-| `cairn rotate-keys [--keep-epochs]` | Rotates keys, moves every artifact the user owns to a new epoch, prints the new recovery code, and creates a new device key |
+| `cairn transfer withdraw ARTIFACT` | Withdraws an offer, through a new membership record |
+| `cairn rotate-keys [--keep-epochs]` | Rotates keys, moves every artifact the user owns to a new epoch, prints the new recovery code and each new public link, and creates a new device key |
 
 `cairn share` and `cairn approve` refuse a user whose pinned key changed. They
 print both fingerprints and the date of any reset, and need
 `--accept-new-key` to go ahead. A key change that a rotation chain explains
 shows as **keys rotated** and needs no flag, but a verified pin becomes
 unverified. A fork in a rotation chain always needs `--accept-new-key`.
-`cairn approve` also refuses an excluded user. Every command that encrypts
-refuses an epoch lower than the one in the keyring.
+`cairn approve` also refuses a user who matches an excluded entry, or who
+shares a fingerprint or email with another user ID. Every command that
+encrypts refuses an epoch lower than the one in the keyring.
 
-Every command that reads an artifact refuses an administrator's handover it
-has not seen before. It prints the warning from
-[Ownership transfer](#ownership-transfer), and needs `--accept-new-owner` to
-go ahead.
+Every command that opens an artifact after an administrator's handover
+prints the notice from [Ownership transfer](#ownership-transfer), unless the
+new owner is the previous owner's verified successor. Every command that
+writes to it refuses until the person acknowledges the handover with
+`--accept-new-owner`, once.
 
 `cairn rotate-keys` asks for the password, because it needs a session; every
 API key stops working when it finishes.

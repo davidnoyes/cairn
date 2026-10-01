@@ -133,7 +133,9 @@ The checks with mutations:
 - Signature and signer checks on versions, revisions, and membership records.
 - The highest-epoch check.
 - The membership chain checks: `seq`, `prev`, fork, exclusion, and owner
-  change.
+  change, including each field of a transfer offer.
+- The four approval checks before the owner's client lists a team member,
+  and the keyring anchor comparison.
 - Every row of the permission table.
 - `linkToken` comparison.
 - Content-origin token scope.
@@ -283,6 +285,39 @@ Integration tests written first:
   changed `akCommit` within an epoch.
 - A client refuses a new epoch whose `AK` equals an earlier epoch's.
 - A push, revision, or file write that declares an old epoch gets `409`.
+- A client refuses a keyring whose inner and outer `rev` differ, one with a
+  `rev` below its anchor, and one with the anchor's `rev` and a different
+  hash. The anchor survives signing out and back in, in the browser and
+  after `cairn logout`. A keyring that fails to open is an error, not an
+  empty keyring.
+- The owner's client lists an approved team member only when the signed
+  approval passes all four checks. It asks instead when the approval is
+  missing, fails to verify, comes from someone who is not an editor, names an
+  old epoch or another fingerprint, or names a user who matches an excluded
+  entry.
+- An excluded entry blocks approval and listing by user ID, by fingerprint,
+  and by normalized email. The server and both clients enforce it. So does a
+  directory in which two user IDs share an email or a fingerprint.
+- The server refuses a record that drops a user from `excluded` without
+  listing them.
+- Approving a user who is already listed, or whose key changed, gets `409`.
+- A `rotated` user whose rotation chain does not verify shows as
+  `keyChanged`.
+- A client refuses an owner change whose offer names a different editor, a
+  `toFp` other than the listed `fp`, a stale `prev`, or a signing key other
+  than the preceding record's `ownerFp`. A withdrawn or replaced offer moves
+  `prev`, so accepting it gets `409`.
+- An administrator's handover to anyone but a verified successor shows the
+  notice on every member's client and to link-scope visitors. Writing needs
+  `--accept-new-owner`, and the notice still shows afterward.
+- A link-scope client anchors the owner's chain at the link's `o`, refuses a
+  chain whose served owner keys do not reach it, and refuses an editor whose
+  served keys do not hash to the listed `fp`.
+- Records from before a change of owner verify under the previous owner's
+  chain, anchored at the `fp` the preceding record listed for them.
+- Rotation closes the user's open offers, warns about artifacts transferred
+  to or from them in the last 30 days, and prints each new public link. The
+  server refuses rotation head records that do not verify under the new key.
 
 Steps, each test first:
 
@@ -292,18 +327,24 @@ Steps, each test first:
    listed member whose key changed refused a write.
 3. Signed membership records, with `seq`, `ownerFp`, and `excluded`, and the
    highest-epoch check.
-4. Pins and verification states in the user's encrypted keyring.
-5. Team shares with approval, and public links.
+4. Pins and verification states in the user's encrypted keyring, and the
+   keyring anchor.
+5. Team shares with signed approvals, and public links that carry `o`.
 6. Epochs and revocation, including the editor-removal review list.
 7. **Rotate keys.**
-8. The content-origin token's allowlist, tested with a token the test mints.
+8. The content-origin token's allowlist, including `membership`, listed
+   members' public keys, and `/api/me`, tested with a token the test mints.
 
 Security regressions added: approval required for a new team member, and a
 key change never treated as a new member (H2); a viewer cannot wrap (H2); an
-excluded user cannot be approved again (H2); stale-epoch encryption refused
-(H6); every route outside the content-origin token's allowlist answers `404`
-to it (H6); link-derived tokens are public-scoped (H3); an owner change with
-no valid offer and no administrator flag is refused by clients (L6).
+excluded user cannot be approved again, under a new ID with the same email
+or key either (H2); an approval without a valid editor signature is never
+listed automatically (H2); stale-epoch encryption refused (H6); a keyring
+rolled back after sign-out refused (H6); every route outside the
+content-origin token's allowlist answers `404` to it (H6); link-derived
+tokens are public-scoped (H3); an owner change with no valid offer and no
+administrator flag is refused by clients, and an administrator's handover
+shows a notice (L6).
 
 ## Milestone 4 — encrypted content and isolation
 
@@ -447,11 +488,11 @@ fix is removed.
 | Finding | Test | Milestone |
 | --- | --- | --- |
 | H1 separate content domain | Startup refuses a shared registrable domain; forged cross-site and form-encoded requests refused; a hostile artifact cannot reach the session | 2, 4 |
-| H2 key directory | New pins start unverified; team joiners need approval; viewers never wrap; excluded users cannot be approved again; nomination needs the successor's code | 3, 7 |
+| H2 key directory | New pins start unverified; team joiners need approval; approvals carry an editor's signature; viewers never wrap; excluded users cannot be approved again, by ID, key, or email; nomination needs the successor's code | 3, 7 |
 | H3 shell phishing | Top navigation blocked; navigation messages validated; `safeNext` rejects `/\evil.com`; no password prompt over an artifact | 0, 4, 6 |
 | H4 app-origin rendering | Hostile names render as text everywhere; CSP and Trusted Types headers present | 2, 6 |
 | H5 successor veto | Refusal works after deactivation; deactivation during a request is shown | 7 |
-| H6 token scope and forgery | Content-origin token gets `404` from every route outside its allowlist; unsigned or wrongly signed versions refused; stale epoch refused; a rolled-back or forked membership chain refused; a reused `AK` refused | 3, 4, 5 |
+| H6 token scope and forgery | Content-origin token gets `404` from every route outside its allowlist; unsigned or wrongly signed versions refused; stale epoch refused; a rolled-back or forked membership chain refused; a keyring rolled back after sign-out refused; a public link's owner fingerprint anchors the chain; a reused `AK` refused | 3, 4, 5 |
 | H7 STREAM construction | Negative vectors for truncation, reordering, and moved blobs; no key and nonce reuse across rewrites | 1 |
 | M1 code-less reset | Archived wraps survive and restore | 2 |
 | M2 estate key | Successor cannot open shared artifacts; rotation required after release | 7 |
@@ -464,7 +505,7 @@ fix is removed.
 | L3 emailed links | Links built from `--public-url` | 2 |
 | L4 database restore | Last 10 revisions kept and restorable | 5 |
 | L5 recovery code guidance | Sign-up asks for one group back | 6 |
-| L6 ownership transfer | Consent needed while the owner is active; clients refuse an owner change with no valid owner-signed offer and no administrator flag | 3 |
+| L6 ownership transfer | Consent needed while the owner is active; clients refuse an owner change with no valid owner-signed offer and no administrator flag; every offer field is checked; a withdrawn offer cannot be accepted; an administrator's handover shows a notice that acknowledging does not hide | 3 |
 
 ## Dependencies and risks
 

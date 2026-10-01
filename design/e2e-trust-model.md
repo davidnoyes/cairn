@@ -33,6 +33,7 @@ hosted in GCP where every member can publish:
 | Another signed-in user who has no share | No |
 | A shared artifact written by another user, running in your browser | Only that artifact, which you can already read. It cannot share, publish, or delete it, even when you own it |
 | The successor the user nominated | Only the artifacts the user owns, 14 days after asking, unless the user refuses |
+| An administrator handing a deactivated owner's artifact to an editor | No. The editor could already read it, and unless the editor is the owner's nominated successor, every member sees a notice of the handover |
 | Anyone holding a public link | That one artifact only, until the owner makes it private |
 
 ### What the design does not protect
@@ -52,7 +53,19 @@ a web app:
   owner or editor, but they cannot prove that a copy is the latest one. Each
   client remembers the newest keyring and membership record it has seen and
   refuses an older one, which narrows this to data the client has not seen
-  before.
+  before. The keyring anchor that records this survives sign-out.
+- **A new device has no rollback protection.** A browser or a `cairn`
+  install that has never opened the account has no anchor, so it accepts
+  whatever keyring the server serves first, however old.
+- **The server can freeze a member on an old epoch.** It can keep serving a
+  member an old membership record, so that member's client keeps encrypting
+  under the old epoch. Until the client sees the new epoch, a removed user can
+  read that member's new writes. The server's own epoch check does not help,
+  because the server is the one skipping it.
+- **A leaked old key can sign a fake rotation.** While someone holds a user's
+  old key, a client that has not yet seen the user's real rotation can be
+  shown a rotation to a key of the attacker's choosing. A client that has
+  seen the real one raises the fork warning instead.
 - **An editor's approval grants the whole history.** When an editor
   approves a team member, that person receives every epoch's `AK`, so they
   can read every earlier version, not only the ones after they joined.
@@ -65,7 +78,10 @@ a web app:
   person directly, and a later change raises a warning.
 - **A team share trusts the team roster the server shows.** A new member
   receives the key only when an owner or editor approves them by name, so a
-  fake account needs someone to approve it.
+  fake account needs someone to approve it. The approver signs the approval,
+  and the owner's client adds an approved member to the record only when
+  that signature checks out, so the server cannot claim an approval nobody
+  made.
 - **A public link is the key.** Anyone who holds it can read the artifact,
   including people outside the company it is forwarded to. A link pasted into
   a chat app is stored by that app, so the app's administrators can read the
@@ -78,6 +94,11 @@ a web app:
   who holds a copy of the database or a backup can skip it, because the
   wrapped estate key is already in that copy. The user chose that one person,
   and can remove them at any time.
+- **The server can hide a successor's removal.** When an administrator hands
+  an artifact to a successor, clients check the user's signed nomination, but
+  they cannot tell whether the server withheld a later record that removed
+  it. A withheld removal makes the handover silent when it should show the
+  administrator's notice.
 - **Losing both the password and the recovery code loses the user's private
   work.** This is the price of no administrator recovery, and the sign-up
   screen says so.
@@ -179,7 +200,10 @@ The server never sees the password or anything it could derive `kek` from.
    password again, and only on a full-page app screen, never over an
    artifact. An artifact that draws a password prompt is therefore always a
    fake.
-5. Signing out clears IndexedDB.
+5. Signing out clears IndexedDB. It keeps the keyring anchor, a revision
+   number and a hash that hold nothing secret, in `localStorage`, so the next
+   sign-in on that browser still refuses an older keyring. `cairn logout`
+   keeps the anchor in its config file the same way.
 
 Because the server can no longer see the password, the client enforces its
 strength with a vendored estimator, such as zxcvbn, requiring a score of 3 or
@@ -312,6 +336,9 @@ device, a leaked recovery code, or a successor release.
 Rotation also moves every artifact you own to a new epoch, unless you opt out,
 because whoever held your old keys could read the old epoch's `AK`. Owners of
 artifacts shared with you are asked whether to start a new epoch too.
+Rotation closes any ownership offer made by or to you. The client shows the
+new link of each public artifact it moved, and lists the artifacts
+transferred to or from you in the last 30 days, for you to check.
 
 ## Ownership, sharing, and epochs
 
@@ -343,6 +370,9 @@ Every artifact has three levels of access:
   key changed is never treated as a new member.
 - **Public** gives the artifact a public link, `/shared/<id>#<AK>`. Browsers
   never send the part after the `#`, so the server never sees the key. The
+  link also carries the first owner's fingerprint, so a visitor's client
+  checks the owner's signatures against it, not against keys the server
+  serves. The
   client also sends the server a hash of `linkToken`. A visitor presents
   `linkToken`, derived from the key in the link, and the server serves
   ciphertext only when it matches. Making the artifact private deletes the
@@ -397,6 +427,8 @@ public-link holder does. Signatures prove who wrote it:
 - Whoever pushes a version signs its manifest. Whoever writes the database
   signs the new revision. Whoever writes a stored file or a metadata record
   signs that too.
+- An owner or editor who approves a team member signs the approval. The
+  owner's client lists that member only when the signature checks out.
 - Before rendering or writing, a client checks that each signer is the owner,
   or an editor under the current signed membership record. While public
   writes are on, any signed-in link holder may write the database and
@@ -461,10 +493,19 @@ without the recovery code.
 
 - **Shared work survives.** Everyone an artifact was shared with already holds
   its key, and a departure takes nothing from them.
-- **Ownership transfer.** An administrator can make an existing editor the
-  owner once the owner's account is deactivated. While the owner is active,
-  the owner must agree. The editor already holds `AK`, so this changes a
+- **Ownership transfer.** While the owner is active, the owner must agree,
+  by signing an offer that names the editor and the latest membership
+  record. Withdrawing the offer writes a new record, so the old offer can
+  never be accepted. The editor already holds `AK`, so a transfer changes a
   record without granting new access.
+- **Handover by an administrator.** An administrator can make an existing
+  editor the owner once the owner's account is deactivated. The handover is
+  silent only when the editor is the successor the owner nominated in a
+  record they signed. Otherwise every member's client shows a notice that an
+  administrator handed the artifact over. It shows on every device, every
+  time the artifact opens.
+  Acknowledging it lets a member write again, but the notice stays. There is
+  no waiting period, because a deactivated owner cannot sign in to refuse.
 - **Private work needs a successor.** Without one, it is unrecoverable, and
   the administrator can delete it.
 
@@ -490,7 +531,8 @@ or anything the user creates after rotating their keys.
    during a pending request is recorded and shown to the user on that page.
 4. After 14 days without a refusal, the server releases the wrapped `EK` to
    the successor, whose client unwraps it and can read every artifact the user
-   owns. An administrator can then transfer ownership to the successor. If the
+   owns. An administrator can then transfer ownership to the successor,
+   even when the successor is not a member of the artifact. If the
    user signs in again, the client makes them rotate their keys.
 
 The user can change or remove their successor at any time; removal deletes the
