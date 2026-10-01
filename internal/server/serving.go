@@ -117,6 +117,14 @@ func (s *Server) serveVersionFile(w http.ResponseWriter, r *http.Request, a *sto
 			return
 		}
 	}
+	// mermaid.js is likewise always available so artifacts can render
+	// ```mermaid fences with a relative <script src="./mermaid.js">.
+	if clean == "mermaid.js" {
+		if _, err := os.Stat(filepath.Join(root, "mermaid.js")); err != nil {
+			s.serveMermaidJS(w, r)
+			return
+		}
+	}
 	target := filepath.Join(root, filepath.FromSlash(clean))
 	st, err := os.Stat(target)
 	if err == nil && st.IsDir() {
@@ -280,6 +288,22 @@ func (s *Server) serveCairnJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(web.CairnJS)
+}
+
+// serveMermaidJS serves the vendored Mermaid bundle + auto-render bootstrap
+// (see web.MermaidJS). Unlike cairn.js it's versioned with the binary rather
+// than the session, so it can be cached.
+func (s *Server) serveMermaidJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Write(web.MermaidJS)
+}
+
+// serveShellJS serves the shared shell's link-handling and Mermaid-loading script.
+func (s *Server) serveShellJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(web.ShellJS)
 }
 
 // templates parses the embedded HTML templates once.

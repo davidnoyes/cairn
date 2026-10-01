@@ -143,6 +143,22 @@ SQLite (sql.js/WebAssembly) persisted in browser storage; `cairn.me()` returns
 for offline use; fully offline setups can drop `sql-wasm.js`/`sql-wasm.wasm`
 next to `index.html`. See `examples/guestbook`.
 
+**Mermaid diagrams.** A `mermaid` code fence rendered to HTML by pandoc
+(`<pre class="mermaid"><code>...</code></pre>`) or a Markdown renderer using a
+`language-mermaid` code class renders as a diagram automatically — no script
+tag needed in the shell view (`/shared/{id}`), which injects `/mermaid.js` for
+you; full-screen artifacts (`/artifacts/{id}/{vid}/`) that want the same
+outside the shell can add `<script src="./mermaid.js"></script>` themselves.
+Mermaid is vendored into the binary, so this works fully offline. Each
+diagram picks Mermaid's dark or light theme from the background it sits on —
+its own, else the nearest ancestor's, else the page's `color-scheme` and the
+viewer's OS setting. A gradient counts as the average of its colors; a
+background image is not read. To force a theme, start the diagram with
+`%%{init: {'theme': 'forest'}}%%`. Diagrams must be in the page when it
+finishes loading: an app that adds one later (after fetching its content, for
+example) should include `./mermaid.js` itself and call `mermaid.run()` once
+the diagram is in place.
+
 More examples in [`examples/`](examples/): [`poll`](examples/poll/) — a
 multi-file artifact (CSS, JS, SVG assets, a fetched `config.json`) —
 [`drive`](examples/drive/) — a shared file drive built entirely on the

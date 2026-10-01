@@ -145,8 +145,9 @@ func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 }
 
 // safeNext validates a ?next= redirect target: relative paths only.
+// Browsers read a backslash as a slash, so "/\evil.com" is "//evil.com".
 func safeNext(next string) string {
-	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") {
+	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.Contains(next, `\`) {
 		return "/"
 	}
 	if u, err := url.Parse(next); err != nil || u.Host != "" || u.Scheme != "" {
