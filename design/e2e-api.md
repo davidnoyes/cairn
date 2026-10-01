@@ -740,7 +740,8 @@ longer an editor.
 
 `GET /api/artifacts/{id}/review` lists versions whose pusher is neither the
 owner nor a listed editor, and that have no vouch:
-`[{"id", "seq", "pushedBy", "createdAt"}]`.
+`[{"id", "seq", "pushedBy", "createdAt"}]`. A version whose pusher's account
+was deleted is listed too, with `pushedBy` set to `null`.
 
 `pushedBy` is a convenience. The owner's client builds its own review list
 from the signers of the version manifests, and uses the server's list only

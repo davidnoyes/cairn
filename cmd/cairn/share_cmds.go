@@ -309,12 +309,10 @@ func runReview(args []string) error {
 	if err != nil {
 		return explainRefusal(c, err)
 	}
+	// Emails only label the list: without the directory it shows user IDs.
 	emails := map[string]string{}
 	if len(list) > 0 {
-		dir, err := c.Directory()
-		if err != nil {
-			return err
-		}
+		dir, _ := c.Directory()
 		for _, u := range dir {
 			emails[u.ID] = u.Email
 		}
@@ -334,7 +332,11 @@ func runReview(args []string) error {
 		fmt.Printf("no versions on %s need review\n", a.Name)
 		return nil
 	}
-	fmt.Printf("%d versions on %s need review: their pushers are no longer editors\n", len(list), a.Name)
+	if len(list) == 1 {
+		fmt.Printf("1 version on %s needs review: its pusher is no longer an editor\n", a.Name)
+	} else {
+		fmt.Printf("%d versions on %s need review: their pushers are no longer editors\n", len(list), a.Name)
+	}
 	for _, v := range list {
 		who := emails[v.PushedBy]
 		if who == "" {

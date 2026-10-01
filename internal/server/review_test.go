@@ -124,14 +124,33 @@ func TestReviewListsOnlyUnvouchedVersionsOfNonEditors(t *testing.T) {
 	}
 }
 
-func TestReviewNeverListsAVersionWithNoPusher(t *testing.T) {
+// A deleted account's versions have no pusher, so nobody vouches for them
+// but the owner.
+func TestReviewListsAVersionWhosePusherWasDeleted(t *testing.T) {
 	w := newReviewWorld(t)
+	// With an editor still listed, which a NULL pusher compares against.
 	if err := w.s.store.DeleteUser(w.removed.id); err != nil {
 		t.Fatal(err)
 	}
-	if got := reviewOf(t, w.owner.testClient, w.o); len(got) != 0 {
-		t.Errorf("review = %+v, want none for a deleted pusher", got)
+	got := reviewOf(t, w.owner.testClient, w.o)
+	if len(got) != 1 || got[0].ID != w.byRemoved || got[0].PushedBy != nil {
+		t.Fatalf("review = %+v, want the deleted pusher's version with no pusher", got)
 	}
+	// A deleted editor's versions are listed too.
+	if err := w.s.store.DeleteUser(w.editor.id); err != nil {
+		t.Fatal(err)
+	}
+	got = reviewOf(t, w.owner.testClient, w.o)
+	if len(got) != 2 || got[0].ID != w.byEditor || got[1].ID != w.byRemoved || got[0].PushedBy != nil || got[1].PushedBy != nil {
+		t.Errorf("review = %+v, want both deleted pushers' versions with no pusher", got)
+	}
+}
+
+func TestReviewAndVouchRefuseALinkHolder(t *testing.T) {
+	w := newReviewWorld(t)
+	anon := anonWithLink(t, w.base, w.o.makePublic())
+	wantStatus(t, anon, "GET", "/api/artifacts/"+w.o.id+"/review", nil, http.StatusForbidden)
+	wantStatus(t, anon, "PUT", w.o.vouchPath(w.byRemoved), map[string]any{"vouch": w.o.vouchBy(w.owner, w.byRemoved)}, http.StatusForbidden)
 }
 
 func TestReviewAndVouchAreOwnerOnly(t *testing.T) {

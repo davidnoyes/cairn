@@ -313,7 +313,7 @@ internal/server/review.go	if env.Signer != owner.ID {	if false {	go test ./inter
 internal/server/review.go	e2e.OpenEnvelope(env, owner.Ed25519Pub, "vouch", &body)	e2e.OpenEnvelope(env, owner.Ed25519Pub, "approval", &body)	go test ./internal/server -run 'TestVouchRefusals|TestVouchIsStored'
 internal/server/routes.go	s.artifactRoute(access.ReviewVersions, s.handleVouch)	s.artifactRoute(access.ReadContent, s.handleVouch)	go test ./internal/server -run 'TestReviewAndVouchAreOwnerOnly'
 internal/server/routes.go	s.artifactRoute(access.ReviewVersions, s.handleReview)	s.artifactRoute(access.ReadContent, s.handleReview)	go test ./internal/server -run 'TestReviewAndVouchAreOwnerOnly'
-internal/store/sharing.go	AND pushed_by IS NOT (SELECT owner_id FROM artifacts WHERE id = ?)	AND ? IS NOT NULL	go test ./internal/server -run 'TestReviewListsOnly'
+internal/store/sharing.go	pushed_by IS NOT (SELECT owner_id FROM artifacts WHERE id = ?)	? IS NOT NULL	go test ./internal/server -run 'TestReviewListsOnly'
 internal/store/sharing.go	FROM artifact_members WHERE artifact_id = ? AND role = 'editor')	FROM artifact_members WHERE artifact_id = ? AND role = 'zzz')	go test ./internal/server -run 'TestReviewListsOnly'
 internal/store/sharing.go	AND id NOT IN (SELECT version_id FROM version_vouches)	AND id NOT IN (SELECT version_id FROM version_vouches WHERE 0)	go test ./internal/server -run 'TestReviewListsOnly'
 internal/store/migrations/005_vouches.sql	version_id  TEXT PRIMARY KEY REFERENCES versions(id) ON DELETE CASCADE,	version_id  TEXT PRIMARY KEY REFERENCES versions(id),	go test ./internal/server -run 'TestDeletingAVersionLeavesNoVouch'
@@ -328,3 +328,10 @@ internal/store/sharing.go	s.locks[id] = l	_ = id	go test ./internal/store -run T
 internal/store/sharing.go	if epoch != declared {	if false {	go test ./internal/store -run TestUnderEpoch
 internal/store/artifacts.go	if !exists {	if false {	go test ./internal/store -run TestCreateVersionOnAMissingArtifactIsNotFound
 internal/client/client.go	&& strings.Contains(apiErr.Message, "moved to a new epoch")	&& true	go test ./internal/client -run TestPushKeepsAnotherConflict
+
+# Review and epoch writes: QA fixes (deleted pushers, reader queries, header twice, CLI output)
+internal/store/sharing.go	WHERE artifact_id = ? AND (pushed_by IS NULL	WHERE artifact_id = ? AND (0	go test ./internal/server -run TestReviewListsAVersionWhosePusherWasDeleted
+internal/server/handlers_db.go	declared = 0	_ = 0	go test ./internal/server -run TestStaleEpochOnAQueryHoldsOnlyWriters
+internal/server/epoch.go	len(vals) > 1 || err != nil	err != nil	go test ./internal/server -run TestDeclaredEpochTwiceIs400
+cmd/cairn/share_cmds.go	dir, _ := c.Directory()	dir, err := c.Directory(); if err != nil { return err }	go test ./cmd/cairn -run TestReviewCommandOneEntryWithoutTheDirectory
+cmd/cairn/share_cmds.go	if len(list) == 1 {	if false {	go test ./cmd/cairn -run TestReviewCommandOneEntryWithoutTheDirectory

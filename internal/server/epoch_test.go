@@ -93,7 +93,7 @@ func TestDeclaredEpoch(t *testing.T) {
 					t.Errorf("declared %s: %d %s, want 409 naming a new epoch", stale, code, body)
 				}
 			}
-			for _, bad := range []string{"0", "01", "-1", "x", "", "+2", "1.0", "99999999999999999999"} {
+			for _, bad := range []string{"0", "01", "-1", "x", "", "+2", "1.0", "2147483648", "99999999999999999999"} {
 				if code, body := write(str(bad)); code != http.StatusBadRequest {
 					t.Errorf("declared %q: %d %s, want 400", bad, code, body)
 				}
@@ -133,5 +133,53 @@ func TestStaleDeclaredEpochWritesNothing(t *testing.T) {
 		"application/json", []byte(`{"sql":"SELECT name FROM sqlite_master"}`), nil)
 	if code != http.StatusOK || strings.Contains(body, `"t"`) {
 		t.Errorf("database after refused writes: %d %s, want no table t", code, body)
+	}
+}
+
+func TestDeclaredEpochTwiceIs400(t *testing.T) {
+	s, ts := testServer(t)
+	a := seedKeyedAccount(t, s, ts.URL, "a@example.com")
+	o := newArtifact(t, a, "epochs")
+	vid := pushVersion(t, a.testClient, o.id)
+	req, err := http.NewRequest("POST", ts.URL+"/api/artifacts/"+o.id+"/versions/"+vid+"/db/query",
+		strings.NewReader(`{"sql":"CREATE TABLE t (n INTEGER)"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("X-Cairn-Epoch", "1")
+	req.Header.Add("X-Cairn-Epoch", "1")
+	a.setHeaders(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("two epoch headers: %d, want 400", resp.StatusCode)
+	}
+}
+
+// A query is not classified as a read or a write, so a caller who may not
+// write is not held to the epoch they declare, and one who may write is.
+func TestStaleEpochOnAQueryHoldsOnlyWriters(t *testing.T) {
+	s, ts := testServer(t)
+	a := seedKeyedAccount(t, s, ts.URL, "a@example.com")
+	b := seedKeyedAccount(t, s, ts.URL, "b@example.com")
+	o := newArtifact(t, a, "epochs")
+	o.share("viewer", b)
+	o.apply(o.nextEpoch())
+	anon := anonWithLink(t, ts.URL, o.makePublic())
+	vid := pushVersion(t, a.testClient, o.id)
+	stale := str(fmt.Sprint(o.latest.Epoch - 1))
+	path := "/api/artifacts/" + o.id + "/versions/" + vid + "/db/query"
+	query := []byte(`{"sql":"SELECT 1"}`)
+	for name, c := range map[string]*testClient{"viewer": b.testClient, "link holder": anon} {
+		if code, body := epochReq(t, c, "POST", path, "application/json", query, stale); code != http.StatusOK {
+			t.Errorf("%s with a stale epoch: %d %s, want 200", name, code, body)
+		}
+	}
+	if code, body := epochReq(t, a.testClient, "POST", path, "application/json", query, stale); code != http.StatusConflict {
+		t.Errorf("owner with a stale epoch: %d %s, want 409", code, body)
 	}
 }

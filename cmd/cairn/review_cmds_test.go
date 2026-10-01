@@ -15,7 +15,8 @@ import (
 
 // reviewProxy forwards to host and answers GET /api/artifacts/{id}/review
 // with entries: nobody can be made a removed editor through the CLI yet.
-func reviewProxy(t *testing.T, host string, entries []map[string]any) string {
+// With failDirectory, the user directory answers 500.
+func reviewProxy(t *testing.T, host string, entries []map[string]any, failDirectory ...bool) string {
 	t.Helper()
 	target, err := url.Parse(host)
 	if err != nil {
@@ -23,6 +24,10 @@ func reviewProxy(t *testing.T, host string, entries []map[string]any) string {
 	}
 	p := httputil.NewSingleHostReverseProxy(target)
 	p.ModifyResponse = func(resp *http.Response) error {
+		if len(failDirectory) > 0 && failDirectory[0] && resp.Request.Method == "GET" && resp.Request.URL.Path == "/api/users" {
+			resp.StatusCode = http.StatusInternalServerError
+			return nil
+		}
 		if resp.Request.Method != "GET" || !strings.HasSuffix(resp.Request.URL.Path, "/review") {
 			return nil
 		}
@@ -126,5 +131,29 @@ func TestVouchCommand(t *testing.T) {
 	}
 	if _, err := runQuiet(t, runVouch, artifact, "no-such-version"); err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("vouch for a missing version: %v, want not found", err)
+	}
+}
+
+// One entry reads in the singular, and an unreachable directory shows user
+// IDs rather than failing the list.
+func TestReviewCommandOneEntryWithoutTheDirectory(t *testing.T) {
+	host, _, artifact := shareSetup(t)
+	if _, err := runQuiet(t, runShare, artifact, "bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	bob := membersByEmail(t, artifact)["bob@example.com"].User
+	proxy := reviewProxy(t, host, []map[string]any{
+		{"id": "v-bob", "seq": 3, "pushedBy": bob, "createdAt": "2026-03-04T05:06:07Z"},
+	}, true)
+	cliLogin(t, proxy, "ada@example.com", sharePassword)
+
+	out, err := runQuiet(t, runReview, artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"1 version on shared needs review: its pusher is no longer an editor", "v-bob", bob} {
+		if !strings.Contains(out, want) {
+			t.Errorf("cairn review printed %q, missing %q", out, want)
+		}
 	}
 }
