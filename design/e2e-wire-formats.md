@@ -44,6 +44,7 @@ labels. No two are equal, and a test enforces it.
 | `cairn/v1/sig` | The message prefix for a signature |
 | `cairn/v1/fingerprint` | The fingerprint hash input |
 | `cairn/v1/blind` | The blind-index input |
+| `cairn/v1/prelogin` | The fake salt for an unknown account |
 
 Raw keys are never used for two purposes. `MK` and `EK` are only ever HKDF
 input; everything they protect goes through a key derived from them.
@@ -207,6 +208,7 @@ ID and the epoch. It refuses a body with `v` other than 1.
 | `vouch` | The owner | `{"v":1,"artifact","version","manifest"}` |
 | `rotation` | The old signing key | `{"v":1,"user","old":{"x25519","ed25519"},"new":{"x25519","ed25519"}}` |
 | `successor` | The user | `{"v":1,"user","successor","action"}` |
+| `reset` | The user, with their existing key | `{"v":1,"user","token"}` |
 
 - In a membership record, `role` is `viewer` or `editor`, `team` is `none`,
   `viewer`, or `editor`, and `prev` is `hex(SHA-256)` of the previous
@@ -216,6 +218,8 @@ ID and the epoch. It refuses a body with `v` other than 1.
   encrypted blob, so a viewer, who holds `AK`, cannot swap a file.
 - In a revision, `sha256` is `hex(SHA-256)` of the encrypted database blob.
 - A vouch's `manifest` is `hex(SHA-256)` of the manifest envelope's body.
+- A reset's `token` is `hex(SHA-256)` of the reset token from the emailed
+  link, so the proof cannot be replayed with another link.
 - Public keys inside bodies are `b64`; fingerprints are `hex`.
 
 ## Fingerprints
