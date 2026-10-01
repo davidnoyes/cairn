@@ -20,9 +20,7 @@ func (c *testClient) doRaw(method, path string, body []byte) *http.Response {
 	if err != nil {
 		c.t.Fatal(err)
 	}
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	}
+	c.setHeaders(req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.t.Fatal(err)
@@ -35,7 +33,7 @@ func TestFilesAPIOverHTTP(t *testing.T) {
 	admin := login(t, ts.URL, "admin@example.com", "admin-password")
 
 	// Public artifact with one version
-	aid := createArtifact(t, admin, "demo", true)
+	aid, link := createPublicArtifact(t, admin, "demo")
 	resp := admin.upload("POST", "/api/artifacts/"+aid+"/versions", zipFrom(t, map[string]string{"index.html": "x"}), nil)
 	v := decode[struct {
 		ID string `json:"id"`
@@ -62,8 +60,9 @@ func TestFilesAPIOverHTTP(t *testing.T) {
 		t.Errorf("list: %+v", list)
 	}
 
-	// Anonymous download works on a public artifact, with a derived type
-	anon := &testClient{t: t, base: ts.URL}
+	// Anonymous download works on a public artifact with its link token,
+	// with a derived type
+	anon := &testClient{t: t, base: ts.URL, link: link}
 	dl := anon.doRaw("GET", base+"/notes/hello.txt", nil)
 	body, _ := io.ReadAll(dl.Body)
 	dl.Body.Close()
@@ -76,12 +75,20 @@ func TestFilesAPIOverHTTP(t *testing.T) {
 
 	// Anonymous writes are rejected. Request protection refuses the upload,
 	// which declares no Content-Type, before the handler runs (415); the
-	// bodiless DELETE passes protection and the handler refuses it (401).
+	// bodiless DELETE passes protection, and a link holder who is not signed
+	// in may not write (403). Without the link it is not found (404).
 	if r := anon.doRaw("PUT", base+"/evil.txt", []byte("x")); r.StatusCode != http.StatusUnsupportedMediaType {
 		t.Errorf("anon upload: %d", r.StatusCode)
 	}
-	if r := anon.doRaw("DELETE", base+"/notes/hello.txt", nil); r.StatusCode != http.StatusUnauthorized {
+	if r := anon.doRaw("DELETE", base+"/notes/hello.txt", nil); r.StatusCode != http.StatusForbidden {
 		t.Errorf("anon delete: %d", r.StatusCode)
+	}
+	noLink := &testClient{t: t, base: ts.URL}
+	if r := noLink.doRaw("DELETE", base+"/notes/hello.txt", nil); r.StatusCode != http.StatusNotFound {
+		t.Errorf("anon delete without link: %d", r.StatusCode)
+	}
+	if r := noLink.doRaw("GET", base+"/notes/hello.txt", nil); r.StatusCode != http.StatusNotFound {
+		t.Errorf("anon download without link: %d", r.StatusCode)
 	}
 
 	// Overwrite replaces content
@@ -127,18 +134,18 @@ func TestFilesAPIOverHTTP(t *testing.T) {
 		t.Errorf("list after delete: %+v", list)
 	}
 
-	// Private artifact: anonymous reads are rejected
-	pid := createArtifact(t, admin, "private-demo", false)
+	// Private artifact: anonymous reads find nothing
+	pid := createArtifact(t, admin, "private-demo")
 	resp = admin.upload("POST", "/api/artifacts/"+pid+"/versions", zipFrom(t, map[string]string{"index.html": "x"}), nil)
 	pv := decode[struct {
 		ID string `json:"id"`
 	}](t, resp)
 	pbase := fmt.Sprintf("/api/artifacts/%s/versions/%s/files", pid, pv.ID)
 	admin.doRaw("PUT", pbase+"/secret.txt", []byte("s")).Body.Close()
-	if r := anon.doRaw("GET", pbase+"/secret.txt", nil); r.StatusCode != http.StatusUnauthorized {
+	if r := anon.doRaw("GET", pbase+"/secret.txt", nil); r.StatusCode != http.StatusNotFound {
 		t.Errorf("private anon download: %d", r.StatusCode)
 	}
-	if r := anon.doRaw("GET", pbase, nil); r.StatusCode != http.StatusUnauthorized {
+	if r := anon.doRaw("GET", pbase, nil); r.StatusCode != http.StatusNotFound {
 		t.Errorf("private anon list: %d", r.StatusCode)
 	}
 

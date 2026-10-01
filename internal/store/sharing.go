@@ -605,6 +605,12 @@ func (t *ArtifactTx) OpenOffer() (*Offer, error) {
 	return scanOffer(t.tx.QueryRow(`SELECT `+offerCols+` FROM artifact_offers WHERE artifact_id = ? AND state = 'open'`, t.id))
 }
 
+// OpenOffer returns the artifact's open offer outside a transaction, or
+// ErrNotFound.
+func (s *Store) OpenOffer(artifactID string) (*Offer, error) {
+	return scanOffer(s.db.QueryRow(`SELECT `+offerCols+` FROM artifact_offers WHERE artifact_id = ? AND state = 'open'`, artifactID))
+}
+
 // SetOfferState moves the open offer to accepted or closed. No open offer is
 // ErrNotFound.
 func (t *ArtifactTx) SetOfferState(state string) error {

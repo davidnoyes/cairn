@@ -124,9 +124,11 @@ func (s *Store) ListArtifacts() ([]*Artifact, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) UpdateArtifact(id, name, description string, public bool) error {
-	return s.exec1(`UPDATE artifacts SET name = ?, description = ?, public = ?, updated_at = ? WHERE id = ?`,
-		name, description, public, now(), id)
+// UpdateArtifact renames an artifact. Its sharing state changes only through
+// a membership record.
+func (s *Store) UpdateArtifact(id, name, description string) error {
+	return s.exec1(`UPDATE artifacts SET name = ?, description = ?, updated_at = ? WHERE id = ?`,
+		name, description, now(), id)
 }
 
 func (s *Store) DeleteArtifact(id string) error {

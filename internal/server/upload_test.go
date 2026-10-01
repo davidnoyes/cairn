@@ -40,9 +40,7 @@ func (c *testClient) upload(method, path string, archive []byte, fields map[stri
 	mw.Close()
 	req, _ := http.NewRequest(method, c.base+path, &body)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	}
+	c.setHeaders(req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.t.Fatal(err)
@@ -60,19 +58,25 @@ func decode[T any](t *testing.T, resp *http.Response) T {
 	return v
 }
 
-func createArtifact(t *testing.T, c *testClient, name string, public bool) string {
+// createArtifact creates a private artifact owned by c, a seedAccount user,
+// and returns its ID.
+func createArtifact(t *testing.T, c *testClient, name string) string {
 	t.Helper()
-	var a struct {
-		ID string `json:"id"`
-	}
-	c.mustDo("POST", "/api/artifacts", map[string]any{"name": name, "public": public}, &a, http.StatusCreated)
-	return a.ID
+	return newArtifact(t, placeholderActor(t, c), name).id
+}
+
+// createPublicArtifact is createArtifact made public; it also returns the
+// link token that opens it.
+func createPublicArtifact(t *testing.T, c *testClient, name string) (id, link string) {
+	t.Helper()
+	o := newArtifact(t, placeholderActor(t, c), name)
+	return o.id, o.makePublic()
 }
 
 func TestUploadAndReplace(t *testing.T) {
 	_, ts := testServer(t)
 	admin := login(t, ts.URL, "admin@example.com", "admin-password")
-	aid := createArtifact(t, admin, "demo", false)
+	aid := createArtifact(t, admin, "demo")
 
 	// Upload v1
 	resp := admin.upload("POST", "/api/artifacts/"+aid+"/versions", zipFrom(t, map[string]string{
@@ -127,7 +131,7 @@ func TestUploadAndReplace(t *testing.T) {
 func TestUploadRejections(t *testing.T) {
 	_, ts := testServer(t)
 	admin := login(t, ts.URL, "admin@example.com", "admin-password")
-	aid := createArtifact(t, admin, "demo", false)
+	aid := createArtifact(t, admin, "demo")
 	base := "/api/artifacts/" + aid + "/versions"
 
 	cases := []struct {
@@ -164,7 +168,7 @@ func TestDBAPIOverHTTP(t *testing.T) {
 	admin := login(t, ts.URL, "admin@example.com", "admin-password")
 
 	// Public artifact with one version
-	aid := createArtifact(t, admin, "demo", true)
+	aid, link := createPublicArtifact(t, admin, "demo")
 	resp := admin.upload("POST", "/api/artifacts/"+aid+"/versions", zipFrom(t, map[string]string{"index.html": "x"}), nil)
 	v := decode[struct {
 		ID string `json:"id"`
@@ -177,8 +181,8 @@ func TestDBAPIOverHTTP(t *testing.T) {
 		{"sql": "INSERT INTO votes VALUES (?, ?)", "params": []any{"go", 1}},
 	}}, nil, http.StatusOK)
 
-	// Anonymous read works on a public artifact
-	anon := &testClient{t: t, base: ts.URL}
+	// Anonymous read works on a public artifact, with its link token
+	anon := &testClient{t: t, base: ts.URL, link: link}
 	var res struct {
 		Rows [][]any `json:"rows"`
 	}
@@ -203,14 +207,20 @@ func TestDBAPIOverHTTP(t *testing.T) {
 		t.Errorf("multi-statement: %d", r.StatusCode)
 	}
 
-	// Private artifact: anonymous read is rejected
-	pid := createArtifact(t, admin, "private-demo", false)
+	// Without the link token the public artifact is not found
+	noLink := &testClient{t: t, base: ts.URL}
+	if r := noLink.do("POST", dbPath+"/query", map[string]any{"sql": "SELECT 1"}, nil); r.StatusCode != http.StatusNotFound {
+		t.Errorf("anon query without link: %d", r.StatusCode)
+	}
+
+	// Private artifact: an anonymous read finds nothing, link or not
+	pid := createArtifact(t, admin, "private-demo")
 	resp = admin.upload("POST", "/api/artifacts/"+pid+"/versions", zipFrom(t, map[string]string{"index.html": "x"}), nil)
 	pv := decode[struct {
 		ID string `json:"id"`
 	}](t, resp)
 	r = anon.do("POST", fmt.Sprintf("/api/artifacts/%s/versions/%s/db/query", pid, pv.ID), map[string]any{"sql": "SELECT 1"}, nil)
-	if r.StatusCode != http.StatusUnauthorized {
+	if r.StatusCode != http.StatusNotFound {
 		t.Errorf("private anon query: %d", r.StatusCode)
 	}
 

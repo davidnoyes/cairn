@@ -20,13 +20,13 @@ func authedClient(t *testing.T) *Client {
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
-	return bearerFor(t, host, c.APIKey)
+	return keyedFor(t, host, c.APIKey)
 }
 
 func TestArtifactLifecycle(t *testing.T) {
 	c := authedClient(t)
 
-	a, err := c.CreateArtifact("widget", "a widget", false)
+	a, err := c.CreateArtifact("widget", "a widget")
 	if err != nil {
 		t.Fatalf("CreateArtifact: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestArtifactLifecycle(t *testing.T) {
 
 func TestPushAndFiles(t *testing.T) {
 	c := authedClient(t)
-	a, err := c.CreateArtifact("site", "", true)
+	a, err := c.CreateArtifact("site", "")
 	if err != nil {
 		t.Fatalf("CreateArtifact: %v", err)
 	}
@@ -140,10 +140,10 @@ func TestPushAndFiles(t *testing.T) {
 
 func TestResolveArtifactAmbiguousName(t *testing.T) {
 	c := authedClient(t)
-	if _, err := c.CreateArtifact("dup", "", false); err != nil {
+	if _, err := c.CreateArtifact("dup", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.CreateArtifact("dup", "", false); err != nil {
+	if _, err := c.CreateArtifact("dup", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.ResolveArtifact("dup"); err == nil {

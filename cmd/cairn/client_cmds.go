@@ -449,22 +449,29 @@ func artifactList(args []string) error {
 
 func artifactCreate(args []string) error {
 	fs := flag.NewFlagSet("artifact create", flag.ExitOnError)
-	name := fs.String("name", "", "artifact name (required)")
+	nameFlag := fs.String("name", "", "artifact name (same as the NAME argument)")
 	description := fs.String("description", "", "artifact description")
-	public := fs.Bool("public", false, "anyone can view without login")
 	resource := fs.String("resource", "", "associated resource as type=value (e.g. claude-session=abc)")
 	jsonOut := fs.Bool("json", false, "JSON output")
-	if err := fs.Parse(args); err != nil {
+	lead, rest := splitLeadingArg(args)
+	if err := fs.Parse(rest); err != nil {
 		return err
 	}
-	if *name == "" {
-		return fmt.Errorf("--name is required")
+	name := leadOrArg(lead, fs)
+	if name != "" && *nameFlag != "" && name != *nameFlag {
+		return fmt.Errorf("the NAME argument %q and --name %q disagree", name, *nameFlag)
+	}
+	if name == "" {
+		name = *nameFlag
+	}
+	if name == "" {
+		return fmt.Errorf("usage: cairn artifact create NAME [--description D] [--resource type=value] [--json]")
 	}
 	c, err := apiClient()
 	if err != nil {
 		return err
 	}
-	a, err := c.CreateArtifact(*name, *description, *public)
+	a, err := c.CreateArtifact(name, *description)
 	if err != nil {
 		return err
 	}
@@ -529,7 +536,6 @@ func artifactUpdate(args []string) error {
 	fs := flag.NewFlagSet("artifact update", flag.ExitOnError)
 	name := fs.String("name", "", "new name")
 	description := fs.String("description", "", "new description")
-	public := fs.String("public", "", "set visibility: true or false")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	lead, rest := splitLeadingArg(args)
 	if err := fs.Parse(rest); err != nil {
@@ -553,9 +559,6 @@ func artifactUpdate(args []string) error {
 	}
 	if *description != "" {
 		fields["description"] = *description
-	}
-	if *public != "" {
-		fields["public"] = *public == "true"
 	}
 	updated, err := c.UpdateArtifact(a.ID, fields)
 	if err != nil {
@@ -597,7 +600,6 @@ func runPush(args []string) error {
 	fs := flag.NewFlagSet("push", flag.ExitOnError)
 	artifact := fs.String("artifact", "", "target artifact id or name (required)")
 	create := fs.Bool("create", false, "create the artifact when it does not exist")
-	public := fs.Bool("public", false, "with --create: make the new artifact public")
 	name := fs.String("name", "", "version name")
 	changelog := fs.String("changelog", "", "version changelog")
 	overwrite := fs.String("overwrite", "", "replace this version id ('latest' targets the newest) instead of creating a new version")
@@ -625,7 +627,7 @@ func runPush(args []string) error {
 		if !*create {
 			return fmt.Errorf("%w (use --create to create it)", err)
 		}
-		a, err = c.CreateArtifact(*artifact, "", *public)
+		a, err = c.CreateArtifact(*artifact, "")
 		if err != nil {
 			return err
 		}

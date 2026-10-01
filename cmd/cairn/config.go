@@ -61,7 +61,8 @@ func saveConfig(cfg cliConfig) error {
 // apiClient builds a client from, in priority order: CAIRN_HOST/CAIRN_API_KEY
 // environment (headless agents), then the stored login. CAIRN_API_KEY and the
 // config file both hold the full four-part key; only its bearer (the first
-// two parts) ever goes on the wire.
+// two parts) ever goes on the wire, and the client keeps the whole key to
+// unlock the account's keys locally.
 func apiClient() (*client.Client, error) {
 	host := os.Getenv("CAIRN_HOST")
 	fullKey := os.Getenv("CAIRN_API_KEY")
@@ -78,22 +79,11 @@ func apiClient() (*client.Client, error) {
 	if fullKey == "" {
 		return nil, fmt.Errorf("no credentials for %s: run 'cairn login' or set CAIRN_API_KEY", host)
 	}
-	bearer, err := apiKeyBearer(fullKey)
+	key, err := e2e.ParseAPIKey(fullKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("malformed API key: %w", err)
 	}
-	return client.New(host, bearer), nil
-}
-
-// apiKeyBearer extracts the bearer credential (cairn_<keyid>_<authSecret>)
-// from a presented full four-part API key; the key's keySecret never goes on
-// the wire.
-func apiKeyBearer(full string) (string, error) {
-	key, err := e2e.ParseAPIKey(full)
-	if err != nil {
-		return "", fmt.Errorf("malformed API key: %w", err)
-	}
-	return bearerOf(key), nil
+	return client.NewWithKey(host, key), nil
 }
 
 // bearerOf is the on-the-wire credential for a parsed key.

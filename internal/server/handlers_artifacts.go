@@ -1,17 +1,17 @@
 package server
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
 
+	"github.com/aloisdeniel/cairn/internal/access"
 	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 // errAmbiguousResource is returned when a resource reference matches several
-// artifacts.
+// artifacts the caller can read.
 type errAmbiguousResource struct {
 	ref   string
 	count int
@@ -21,144 +21,79 @@ func (e errAmbiguousResource) Error() string {
 	return fmt.Sprintf("resource %q is associated with %d artifacts; use the artifact id", e.ref, e.count)
 }
 
-// resolveArtifactRef resolves the {id} path segment of artifact-scoped
-// routes: an artifact id first, else a resource reference (resource value
-// such as a Claude session id, or resource row id). A resource matching more
-// than one artifact is an error.
-func (s *Server) resolveArtifactRef(ref string) (*store.Artifact, error) {
-	a, err := s.store.ArtifactByID(ref)
-	if err == nil {
-		return a, nil
-	}
-	if !errors.Is(err, store.ErrNotFound) {
-		return nil, err
-	}
-	matches, err := s.store.ArtifactsByResource(ref)
-	if err != nil {
-		return nil, err
-	}
-	switch len(matches) {
-	case 0:
-		return nil, store.ErrNotFound
-	case 1:
-		return matches[0], nil
-	default:
-		return nil, errAmbiguousResource{ref: ref, count: len(matches)}
-	}
-}
-
 const artifactCtxKey ctxKey = 100
 
-// withArtifact resolves the {id} segment (artifact id or resource reference)
-// once and attaches the artifact to the request context.
-func (s *Server) withArtifact(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		a, err := s.resolveArtifactRef(r.PathValue("id"))
-		if err != nil {
-			var ambiguous errAmbiguousResource
-			if errors.As(err, &ambiguous) {
-				writeError(w, http.StatusConflict, ambiguous.Error())
-				return
-			}
-			s.writeStoreError(w, err, "artifact")
-			return
-		}
-		next(w, r.WithContext(context.WithValue(r.Context(), artifactCtxKey, a)))
-	}
-}
-
-// requestArtifact returns the artifact attached by withArtifact (never nil
+// requestArtifact returns the artifact attached by artifactRoute (never nil
 // inside wrapped handlers).
 func requestArtifact(r *http.Request) *store.Artifact {
 	a, _ := r.Context().Value(artifactCtxKey).(*store.Artifact)
 	return a
 }
 
-// canRead applies the public/private rule: public artifacts are readable by
-// anyone, private ones by any authenticated user.
-func (s *Server) canRead(r *http.Request, a *store.Artifact) bool {
-	if a.Public {
-		return true
-	}
-	u, err := s.currentUser(r)
-	return err == nil && u != nil
-}
+// Artifact CRUD. Creating one lives in sharing.go, with the membership
+// endpoints whose first record it writes.
 
-// publicAware wraps read handlers of artifact-scoped routes: resolves the
-// artifact reference and enforces the public/private rule.
-func (s *Server) publicAware(next http.HandlerFunc) http.HandlerFunc {
-	return s.withArtifact(func(w http.ResponseWriter, r *http.Request) {
-		if !s.canRead(r, requestArtifact(r)) {
-			writeError(w, http.StatusUnauthorized, "authentication required")
-			return
-		}
-		next(w, r)
-	})
-}
-
-func (s *Server) withResources(a *store.Artifact) *store.Artifact {
-	if rs, err := s.store.ListResources(a.ID); err == nil {
-		a.Resources = rs
-	}
-	return a
-}
-
-// Artifact CRUD
-
-type artifactRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Public      *bool  `json:"public"`
-}
-
-func (s *Server) handleCreateArtifact(w http.ResponseWriter, r *http.Request) {
-	var req artifactRequest
-	if !readJSON(w, r, &req) {
-		return
-	}
-	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "name is required")
-		return
-	}
-	public := req.Public != nil && *req.Public
-	a, err := s.store.CreateArtifact(req.Name, req.Description, public)
-	if err != nil {
-		s.writeStoreError(w, err, "artifact")
-		return
-	}
-	s.log.Info("artifact created", "id", a.ID, "name", a.Name, "by", requestUser(r).Email)
-	writeJSON(w, http.StatusCreated, a)
-}
-
+// handleListArtifacts lists the artifacts the caller can read without a
+// link token.
 func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 	as, err := s.store.ListArtifacts()
 	if err != nil {
 		s.writeStoreError(w, err, "artifacts")
 		return
 	}
+	c, err := s.callerFor(requestUser(r), requestAPIKey(r))
+	if err != nil {
+		s.writeStoreError(w, err, "user")
+		return
+	}
 	// Name-based lookup convenience for the CLI: ?name= filters exactly.
-	if name := r.URL.Query().Get("name"); name != "" {
-		filtered := as[:0]
-		for _, a := range as {
-			if a.Name == name {
-				filtered = append(filtered, a)
-			}
+	name := r.URL.Query().Get("name")
+	out := []*artifactView{}
+	for _, a := range as {
+		if name != "" && a.Name != name {
+			continue
 		}
-		as = filtered
+		a, req, err := s.accessRequest(c, a.ID, nil)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			s.writeStoreError(w, err, "artifacts")
+			return
+		}
+		level := access.LevelOf(req)
+		if level == access.LevelNone {
+			continue
+		}
+		v, err := s.viewOf(a, level)
+		if err != nil {
+			s.writeStoreError(w, err, "artifacts")
+			return
+		}
+		out = append(out, v)
 	}
-	if as == nil {
-		as = []*store.Artifact{}
-	}
-	writeJSON(w, http.StatusOK, paginate(r, as))
+	writeJSON(w, http.StatusOK, paginate(r, out))
 }
 
 func (s *Server) handleGetArtifact(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, s.withResources(requestArtifact(r)))
+	v, err := s.viewOf(requestArtifact(r), access.LevelOf(requestAccess(r)))
+	if err != nil {
+		s.writeStoreError(w, err, "artifact")
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// renameRequest is the PATCH body: an artifact's sharing state changes only
+// through PUT /membership, so a public field is refused as unknown.
+type renameRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 func (s *Server) handleUpdateArtifact(w http.ResponseWriter, r *http.Request) {
 	a := requestArtifact(r)
-	var req artifactRequest
+	var req renameRequest
 	if !readJSON(w, r, &req) {
 		return
 	}
@@ -168,11 +103,7 @@ func (s *Server) handleUpdateArtifact(w http.ResponseWriter, r *http.Request) {
 	if req.Description == "" {
 		req.Description = a.Description
 	}
-	public := a.Public
-	if req.Public != nil {
-		public = *req.Public
-	}
-	if err := s.store.UpdateArtifact(a.ID, req.Name, req.Description, public); err != nil {
+	if err := s.store.UpdateArtifact(a.ID, req.Name, req.Description); err != nil {
 		s.writeStoreError(w, err, "artifact")
 		return
 	}
@@ -181,7 +112,12 @@ func (s *Server) handleUpdateArtifact(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "artifact")
 		return
 	}
-	writeJSON(w, http.StatusOK, s.withResources(a))
+	v, err := s.viewOf(a, access.LevelOf(requestAccess(r)))
+	if err != nil {
+		s.writeStoreError(w, err, "artifact")
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
 }
 
 func (s *Server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {

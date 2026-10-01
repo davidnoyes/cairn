@@ -10,7 +10,7 @@ import (
 // wherever an artifact id is expected — unless it matches several artifacts.
 func TestResourceReferenceResolution(t *testing.T) {
 	_, ts := testServer(t)
-	admin, aid, vid := setupArtifact(t, ts.URL, true)
+	admin, aid, vid, _ := setupArtifact(t, ts.URL, true)
 	admin.mustDo("POST", "/api/artifacts/"+aid+"/resources",
 		map[string]string{"type": "claude-session", "value": "sess-123"}, nil, http.StatusCreated)
 
@@ -68,7 +68,7 @@ func TestResourceReferenceResolution(t *testing.T) {
 
 	// A second artifact sharing the resource value makes the reference
 	// ambiguous → 409, while artifact ids keep working.
-	bid := createArtifact(t, admin, "other", true)
+	bid := createArtifact(t, admin, "other")
 	admin.mustDo("POST", "/api/artifacts/"+bid+"/resources",
 		map[string]string{"type": "claude-session", "value": "sess-123"}, nil, http.StatusCreated)
 	r := admin.do("GET", "/api/artifacts/sess-123", nil, nil)

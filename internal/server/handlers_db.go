@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/aloisdeniel/cairn/internal/access"
 	"github.com/aloisdeniel/cairn/internal/versiondb"
 )
 
@@ -20,8 +21,8 @@ func (s *Server) resolveVersion(w http.ResponseWriter, r *http.Request) (string,
 }
 
 // handleDBQuery runs one SQL statement against a version's shared database.
-// Authenticated callers get the read-write pool; anonymous callers (public
-// artifacts) the query_only pool — enforcement is at the connection level.
+// Callers who may write data get the read-write pool; every other reader
+// the query_only pool — enforcement is at the connection level.
 func (s *Server) handleDBQuery(w http.ResponseWriter, r *http.Request) {
 	aid, ok := s.resolveVersion(w, r)
 	if !ok {
@@ -35,12 +36,8 @@ func (s *Server) handleDBQuery(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "sql is required")
 		return
 	}
-	u, err := s.currentUser(r)
-	if err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid credentials")
-		return
-	}
-	res, err := s.dbs.Exec(r.Context(), aid, r.PathValue("vid"), u != nil, stmt)
+	writable := access.Check(requestAccess(r), access.WriteData) == access.Allow
+	res, err := s.dbs.Exec(r.Context(), aid, r.PathValue("vid"), writable, stmt)
 	if err != nil {
 		s.writeDBError(w, err)
 		return

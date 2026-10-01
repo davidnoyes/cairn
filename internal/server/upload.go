@@ -36,6 +36,10 @@ func (s *Server) handleUploadVersion(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "version")
 		return
 	}
+	s.recordPusher(a.ID, v.ID, requestUser(r).ID)
+	if pushed, err := s.store.VersionByID(a.ID, v.ID); err == nil {
+		v = pushed
+	}
 	s.log.Info("version uploaded", "artifact", a.ID, "version", v.ID, "seq", v.Seq, "by", requestUser(r).Email)
 	writeJSON(w, http.StatusCreated, v)
 }
@@ -69,6 +73,7 @@ func (s *Server) handleReplaceVersion(w http.ResponseWriter, r *http.Request) {
 	// Open file handles on the old dir keep serving until closed (POSIX);
 	// new requests resolve the new pointer.
 	os.RemoveAll(s.layout.ContentDir(v.ArtifactID, prev))
+	s.recordPusher(v.ArtifactID, v.ID, requestUser(r).ID)
 	v, _ = s.store.VersionByID(v.ArtifactID, v.ID)
 	s.log.Info("version replaced", "artifact", v.ArtifactID, "version", v.ID, "by", requestUser(r).Email)
 	writeJSON(w, http.StatusOK, v)

@@ -1,6 +1,10 @@
 package server
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/aloisdeniel/cairn/internal/access"
+)
 
 func (s *Server) routes() {
 	mux := s.mux
@@ -42,33 +46,38 @@ func (s *Server) routes() {
 	mux.HandleFunc("PATCH /api/admin/users/{id}", s.requireAdmin(s.handleAdminUpdateUser))
 	mux.HandleFunc("DELETE /api/admin/users/{id}", s.requireAdmin(s.handleAdminDeleteUser))
 
-	// Artifacts: reads follow the public/private flag, writes need auth.
-	// The {id} segment accepts an artifact id or a resource reference
-	// (resolved by withArtifact/publicAware; ambiguous references are a 409).
+	// Artifacts. Every route under /api/artifacts/{id} resolves the {id}
+	// segment (artifact id, else resource reference) among the artifacts the
+	// caller can read, then checks one access action; no access is a 404,
+	// administrators included. See artifactRoute in sharing.go.
 	mux.HandleFunc("GET /api/artifacts", s.requireAuth(s.handleListArtifacts))
 	mux.HandleFunc("POST /api/artifacts", s.requireAuth(s.handleCreateArtifact))
-	mux.HandleFunc("GET /api/artifacts/{id}", s.publicAware(s.handleGetArtifact))
-	mux.HandleFunc("PATCH /api/artifacts/{id}", s.requireAuth(s.withArtifact(s.handleUpdateArtifact)))
-	mux.HandleFunc("DELETE /api/artifacts/{id}", s.requireAuth(s.withArtifact(s.handleDeleteArtifact)))
-	mux.HandleFunc("POST /api/artifacts/{id}/resources", s.requireAuth(s.withArtifact(s.handleAddResource)))
-	mux.HandleFunc("DELETE /api/artifacts/{id}/resources/{rid}", s.requireAuth(s.withArtifact(s.handleDeleteResource)))
-	mux.HandleFunc("GET /api/artifacts/{id}/versions", s.publicAware(s.handleListVersions))
-	mux.HandleFunc("POST /api/artifacts/{id}/versions", s.requireAuth(s.withArtifact(s.handleUploadVersion)))
-	mux.HandleFunc("GET /api/artifacts/{id}/versions/{vid}", s.publicAware(s.handleGetVersion))
-	mux.HandleFunc("PUT /api/artifacts/{id}/versions/{vid}", s.requireAuth(s.withArtifact(s.handleReplaceVersion)))
-	mux.HandleFunc("PATCH /api/artifacts/{id}/versions/{vid}", s.requireAuth(s.withArtifact(s.handleUpdateVersionMeta)))
-	mux.HandleFunc("DELETE /api/artifacts/{id}/versions/{vid}", s.requireAuth(s.withArtifact(s.handleDeleteVersion)))
+	mux.HandleFunc("GET /api/artifacts/{id}", s.artifactRoute(access.ReadContent, s.handleGetArtifact))
+	mux.HandleFunc("PATCH /api/artifacts/{id}", s.artifactRoute(access.Rename, s.handleUpdateArtifact))
+	mux.HandleFunc("DELETE /api/artifacts/{id}", s.artifactRoute(access.Delete, s.handleDeleteArtifact))
+	mux.HandleFunc("GET /api/artifacts/{id}/membership", s.artifactRoute(access.ReadMembership, s.handleGetMembership))
+	mux.HandleFunc("PUT /api/artifacts/{id}/membership", s.artifactRoute(access.Share, s.handlePutMembership))
+	mux.HandleFunc("GET /api/artifacts/{id}/keys", s.artifactRoute(access.ReadKeys, s.handleGetKeys))
+	mux.HandleFunc("POST /api/artifacts/{id}/resources", s.artifactRoute(access.Rename, s.handleAddResource))
+	mux.HandleFunc("DELETE /api/artifacts/{id}/resources/{rid}", s.artifactRoute(access.Rename, s.handleDeleteResource))
+	mux.HandleFunc("GET /api/artifacts/{id}/versions", s.artifactRoute(access.ReadContent, s.handleListVersions))
+	mux.HandleFunc("POST /api/artifacts/{id}/versions", s.artifactRoute(access.PushVersion, s.handleUploadVersion))
+	mux.HandleFunc("GET /api/artifacts/{id}/versions/{vid}", s.artifactRoute(access.ReadContent, s.handleGetVersion))
+	mux.HandleFunc("PUT /api/artifacts/{id}/versions/{vid}", s.artifactRoute(access.PushVersion, s.handleReplaceVersion))
+	mux.HandleFunc("PATCH /api/artifacts/{id}/versions/{vid}", s.artifactRoute(access.Rename, s.handleUpdateVersionMeta))
+	mux.HandleFunc("DELETE /api/artifacts/{id}/versions/{vid}", s.artifactRoute(access.Delete, s.handleDeleteVersion))
 
-	// Shared per-version database (raw SQL proxy)
-	mux.HandleFunc("POST /api/artifacts/{id}/versions/{vid}/db/query", s.publicAware(s.handleDBQuery))
-	mux.HandleFunc("POST /api/artifacts/{id}/versions/{vid}/db/batch", s.requireAuth(s.withArtifact(s.handleDBBatch)))
-	mux.HandleFunc("GET /api/artifacts/{id}/versions/{vid}/db/download", s.publicAware(s.handleDBDownload))
+	// Shared per-version database (raw SQL proxy). A query runs on the
+	// read-write pool only for a caller who may write data.
+	mux.HandleFunc("POST /api/artifacts/{id}/versions/{vid}/db/query", s.artifactRoute(access.ReadContent, s.handleDBQuery))
+	mux.HandleFunc("POST /api/artifacts/{id}/versions/{vid}/db/batch", s.artifactRoute(access.WriteData, s.handleDBBatch))
+	mux.HandleFunc("GET /api/artifacts/{id}/versions/{vid}/db/download", s.artifactRoute(access.ReadContent, s.handleDBDownload))
 
 	// Per-version file storage
-	mux.HandleFunc("GET /api/artifacts/{id}/versions/{vid}/files", s.publicAware(s.handleFileList))
-	mux.HandleFunc("GET /api/artifacts/{id}/versions/{vid}/files/{path...}", s.publicAware(s.handleFileDownload))
-	mux.HandleFunc("PUT /api/artifacts/{id}/versions/{vid}/files/{path...}", s.requireAuth(s.withArtifact(s.handleFileUpload)))
-	mux.HandleFunc("DELETE /api/artifacts/{id}/versions/{vid}/files/{path...}", s.requireAuth(s.withArtifact(s.handleFileDelete)))
+	mux.HandleFunc("GET /api/artifacts/{id}/versions/{vid}/files", s.artifactRoute(access.ReadContent, s.handleFileList))
+	mux.HandleFunc("GET /api/artifacts/{id}/versions/{vid}/files/{path...}", s.artifactRoute(access.ReadContent, s.handleFileDownload))
+	mux.HandleFunc("PUT /api/artifacts/{id}/versions/{vid}/files/{path...}", s.artifactRoute(access.WriteData, s.handleFileUpload))
+	mux.HandleFunc("DELETE /api/artifacts/{id}/versions/{vid}/files/{path...}", s.artifactRoute(access.WriteData, s.handleFileDelete))
 
 	// Pages. Account pages send the app CSP: scripts load only from files.
 	mux.HandleFunc("GET /", s.handleRoot)

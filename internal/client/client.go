@@ -15,18 +15,30 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/aloisdeniel/cairn/internal/e2e"
 	"github.com/aloisdeniel/cairn/internal/store"
 	"github.com/aloisdeniel/cairn/internal/versiondb"
 )
 
 type Client struct {
 	Host  string // e.g. http://localhost:8787
-	Token string // JWT or API key
+	Token string // JWT or API key bearer
 	HTTP  *http.Client
+	// Key is the full device API key, set by NewWithKey. Only it can unlock
+	// the account's keys; a client without one can still call the API.
+	Key *e2e.APIKey
 }
 
 func New(host, token string) *Client {
 	return &Client{Host: strings.TrimSuffix(host, "/"), Token: token, HTTP: http.DefaultClient}
+}
+
+// NewWithKey builds a client from a full four-part API key: its bearer goes
+// on the wire, and the key is kept to unlock the account's keys.
+func NewWithKey(host string, key e2e.APIKey) *Client {
+	c := New(host, apiKeyBearer(key.KeyID, key.AuthSecret))
+	c.Key = &key
+	return c
 }
 
 // APIError is a non-2xx response from the server.
@@ -107,11 +119,6 @@ func (c *Client) Users() ([]map[string]any, error) {
 func (c *Client) ListArtifacts() ([]*store.Artifact, error) {
 	var out []*store.Artifact
 	return out, c.doJSON("GET", "/api/artifacts", nil, &out)
-}
-
-func (c *Client) CreateArtifact(name, description string, public bool) (*store.Artifact, error) {
-	var out store.Artifact
-	return &out, c.doJSON("POST", "/api/artifacts", map[string]any{"name": name, "description": description, "public": public}, &out)
 }
 
 func (c *Client) GetArtifact(id string) (*store.Artifact, error) {

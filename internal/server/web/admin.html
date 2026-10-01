@@ -200,7 +200,7 @@
     <section id="artifacts" class="active">
       <p class="kicker">01 / artifacts</p>
       <h2>Artifacts</h2>
-      <p class="hint">Everything hosted by this server. Click a name to open the shared view.</p>
+      <p class="hint">The artifacts you can open. Click a name to open the shared view. Create one with <code>cairn artifact create</code>.</p>
       <div id="artifactList"></div>
     </section>
 
@@ -321,14 +321,15 @@
       actions.className = 'actions';
       actions.append(
         btn('versions', '', () => toggleVersions(tr, a)),
-        btn(a.public ? 'make private' : 'make public', '', async () => {
-          try { await patch('/api/artifacts/' + a.id, {public: !a.public}); loadArtifacts(); } catch (e) { fail(e); }
-        }),
-        btn('delete', 'danger', async () => {
+      );
+      // Visibility changes only through a signed membership record, which
+      // this page cannot make; only the owner may delete.
+      if (a.access === 'owner') {
+        actions.append(btn('delete', 'danger', async () => {
           if (!confirm('Delete artifact "' + a.name + '" and all its versions and data?')) return;
           try { await del('/api/artifacts/' + a.id); flash('artifact deleted'); loadArtifacts(); } catch (e) { fail(e); }
-        }),
-      );
+        }));
+      }
       tr.appendChild(td(actions));
       t.appendChild(tr);
     }

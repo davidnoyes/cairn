@@ -17,9 +17,18 @@ func noRedirectClient() *http.Client {
 
 func get(t *testing.T, url, token, accept string) *http.Response {
 	t.Helper()
+	return getLinked(t, "", url, token, accept)
+}
+
+// getLinked is get that also sends link, when set, as X-Cairn-Link-Token.
+func getLinked(t *testing.T, link, url, token, accept string) *http.Response {
+	t.Helper()
 	req, _ := http.NewRequest("GET", url, nil)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if link != "" {
+		req.Header.Set("X-Cairn-Link-Token", link)
 	}
 	if accept != "" {
 		req.Header.Set("Accept", accept)
@@ -41,9 +50,15 @@ func body(t *testing.T, resp *http.Response) string {
 	return string(b)
 }
 
-func setupArtifact(t *testing.T, ts string, public bool) (admin *testClient, aid, vid string) {
+// setupArtifact creates an artifact with one version as the admin. When
+// public, link is the token that opens it; otherwise it is empty.
+func setupArtifact(t *testing.T, ts string, public bool) (admin *testClient, aid, vid, link string) {
 	admin = login(t, ts, "admin@example.com", "admin-password")
-	aid = createArtifact(t, admin, "site", public)
+	if public {
+		aid, link = createPublicArtifact(t, admin, "site")
+	} else {
+		aid = createArtifact(t, admin, "site")
+	}
 	resp := admin.upload("POST", "/api/artifacts/"+aid+"/versions", zipFrom(t, map[string]string{
 		"index.html":     "<h1>hello v1</h1><script src=\"./cairn.js\"></script>",
 		"app.js":         "console.log('app')",
@@ -52,15 +67,15 @@ func setupArtifact(t *testing.T, ts string, public bool) (admin *testClient, aid
 	v := decode[struct {
 		ID string `json:"id"`
 	}](t, resp)
-	return admin, aid, v.ID
+	return admin, aid, v.ID, link
 }
 
 func TestServingRedirectsAndFiles(t *testing.T) {
 	_, ts := testServer(t)
-	_, aid, vid := setupArtifact(t, ts.URL, true)
+	_, aid, vid, link := setupArtifact(t, ts.URL, true)
 
 	// /artifacts/{id} → latest version canonical URL
-	resp := get(t, ts.URL+"/artifacts/"+aid, "", "text/html")
+	resp := getLinked(t, link, ts.URL+"/artifacts/"+aid, "", "text/html")
 	if resp.StatusCode != http.StatusFound {
 		t.Fatalf("artifact redirect: %d", resp.StatusCode)
 	}
@@ -70,20 +85,20 @@ func TestServingRedirectsAndFiles(t *testing.T) {
 	}
 
 	// Missing trailing slash canonicalized
-	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+vid, "", "text/html")
+	resp = getLinked(t, link, ts.URL+"/artifacts/"+aid+"/"+vid, "", "text/html")
 	if resp.StatusCode != http.StatusMovedPermanently {
 		t.Errorf("no-slash: %d", resp.StatusCode)
 	}
 
 	// Index and assets
-	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+vid+"/", "", "text/html")
+	resp = getLinked(t, link, ts.URL+"/artifacts/"+aid+"/"+vid+"/", "", "text/html")
 	if resp.StatusCode != http.StatusOK || !strings.Contains(body(t, resp), "hello v1") {
 		t.Errorf("index: %d", resp.StatusCode)
 	}
 	if csp := resp.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "frame-ancestors") {
 		t.Errorf("missing CSP: %q", csp)
 	}
-	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+vid+"/app.js", "", "")
+	resp = getLinked(t, link, ts.URL+"/artifacts/"+aid+"/"+vid+"/app.js", "", "")
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("asset: %d", resp.StatusCode)
 	}
@@ -93,32 +108,32 @@ func TestServingRedirectsAndFiles(t *testing.T) {
 	resp.Body.Close()
 
 	// Subdirectory index
-	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+vid+"/sub/", "", "text/html")
+	resp = getLinked(t, link, ts.URL+"/artifacts/"+aid+"/"+vid+"/sub/", "", "text/html")
 	if resp.StatusCode != http.StatusOK || !strings.Contains(body(t, resp), "sub page") {
 		t.Errorf("subdir index failed")
 	}
 
 	// SPA fallback: extension-less HTML navigation gets index.html...
-	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+vid+"/some/route", "", "text/html")
+	resp = getLinked(t, link, ts.URL+"/artifacts/"+aid+"/"+vid+"/some/route", "", "text/html")
 	if resp.StatusCode != http.StatusOK || !strings.Contains(body(t, resp), "hello v1") {
 		t.Errorf("spa fallback failed")
 	}
 	// ...but a missing asset really 404s
-	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+vid+"/missing.js", "", "")
+	resp = getLinked(t, link, ts.URL+"/artifacts/"+aid+"/"+vid+"/missing.js", "", "")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("missing asset: %d", resp.StatusCode)
 	}
 	resp.Body.Close()
 
 	// cairn.js is injected into the version URL space
-	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+vid+"/cairn.js", "", "")
+	resp = getLinked(t, link, ts.URL+"/artifacts/"+aid+"/"+vid+"/cairn.js", "", "")
 	if resp.StatusCode != http.StatusOK || !strings.Contains(body(t, resp), "cairn.js — client library") {
 		t.Errorf("injected cairn.js failed")
 	}
 
 	// Path traversal attempts
 	for _, p := range []string{"/artifacts/" + aid + "/" + vid + "/../../secret", "/artifacts/" + aid + "/" + vid + "/%2e%2e/%2e%2e/cairn.db"} {
-		resp = get(t, ts.URL+p, "", "")
+		resp = getLinked(t, link, ts.URL+p, "", "")
 		if resp.StatusCode == http.StatusOK {
 			t.Errorf("traversal %s returned 200", p)
 		}
@@ -128,7 +143,7 @@ func TestServingRedirectsAndFiles(t *testing.T) {
 
 func TestMermaidJS(t *testing.T) {
 	_, ts := testServer(t)
-	_, aid, vid := setupArtifact(t, ts.URL, true)
+	_, aid, vid, link := setupArtifact(t, ts.URL, true)
 
 	// Global route
 	resp := get(t, ts.URL+"/mermaid.js", "", "")
@@ -143,13 +158,13 @@ func TestMermaidJS(t *testing.T) {
 	}
 
 	// Injected into a version's URL space when the artifact has no mermaid.js
-	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+vid+"/mermaid.js", "", "")
+	resp = getLinked(t, link, ts.URL+"/artifacts/"+aid+"/"+vid+"/mermaid.js", "", "")
 	if resp.StatusCode != http.StatusOK || !strings.Contains(body(t, resp), "mermaid-boot.js — auto-render bootstrap") {
 		t.Errorf("injected mermaid.js failed")
 	}
 
 	// An artifact's own mermaid.js wins
-	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+vid+"/app.js", "", "")
+	resp = getLinked(t, link, ts.URL+"/artifacts/"+aid+"/"+vid+"/app.js", "", "")
 	resp.Body.Close()
 	admin := login(t, ts.URL, "admin@example.com", "admin-password")
 	resp = admin.upload("POST", "/api/artifacts/"+aid+"/versions", zipFrom(t, map[string]string{
@@ -159,7 +174,7 @@ func TestMermaidJS(t *testing.T) {
 	v2 := decode[struct {
 		ID string `json:"id"`
 	}](t, resp)
-	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+v2.ID+"/mermaid.js", "", "")
+	resp = getLinked(t, link, ts.URL+"/artifacts/"+aid+"/"+v2.ID+"/mermaid.js", "", "")
 	if resp.StatusCode != http.StatusOK || !strings.Contains(body(t, resp), "custom mermaid") {
 		t.Errorf("artifact-provided mermaid.js should win")
 	}
@@ -167,7 +182,7 @@ func TestMermaidJS(t *testing.T) {
 
 func TestPrivateGating(t *testing.T) {
 	_, ts := testServer(t)
-	admin, aid, vid := setupArtifact(t, ts.URL, false)
+	admin, aid, vid, _ := setupArtifact(t, ts.URL, false)
 
 	// Anonymous browser navigation → login redirect with next
 	resp := get(t, ts.URL+"/artifacts/"+aid+"/"+vid+"/", "", "text/html")
@@ -195,7 +210,7 @@ func TestPrivateGating(t *testing.T) {
 
 func TestSharedShell(t *testing.T) {
 	_, ts := testServer(t)
-	admin, aid, vid := setupArtifact(t, ts.URL, true)
+	admin, aid, vid, link := setupArtifact(t, ts.URL, true)
 	// Second version so the picker has two entries
 	resp := admin.upload("POST", "/api/artifacts/"+aid+"/versions", zipFrom(t, map[string]string{
 		"index.html": "<h1>v2</h1>",
@@ -205,7 +220,7 @@ func TestSharedShell(t *testing.T) {
 	}](t, resp)
 
 	// Latest by default
-	resp = get(t, ts.URL+"/shared/"+aid, "", "text/html")
+	resp = getLinked(t, link, ts.URL+"/shared/"+aid, "", "text/html")
 	html := body(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("shell: %d", resp.StatusCode)
@@ -221,7 +236,7 @@ func TestSharedShell(t *testing.T) {
 	}
 
 	// Pinned version
-	resp = get(t, ts.URL+"/shared/"+aid+"/"+vid, "", "text/html")
+	resp = getLinked(t, link, ts.URL+"/shared/"+aid+"/"+vid, "", "text/html")
 	html = body(t, resp)
 	if !strings.Contains(html, "/artifacts/"+aid+"/"+vid+"/") {
 		t.Errorf("pinned shell should embed version %s", vid)
@@ -236,7 +251,7 @@ func TestSharedShell(t *testing.T) {
 
 func TestShellJS(t *testing.T) {
 	_, ts := testServer(t)
-	_, aid, _ := setupArtifact(t, ts.URL, true)
+	_, aid, _, link := setupArtifact(t, ts.URL, true)
 
 	// /shell.js is served with a JS content type
 	resp := get(t, ts.URL+"/shell.js", "", "")
@@ -251,7 +266,7 @@ func TestShellJS(t *testing.T) {
 	}
 
 	// The shared shell page loads it
-	resp = get(t, ts.URL+"/shared/"+aid, "", "text/html")
+	resp = getLinked(t, link, ts.URL+"/shared/"+aid, "", "text/html")
 	if !strings.Contains(body(t, resp), "/shell.js") {
 		t.Errorf("shell page should reference /shell.js")
 	}
@@ -261,14 +276,14 @@ func TestShellJS(t *testing.T) {
 // tab never strands the viewer; the shell header links back home.
 func TestPagesStayInOneTab(t *testing.T) {
 	_, ts := testServer(t)
-	admin, aid, vid := setupArtifact(t, ts.URL, true)
+	admin, aid, vid, link := setupArtifact(t, ts.URL, true)
 
 	// Signed out, the mark signs in and comes back, like the sign-in button.
-	shell := body(t, get(t, ts.URL+"/shared/"+aid, "", "text/html"))
+	shell := body(t, getLinked(t, link, ts.URL+"/shared/"+aid, "", "text/html"))
 	if want := `<a class="mark" href="/login?next=/shared/` + aid + `/` + vid + `"`; !strings.Contains(shell, want) {
 		t.Errorf("signed-out mark should sign in and return: want %s", want)
 	}
-	signedIn := body(t, get(t, ts.URL+"/shared/"+aid, admin.token, "text/html"))
+	signedIn := body(t, getLinked(t, link, ts.URL+"/shared/"+aid, admin.token, "text/html"))
 	if !strings.Contains(signedIn, `<a class="mark" href="/"`) {
 		t.Errorf("signed-in mark should link home")
 	}
@@ -296,7 +311,7 @@ func TestPagesStayInOneTab(t *testing.T) {
 // win over the vendored copies when requested inside a version.
 func TestSqlJSPrecedence(t *testing.T) {
 	_, ts := testServer(t)
-	admin, aid, _ := setupArtifact(t, ts.URL, true)
+	admin, aid, _, link := setupArtifact(t, ts.URL, true)
 	resp := admin.upload("POST", "/api/artifacts/"+aid+"/versions", zipFrom(t, map[string]string{
 		"index.html":    "<h1>v2</h1>",
 		"sql-wasm.js":   "console.log('custom sql-wasm.js')",
@@ -305,11 +320,11 @@ func TestSqlJSPrecedence(t *testing.T) {
 	v2 := decode[struct {
 		ID string `json:"id"`
 	}](t, resp)
-	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+v2.ID+"/sql-wasm.js", "", "")
+	resp = getLinked(t, link, ts.URL+"/artifacts/"+aid+"/"+v2.ID+"/sql-wasm.js", "", "")
 	if resp.StatusCode != http.StatusOK || !strings.Contains(body(t, resp), "custom sql-wasm.js") {
 		t.Errorf("artifact-provided sql-wasm.js should win")
 	}
-	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+v2.ID+"/sql-wasm.wasm", "", "")
+	resp = getLinked(t, link, ts.URL+"/artifacts/"+aid+"/"+v2.ID+"/sql-wasm.wasm", "", "")
 	if resp.StatusCode != http.StatusOK || body(t, resp) != "custom wasm bytes" {
 		t.Errorf("artifact-provided sql-wasm.wasm should win")
 	}
@@ -319,10 +334,10 @@ func TestSqlJSPrecedence(t *testing.T) {
 // version's URL space, so no page needs a CDN to load it.
 func TestSqlJSVendored(t *testing.T) {
 	_, ts := testServer(t)
-	_, aid, vid := setupArtifact(t, ts.URL, true)
+	_, aid, vid, link := setupArtifact(t, ts.URL, true)
 	for _, base := range []string{ts.URL + "/", ts.URL + "/artifacts/" + aid + "/" + vid + "/"} {
 		for name, want := range map[string]string{"sql-wasm.js": "javascript", "sql-wasm.wasm": "application/wasm"} {
-			resp := get(t, base+name, "", "")
+			resp := getLinked(t, link, base+name, "", "")
 			b := body(t, resp)
 			if resp.StatusCode != http.StatusOK || len(b) < 1000 {
 				t.Errorf("%s%s: status %d, %d bytes", base, name, resp.StatusCode, len(b))

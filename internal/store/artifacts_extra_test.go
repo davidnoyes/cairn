@@ -44,11 +44,11 @@ func TestArtifactLookupsAndListing(t *testing.T) {
 		t.Fatalf("ListArtifacts: %v %+v", err, all)
 	}
 
-	if err := s.UpdateArtifact(a.ID, "renamed", "new desc", true); err != nil {
+	if err := s.UpdateArtifact(a.ID, "renamed", "new desc"); err != nil {
 		t.Fatal(err)
 	}
 	byID, _ = s.ArtifactByID(a.ID)
-	if byID.Name != "renamed" || !byID.Public {
+	if byID.Name != "renamed" || byID.Description != "new desc" || byID.Public {
 		t.Errorf("UpdateArtifact: %+v", byID)
 	}
 

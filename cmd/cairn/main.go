@@ -21,8 +21,8 @@ Client:
   cairn forgot           Ask for a password reset link
   cairn reset            Set a new password from an emailed reset link
   cairn keys             Manage API keys (list|revoke)
-  cairn artifact         Manage artifacts (list|create|show|update|delete)
-  cairn push             Upload a directory as a new (or replaced) version
+  cairn artifact         Manage artifacts (list|create NAME|show|update|delete)
+  cairn push             Upload a directory as a new (or replaced) version (--create: new artifact)
   cairn db               Run SQL against a version's shared database
   cairn files            Manage a version's file storage (list|put|get|delete)
   cairn open             Print (or open) an artifact URL

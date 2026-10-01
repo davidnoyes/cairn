@@ -434,6 +434,18 @@ func TestOffers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Store.OpenOffer reads the same row outside a transaction.
+	if _, err := s.OpenOffer(a.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Store.OpenOffer with none open: %v", err)
+	}
+	err = s.WithArtifact(a.ID, func(tx *ArtifactTx) error { return tx.PutOffer(Offer{To: e.ID, By: "admin"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.OpenOffer(a.ID)
+	if err != nil || got.To != e.ID || got.By != "admin" || got.CreatedAt == "" {
+		t.Errorf("Store.OpenOffer: %v %+v", err, got)
+	}
 }
 
 func TestVersionPusherAndWriteEpochs(t *testing.T) {

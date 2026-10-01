@@ -4,7 +4,6 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,37 +13,10 @@ import (
 	"github.com/aloisdeniel/cairn/internal/store"
 )
 
-// pageAuth gates artifact page loads: public artifacts are open, private ones
-// redirect browsers to the login page.
-func (s *Server) pageAuth(w http.ResponseWriter, r *http.Request, a *store.Artifact) bool {
-	if s.canRead(r, a) {
-		return true
-	}
-	next := url.QueryEscape(r.URL.RequestURI())
-	http.Redirect(w, r, "/login?next="+next, http.StatusFound)
-	return false
-}
-
 func artifactPageHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	// Allow embedding only by our own shell frame.
 	w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
-}
-
-// resolvePageArtifact resolves the {id} segment for page routes (artifact id
-// or resource reference), writing plain-text errors.
-func (s *Server) resolvePageArtifact(w http.ResponseWriter, r *http.Request) *store.Artifact {
-	a, err := s.resolveArtifactRef(r.PathValue("id"))
-	if err != nil {
-		var ambiguous errAmbiguousResource
-		if errors.As(err, &ambiguous) {
-			http.Error(w, ambiguous.Error(), http.StatusConflict)
-			return nil
-		}
-		http.NotFound(w, r)
-		return nil
-	}
-	return a
 }
 
 // handleArtifactRedirect sends /artifacts/{id} to the latest version's
@@ -52,11 +24,8 @@ func (s *Server) resolvePageArtifact(w http.ResponseWriter, r *http.Request) *st
 // may be a resource reference (e.g. a Claude session id); the redirect
 // canonicalizes it to the artifact id.
 func (s *Server) handleArtifactRedirect(w http.ResponseWriter, r *http.Request) {
-	a := s.resolvePageArtifact(w, r)
+	a := s.pageArtifact(w, r)
 	if a == nil {
-		return
-	}
-	if !s.pageAuth(w, r, a) {
 		return
 	}
 	v, err := s.store.LatestVersion(a.ID)
@@ -75,11 +44,8 @@ func (s *Server) handleArtifactRedirect(w http.ResponseWriter, r *http.Request) 
 // /artifacts/{id}/{vid}/{path...} — a trailing-slash canonical base URL, so
 // relative routing inside the SPA needs no rewriting at all.
 func (s *Server) handleVersionPage(w http.ResponseWriter, r *http.Request) {
-	a := s.resolvePageArtifact(w, r)
+	a := s.pageArtifact(w, r)
 	if a == nil {
-		return
-	}
-	if !s.pageAuth(w, r, a) {
 		return
 	}
 	v, err := s.store.VersionByID(a.ID, r.PathValue("vid"))
@@ -202,11 +168,8 @@ type shellData struct {
 }
 
 func (s *Server) handleShared(w http.ResponseWriter, r *http.Request) {
-	a := s.resolvePageArtifact(w, r)
+	a := s.pageArtifact(w, r)
 	if a == nil {
-		return
-	}
-	if !s.pageAuth(w, r, a) {
 		return
 	}
 	versions, err := s.store.ListVersions(a.ID)
@@ -228,7 +191,10 @@ func (s *Server) handleShared(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	data := shellData{Artifact: s.withResources(a), Version: current}
+	if rs, err := s.store.ListResources(a.ID); err == nil {
+		a.Resources = rs
+	}
+	data := shellData{Artifact: a, Version: current}
 	for _, v := range versions {
 		data.Versions = append(data.Versions, shellVersion{Version: v, Current: v.ID == current.ID})
 	}

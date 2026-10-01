@@ -50,11 +50,17 @@ func testAuthKey(password string) []byte {
 // tests that need a working login without exercising sign-up itself.
 func seedAccount(t *testing.T, s *Server, email, password string, isAdmin bool) *store.User {
 	t.Helper()
-	hash, err := auth.HashPassword(string(testAuthKey(password)))
+	bundle, err := decodeBundle(testBundleWire())
 	if err != nil {
 		t.Fatal(err)
 	}
-	bundle, err := decodeBundle(testBundleWire())
+	return seedAccountWith(t, s, email, password, isAdmin, bundle)
+}
+
+// seedAccountWith is seedAccount with the given key bundle.
+func seedAccountWith(t *testing.T, s *Server, email, password string, isAdmin bool, bundle store.Bundle) *store.User {
+	t.Helper()
+	hash, err := auth.HashPassword(string(testAuthKey(password)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,6 +124,18 @@ type testClient struct {
 	t     *testing.T
 	base  string
 	token string
+	// link, when set, is sent as X-Cairn-Link-Token.
+	link string
+}
+
+// setHeaders adds the client's credentials to req.
+func (c *testClient) setHeaders(req *http.Request) {
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if c.link != "" {
+		req.Header.Set("X-Cairn-Link-Token", c.link)
+	}
 }
 
 func (c *testClient) do(method, path string, body any, out any) *http.Response {
@@ -134,9 +152,7 @@ func (c *testClient) do(method, path string, body any, out any) *http.Response {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	}
+	c.setHeaders(req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.t.Fatal(err)

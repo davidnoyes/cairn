@@ -82,21 +82,6 @@ func TestConfirmRecoveryCodeRejected(t *testing.T) {
 	}
 }
 
-func TestApiKeyBearer(t *testing.T) {
-	full := "cairn_0011223344556677_00112233445566778899aabbccddeeff_" + strings.Repeat("ab", 32)
-	bearer, err := apiKeyBearer(full)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "cairn_0011223344556677_00112233445566778899aabbccddeeff"
-	if bearer != want {
-		t.Errorf("apiKeyBearer = %q, want %q", bearer, want)
-	}
-	if _, err := apiKeyBearer("not-a-key"); err == nil {
-		t.Error("a malformed key was accepted")
-	}
-}
-
 func TestApiClientMissingCredentials(t *testing.T) {
 	t.Setenv("CAIRN_HOST", "")
 	t.Setenv("CAIRN_API_KEY", "")
@@ -119,6 +104,14 @@ func TestApiClientFromEnv(t *testing.T) {
 	}
 	if c.Token != "cairn_0011223344556677_00112233445566778899aabbccddeeff" {
 		t.Errorf("Token leaked keySecret: %q", c.Token)
+	}
+	if c.Key == nil || c.Key.KeyID != "0011223344556677" {
+		t.Errorf("Key = %v, want the parsed key", c.Key)
+	}
+
+	t.Setenv("CAIRN_API_KEY", "not-a-key")
+	if _, err := apiClient(); err == nil {
+		t.Error("apiClient accepted a malformed key")
 	}
 }
 
@@ -378,11 +371,11 @@ func TestRunLogoutRevokesKeyAndClearsConfig(t *testing.T) {
 	if got := loadConfig(); got != (cliConfig{}) {
 		t.Errorf("loadConfig() = %+v, want cleared", got)
 	}
-	bearer, err := apiKeyBearer(out.APIKey)
+	key, err := e2e.ParseAPIKey(out.APIKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.New(host, bearer).Me(); err == nil {
+	if _, err := client.New(host, bearerOf(key)).Me(); err == nil {
 		t.Error("the revoked device key still authenticates")
 	}
 }
@@ -425,12 +418,8 @@ func TestRunLogoutAlreadyRevokedKeyClearsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bearer, err := apiKeyBearer(out.APIKey)
-	if err != nil {
-		t.Fatal(err)
-	}
 	// Revoke it out of band, the way an admin or another device would.
-	if err := client.New(host, bearer).RevokeKey(key.KeyID); err != nil {
+	if err := client.New(host, bearerOf(key)).RevokeKey(key.KeyID); err != nil {
 		t.Fatalf("RevokeKey: %v", err)
 	}
 	t.Setenv("CAIRN_CONFIG", filepath.Join(t.TempDir(), "config.json"))

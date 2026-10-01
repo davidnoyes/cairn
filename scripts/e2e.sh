@@ -59,30 +59,35 @@ CAIRN_HOST="$HOST" CAIRN_API_KEY="$API_KEY" "$BIN" whoami | grep -q admin@e2e.te
 pass "API key auth"
 
 echo "== push"
-"$BIN" push "$ROOT/examples/guestbook" --artifact guestbook --create --public \
+"$BIN" push "$ROOT/examples/guestbook" --artifact guestbook --create \
   --name v1 --changelog "first" --json > "$WORK/push1.json"
 AID=$(python3 -c "import json;print(json.load(open('$WORK/push1.json'))['artifact']['id'])")
 VID=$(python3 -c "import json;print(json.load(open('$WORK/push1.json'))['version']['id'])")
 pass "pushed guestbook ($AID / $VID)"
 
 echo "== resource reference"
+# Artifacts are private from creation, so plain HTTP reads carry the bearer.
+AUTH=(-H "Authorization: Bearer $BEARER")
 curl -sf -X POST "$HOST/api/artifacts/$AID/resources" \
-  -H "Authorization: Bearer $BEARER" -H 'Content-Type: application/json' \
+  "${AUTH[@]}" -H 'Content-Type: application/json' \
   -d '{"type":"claude-session","value":"sess-e2e"}' >/dev/null
-curl -sf "$HOST/api/artifacts/sess-e2e" | grep -q "$AID" || fail "API lookup by resource value"
+curl -sf "${AUTH[@]}" "$HOST/api/artifacts/sess-e2e" | grep -q "$AID" || fail "API lookup by resource value"
 pass "API resolves resource value to artifact"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/artifacts/sess-e2e")
+[[ "$STATUS" == "404" ]] || fail "anonymous lookup of a private artifact ($STATUS)"
+pass "anonymous lookup of a private artifact is not found"
 "$BIN" artifact show sess-e2e | grep -q "$AID" || fail "CLI lookup by resource value"
 pass "CLI resolves resource value"
 
 echo "== serving"
-LOC=$(curl -s -o /dev/null -w '%{redirect_url}' "$HOST/artifacts/$AID")
+LOC=$(curl -s -o /dev/null -w '%{redirect_url}' "${AUTH[@]}" "$HOST/artifacts/$AID")
 [[ "$LOC" == "$HOST/artifacts/$AID/$VID/" || "$LOC" == "/artifacts/$AID/$VID/" ]] || fail "latest redirect ($LOC)"
 pass "artifact redirects to latest version"
-curl -sf "$HOST/artifacts/$AID/$VID/" | grep -q "Guestbook" || fail "index served"
+curl -sf "${AUTH[@]}" "$HOST/artifacts/$AID/$VID/" | grep -q "Guestbook" || fail "index served"
 pass "index.html served"
-curl -sf "$HOST/artifacts/$AID/$VID/cairn.js" | grep -q "cairn.js" || fail "cairn.js injected"
+curl -sf "${AUTH[@]}" "$HOST/artifacts/$AID/$VID/cairn.js" | grep -q "cairn.js" || fail "cairn.js injected"
 pass "cairn.js available inside version"
-curl -sf "$HOST/shared/$AID" | grep -q "iframe" || fail "shared shell"
+curl -sf "${AUTH[@]}" "$HOST/shared/$AID" | grep -q "iframe" || fail "shared shell"
 pass "shared shell renders"
 
 echo "== shared database"
@@ -94,15 +99,18 @@ echo "== shared database"
 "$BIN" db query --artifact guestbook "SELECT message FROM entries" | grep -q "hello from e2e" || fail "db round trip"
 pass "SQL write + read through CLI"
 
-# Anonymous read works (public artifact), anonymous write is rejected.
-curl -sf -X POST "$HOST/api/artifacts/$AID/versions/$VID/db/query" \
+# The bearer reads over plain HTTP. The artifact is private, so an anonymous
+# caller finds nothing, read or write.
+curl -sf -X POST "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/db/query" \
   -H 'Content-Type: application/json' -d '{"sql":"SELECT COUNT(*) FROM entries"}' | grep -q '\[\[1\]\]' \
-  || fail "anonymous read"
-pass "anonymous read on public artifact"
-STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$HOST/api/artifacts/$AID/versions/$VID/db/query" \
-  -H 'Content-Type: application/json' -d '{"sql":"DELETE FROM entries"}')
-[[ "$STATUS" == "400" ]] || fail "anonymous write not rejected ($STATUS)"
-pass "anonymous write rejected"
+  || fail "bearer read"
+pass "bearer read over HTTP"
+for SQL in 'SELECT COUNT(*) FROM entries' 'DELETE FROM entries'; do
+  STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$HOST/api/artifacts/$AID/versions/$VID/db/query" \
+    -H 'Content-Type: application/json' -d "{\"sql\":\"$SQL\"}")
+  [[ "$STATUS" == "404" ]] || fail "anonymous query not refused ($SQL: $STATUS)"
+done
+pass "anonymous read and write on a private artifact are not found"
 
 echo "== file storage"
 echo "hello file" > "$WORK/note.txt"
@@ -110,16 +118,19 @@ echo "hello file" > "$WORK/note.txt"
 "$BIN" files list --artifact guestbook | grep -q "notes/hello.txt" || fail "file list"
 "$BIN" files get notes/hello.txt --artifact guestbook | grep -q "hello file" || fail "file get"
 pass "file put + list + get through CLI"
-curl -sf "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt" | grep -q "hello file" \
-  || fail "anonymous file read"
-pass "anonymous file read on public artifact"
+curl -sf "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt" | grep -q "hello file" \
+  || fail "bearer file read"
+pass "bearer file read over HTTP"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt")
+[[ "$STATUS" == "404" ]] || fail "anonymous file read not refused ($STATUS)"
+pass "anonymous file read on a private artifact is not found"
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
   -H 'Content-Type: application/octet-stream' \
   "$HOST/api/artifacts/$AID/versions/$VID/files/evil.txt" --data-binary 'x')
-[[ "$STATUS" == "401" ]] || fail "anonymous file write not rejected ($STATUS)"
+[[ "$STATUS" == "404" ]] || fail "anonymous file write not rejected ($STATUS)"
 pass "anonymous file write rejected"
 "$BIN" files delete notes/hello.txt --artifact guestbook >/dev/null
-STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt")
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt")
 [[ "$STATUS" == "404" ]] || fail "deleted file still served ($STATUS)"
 pass "file delete"
 
@@ -128,7 +139,7 @@ echo "== re-upload + cross-version read"
 VID2=$(python3 -c "import json;print(json.load(open('$WORK/push2.json'))['version']['id'])")
 [[ "$VID2" != "$VID" ]] || fail "second push created no new version"
 # v2's database is fresh; the old version's data is still reachable read-only.
-curl -sf -X POST "$HOST/api/artifacts/$AID/versions/$VID/db/query" \
+curl -sf -X POST "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/db/query" \
   -H 'Content-Type: application/json' -d '{"sql":"SELECT message FROM entries"}' \
   | grep -q "hello from e2e" || fail "old version data lost"
 pass "per-version databases isolated; old data readable"
@@ -136,10 +147,29 @@ pass "per-version databases isolated; old data readable"
 pass "re-upload (overwrite latest)"
 
 echo "== private gating"
-"$BIN" artifact update guestbook --public false >/dev/null
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: text/html' "$HOST/artifacts/$AID/$VID/")
 [[ "$STATUS" == "302" ]] || fail "private page not gated ($STATUS)"
 pass "private artifact redirects to login"
+
+echo "== artifact create"
+"$BIN" artifact create notes --description "e2e notes" --json > "$WORK/notes.json"
+NID=$(python3 -c "import json;print(json.load(open('$WORK/notes.json'))['id'])")
+curl -sf "${AUTH[@]}" "$HOST/api/artifacts/$NID/membership" > "$WORK/membership.json" || fail "membership read"
+python3 - "$WORK/membership.json" <<'PY' || fail "membership chain"
+import base64, json, sys
+m = json.load(open(sys.argv[1]))
+assert len(m["records"]) == 1, m
+body = json.loads(base64.urlsafe_b64decode(m["records"][0]["body"] + "=="))
+assert body["epoch"] == 1 and body["seq"] == 1 and body["members"] == [], body
+assert body["team"] == "none" and not body["public"] and body["ownerFp"] in m["owners"], body
+PY
+curl -sf "${AUTH[@]}" "$HOST/api/artifacts/$NID/keys" \
+  | python3 -c "import json,sys;k=json.load(sys.stdin);assert k['wraps']==[] and [e['epoch'] for e in k['estate']]==[1], k" \
+  || fail "estate copy"
+pass "artifact create signs the first record and stores the estate copy"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/artifacts/$NID/membership")
+[[ "$STATUS" == "404" ]] || fail "anonymous membership read ($STATUS)"
+pass "anonymous membership read is not found"
 
 echo "== backup"
 "$BIN" backup --data-dir "$WORK/data" --out "$WORK/backup" >/dev/null
