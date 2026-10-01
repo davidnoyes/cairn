@@ -187,6 +187,9 @@ func runLogout(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	if os.Getenv("CAIRN_API_KEY") != "" {
+		fmt.Fprintln(os.Stderr, "logout revokes only the saved login; the key in CAIRN_API_KEY stays valid (revoke it with `cairn keys revoke <id>`)")
+	}
 	cfg := loadConfig()
 	if cfg.APIKey != "" {
 		key, err := e2e.ParseAPIKey(cfg.APIKey)
@@ -205,7 +208,7 @@ func runLogout(args []string) error {
 					if !*force {
 						return fmt.Errorf("could not revoke key %s on %s: %w; you are still logged in (use --force to log out locally anyway)", key.KeyID, cfg.Host, err)
 					}
-					fmt.Fprintf(os.Stderr, "key %s may still be valid; revoke it from another device with `cairn keys revoke %s`\n", key.KeyID, key.KeyID)
+					fmt.Fprintf(os.Stderr, "key %s may still be valid; revoke it after logging in again, or from another device, with `cairn keys revoke %s`\n", key.KeyID, key.KeyID)
 				}
 			}
 		}

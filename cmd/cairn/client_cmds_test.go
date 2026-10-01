@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -519,7 +520,7 @@ func TestRunLogoutForceClearsConfigAndWarnsWhenRevokeFails(t *testing.T) {
 	if got := loadConfig(); got != (cliConfig{}) {
 		t.Errorf("loadConfig() = %+v, want cleared", got)
 	}
-	want := "key 0011223344556677 may still be valid; revoke it from another device with `cairn keys revoke 0011223344556677`"
+	want := "key 0011223344556677 may still be valid; revoke it after logging in again, or from another device, with `cairn keys revoke 0011223344556677`"
 	if !strings.Contains(stderr, want) {
 		t.Errorf("stderr = %q, want it to contain %q", stderr, want)
 	}
@@ -597,6 +598,10 @@ func TestRunLogoutTimesOutOnBlackHoledHost(t *testing.T) {
 	err := runLogout(nil)
 	if err == nil {
 		t.Fatal("runLogout against a blocked host succeeded")
+	}
+	var netErr net.Error
+	if !errors.As(err, &netErr) || !netErr.Timeout() {
+		t.Errorf("runLogout error = %v, want a timeout", err)
 	}
 	if elapsed := time.Since(start); elapsed > 5*time.Second {
 		t.Errorf("runLogout took %v, want it bounded by the timeout", elapsed)
@@ -691,5 +696,17 @@ func TestRunLoginEmptyStdinRefused(t *testing.T) {
 	err := runLogin([]string{"--host", "http://127.0.0.1:1", "--email", "ada@example.com", "--password-stdin"})
 	if !errors.Is(err, client.ErrEmptyPassword) {
 		t.Errorf("runLogin with empty stdin: err = %v, want ErrEmptyPassword", err)
+	}
+}
+
+func TestRunLogoutWarnsThatAnEnvKeyStaysValid(t *testing.T) {
+	t.Setenv("CAIRN_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	t.Setenv("CAIRN_API_KEY", dummyFullAPIKey)
+	doneErr := captureStderr(t)
+	doneOut := captureStdout(t)
+	err := runLogout(nil)
+	doneOut()
+	if stderr := doneErr(); err != nil || !strings.Contains(stderr, "CAIRN_API_KEY stays valid") {
+		t.Errorf("runLogout with CAIRN_API_KEY set = %v, stderr %q; want a warning that the env key stays valid", err, stderr)
 	}
 }

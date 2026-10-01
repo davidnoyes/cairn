@@ -154,15 +154,16 @@ pass "keys list shows the device key"
 # session above.
 SIGNUP2_OUT="$WORK/signup2.txt"
 echo "reset-flow-strong-pw-1" | "$BIN" signup --host "$HOST" --email reset@e2e.test --password-stdin >"$SIGNUP2_OUT"
-RECOVERY_CODE=$(sed -n 's/^  \([A-Z2-7-]\{1,\}\)$/\1/p' "$SIGNUP2_OUT")
+RECOVERY_CODE=$(sed -n 's/^  \([A-Z2-7-]\{1,\}\)$/\1/p' "$SIGNUP2_OUT" | head -1)
 [[ -n "$RECOVERY_CODE" ]] || fail "no recovery code in signup output"
 VERIFY_LINK2=$(grep -oE "$HOST/verify#token=[A-Za-z0-9_-]+" "$SERVER_LOG" | tail -1)
 "$BIN" confirm-email "$VERIFY_LINK2" >/dev/null
 pass "second account signed up, with a saved recovery code"
 
-if echo "password1" | "$BIN" signup --host "$HOST" --email weak@e2e.test --password-stdin >/dev/null 2>&1; then
+if echo "password1" | "$BIN" signup --host "$HOST" --email weak@e2e.test --password-stdin >/dev/null 2>"$WORK/weak.err"; then
   fail "signup with a weak password succeeded"
 fi
+grep -q "too weak" "$WORK/weak.err" || fail "weak signup failed for another reason: $(cat "$WORK/weak.err")"
 pass "signup with a weak password is refused"
 
 "$BIN" forgot --host "$HOST" --email reset@e2e.test >/dev/null
@@ -171,9 +172,10 @@ RESET_LINK=$(grep -oE "$HOST/reset#token=[A-Za-z0-9_-]+" "$SERVER_LOG" | tail -1
 echo "reset-flow-even-stronger-pw-2" | "$BIN" reset "$RESET_LINK" --recovery-code "$RECOVERY_CODE" --password-stdin >/dev/null
 pass "password reset via recovery code"
 
-if echo "reset-flow-strong-pw-1" | "$BIN" login --host "$HOST" --email reset@e2e.test --password-stdin >/dev/null 2>&1; then
+if echo "reset-flow-strong-pw-1" | "$BIN" login --host "$HOST" --email reset@e2e.test --password-stdin >/dev/null 2>"$WORK/oldpw.err"; then
   fail "login with the old password succeeded after the reset"
 fi
+grep -q "invalid email or password" "$WORK/oldpw.err" || fail "old-password login failed for another reason: $(cat "$WORK/oldpw.err")"
 pass "the old password no longer logs in"
 
 echo "reset-flow-even-stronger-pw-2" | "$BIN" login --host "$HOST" --email reset@e2e.test --password-stdin >/dev/null
@@ -182,6 +184,7 @@ pass "login with the reset password"
 
 LOGOUT_KEY=$(python3 -c "import json;print(json.load(open('$CAIRN_CONFIG'))['apiKey'])")
 [[ -n "$LOGOUT_KEY" ]] || fail "no stored API key before logout"
+CAIRN_HOST="$HOST" CAIRN_API_KEY="$LOGOUT_KEY" "$BIN" whoami >/dev/null || fail "the device key does not authenticate before logout"
 "$BIN" logout >/dev/null
 if "$BIN" whoami >/dev/null 2>&1; then
   fail "whoami succeeded after logout"
