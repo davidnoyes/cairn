@@ -29,6 +29,8 @@ func (s *Server) routes() {
 	mux.HandleFunc("PUT /api/me/password", s.requireSession(s.handleMePassword))
 	mux.HandleFunc("PUT /api/me/recovery", s.requireSession(s.handleMeRecovery))
 	mux.HandleFunc("GET /api/me/archives", s.requireAuth(s.handleMeArchives))
+	mux.HandleFunc("GET /api/me/keyring", s.requireAuth(s.handleGetKeyring))
+	mux.HandleFunc("PUT /api/me/keyring", s.requireAuth(s.handlePutKeyring))
 
 	// API keys: the user's own only.
 	mux.HandleFunc("GET /api/keys", s.requireAuth(s.handleListKeys))

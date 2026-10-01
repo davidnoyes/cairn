@@ -27,6 +27,8 @@ type UnlockedKeys struct {
 	Ed25519Pub  []byte
 	Ed25519Seed []byte
 	EK          []byte
+	// MKSealKey seals and opens the keyring.
+	MKSealKey []byte
 }
 
 // Unlock opens the caller's keys: MK from the device key's own sealed copy,
@@ -66,7 +68,7 @@ func (c *Client) Unlock() (*UnlockedKeys, error) {
 	if err != nil {
 		return nil, err
 	}
-	k := &UnlockedKeys{UserID: me.ID}
+	k := &UnlockedKeys{UserID: me.ID, MKSealKey: mkKey}
 	for _, f := range []struct {
 		name   string
 		sealed string
@@ -149,15 +151,8 @@ func (c *Client) CreateArtifact(name, description string) (*store.Artifact, erro
 		return nil, err
 	}
 
-	m, err := c.Membership(id)
-	if err != nil {
+	if _, err := c.VerifyArtifact(k, id, k.FP); err != nil {
 		return nil, fmt.Errorf("artifact %s was created, but reading its membership back failed: %w", id, err)
-	}
-	if _, err := e2e.VerifyChain(e2e.ChainInput{
-		Artifact: id, Records: m.Records, Owners: m.Owners, Offers: m.Offers,
-		Anchor: k.FP, CurrentOwnerFP: k.FP,
-	}); err != nil {
-		return nil, fmt.Errorf("artifact %s was created, but the server's copy of its membership does not verify: %w", id, err)
 	}
 	return &out, nil
 }

@@ -22,6 +22,9 @@ Client:
   cairn reset            Set a new password from an emailed reset link
   cairn keys             Manage API keys (list|revoke)
   cairn artifact         Manage artifacts (list|create NAME|show|update|delete)
+  cairn members          List an artifact's owner and members, with pin states, from its verified chain
+  cairn share            Add a member, or promote a viewer (ARTIFACT USER --role viewer|editor)
+  cairn pin              Pin a user's fingerprint in your keyring (--verified once compared)
   cairn push             Upload a directory as a new (or replaced) version (--create: new artifact)
   cairn db               Run SQL against a version's shared database
   cairn files            Manage a version's file storage (list|put|get|delete)
@@ -59,6 +62,12 @@ func main() {
 		err = runKeys(args)
 	case "artifact":
 		err = runArtifact(args)
+	case "members":
+		err = runMembers(args)
+	case "share":
+		err = runShare(args)
+	case "pin":
+		err = runPin(args)
 	case "push":
 		err = runPush(args)
 	case "db":

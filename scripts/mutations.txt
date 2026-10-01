@@ -36,3 +36,30 @@ internal/e2e/keys.go	if p.Memory > ceilingMemory {	if false {	go test ./internal
 internal/e2e/envelope.go	if len(env.NewSig) == 0 {	if false {	go test ./internal/e2e -run TestOpenRotationRejectsMissingNewSig
 internal/e2e/seal.go	commit := Derive(ak, nil, LabelAKCommit, []byte(artifact), epochBytes(epoch))	commit := Derive(ak, nil, LabelFileKey, []byte(artifact), epochBytes(epoch))	go test ./internal/e2e -run TestVectors
 internal/server/validate.go	if e2e.CheckPublicKeys(b.X25519Pub, b.Ed25519Pub) != nil {	if false {	go test ./internal/server -run TestValidateBundleRejectsLowOrderKeys
+
+# Keyring anchor, 409 rev, retry merge, epoch pin, and share refusals (milestone 3 step 4).
+internal/e2e/keyring.go	if k.Rev < anchor.Rev {	if false {	go test ./internal/e2e -run 'Keyring|TestVectors'
+internal/e2e/keyring.go	if k.Rev == anchor.Rev && next.Hash != anchor.Hash {	if false {	go test ./internal/e2e -run 'Keyring|TestVectors'
+internal/e2e/keyring.go	if k.Rev != rev {	if false {	go test ./internal/e2e -run 'Keyring|TestVectors'
+internal/e2e/keyring.go	if rev != 0 {	if false {	go test ./internal/e2e -run 'Keyring|TestVectors'
+internal/e2e/keyring.go	if err := anchor.Check(); err != nil {	if err := anchor.Check(); false && err != nil {	go test ./internal/e2e -run 'Keyring|TestVectors'
+internal/e2e/keyring.go	if err := DecodeStrict(pt, k); err != nil {	if err := json.Unmarshal(pt, k); err != nil {	go test ./internal/e2e -run 'Keyring|TestVectors'
+internal/server/web/e2e.mjs	if (k.rev < anchor.rev) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (k.rev === anchor.rev && next.hash !== anchor.hash) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (anchor) checkKeyringAnchor(anchor);	;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	k = decodeStrict(pt, KEYRING_SCHEMA);	k = JSON.parse(new TextDecoder().decode(pt));	node --test internal/server/web/e2e_test.mjs
+internal/store/keyring.go	WHERE user_id = ? AND rev = ?`	WHERE user_id = ? AND rev >= 0 OR rev = ?`	go test ./internal/store -run TestKeyring
+internal/server/handlers_keyring.go	if errors.Is(err, store.ErrStale) {	if errors.Is(err, store.ErrStale) && current < 0 {	go test ./internal/server -run TestKeyringPutAndRev
+internal/client/keyring.go	if errors.As(err, &apiErr) && apiErr.Status == http.StatusConflict {	if errors.As(err, &apiErr) && apiErr.Status == http.StatusConflict+1 {	go test ./internal/client -run 'TestUpdateKeyringMergesConcurrentWrites'
+internal/client/keyring.go	CurrentOwnerFP: currentOwnerFP, Pin: kr.EpochPin(artifactID),	CurrentOwnerFP: currentOwnerFP, Pin: nil,	go test ./internal/client -run 'TestVerifyRefusesAShortenedOrForkedChain'
+internal/client/keyring.go	if p, ok := kr.Pins[creator]; ok {	if p, ok := kr.Pins[creator]; ok && false {	go test ./internal/client -run 'TestVerifyAnchorsAtThePinNotTheDirectory'
+internal/client/keyring.go	if kr.Epochs[artifactID] == want && pin == nil {	if kr.Epochs[artifactID] == want || pin == nil {	go test ./internal/client -run 'TestCreateArtifactRecordsTheEpoch|TestShareAddsAMember'
+internal/client/keyring.go	if cur, ok := kr.Epochs[artifactID]; !ok || cur.Seq < chain.Latest.Seq {	if true {	go test ./internal/client -run 'TestRecordChainKeepsTheLaterEntry'
+internal/client/keyring.go	if _, ok := kr.Pins[creator]; pin != nil && !ok {	if _, ok := kr.Pins[creator]; pin != nil || !ok {	go test ./internal/client -run 'TestRecordChainKeepsAPinStoredMeanwhile'
+internal/client/share.go	if !acceptNewKey {	if false {	go test ./internal/client -run 'TestShareRefusesAChangedKey'
+internal/client/share.go	if e := ExcludedMatch(latest.Excluded, u); e != nil {	if e := ExcludedMatch(latest.Excluded, u); false && e != nil {	go test ./internal/client -run 'TestShareRefusesAnExcludedUser'
+internal/client/share.go	if err := CheckDirectory(dir); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -run 'TestShareRefusesADuplicateDirectory'
+internal/client/share.go	case members[i].Role == "editor" && role == "viewer":	case false:	go test ./internal/client -run 'TestSharePromotesAndRefusesDemotion'
+internal/client/share.go	if want, ok := commits[e.Epoch]; !ok || commit != want {	if want, ok := commits[e.Epoch]; !ok && commit != want {	go test ./internal/client -run 'TestShareRefusesAnEstateCopyThatMissesTheCommit'
+cmd/cairn/config.go	f.cliConfig = cfg	f = configFile{cliConfig: cfg}	go test ./cmd/cairn -run TestKeyringAnchorSurvivesLogoutAndLogin
+internal/client/share.go	if e.User == u.ID || e.FP == u.FP || e2e.NormalizeEmail(e.Email) == email {	if e.User == u.ID || e.FP == u.FP || e.Email == email {	go test ./internal/client -run TestExcludedMatch

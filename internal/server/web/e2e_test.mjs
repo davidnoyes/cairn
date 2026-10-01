@@ -1224,12 +1224,146 @@ test('checkNewAk refuses an earlier epoch\'s AK', () => {
   assert.throws(() => e2e.checkNewAk(Array.from(testKeyBytes(3)), earlier), e2e.FormatError);
 });
 
+// keyringErrors maps each keyring entry's error kind to the class
+// openKeyring must throw; see testdata/README.md.
+const keyringErrors = {
+  rev: e2e.KeyringRevError,
+  rollback: e2e.KeyringRollbackError,
+  fork: e2e.KeyringForkError,
+  format: e2e.FormatError,
+  decrypt: e2e.DecryptError,
+};
+
+// keyring mirrors the Go keyring vector check: openKeyring must open each
+// valid answer to the same keyring and anchor, and refuse each other one
+// with the same error kind.
+describe('keyring', () => {
+  for (const v of vf.keyring) {
+    test(v.name, async () => {
+      const run = () => e2e.openKeyring(hex(v.key), v.rev, hex(v.sealed), v.anchor);
+      if (v.error) {
+        assert.ok(keyringErrors[v.error], `${v.name}: unknown error kind ${v.error}`);
+        await assert.rejects(run, keyringErrors[v.error], `${v.name}: ${v.why}`);
+        return;
+      }
+      const got = await run();
+      assert.deepEqual(got, v.want, `${v.name}: ${v.why}`);
+    });
+  }
+});
+
+test('the keyring errors are distinct classes', () => {
+  const classes = [e2e.KeyringRevError, e2e.KeyringRollbackError, e2e.KeyringForkError];
+  for (const a of classes) {
+    for (const b of classes) {
+      if (a !== b) assert.ok(!(new a('x') instanceof b), `${a.name} is a ${b.name}`);
+    }
+  }
+});
+
+test('sealKeyring round-trips and refuses an invalid keyring', async () => {
+  const key = await e2e.mkSealKey(testKeyBytes(7));
+  const k = e2e.newKeyring();
+  k.rev = 2;
+  k.pins['u-bob'] = { fp: 'a'.repeat(64), state: e2e.PIN_VERIFIED, rotSeq: 0, rotHead: '' };
+  k.epochs['a-1'] = { epoch: 1, seq: 3, head: 'b'.repeat(64), ack: 0 };
+  const sealed = await e2e.sealKeyring(key, k);
+  const got = await e2e.openKeyring(key, 2, sealed, null);
+  assert.deepEqual(got.keyring, k);
+  assert.deepEqual(got.anchor, { rev: 2, hash: await e2e.bodyHash(sealed) });
+  // Opening under the mk field, not keyring, fails.
+  await assert.rejects(() => e2e.open(key, [new TextEncoder().encode('mk')], sealed), e2e.DecryptError);
+
+  const bad = structuredClone(k);
+  bad.pins['u-bob'].state = e2e.PIN_NEW;
+  await assert.rejects(() => e2e.sealKeyring(key, bad), e2e.FormatError);
+  for (const rev of [-1, 1.5]) {
+    await assert.rejects(() => e2e.sealKeyring(key, { ...k, rev }), e2e.FormatError, `rev ${rev}`);
+  }
+});
+
+test('openKeyring refuses a malformed anchor before comparing', async () => {
+  const key = await e2e.mkSealKey(testKeyBytes(7));
+  const k = e2e.newKeyring();
+  k.rev = 2;
+  const sealed = await e2e.sealKeyring(key, k);
+  const hash = await e2e.bodyHash(sealed);
+  for (const anchor of [{ rev: -1, hash }, { rev: 1, hash: 'X'.repeat(64) }, { rev: 1.5, hash }]) {
+    await assert.rejects(() => e2e.openKeyring(key, 2, sealed, anchor), e2e.FormatError, JSON.stringify(anchor));
+  }
+});
+
+test('pinState reports new, the pinned state, or changed', async () => {
+  const x = new Uint8Array(32).fill(1);
+  const ed = new Uint8Array(32).fill(2);
+  const fp = toHex(await e2e.fingerprint(x, ed));
+  const other = 'c'.repeat(64);
+  const cases = [
+    [null, e2e.PIN_NEW],
+    [{ fp, state: e2e.PIN_UNVERIFIED }, e2e.PIN_UNVERIFIED],
+    [{ fp, state: e2e.PIN_VERIFIED }, e2e.PIN_VERIFIED],
+    [{ fp: other, state: e2e.PIN_VERIFIED }, e2e.PIN_CHANGED],
+    [{ fp: other, state: e2e.PIN_UNVERIFIED }, e2e.PIN_CHANGED],
+  ];
+  for (const [pin, want] of cases) {
+    assert.deepEqual(await e2e.pinState(pin, x, ed), { state: want, fp }, JSON.stringify(pin));
+  }
+});
+
+// fakeStorage is the part of the Storage interface the anchor helpers use.
+function fakeStorage() {
+  const m = new Map();
+  return {
+    getItem: (k) => (m.has(k) ? m.get(k) : null),
+    setItem: (k, v) => m.set(k, String(v)),
+    removeItem: (k) => m.delete(k),
+    keys: () => [...m.keys()],
+  };
+}
+
+test('the keyring anchor is kept per user and survives signing out', async () => {
+  const storage = fakeStorage();
+  const key = await e2e.mkSealKey(testKeyBytes(8));
+  const k = e2e.newKeyring();
+  k.rev = 1;
+  const sealed1 = await e2e.sealKeyring(key, k);
+  k.rev = 2;
+  const sealed2 = await e2e.sealKeyring(key, k);
+
+  assert.equal(e2e.loadKeyringAnchor(storage, 'u-ada'), null);
+  const read2 = await e2e.openKeyring(key, 2, sealed2, null);
+  e2e.saveKeyringAnchor(storage, 'u-ada', read2.anchor);
+  storage.setItem('cairn.session', 'token');
+
+  // Signing out drops the session; the anchor is a separate key.
+  storage.removeItem('cairn.session');
+  assert.deepEqual(storage.keys(), ['cairn.keyringAnchor.u-ada']);
+
+  // Signing in again reads the anchor back, and it refuses the rev 1
+  // keyring a server rolled back to.
+  const anchor = e2e.loadKeyringAnchor(storage, 'u-ada');
+  assert.deepEqual(anchor, read2.anchor);
+  await assert.rejects(() => e2e.openKeyring(key, 1, sealed1, anchor), e2e.KeyringRollbackError);
+  await e2e.openKeyring(key, 2, sealed2, anchor);
+
+  // Another user on the same browser has no anchor of their own yet.
+  assert.equal(e2e.loadKeyringAnchor(storage, 'u-bob'), null);
+
+  // A malformed stored anchor is an error, never "no anchor".
+  for (const raw of ['not json', '{"rev":-1,"hash":"' + 'a'.repeat(64) + '"}', '{"rev":1,"hash":"zz"}', 'null']) {
+    storage.setItem('cairn.keyringAnchor.u-ada', raw);
+    assert.throws(() => e2e.loadKeyringAnchor(storage, 'u-ada'), e2e.FormatError, raw);
+  }
+  assert.throws(() => e2e.loadKeyringAnchor(storage, ''), e2e.FormatError);
+  assert.throws(() => e2e.saveKeyringAnchor(storage, 'u-ada', { rev: 1, hash: 'nope' }), e2e.FormatError);
+});
+
 test('vectors.json has no section this file does not check', () => {
   const handled = [
     'enc', 'derive', 'argon2', 'recoveryCode', 'apiKey', 'akCommit', 'seal',
     'blob', 'wrap', 'signature', 'rotation', 'ed25519Strict', 'x25519Strict',
     'fingerprint', 'linkToken', 'fileAddress', 'blindIndex', 'strictJSON',
-    'base64url', 'envelope', 'chain',
+    'base64url', 'envelope', 'chain', 'keyring',
   ];
   const unhandled = Object.keys(vf).filter((k) => !handled.includes(k));
   assert.deepEqual(unhandled, []);

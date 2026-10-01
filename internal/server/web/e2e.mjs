@@ -70,6 +70,29 @@ export class ReusedAkError extends Error {
   }
 }
 
+// The keyring errors, matching Go's ErrKeyringRev, ErrKeyringRollback, and
+// ErrKeyringFork. See openKeyring.
+export class KeyringRevError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'KeyringRevError';
+  }
+}
+
+export class KeyringRollbackError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'KeyringRollbackError';
+  }
+}
+
+export class KeyringForkError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'KeyringForkError';
+  }
+}
+
 const textEncoder = new TextEncoder();
 
 // toBytes accepts a Uint8Array as-is, or UTF-8 encodes a string. Used
@@ -1712,6 +1735,7 @@ function zeroValue(f) {
     case 'object':
       return decodeObject({}, f.fields);
     case 'array':
+    case 'map':
       return null;
     default:
       throw new TypeError(`unknown field type ${f.type}`);
@@ -1759,6 +1783,18 @@ function decodeValue(value, f) {
         }
         return decodeObject(item, f.item);
       });
+    case 'map': {
+      // A Go map[string]T: keys kept verbatim, each value decoded against
+      // f.value. defineProperty makes a "__proto__" key an own property, as
+      // JSON.parse does, rather than the prototype setter.
+      if (value === null) return null;
+      if (typeof value !== 'object' || Array.isArray(value)) throw new FormatError('expected an object');
+      const out = {};
+      for (const [k, v] of Object.entries(value)) {
+        Object.defineProperty(out, k, { value: decodeValue(v, f.value), enumerable: true, writable: true, configurable: true });
+      }
+      return out;
+    }
     default:
       throw new TypeError(`unknown field type ${f.type}`);
   }
@@ -2122,4 +2158,169 @@ export function checkNewAk(ak, earlier) {
   for (const e of earlier) {
     if (constantTimeEqual(ak, e)) throw new ReusedAkError('AK reused from an earlier epoch');
   }
+}
+
+// The keyring: the user's pins and epoch records, sealed under mkSealKey with
+// the fields ["keyring"]. Mirrors internal/e2e/keyring.go. A pin's rotSeq and
+// rotHead record the last rotation accepted; until rotation is implemented
+// they only round-trip, and nothing here follows a rotation chain.
+
+export const PIN_NEW = 'new';
+export const PIN_UNVERIFIED = 'unverified';
+export const PIN_VERIFIED = 'verified';
+export const PIN_CHANGED = 'changed';
+
+const PIN_SCHEMA = {
+  fp: field('string'),
+  state: field('string'),
+  rotSeq: field('number'),
+  rotHead: field('string'),
+};
+
+const KEYRING_EPOCH_SCHEMA = {
+  epoch: field('number'),
+  seq: field('number'),
+  head: field('string'),
+  ack: field('number'),
+};
+
+const KEYRING_SCHEMA = {
+  v: field('number'),
+  rev: field('number'),
+  pins: field('map', { value: field('object', { fields: PIN_SCHEMA }) }),
+  epochs: field('map', { value: field('object', { fields: KEYRING_EPOCH_SCHEMA }) }),
+};
+
+const KEYRING_FIELDS = [textEncoder.encode('keyring')];
+
+// newKeyring is the keyring before the first write.
+export function newKeyring() {
+  return { v: 1, rev: 0, pins: {}, epochs: {} };
+}
+
+function isPlainMap(m) {
+  return typeof m === 'object' && m !== null && !Array.isArray(m);
+}
+
+// checkKeyring throws FormatError for a keyring that breaks the wire
+// format's rules for its values. Mirrors Keyring.Check.
+export function checkKeyring(k) {
+  if (k.v !== 1) throw new FormatError(`keyring v ${k.v}`);
+  if (!Number.isInteger(k.rev) || k.rev < 0) throw new FormatError(`keyring rev ${k.rev}`);
+  if (!isPlainMap(k.pins) || !isPlainMap(k.epochs)) {
+    throw new FormatError('keyring pins and epochs must be objects');
+  }
+  for (const [user, p] of Object.entries(k.pins)) {
+    if (!isHex64(p.fp)) throw new FormatError(`pin for ${user}: fp is not 64 lowercase hex digits`);
+    if (p.state !== PIN_UNVERIFIED && p.state !== PIN_VERIFIED) {
+      throw new FormatError(`pin for ${user}: state ${p.state}`);
+    }
+    if (
+      !Number.isInteger(p.rotSeq) ||
+      p.rotSeq < 0 ||
+      (p.rotSeq === 0) !== (p.rotHead === '') ||
+      (p.rotHead !== '' && !isHex64(p.rotHead))
+    ) {
+      throw new FormatError(`pin for ${user}: rotSeq ${p.rotSeq} with rotHead ${p.rotHead}`);
+    }
+  }
+  for (const [artifact, e] of Object.entries(k.epochs)) {
+    if (
+      !Number.isInteger(e.epoch) ||
+      e.epoch < 1 ||
+      !Number.isInteger(e.seq) ||
+      e.seq < 1 ||
+      !Number.isInteger(e.ack) ||
+      e.ack < 0 ||
+      !isHex64(e.head)
+    ) {
+      throw new FormatError(`epochs entry for ${artifact}`);
+    }
+  }
+}
+
+// sealKeyring seals k under mkSealKey after checkKeyring, so nothing sealed
+// fails to open.
+export async function sealKeyring(key, k) {
+  checkKeyring(k);
+  return seal(key, KEYRING_FIELDS, JSON.stringify(k));
+}
+
+// keyringAnchorOf is the {rev, hash} anchor for a keyring the client
+// accepted: hash is the hex SHA-256 of the sealed bytes.
+export async function keyringAnchorOf(rev, sealed) {
+  return { rev, hash: await bodyHash(sealed) };
+}
+
+function checkKeyringAnchor(a) {
+  if (!isPlainMap(a) || !Number.isInteger(a.rev) || a.rev < 0 || typeof a.hash !== 'string' || !isHex64(a.hash)) {
+    throw new FormatError('malformed keyring anchor');
+  }
+}
+
+// openKeyring opens the keyring GET /api/me/keyring served: rev the
+// server's rev, sealed the keyring bytes (empty before the first write),
+// anchor the client's {rev, hash} or null. Returns {keyring, anchor}, the
+// anchor to store. An empty answer is the empty keyring at rev 0, held to
+// the same anchor checks, so a server that wipes the keyring is a rollback.
+// A keyring that fails to open throws DecryptError, and one that fails to
+// parse FormatError; neither is ever read as an empty keyring. Mirrors
+// OpenKeyring.
+export async function openKeyring(key, rev, sealed, anchor) {
+  if (anchor) checkKeyringAnchor(anchor);
+  let k;
+  if (sealed.length === 0) {
+    if (rev !== 0) throw new FormatError(`no keyring at rev ${rev}`);
+    k = newKeyring();
+  } else {
+    const pt = await open(key, KEYRING_FIELDS, sealed);
+    k = decodeStrict(pt, KEYRING_SCHEMA);
+    checkKeyring(k);
+  }
+  if (k.rev !== rev) throw new KeyringRevError(`sealed rev ${k.rev}, server rev ${rev}`);
+  const next = await keyringAnchorOf(k.rev, sealed);
+  if (anchor) {
+    if (k.rev < anchor.rev) throw new KeyringRollbackError(`rev ${k.rev}, anchor rev ${anchor.rev}`);
+    if (k.rev === anchor.rev && next.hash !== anchor.hash) throw new KeyringForkError(`rev ${k.rev}`);
+  }
+  return { keyring: k, anchor: next };
+}
+
+// pinState compares a user's current public keys with the pin for them,
+// null if there is none, and returns {state, fp}: PIN_NEW with no pin, the
+// pin's own state when the fingerprint matches, PIN_CHANGED when it
+// differs. Mirrors PinState.
+export async function pinState(pin, x25519Pub, ed25519Pub) {
+  const fp = toHex(await fingerprint(x25519Pub, ed25519Pub));
+  if (!pin) return { state: PIN_NEW, fp };
+  return { state: pin.fp === fp ? pin.state : PIN_CHANGED, fp };
+}
+
+function keyringAnchorStorageKey(userId) {
+  if (typeof userId !== 'string' || userId === '') throw new FormatError('a keyring anchor needs a user ID');
+  return `cairn.keyringAnchor.${userId}`;
+}
+
+// loadKeyringAnchor reads userId's anchor from storage, a Storage-like
+// object (localStorage in the browser), or returns null if none is stored.
+// The anchor is kept per user and survives signing out, so a server cannot
+// roll the keyring back between sessions. A malformed stored anchor throws
+// FormatError rather than reading as no anchor.
+export function loadKeyringAnchor(storage, userId) {
+  const raw = storage.getItem(keyringAnchorStorageKey(userId));
+  if (raw === null) return null;
+  let a;
+  try {
+    a = JSON.parse(raw);
+  } catch {
+    throw new FormatError('malformed keyring anchor');
+  }
+  checkKeyringAnchor(a);
+  return { rev: a.rev, hash: a.hash };
+}
+
+// saveKeyringAnchor stores userId's anchor in storage.
+export function saveKeyringAnchor(storage, userId, anchor) {
+  checkKeyringAnchor(anchor);
+  storage.setItem(keyringAnchorStorageKey(userId), JSON.stringify({ rev: anchor.rev, hash: anchor.hash }));
 }

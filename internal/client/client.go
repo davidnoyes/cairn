@@ -27,6 +27,9 @@ type Client struct {
 	// Key is the full device API key, set by NewWithKey. Only it can unlock
 	// the account's keys; a client without one can still call the API.
 	Key *e2e.APIKey
+	// Anchors keeps the keyring anchor across sign-outs. Reading or
+	// writing the keyring without one is an error.
+	Anchors AnchorStore
 }
 
 func New(host, token string) *Client {

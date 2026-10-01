@@ -27,7 +27,9 @@ func keyedFor(t *testing.T, host, full string) *Client {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewWithKey(host, key)
+	c := NewWithKey(host, key)
+	c.Anchors = newMemAnchors()
+	return c
 }
 
 // keyedLogin signs up and logs in a fresh account on host and returns its

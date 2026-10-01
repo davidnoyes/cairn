@@ -171,6 +171,51 @@ STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/artifacts/$NID/member
 [[ "$STATUS" == "404" ]] || fail "anonymous membership read ($STATUS)"
 pass "anonymous membership read is not found"
 
+echo "== sharing"
+# A second account, with its own CLI config so admin@e2e.test stays signed in
+# in the main one.
+CONFIG2="$WORK/config2/config.json"
+echo "share-flow-strong-pw-1" | CAIRN_CONFIG="$CONFIG2" "$BIN" signup --host "$HOST" --email share@e2e.test --password-stdin >/dev/null
+VERIFY_LINK3=$(grep -oE "$HOST/verify#token=[A-Za-z0-9_-]+" "$SERVER_LOG" | tail -1)
+CAIRN_CONFIG="$CONFIG2" "$BIN" confirm-email "$VERIFY_LINK3" >/dev/null
+echo "share-flow-strong-pw-1" | CAIRN_CONFIG="$CONFIG2" "$BIN" login --host "$HOST" --email share@e2e.test --password-stdin >/dev/null
+BEARER2=$(python3 -c "import json;print('_'.join(json.load(open('$CONFIG2'))['apiKey'].split('_')[:3]))")
+AUTH2=(-H "Authorization: Bearer $BEARER2")
+"$BIN" push "$ROOT/examples/guestbook" --artifact notes --name v1 --json > "$WORK/notes-push.json"
+NVID=$(python3 -c "import json;print(json.load(open('$WORK/notes-push.json'))['version']['id'])")
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH2[@]}" "$HOST/artifacts/$NID/$NVID/")
+[[ "$STATUS" == "404" ]] || fail "a stranger reads the artifact before the share ($STATUS)"
+pass "the second account cannot read the artifact before the share"
+
+"$BIN" share notes share@e2e.test > "$WORK/share.txt" || fail "share: $(cat "$WORK/share.txt")"
+grep -q "new; pinned unverified" "$WORK/share.txt" || fail "share did not pin the new key: $(cat "$WORK/share.txt")"
+grep -q "added as viewer of notes" "$WORK/share.txt" || fail "share output: $(cat "$WORK/share.txt")"
+"$BIN" members notes | grep -E "viewer +share@e2e.test +unverified" >/dev/null || fail "members after share"
+pass "cairn share adds a viewer and pins their key unverified"
+"$BIN" pin share@e2e.test --verified >/dev/null
+"$BIN" members notes | grep -E "viewer +share@e2e.test +verified" >/dev/null || fail "members after pin --verified"
+pass "cairn pin --verified shows in cairn members"
+
+curl -sf "${AUTH2[@]}" "$HOST/artifacts/$NID/$NVID/" | grep -q "Guestbook" || fail "the member cannot read the artifact"
+curl -sf "${AUTH2[@]}" "$HOST/api/artifacts/$NID/keys" \
+  | python3 -c "import json,sys;k=json.load(sys.stdin);assert [w['epoch'] for w in k['wraps']]==[1] and k['estate']==[], k" \
+  || fail "the member holds no wrap of epoch 1"
+CAIRN_CONFIG="$CONFIG2" "$BIN" members "$NID" | grep -E "owner +admin@e2e.test +unverified" >/dev/null || fail "members as the new viewer"
+pass "the new viewer reads the artifact, holds the epoch 1 wrap, and verifies the chain"
+"$BIN" share notes share@e2e.test --role editor | grep -q "promoted to editor" || fail "promotion"
+if "$BIN" share notes share@e2e.test --role viewer >/dev/null 2>"$WORK/demote.err"; then
+  fail "a same-epoch demotion succeeded"
+fi
+grep -q "needs a new epoch" "$WORK/demote.err" || fail "demotion failed for another reason: $(cat "$WORK/demote.err")"
+pass "promotion succeeds; a demotion is refused until the next epoch"
+
+CAIRN_CONFIG="$CONFIG2" "$BIN" logout >/dev/null
+python3 -c "import json;c=json.load(open('$CONFIG2'));assert c['apiKey']=='' and len(c['anchors'])==1, c" \
+  || fail "logout dropped the keyring anchor"
+echo "share-flow-strong-pw-1" | CAIRN_CONFIG="$CONFIG2" "$BIN" login --host "$HOST" --email share@e2e.test --password-stdin >/dev/null
+CAIRN_CONFIG="$CONFIG2" "$BIN" members "$NID" | grep -E "editor +share@e2e.test +self" >/dev/null || fail "members after signing in again"
+pass "logout keeps the keyring anchor, and signing in again reads the keyring against it"
+
 echo "== backup"
 "$BIN" backup --data-dir "$WORK/data" --out "$WORK/backup" >/dev/null
 [[ -f "$WORK/backup/cairn.db" ]] || fail "backup missing metadata db"

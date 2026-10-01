@@ -32,21 +32,37 @@ func configPath() (string, error) {
 	return filepath.Join(dir, "cairn", "config.json"), nil
 }
 
-func loadConfig() cliConfig {
-	var cfg cliConfig
-	path, err := configPath()
-	if err != nil {
-		return cfg
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return cfg
-	}
-	json.Unmarshal(data, &cfg)
-	return cfg
+// configFile is the file on disk: the login, and the keyring anchor for
+// each account this machine has read the keyring of, keyed by host and user
+// id. Logging out clears the login and keeps the anchors, so a server that
+// rolls a keyring back is still caught after signing in again.
+type configFile struct {
+	cliConfig
+	Anchors map[string]e2e.KeyringAnchor `json:"anchors,omitempty"`
 }
 
-func saveConfig(cfg cliConfig) error {
+// readConfigFile reads the config file. A missing file is an empty one; a
+// file that cannot be read or parsed is an error.
+func readConfigFile() (configFile, error) {
+	var f configFile
+	path, err := configPath()
+	if err != nil {
+		return f, err
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return f, nil
+	}
+	if err != nil {
+		return f, err
+	}
+	if err := json.Unmarshal(data, &f); err != nil {
+		return configFile{}, fmt.Errorf("the config file %s is not valid JSON: %w", path, err)
+	}
+	return f, nil
+}
+
+func writeConfigFile(f configFile) error {
 	path, err := configPath()
 	if err != nil {
 		return err
@@ -54,15 +70,61 @@ func saveConfig(cfg cliConfig) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	data, _ := json.MarshalIndent(cfg, "", "  ")
+	data, _ := json.MarshalIndent(f, "", "  ")
 	return os.WriteFile(path, data, 0o600)
+}
+
+func loadConfig() cliConfig {
+	f, _ := readConfigFile()
+	return f.cliConfig
+}
+
+// saveConfig replaces the login and keeps the anchors. It refuses to
+// overwrite a config file it cannot parse, which would lose them.
+func saveConfig(cfg cliConfig) error {
+	f, err := readConfigFile()
+	if err != nil {
+		return err
+	}
+	f.cliConfig = cfg
+	return writeConfigFile(f)
+}
+
+// configAnchors keeps keyring anchors in the config file, for one host.
+type configAnchors struct{ host string }
+
+func (a configAnchors) key(userID string) string { return a.host + " " + userID }
+
+func (a configAnchors) LoadAnchor(userID string) (*e2e.KeyringAnchor, error) {
+	f, err := readConfigFile()
+	if err != nil {
+		return nil, err
+	}
+	anchor, ok := f.Anchors[a.key(userID)]
+	if !ok {
+		return nil, nil
+	}
+	return &anchor, nil
+}
+
+func (a configAnchors) SaveAnchor(userID string, anchor e2e.KeyringAnchor) error {
+	f, err := readConfigFile()
+	if err != nil {
+		return err
+	}
+	if f.Anchors == nil {
+		f.Anchors = map[string]e2e.KeyringAnchor{}
+	}
+	f.Anchors[a.key(userID)] = anchor
+	return writeConfigFile(f)
 }
 
 // apiClient builds a client from, in priority order: CAIRN_HOST/CAIRN_API_KEY
 // environment (headless agents), then the stored login. CAIRN_API_KEY and the
 // config file both hold the full four-part key; only its bearer (the first
 // two parts) ever goes on the wire, and the client keeps the whole key to
-// unlock the account's keys locally.
+// unlock the account's keys locally. Keyring anchors always live in the
+// config file, even when the login comes from the environment.
 func apiClient() (*client.Client, error) {
 	host := os.Getenv("CAIRN_HOST")
 	fullKey := os.Getenv("CAIRN_API_KEY")
@@ -83,7 +145,9 @@ func apiClient() (*client.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("malformed API key: %w", err)
 	}
-	return client.NewWithKey(host, key), nil
+	c := client.NewWithKey(host, key)
+	c.Anchors = configAnchors{host: c.Host}
+	return c, nil
 }
 
 // bearerOf is the on-the-wire credential for a parsed key.

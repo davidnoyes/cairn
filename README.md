@@ -180,6 +180,7 @@ one artifact the request fails with `409 Conflict`; use the artifact id then.
 ```
 POST   /api/auth/login                      {email, password[, confirm]}
 GET    /api/me
+GET|PUT /api/me/keyring                    your sealed keyring: {rev, keyring}; PUT needs rev+1, else 409 {error, rev}
 GET    /api/users                           directory: id, name, email (any authed user)
 GET    /api/artifacts                       ?name= ?limit= ?offset=
 POST   /api/artifacts                       {id, name, description, membership, wraps, estate}
@@ -232,6 +233,33 @@ session id works anywhere an artifact id or name does:
 cairn push ./dist --artifact <claude-session-id> --overwrite latest
 cairn db query --artifact <claude-session-id> "SELECT ..."
 ```
+
+### Sharing
+
+Only the owner shares, and only within the artifact's current epoch: adding
+a member and promoting a viewer to editor work now; removing or demoting a
+member needs a new epoch, which a later release adds.
+
+```sh
+cairn share my-app bob@example.com                 # add as viewer
+cairn share my-app bob@example.com --role editor   # or promote
+cairn members my-app                               # roles, fingerprints, pin states
+cairn pin bob@example.com --verified               # after comparing fingerprints
+```
+
+`cairn share` prints the user's fingerprint and pins it, unverified, the
+first time it sees them. Compare the fingerprint with them over another
+channel, then run `cairn pin --verified`. If their keys change after they
+were pinned, for example after an account reset without the recovery code,
+`share` and `pin` refuse. They print both fingerprints and the reset time;
+pass `--accept-new-key` once you have confirmed the new one. `share` also
+refuses anyone the owner excluded from the artifact, and refuses outright
+when the directory lists two accounts with the same email or fingerprint.
+
+Pins and the latest verified membership record of each artifact live in
+your keyring, sealed on the server. Each machine keeps a small anchor for
+it in its `cairn` config file, so a server that serves an older keyring, or a
+shorter membership chain, gets refused. `cairn logout` keeps the anchor.
 
 A ready-made **Claude Code skill** ships in
 [`.claude/skills/cairn-artifact/`](.claude/skills/cairn-artifact/SKILL.md): it

@@ -196,6 +196,38 @@ The overrides, and which primitives read them:
   before one ending in U+1F600. UTF-8 bytes put them in that order, but
   UTF-16 code units don't, so a verifier that compares them with `<` in
   JavaScript refuses it.
+- **`keyring`**: a `GET /api/me/keyring` answer that `OpenKeyring`/
+  `openKeyring` must accept or refuse. Each entry has these fields:
+  - `name` and `why`.
+  - `key`: the `mkSealKey` the keyring opens under.
+  - `rev`: the outer `rev` the server answered with.
+  - `sealed`: the sealed keyring, empty for the answer before the first
+    write.
+  - `pt`: the plaintext `sealed` holds, for reference only.
+  - `anchor`: the client's `{rev, hash}` anchor, or `null` for a device that
+    has never read the keyring.
+
+  An accepted entry has `want`: `keyring` (the opened keyring) and `anchor`
+  (the anchor to store, `rev` plus the hex SHA-256 of `sealed`). An empty
+  answer opens as the empty keyring at `rev` 0, held to the same anchor
+  checks, so the `wiped` entry is a rollback. A refused entry has `error`,
+  which names the error kind it must fail with:
+
+  | `error` | Go | JavaScript |
+  | --- | --- | --- |
+  | `rev` | `ErrKeyringRev` | `KeyringRevError` |
+  | `rollback` | `ErrKeyringRollback` | `KeyringRollbackError` |
+  | `fork` | `ErrKeyringFork` | `KeyringForkError` |
+  | `format` | `ErrFormat` | `FormatError` |
+  | `decrypt` | `ErrDecrypt` | `DecryptError` |
+
+  The `format` entries are each a valid keyring with one rule broken: an
+  unknown or case-variant field, a duplicate key, a wrong `v`, a missing or
+  `null` map, a `state` other than `unverified` or `verified`, a negative,
+  fractional, exponent, or too-large number, a fingerprint or head that isn't
+  64 lowercase hex digits, or a `rotSeq` and `rotHead` that don't agree.
+  `proto-key` pins a user ID of `__proto__`, which must open as an ordinary
+  key.
 
 ## Blob transforms
 
