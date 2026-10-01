@@ -248,6 +248,8 @@ cairn team my-app viewer                           # share with the whole team
 cairn approve my-app                               # team members waiting
 cairn approve my-app carol@example.com             # approve one, by name
 cairn pin bob@example.com --verified               # after comparing fingerprints
+cairn public my-app on                             # print a public link
+cairn public my-app on --writes on                 # let signed-in link holders write
 ```
 
 `cairn share` prints the user's fingerprint and pins it, unverified, the
@@ -272,6 +274,15 @@ anyone the owner excluded. It refuses a user whose pinned key changed unless
 you pass `--accept-new-key`. If a user's key changed after you approved or
 listed them, the owner runs `cairn share` again. Setting `none` while an
 approved member holds a key needs a new epoch, which a later release adds.
+
+`cairn public ARTIFACT on` makes the artifact readable by anyone who holds
+its link, and prints the link. The key is in the part after the `#`, which a
+browser never sends to the server, so share the link only with people who
+should read the artifact. A visitor's client checks the artifact's
+membership against the link before it trusts it. Public writes are off at
+first. Run `cairn public ARTIFACT on --writes on` to let a signed-in link
+holder write to the database and files. Turning a public link off needs a
+new epoch, which a later release adds.
 
 Pins and the latest verified membership record of each artifact live in
 your keyring, sealed on the server. Each machine keeps a small anchor for

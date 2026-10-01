@@ -30,6 +30,9 @@ type Client struct {
 	// Anchors keeps the keyring anchor across sign-outs. Reading or
 	// writing the keyring without one is an error.
 	Anchors AnchorStore
+	// LinkToken, when set, is sent as X-Cairn-Link-Token (base64), which
+	// opens a public artifact to its link's holder.
+	LinkToken string
 }
 
 func New(host, token string) *Client {
@@ -71,6 +74,9 @@ func (c *Client) do(method, path string, body io.Reader, contentType string, out
 	}
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	if c.LinkToken != "" {
+		req.Header.Set("X-Cairn-Link-Token", c.LinkToken)
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {

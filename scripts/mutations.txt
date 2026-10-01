@@ -194,3 +194,30 @@ internal/membership/membership.go	if err := tx.DeleteApprovalsExcept(keep); err 
 internal/server/sharing.go	if u.ID == latest.Owner || !u.Verified || u.Disabled ||	if u.ID == latest.Owner || u.Disabled ||	go test ./internal/server -run TestPendingStates
 internal/server/sharing.go	if u.ID == latest.Owner || !u.Verified || u.Disabled ||	if u.ID == latest.Owner || !u.Verified ||	go test ./internal/server -run TestPendingStates
 internal/server/web/e2e.mjs	if (e.user === id || e.fp === fp || normalizeEmail(e.email) === normalized) return e;	if (e.user === id || e.fp === fp || e.email === normalized) return e;	node --test internal/server/web/e2e_test.mjs
+internal/e2e/link.go	Anchor: in.Link.Owner}	Anchor: in.Link.Owner, Linked: func(string, string, string) bool { return true }}	go test ./internal/e2e -run 'TestVectors/link'
+internal/server/web/e2e.mjs	anchor: link.o,	anchor: link.o, linked: () => true,	node --test internal/server/web/e2e_test.mjs
+internal/e2e/chain.go	hex.EncodeToString(Fingerprint(x, ed)) == fp	hex.EncodeToString(Fingerprint(x, ed)) != ""	go test ./internal/e2e -run 'TestVectors/link'
+internal/server/web/e2e.mjs	if (toHex(await fingerprint(x, ed)) === fp) keys.set(fp, ed);	keys.set(fp, ed);	node --test internal/server/web/e2e_test.mjs
+internal/e2e/link.go	|| hex.EncodeToString(Fingerprint(x, ed)) != m.FP	|| hex.EncodeToString(Fingerprint(x, ed)) == ""	go test ./internal/e2e -run 'TestVectors/link'
+internal/server/web/e2e.mjs	if (fp !== m.fp) throw new ChainError(	if (false) throw new ChainError(	node --test internal/server/web/e2e_test.mjs
+internal/e2e/link.go	if commit != b.AKCommit {	if commit == "" {	go test ./internal/e2e -run 'TestVectors/link'
+internal/server/web/e2e.mjs	(await akCommit(link.ak, link.artifact, link.epoch)) !== b.akCommit	(await akCommit(link.ak, link.artifact, link.epoch)) === ''	node --test internal/server/web/e2e_test.mjs
+internal/e2e/link.go	case in.Link.Epoch < b.Epoch:	case in.Link.Epoch < 0:	go test ./internal/e2e -run 'TestVectors/link'
+internal/server/web/e2e.mjs	if (link.epoch < b.epoch) throw new StaleLinkError	if (link.epoch < 0) throw new StaleLinkError	node --test internal/server/web/e2e_test.mjs
+internal/e2e/link.go	case !b.Public:	case b.Public && false:	go test ./internal/e2e -run 'TestVectors/link'
+internal/server/web/e2e.mjs	if (!b.public) throw new ChainError(	if (b.public && false) throw new ChainError(	node --test internal/server/web/e2e_test.mjs
+internal/e2e/link.go	e == "" || e[0] == '0' ||	e == "" ||	go test ./internal/e2e -run 'TestVectors/link'
+internal/e2e/link.go	len(parts) != 3	len(parts) < 3	go test ./internal/e2e -run 'TestVectors/link'
+internal/e2e/link.go	len(l.AK) != 32	len(l.AK) < 32	go test ./internal/e2e -run 'TestVectors/link'
+internal/e2e/link.go	!isHex64(l.Owner)	l.Owner == ""	go test ./internal/e2e -run 'TestVectors/link'
+internal/server/web/e2e.mjs	/^[1-9][0-9]{0,15}$/	/^[0-9]{1,16}$/	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	parts.length !== 3) throw new FormatError("a link	parts.length < 3) throw new FormatError("a link	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	l.ak.length !== 32	l.ak.length < 32	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	!isHex64(l.o)	l.o === ''	node --test internal/server/web/e2e_test.mjs
+internal/client/share.go	"linkTokenHash": linkHash,	"linkTokenHash": linkHash[:0],	go test ./internal/client -run 'TestPublic|TestSharingRecords|TestOpenLink'
+internal/client/public.go	if latest.Owner != k.UserID || latest.OwnerFP != k.FP {	if false {	go test ./internal/client -run 'TestPublic|TestSharingRecords|TestOpenLink'
+internal/client/public.go	if latest.Public {	if false {	go test ./internal/client -run 'TestPublic|TestSharingRecords|TestOpenLink'
+internal/client/public.go	if !on && writes != nil {	if false {	go test ./internal/client -run 'TestPublic|TestSharingRecords|TestOpenLink'
+internal/client/client.go	req.Header.Set("X-Cairn-Link-Token", c.LinkToken)	_ = c.LinkToken	go test ./internal/client -run 'TestPublic|TestSharingRecords|TestOpenLink'
+cmd/cairn/share_cmds.go	if !on && writes != nil {	if false {	go test ./cmd/cairn -run 'TestPublic'
+internal/server/sharing.go	a.PublicTokenHash == "" || a.PublicEpoch != a.Epoch {	a.PublicTokenHash == "" {	go test ./internal/server -run TestLinkTokenIsOnlyForTheStoredEpoch

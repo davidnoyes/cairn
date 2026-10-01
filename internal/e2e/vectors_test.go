@@ -267,6 +267,8 @@ type vectorFile struct {
 	Chain         []chainVec         `json:"chain"`
 	Approval      []approvalVec      `json:"approval"`
 	Keyring       []keyringVec       `json:"keyring"`
+	Link          []linkVec          `json:"link"`
+	LinkChain     []linkChainVec     `json:"linkChain"`
 }
 
 type encVec struct {
@@ -1152,6 +1154,8 @@ func generateVectors(t testing.TB) vectorFile {
 	vf.Chain = chainVectors(t)
 	vf.Approval = approvalVectors(t)
 	vf.Keyring = keyringVectors(t)
+	vf.Link = linkVectors()
+	vf.LinkChain = linkChainVectors(t)
 
 	return vf
 }
@@ -1539,6 +1543,8 @@ func checkVectors(t *testing.T, vf vectorFile) {
 	t.Run("chain", func(t *testing.T) { checkChainVectors(t, vf.Chain) })
 	t.Run("approval", func(t *testing.T) { checkApprovalVectors(t, vf.Approval) })
 	t.Run("keyring", func(t *testing.T) { checkKeyringVectors(t, vf.Keyring) })
+	t.Run("link", func(t *testing.T) { checkLinkVectors(t, vf.Link) })
+	t.Run("linkChain", func(t *testing.T) { checkLinkChainVectors(t, vf.LinkChain) })
 
 	t.Run("strictJSON", func(t *testing.T) {
 		for _, v := range vf.StrictJSON {

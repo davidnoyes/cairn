@@ -462,7 +462,8 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 }
 
 // putRecord signs next as the record after the verified chain's latest, at
-// the same epoch, and PUTs it with wraps.
+// the same epoch, and PUTs it with wraps. A public record carries the hash of
+// the epoch's link token, which the server requires of every public record.
 func (c *Client) putRecord(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, next e2e.MembershipBody, wraps []map[string]any) error {
 	next.Seq, next.Prev, next.Transfer, next.Handover = va.Chain.Latest.Seq+1, va.Chain.Head, "", ""
 	if next.Excluded == nil {
@@ -479,8 +480,14 @@ func (c *Client) putRecord(k *UnlockedKeys, artifactID string, va *VerifiedArtif
 	if wraps == nil {
 		wraps = []map[string]any{}
 	}
+	var linkHash string
+	if next.Public {
+		if linkHash, err = c.linkTokenHashFor(k, artifactID, va.Chain, next.Epoch); err != nil {
+			return err
+		}
+	}
 	return c.doJSON("PUT", "/api/artifacts/"+artifactID+"/membership", map[string]any{
-		"membership": env, "wraps": wraps, "estate": []any{}, "linkTokenHash": "",
+		"membership": env, "wraps": wraps, "estate": []any{}, "linkTokenHash": linkHash,
 	}, nil)
 }
 

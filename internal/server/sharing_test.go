@@ -1145,3 +1145,22 @@ func TestMembershipOwnersAreKeyedByTheirOwnFingerprint(t *testing.T) {
 		}
 	}
 }
+
+func TestLinkTokenIsOnlyForTheStoredEpoch(t *testing.T) {
+	s, ts := testServer(t)
+	a := seedKeyedAccount(t, s, ts.URL, "a@example.com")
+	o := newArtifact(t, a, "doc")
+	next := o.nextEpoch()
+	next.Public = true
+	o.apply(next)
+	base := "/api/artifacts/" + o.id
+	anonWithLink(t, ts.URL, o.linkToken()).mustDo("GET", base, nil, nil, http.StatusOK)
+	// A hash stored for an earlier epoch than the artifact's opens nothing,
+	// even when the token matches it.
+	if err := s.store.WithArtifact(o.id, func(tx *store.ArtifactTx) error {
+		return tx.SetPublicToken(testLinkHash(t, o.id, 2), 1)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	wantStatus(t, anonWithLink(t, ts.URL, o.linkToken()), "GET", base, nil, http.StatusNotFound)
+}

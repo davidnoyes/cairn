@@ -328,6 +328,76 @@ func runTeam(args []string) error {
 	return nil
 }
 
+// parseOnOff reads an on or off argument; what names it in the error.
+func parseOnOff(what, s string) (bool, error) {
+	switch s {
+	case "on":
+		return true, nil
+	case "off":
+		return false, nil
+	}
+	return false, fmt.Errorf("%s must be on or off, not %q", what, s)
+}
+
+func runPublic(args []string) error {
+	const usage = "cairn public ARTIFACT on|off [--writes on|off] [--json]"
+	fs := flag.NewFlagSet("public", flag.ExitOnError)
+	writesFlag := fs.String("writes", "", "on or off: whether a signed-in link holder can write to the database and files")
+	jsonOut := fs.Bool("json", false, "JSON output")
+	pos, err := parsePositional(fs, args, 2, usage)
+	if err != nil {
+		return err
+	}
+	on, err := parseOnOff("public", pos[1])
+	if err != nil {
+		return err
+	}
+	var writes *bool
+	if *writesFlag != "" {
+		w, err := parseOnOff("--writes", *writesFlag)
+		if err != nil {
+			return err
+		}
+		writes = &w
+	}
+	if !on && writes != nil {
+		return client.ErrPublicWritesWithOff
+	}
+	c, err := apiClient()
+	if err != nil {
+		return err
+	}
+	a, err := c.ResolveArtifact(pos[0])
+	if err != nil {
+		return err
+	}
+	res, err := c.Public(a.ID, on, writes)
+	if err != nil {
+		return explainRefusal(c, err)
+	}
+	if *jsonOut {
+		return printJSON(map[string]any{
+			"artifact": a.ID, "public": res.Public, "publicWrites": res.PublicWrites, "epoch": res.Epoch,
+			"link": res.Link, "unchanged": res.Unchanged,
+		})
+	}
+	if !res.Public {
+		fmt.Printf("%s is already private; nothing changed\n", a.Name)
+		return nil
+	}
+	if res.Unchanged {
+		fmt.Printf("%s is already public; nothing changed\n", a.Name)
+	} else {
+		fmt.Printf("%s is public\n", a.Name)
+	}
+	state := "off: a signed-in link holder cannot write"
+	if res.PublicWrites {
+		state = "on: a signed-in link holder can write to the database and files"
+	}
+	fmt.Printf("public writes are %s\n\n%s\n\nAnyone who holds this link can read the artifact. The key is in the part after the #, so share the link only with people who should read it.\n", state, res.Link)
+	return nil
+}
+
 func shareState(prior string) string {
 	switch prior {
 	case e2e.PinNew:

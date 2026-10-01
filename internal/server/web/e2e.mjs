@@ -63,6 +63,15 @@ export class StaleEpochError extends Error {
   }
 }
 
+// StaleLinkError matches Go's ErrStaleLink: the link is for an older epoch
+// than the artifact's. See verifyLinkChain.
+export class StaleLinkError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'StaleLinkError';
+  }
+}
+
 export class ReusedAkError extends Error {
   constructor(message) {
     super(message);
@@ -2170,6 +2179,95 @@ export async function verifyChain(input) {
     if (latest.epoch < pin.epoch) throw new StaleEpochError(`latest epoch ${latest.epoch}, pinned ${pin.epoch}`);
   }
   return { bodies, latest, head: prevHash, handovers };
+}
+
+// A public link is <host>/shared/<artifact>#k=<b64(AK)>&e=<epoch>&o=<hex(fp)>.
+// The key is in the fragment, which a browser never sends to the server.
+const LINK_HOST_RE = /^https?:\/\/([A-Za-z0-9.-]+|\[[0-9a-fA-F:]+\])(:[0-9]{1,5})?$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const MAX_LINK_EPOCH = 9007199254740991n;
+
+function checkLink(l) {
+  if (!LINK_HOST_RE.test(l.host)) throw new FormatError(`link host ${l.host}`);
+  if (!UUID_RE.test(l.artifact)) throw new FormatError(`link artifact ${l.artifact} is not a lowercase UUID`);
+  if (l.ak.length !== 32) throw new FormatError(`link key is ${l.ak.length} bytes, not 32`);
+  if (!Number.isSafeInteger(l.epoch) || l.epoch < 1) throw new FormatError(`link epoch ${l.epoch}`);
+  if (!isHex64(l.o)) throw new FormatError('link o is not 64 lowercase hex digits');
+}
+
+// publicLink builds a public link. A trailing slash on host is dropped. It
+// refuses, with FormatError, a part parseLink would refuse. Mirrors
+// PublicLink in internal/e2e/link.go.
+export function publicLink(host, artifact, ak, epoch, o) {
+  const h = host.endsWith('/') ? host.slice(0, -1) : host;
+  checkLink({ host: h, artifact, ak, epoch, o });
+  return `${h}/shared/${artifact}#k=${b64(ak)}&e=${epoch}&o=${o}`;
+}
+
+// parseLink reads a public link as strictly as publicLink writes one: one
+// fragment holding exactly k, e, and o in that order, a 32-byte key in
+// canonical base64, a decimal epoch from 1 with no sign or leading zero, 64
+// lowercase hex digits for o, a lowercase UUID, and a bare scheme://host
+// before /shared/. Anything else throws FormatError. Returns
+// {host, artifact, ak, epoch, o}. Mirrors ParseLink in internal/e2e/link.go.
+export function parseLink(s) {
+  const hash = s.indexOf('#');
+  if (hash < 0 || s.indexOf('#', hash + 1) >= 0) throw new FormatError('a link has exactly one fragment');
+  const base = s.slice(0, hash);
+  const i = base.lastIndexOf('/shared/');
+  if (i < 0) throw new FormatError("a link's path is /shared/<artifact>");
+  const parts = s.slice(hash + 1).split('&');
+  if (parts.length !== 3) throw new FormatError("a link's fragment is k, e, and o");
+  const vals = ['k=', 'e=', 'o='].map((key, n) => {
+    if (!parts[n].startsWith(key)) throw new FormatError("a link's fragment is k, e, and o, in that order");
+    return parts[n].slice(key.length);
+  });
+  const [k, e, o] = vals;
+  const ak = unb64(k);
+  if (!/^[1-9][0-9]{0,15}$/.test(e) || BigInt(e) > MAX_LINK_EPOCH) throw new FormatError(`link epoch ${e}`);
+  const link = { host: base.slice(0, i), artifact: base.slice(i + '/shared/'.length), ak, epoch: Number(e), o };
+  checkLink(link);
+  return link;
+}
+
+// verifyLinkChain checks a membership chain read through a public link,
+// which the server answers and so cannot be trusted. input is
+// {link: {artifact, ak, epoch, o}, records, owners, offers, keys}, where keys
+// is the link scope's editor keys. The chain must verify with its first
+// record anchored at the link's o, and its latest record must be public, at
+// the link's epoch, with the akCommit the link's key makes. A link for an
+// older epoch throws StaleLinkError. Each listed editor's keys must be served
+// and hash to the fp the record lists. Returns what verifyChain does.
+// Mirrors VerifyLinkChain in internal/e2e/link.go.
+export async function verifyLinkChain(input) {
+  const { link } = input;
+  const c = await verifyChain({
+    artifact: link.artifact,
+    records: input.records,
+    owners: input.owners,
+    offers: input.offers,
+    anchor: link.o,
+  });
+  const b = c.latest;
+  if (!b.public) throw new ChainError('the latest record is not public');
+  if (link.epoch < b.epoch) throw new StaleLinkError(`link epoch ${link.epoch}, artifact epoch ${b.epoch}`);
+  if (link.epoch > b.epoch) throw new ChainError(`link epoch ${link.epoch} is ahead of the artifact's epoch ${b.epoch}`);
+  if ((await akCommit(link.ak, link.artifact, link.epoch)) !== b.akCommit) {
+    throw new ChainError("the link's key does not match the chain's akCommit");
+  }
+  for (const m of b.members) {
+    if (m.role !== 'editor') continue;
+    const kp = hasOwn(input.keys, m.user) ? input.keys[m.user] : null;
+    if (!kp) throw new ChainError(`no keys served for editor ${m.user}`);
+    let fp;
+    try {
+      fp = toHex(await fingerprint(unb64(kp.x25519), unb64(kp.ed25519)));
+    } catch {
+      fp = null;
+    }
+    if (fp !== m.fp) throw new ChainError(`the keys served for editor ${m.user} do not hash to the fp the record lists`);
+  }
+  return c;
 }
 
 // signApproval signs an approval of user at fp, for artifact at epoch, as

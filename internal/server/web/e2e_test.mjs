@@ -1458,12 +1458,74 @@ test('saving a keyring anchor never lowers the rev or replaces the hash at it', 
   assert.equal(e2e.loadKeyringAnchor(storage, 'u-ada', FP_A).rev, 3);
 });
 
+// linkChainErrors maps each linkChain entry's error kind to the class
+// verifyLinkChain throws for it; see testdata/README.md.
+const linkChainErrors = { ...chainErrors, staleLink: e2e.StaleLinkError };
+
+// link mirrors the Go link vector check: publicLink builds each link,
+// parseLink reads it back, and parseLink refuses every negative input.
+describe('link', () => {
+  for (const v of vf.link) {
+    test(v.name, () => {
+      assert.equal(e2e.publicLink(v.host, v.artifact, hex(v.ak), v.epoch, v.o), v.want);
+      const l = e2e.parseLink(v.want);
+      assert.deepEqual(
+        { host: l.host, artifact: l.artifact, ak: toHex(l.ak), epoch: l.epoch, o: l.o },
+        { host: v.host, artifact: v.artifact, ak: v.ak, epoch: v.epoch, o: v.o },
+      );
+      for (const n of v.negative ?? []) {
+        assert.throws(() => e2e.parseLink(n.input), e2e.FormatError, `${n.why}: ${JSON.stringify(n.input)}`);
+      }
+    });
+  }
+
+  test('publicLink refuses what parseLink would', () => {
+    const ak = new Uint8Array(32);
+    const o = 'a'.repeat(64);
+    const id = vf.link[0].artifact;
+    assert.throws(() => e2e.publicLink('https://h', id, ak.slice(1), 1, o), e2e.FormatError);
+    assert.throws(() => e2e.publicLink('https://h', id, ak, 0, o), e2e.FormatError);
+    assert.throws(() => e2e.publicLink('https://h', 'nope', ak, 1, o), e2e.FormatError);
+    assert.throws(() => e2e.publicLink('https://h', id, ak, 1, 'AB'), e2e.FormatError);
+    assert.throws(() => e2e.publicLink('https://h/x', id, ak, 1, o), e2e.FormatError);
+    assert.ok(e2e.publicLink('https://h/', id, ak, 1, o).startsWith('https://h/shared/'));
+  });
+});
+
+// linkChain mirrors the Go linkChain vector check: verifyLinkChain must
+// accept each valid answer with the same result, and refuse each other one
+// with the class for its error kind.
+describe('linkChain', () => {
+  for (const v of vf.linkChain) {
+    test(v.name, async () => {
+      const input = {
+        link: { artifact: v.artifact, ak: hex(v.ak), epoch: v.epoch, o: v.o },
+        records: v.records,
+        owners: v.owners,
+        offers: v.offers,
+        keys: v.keys,
+      };
+      if (v.error) {
+        assert.ok(linkChainErrors[v.error], `${v.name}: unknown error kind ${v.error}`);
+        await assert.rejects(() => e2e.verifyLinkChain(input), linkChainErrors[v.error], `${v.name}: ${v.why}`);
+        return;
+      }
+      const got = await e2e.verifyLinkChain(input);
+      assert.deepEqual(
+        { head: got.head, seq: got.latest.seq, epoch: got.latest.epoch },
+        { head: v.want.head, seq: v.want.seq, epoch: v.want.epoch },
+        v.name,
+      );
+    });
+  }
+});
+
 test('vectors.json has no section this file does not check', () => {
   const handled = [
     'enc', 'derive', 'argon2', 'recoveryCode', 'apiKey', 'akCommit', 'seal',
     'blob', 'wrap', 'signature', 'rotation', 'ed25519Strict', 'x25519Strict',
     'fingerprint', 'linkToken', 'fileAddress', 'blindIndex', 'strictJSON',
-    'base64url', 'envelope', 'chain', 'approval', 'keyring',
+    'base64url', 'envelope', 'chain', 'approval', 'keyring', 'link', 'linkChain',
   ];
   const unhandled = Object.keys(vf).filter((k) => !handled.includes(k));
   assert.deepEqual(unhandled, []);

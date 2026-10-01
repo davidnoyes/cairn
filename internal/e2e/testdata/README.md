@@ -262,6 +262,33 @@ The overrides, and which primitives read them:
   64 lowercase hex digits, or a `rotSeq` and `rotHead` that don't agree.
   `proto-key` pins a user ID of `__proto__`, which must open as an ordinary
   key.
+- **`link`**: a public link that `PublicLink`/`publicLink` must build and
+  `ParseLink`/`parseLink` must read back. Each entry has these fields:
+  - `name`, `host`, `artifact`, `epoch`, and `o` (the hex fingerprint of the
+    first record's owner).
+  - `ak`: the artifact key, hex.
+  - `want`: the link, `<host>/shared/<artifact>#k=<b64(ak)>&e=<epoch>&o=<o>`.
+  - `negative`: a list of `{why, input}`, each a link text that parsing must
+    refuse with `ErrFormat`/`FormatError`. Each breaks one rule: the
+    fragment, the order or names of its keys, the key's encoding or length,
+    the epoch's spelling or size, `o`, the artifact, the path, or the host.
+- **`linkChain`**: a `GET /api/artifacts/{id}/membership` answer read through
+  a link, which `VerifyLinkChain`/`verifyLinkChain` must accept or refuse.
+  Each entry has `name`, `why`, `artifact`, `ak` (hex), `epoch`, and `o`
+  (the link), and `records`, `owners`, `offers`, and `keys` (the answer, in
+  wire form; `keys` holds the editors' keys the link scope serves). An
+  accepted entry has `want` with `head`, `seq`, and `epoch` of the latest
+  record. A refused entry has `error`, which is any kind the `chain` section
+  names, or:
+
+  | `error` | Go | JavaScript |
+  | --- | --- | --- |
+  | `staleLink` | `ErrStaleLink` | `StaleLinkError` |
+
+  The entries cover a chain whose first owner is not `o`, a chain of another
+  owner, substituted owner keys, editor keys that do not hash to the listed
+  fingerprint or are missing, the wrong AK, a stale link, a link ahead of
+  the chain, and a latest record that is private.
 
 ## Blob transforms
 

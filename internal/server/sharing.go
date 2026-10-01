@@ -74,10 +74,10 @@ func linkToken(r *http.Request) []byte {
 }
 
 // linkMatches reports whether token opens a's public link: the artifact is
-// public and the token's hash equals the stored hash, compared in constant
-// time.
+// public, the stored hash is for its current epoch, and the token's hash
+// equals the stored hash, compared in constant time.
 func linkMatches(a *store.Artifact, token []byte) bool {
-	if !a.Public || token == nil || a.PublicTokenHash == "" {
+	if !a.Public || token == nil || a.PublicTokenHash == "" || a.PublicEpoch != a.Epoch {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(e2e.LinkTokenHash(token)), []byte(a.PublicTokenHash)) == 1

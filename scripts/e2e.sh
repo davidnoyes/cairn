@@ -334,6 +334,80 @@ grep -q "listed approved team member team@e2e.test" "$WORK/team-editor.txt" || f
 [[ "$(team_batch)" == "200" ]] || fail "a listed member cannot write"
 pass "the owner's next record lists the approved member, who can then write"
 
+echo "== public link"
+# A new artifact, private until cairn public turns the link on. team@e2e.test
+# is a signed-in non-member. The link token is derived from the AK in the
+# link's fragment the way e2e.LinkToken does: HKDF-SHA256, no salt, with
+# info = Enc("cairn/v1/link-token", artifact, epoch).
+"$BIN" artifact create pubdoc --json > "$WORK/pubdoc.json"
+PID=$(jq -r .id "$WORK/pubdoc.json")
+"$BIN" push "$ROOT/examples/guestbook" --artifact pubdoc --name v1 --json > "$WORK/pubdoc-push.json"
+PVID=$(jq -r .version.id "$WORK/pubdoc-push.json")
+PUB_BATCH='{"statements":[{"sql":"CREATE TABLE IF NOT EXISTS pub_probe (x INTEGER)"}]}'
+pub_status() { # pub_status METHOD PATH [CURL ARGS...]
+  local method="$1" path="$2"; shift 2
+  curl -s -o /dev/null -w '%{http_code}' -X "$method" "$@" "$HOST$path"
+}
+STATUS=$(pub_status GET "/api/artifacts/$PID/membership")
+[[ "$STATUS" == "404" ]] || fail "an anonymous caller reads a private artifact ($STATUS)"
+
+"$BIN" public pubdoc on --json > "$WORK/pub.json" || fail "cairn public on"
+jq -e '.artifact == "'"$PID"'" and .public == true and .publicWrites == false and .epoch == 1 and .unchanged == false' \
+  "$WORK/pub.json" >/dev/null || fail "public --json fields: $(cat "$WORK/pub.json")"
+LINK=$(jq -r .link "$WORK/pub.json")
+[[ "$LINK" == "$HOST/shared/$PID#k="* ]] || fail "unexpected public link: $LINK"
+LINK_TOKEN=$(python3 - "$LINK" "$PID" <<'PY'
+import base64, hashlib, hmac, re, struct, sys
+link, artifact = sys.argv[1:3]
+m = re.fullmatch(r".*#k=([A-Za-z0-9_-]{43})&e=([1-9][0-9]*)&o=([0-9a-f]{64})", link)
+assert m, link
+pad = lambda s: s + "=" * (-len(s) % 4)
+ak = base64.urlsafe_b64decode(pad(m.group(1)))
+assert len(ak) == 32
+enc = lambda *fields: b"".join(struct.pack(">I", len(f)) + f for f in fields)
+info = enc(b"cairn/v1/link-token", artifact.encode(), m.group(2).encode())
+prk = hmac.new(b"\0" * 32, ak, hashlib.sha256).digest()
+okm = hmac.new(prk, info + b"\x01", hashlib.sha256).digest()
+print(base64.urlsafe_b64encode(okm).rstrip(b"=").decode())
+PY
+)
+[[ -n "$LINK_TOKEN" ]] || fail "could not derive the link token"
+LINKH=(-H "X-Cairn-Link-Token: $LINK_TOKEN")
+WRONGH=(-H "X-Cairn-Link-Token: $(printf 'A%.0s' $(seq 1 43))")
+pass "cairn public on prints a link whose fragment holds the key, the epoch, and o"
+
+[[ "$(pub_status GET "/api/artifacts/$PID/membership" "${LINKH[@]}")" == "200" ]] || fail "the right token does not read the membership"
+[[ "$(pub_status GET "/api/artifacts/$PID/membership")" == "404" ]] || fail "no token reads the membership"
+[[ "$(pub_status GET "/api/artifacts/$PID/membership" "${WRONGH[@]}")" == "404" ]] || fail "a wrong token reads the membership"
+curl -sf "${LINKH[@]}" "$HOST/artifacts/$PID/$PVID/" | grep "Guestbook" >/dev/null || fail "the right token does not read the content"
+[[ "$(pub_status GET "/artifacts/$PID/$PVID/" "${WRONGH[@]}")" != "200" ]] || fail "a wrong token reads the content"
+curl -sf "${LINKH[@]}" "$HOST/api/artifacts/$PID/membership" \
+  | jq -e '.records | length == 2' >/dev/null || fail "the link's membership holds the public record"
+pass "an anonymous caller reads with the right token, and gets 404 with none or a wrong one"
+
+JSONH=(-H 'Content-Type: application/json')
+PUB_DB="/api/artifacts/$PID/versions/$PVID/db/batch"
+[[ "$(pub_status POST "$PUB_DB" "${LINKH[@]}" "${JSONH[@]}" -d "$PUB_BATCH")" == "403" ]] || fail "an anonymous write with the token is not refused"
+[[ "$(pub_status POST "$PUB_DB" "${AUTH3[@]}" "${LINKH[@]}" "${JSONH[@]}" -d "$PUB_BATCH")" == "403" ]] || fail "a signed-in link holder writes while writes are off"
+pass "public writes are refused while the switch is off, and to an anonymous caller"
+
+"$BIN" public pubdoc on --writes on --json > "$WORK/pub-writes.json" || fail "cairn public on --writes on"
+jq -e '.public == true and .publicWrites == true and .unchanged == false and .link == "'"$LINK"'"' \
+  "$WORK/pub-writes.json" >/dev/null || fail "public --writes on --json: $(cat "$WORK/pub-writes.json")"
+[[ "$(pub_status POST "$PUB_DB" "${AUTH3[@]}" "${LINKH[@]}" "${JSONH[@]}" -d "$PUB_BATCH")" == "200" ]] || fail "a signed-in link holder cannot write with writes on"
+[[ "$(pub_status POST "$PUB_DB" "${LINKH[@]}" "${JSONH[@]}" -d "$PUB_BATCH")" == "403" ]] || fail "an anonymous write with the token succeeds with writes on"
+[[ "$(pub_status POST "$PUB_DB" "${AUTH3[@]}" "${JSONH[@]}" -d "$PUB_BATCH")" == "404" ]] || fail "a session without the token writes"
+[[ "$(pub_status GET "/api/artifacts/$PID/membership" "${LINKH[@]}")" == "200" ]] || fail "the link stopped working after the writes switch"
+pass "cairn public --writes on lets a signed-in link holder write, with the same link"
+
+"$BIN" public pubdoc on | grep "already public; nothing changed" >/dev/null || fail "a second public on wrote a record"
+if "$BIN" public pubdoc off >/dev/null 2>"$WORK/publicoff.err"; then
+  fail "public off succeeded on a public artifact"
+fi
+grep -q "new epoch" "$WORK/publicoff.err" || fail "public off failed for another reason: $(cat "$WORK/publicoff.err")"
+[[ "$(pub_status GET "/api/artifacts/$PID/membership" "${LINKH[@]}")" == "200" ]] || fail "the link stopped after a refused off"
+pass "public off is refused until the next epoch"
+
 echo "== backup"
 "$BIN" backup --data-dir "$WORK/data" --out "$WORK/backup" >/dev/null
 [[ -f "$WORK/backup/cairn.db" ]] || fail "backup missing metadata db"
