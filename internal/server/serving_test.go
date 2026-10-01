@@ -291,3 +291,22 @@ func TestPagesStayInOneTab(t *testing.T) {
 		}
 	}
 }
+
+// TestSqlJSVendored checks the bundled sql.js is served globally and inside a
+// version's URL space, so no page needs a CDN to load it.
+func TestSqlJSVendored(t *testing.T) {
+	_, ts := testServer(t)
+	_, aid, vid := setupArtifact(t, ts.URL, true)
+	for _, base := range []string{ts.URL + "/", ts.URL + "/artifacts/" + aid + "/" + vid + "/"} {
+		for name, want := range map[string]string{"sql-wasm.js": "javascript", "sql-wasm.wasm": "application/wasm"} {
+			resp := get(t, base+name, "", "")
+			b := body(t, resp)
+			if resp.StatusCode != http.StatusOK || len(b) < 1000 {
+				t.Errorf("%s%s: status %d, %d bytes", base, name, resp.StatusCode, len(b))
+			}
+			if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, want) {
+				t.Errorf("%s%s: content-type %q, want %q", base, name, ct, want)
+			}
+		}
+	}
+}

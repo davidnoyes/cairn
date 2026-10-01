@@ -99,7 +99,7 @@
 
   // ------------------------------------------------------------------- debug
   var DEBUG_USER = { id: 0, name: 'Debug', email: 'debug@localhost', isAdmin: true };
-  var SQLJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.13.0/';
+  var SQLJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.14.2/';
   var dbKey = 'db:' + location.pathname;
 
   function idb() {
