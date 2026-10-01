@@ -2,60 +2,104 @@ package store
 
 import (
 	"database/sql"
+	"errors"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
 
-// User is an account on the server. PasswordHash is empty until the user
-// claims the account at first login.
+// User is an account on the server. AuthHash is bcrypt of the client-derived
+// authKey; the store never sees a plaintext password.
 type User struct {
 	ID           string `json:"id"`
 	Email        string `json:"email"`
 	Name         string `json:"name"`
-	PasswordHash string `json:"-"`
+	AuthHash     string `json:"-"`
 	IsAdmin      bool   `json:"isAdmin"`
 	TokenVersion int    `json:"-"`
 	Disabled     bool   `json:"disabled"`
+	VerifiedAt   string `json:"verifiedAt,omitempty"`
+	ResetAt      string `json:"resetAt,omitempty"`
 	CreatedAt    string `json:"createdAt"`
 }
 
-const userCols = `id, email, name, COALESCE(password_hash, ''), is_admin, token_version, disabled, created_at`
+const userCols = `id, email, name, auth_hash, is_admin, token_version, disabled, COALESCE(verified_at, ''), COALESCE(reset_at, ''), created_at`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
-	if err := row.Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.IsAdmin, &u.TokenVersion, &u.Disabled, &u.CreatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Email, &u.Name, &u.AuthHash, &u.IsAdmin, &u.TokenVersion, &u.Disabled, &u.VerifiedAt, &u.ResetAt, &u.CreatedAt); err != nil {
 		return nil, err
 	}
 	return &u, nil
 }
 
-func (s *Store) CreateUser(email, name string, isAdmin bool) (*User, error) {
-	u := &User{
-		ID:           uuid.NewString(),
-		Email:        email,
-		Name:         name,
-		IsAdmin:      isAdmin,
-		TokenVersion: 1,
-		CreatedAt:    now(),
-	}
-	_, err := s.db.Exec(`INSERT INTO users (id, email, name, is_admin, created_at) VALUES (?, ?, ?, ?, ?)`,
-		u.ID, u.Email, u.Name, u.IsAdmin, u.CreatedAt)
+// normalizeEmail lowercases and trims an address the way every lookup and
+// comparison expects it.
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// CreateAccount creates a new unverified account and its key bundle in one
+// transaction. A VERIFIED account already at this email is ErrExists and
+// nothing changes; an unverified one is replaced (its bundle and API keys
+// cascade away with it).
+func (s *Store) CreateAccount(email, name, authHash string, b Bundle, isAdmin bool) (*User, error) {
+	email = normalizeEmail(email)
+	tx, err := s.db.Begin()
 	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var existingID string
+	var verifiedAt sql.NullString
+	err = tx.QueryRow(`SELECT id, verified_at FROM users WHERE email = ?`, email).Scan(&existingID, &verifiedAt)
+	switch {
+	case err == nil:
+		if verifiedAt.Valid {
+			return nil, ErrExists
+		}
+		if _, err := tx.Exec(`DELETE FROM users WHERE id = ?`, existingID); err != nil {
+			return nil, err
+		}
+	case errors.Is(err, sql.ErrNoRows):
+		// no existing account at this address
+	default:
+		return nil, err
+	}
+
+	u := &User{ID: uuid.NewString(), Email: email, Name: name, AuthHash: authHash, IsAdmin: isAdmin, TokenVersion: 1, CreatedAt: now()}
+	if _, err := tx.Exec(`INSERT INTO users (id, email, name, auth_hash, is_admin, token_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		u.ID, u.Email, u.Name, u.AuthHash, u.IsAdmin, u.TokenVersion, u.CreatedAt); err != nil {
+		return nil, err
+	}
+	if err := insertBundle(tx, u.ID, b); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return u, nil
 }
 
 func (s *Store) UserByEmail(email string) (*User, error) {
-	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE email = ?`, email))
+	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE email = ?`, normalizeEmail(email)))
 }
 
 func (s *Store) UserByID(id string) (*User, error) {
 	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE id = ?`, id))
 }
 
-func (s *Store) ListUsers() ([]*User, error) {
-	rows, err := s.db.Query(`SELECT ` + userCols + ` FROM users ORDER BY created_at, email`)
+// ListUsers returns verified users ordered by creation; set includeUnverified
+// to also list accounts still awaiting a verification link.
+func (s *Store) ListUsers(includeUnverified bool) ([]*User, error) {
+	q := `SELECT ` + userCols + ` FROM users`
+	if !includeUnverified {
+		q += ` WHERE verified_at IS NOT NULL`
+	}
+	q += ` ORDER BY created_at, email`
+	rows, err := s.db.Query(q)
 	if err != nil {
 		return nil, err
 	}
@@ -77,28 +121,18 @@ func (s *Store) CountUsers() (int, error) {
 	return n, err
 }
 
-// SetPassword stores a new password hash. When bumpToken is true, existing
-// JWTs for the user are invalidated.
-func (s *Store) SetPassword(userID, hash string, bumpToken bool) error {
-	bump := 0
-	if bumpToken {
-		bump = 1
-	}
-	return s.exec1(`UPDATE users SET password_hash = ?, token_version = token_version + ? WHERE id = ?`, hash, bump, userID)
+func (s *Store) MarkVerified(userID string, at time.Time) error {
+	return s.exec1(`UPDATE users SET verified_at = ? WHERE id = ?`, formatTime(at), userID)
 }
 
-// ClearPassword resets the account to the unclaimed state so the user picks a
-// new password at next login. Existing tokens are invalidated.
-func (s *Store) ClearPassword(userID string) error {
-	return s.exec1(`UPDATE users SET password_hash = NULL, token_version = token_version + 1 WHERE id = ?`, userID)
+func (s *Store) SetUserAdmin(userID string, isAdmin bool) error {
+	return s.exec1(`UPDATE users SET is_admin = ? WHERE id = ?`, isAdmin, userID)
 }
 
+// SetUserDisabled toggles an account; disabling bumps token_version so every
+// existing session and API key stops working immediately.
 func (s *Store) SetUserDisabled(userID string, disabled bool) error {
 	return s.exec1(`UPDATE users SET disabled = ?, token_version = token_version + 1 WHERE id = ?`, disabled, userID)
-}
-
-func (s *Store) UpdateUser(userID, name string, isAdmin bool) error {
-	return s.exec1(`UPDATE users SET name = ?, is_admin = ? WHERE id = ?`, name, isAdmin, userID)
 }
 
 func (s *Store) DeleteUser(userID string) error {

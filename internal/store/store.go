@@ -5,12 +5,13 @@ package store
 import (
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"sort"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
 
 //go:embed migrations/*.sql
@@ -45,6 +46,10 @@ func (s *Store) Close() error { return s.db.Close() }
 // DB exposes the underlying handle (used by backup).
 func (s *Store) DB() *sql.DB { return s.db }
 
+// accountsMigration drops and recreates the account tables; applying it to a
+// data directory that already holds accounts would discard them.
+const accountsMigration = "migrations/002_accounts.sql"
+
 func (s *Store) migrate() error {
 	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {
 		return err
@@ -61,6 +66,15 @@ func (s *Store) migrate() error {
 		}
 		if applied > 0 {
 			continue
+		}
+		if name == accountsMigration {
+			var n int
+			if err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n); err != nil {
+				return err
+			}
+			if n > 0 {
+				return ErrLegacyData
+			}
 		}
 		body, err := migrationsFS.ReadFile(name)
 		if err != nil {
@@ -87,5 +101,31 @@ func (s *Store) migrate() error {
 
 func now() string { return time.Now().UTC().Format(time.RFC3339) }
 
+func formatTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
+
 // ErrNotFound is returned when a row does not exist.
 var ErrNotFound = sql.ErrNoRows
+
+// ErrExists is returned when a create would collide with an existing row.
+var ErrExists = errors.New("already exists")
+
+// ErrLegacyData is returned by Open when the data directory holds accounts
+// from a Cairn version that predates this schema. Those accounts cannot be
+// migrated automatically: start the server with a fresh data directory, or
+// run `cairn import` to bring the old accounts across.
+var ErrLegacyData = errors.New("this data directory holds accounts from an earlier version of Cairn; start with a fresh data directory, or run `cairn import`")
+
+// isUniqueViolation reports whether err is a SQLite uniqueness failure (a
+// duplicate email, or a reused API key id — a client-chosen primary key).
+func isUniqueViolation(err error) bool {
+	var sqliteErr *sqlite.Error
+	if !errors.As(err, &sqliteErr) {
+		return false
+	}
+	switch sqliteErr.Code() {
+	case 2067, 1555: // SQLITE_CONSTRAINT_UNIQUE, SQLITE_CONSTRAINT_PRIMARYKEY
+		return true
+	default:
+		return false
+	}
+}

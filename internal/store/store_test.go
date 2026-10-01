@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func testStore(t *testing.T) *Store {
@@ -29,59 +30,6 @@ func TestMigrationsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Close()
-}
-
-func TestUsers(t *testing.T) {
-	s := testStore(t)
-	u, err := s.CreateUser("a@b.c", "Alice", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if u.ID == "" || u.TokenVersion != 1 {
-		t.Fatalf("unexpected user: %+v", u)
-	}
-	// Case-insensitive unique email
-	if _, err := s.CreateUser("A@B.C", "Dup", false); err == nil {
-		t.Error("duplicate email accepted")
-	}
-	got, err := s.UserByEmail("A@b.C")
-	if err != nil || got.ID != u.ID {
-		t.Fatalf("UserByEmail: %v %+v", err, got)
-	}
-	if got.PasswordHash != "" {
-		t.Error("new user should be unclaimed")
-	}
-	if err := s.SetPassword(u.ID, "hash1", false); err != nil {
-		t.Fatal(err)
-	}
-	got, _ = s.UserByID(u.ID)
-	if got.PasswordHash != "hash1" || got.TokenVersion != 1 {
-		t.Errorf("SetPassword without bump: %+v", got)
-	}
-	if err := s.SetPassword(u.ID, "hash2", true); err != nil {
-		t.Fatal(err)
-	}
-	got, _ = s.UserByID(u.ID)
-	if got.TokenVersion != 2 {
-		t.Errorf("token_version not bumped: %+v", got)
-	}
-	if err := s.ClearPassword(u.ID); err != nil {
-		t.Fatal(err)
-	}
-	got, _ = s.UserByID(u.ID)
-	if got.PasswordHash != "" || got.TokenVersion != 3 {
-		t.Errorf("ClearPassword: %+v", got)
-	}
-	if err := s.SetUserDisabled(u.ID, true); err != nil {
-		t.Fatal(err)
-	}
-	got, _ = s.UserByID(u.ID)
-	if !got.Disabled || got.TokenVersion != 4 {
-		t.Errorf("SetUserDisabled: %+v", got)
-	}
-	if err := s.DeleteUser("nope"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("expected ErrNotFound, got %v", err)
-	}
 }
 
 func TestArtifactsAndVersions(t *testing.T) {
@@ -138,26 +86,35 @@ func TestArtifactsAndVersions(t *testing.T) {
 	}
 }
 
-func TestAPIKeys(t *testing.T) {
-	s := testStore(t)
-	u, _ := s.CreateUser("a@b.c", "Alice", true)
-	k, err := s.CreateAPIKey("kid1", u.ID, "ci", "hash")
+// testBundle returns a minimal, distinguishable Bundle for tests that don't
+// care about its contents.
+func testBundle(tag string) Bundle {
+	return Bundle{
+		KDF:         []byte(`{"alg":"argon2id","salt":"` + tag + `"}`),
+		MKPassword:  []byte("mkpw-" + tag),
+		MKRecovery:  []byte("mkrec-" + tag),
+		X25519Pub:   []byte("x25519pub-" + tag),
+		X25519Priv:  []byte("x25519priv-" + tag),
+		Ed25519Pub:  []byte("ed25519pub-" + tag),
+		Ed25519Priv: []byte("ed25519priv-" + tag),
+		EK:          []byte("ek-" + tag),
+	}
+}
+
+// testAccount creates a verified account for tests that just need a user to
+// hang other rows off.
+func testAccount(t *testing.T, s *Store, email string) *User {
+	t.Helper()
+	u, err := s.CreateAccount(email, "Alice", "authhash", testBundle("a"), false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.APIKeyByID(k.ID)
-	if err != nil || got.RevokedAt != "" {
-		t.Fatalf("APIKeyByID: %v %+v", err, got)
-	}
-	if err := s.RevokeAPIKey(k.ID); err != nil {
+	if err := s.MarkVerified(u.ID, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = s.APIKeyByID(k.ID)
-	if got.RevokedAt == "" {
-		t.Error("not revoked")
+	u, err = s.UserByID(u.ID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// Revoking twice is a no-op error
-	if err := s.RevokeAPIKey(k.ID); !errors.Is(err, ErrNotFound) {
-		t.Errorf("double revoke: %v", err)
-	}
+	return u
 }
