@@ -12,7 +12,23 @@ import (
 	"github.com/aloisdeniel/cairn/internal/store"
 )
 
-const tokenCookie = "cairn_token"
+// Session cookie names. The __Host- prefix (used whenever the server is
+// served over https) is enforced by browsers: it requires Secure, Path=/,
+// and no Domain attribute, which together rule out a subdomain planting a
+// cookie that this server would also accept.
+const (
+	secureSessionCookie   = "__Host-cairn_session"
+	insecureSessionCookie = "cairn_session"
+)
+
+// sessionCookieName returns the cookie name to set and to read, which
+// depends on whether the server is serving behind https.
+func (s *Server) sessionCookieName() string {
+	if s.secure {
+		return secureSessionCookie
+	}
+	return insecureSessionCookie
+}
 
 type ctxKey int
 
@@ -33,7 +49,7 @@ func (s *Server) currentUser(r *http.Request) (*store.User, error) {
 		if !ok {
 			return nil, errors.New("unsupported Authorization scheme")
 		}
-	} else if c, err := r.Cookie(tokenCookie); err == nil {
+	} else if c, err := r.Cookie(s.sessionCookieName()); err == nil {
 		cred = c.Value
 	}
 	if cred == "" {
@@ -122,25 +138,25 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 // loads and same-origin fetches are authenticated with the same login.
 func (s *Server) setSessionCookie(w http.ResponseWriter, token string, ttl time.Duration) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     tokenCookie,
+		Name:     s.sessionCookieName(),
 		Value:    token,
 		Path:     "/",
 		MaxAge:   int(ttl.Seconds()),
 		HttpOnly: true,
 		Secure:   s.secure,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 	})
 }
 
 func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     tokenCookie,
+		Name:     s.sessionCookieName(),
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   s.secure,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 	})
 }
 

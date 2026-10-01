@@ -90,7 +90,13 @@
       });
     },
     uploadFile: function (path, data) {
-      return api(fileURL(path), { method: 'PUT', body: data });
+      // The server ignores the type; octet-stream is one its cross-site
+      // request protection accepts, unlike a Blob's own type.
+      return api(fileURL(path), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: data,
+      });
     },
     removeFile: function (path) {
       return api(fileURL(path), { method: 'DELETE' }).then(function () { return true; });

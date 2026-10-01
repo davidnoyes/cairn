@@ -114,10 +114,12 @@ func TestUploadAndReplace(t *testing.T) {
 		t.Fatalf("replace: %d", resp.StatusCode)
 	}
 
-	// Anonymous cannot upload
+	// Anonymous cannot upload. The multipart body is neither JSON nor octet-stream, so
+	// request protection refuses it (415) before the handler's own auth check
+	// would (401) — still a rejection either way.
 	anon := &testClient{t: t, base: ts.URL}
 	resp = anon.upload("POST", "/api/artifacts/"+aid+"/versions", zipFrom(t, map[string]string{"index.html": "x"}), nil)
-	if resp.StatusCode != http.StatusUnauthorized {
+	if resp.StatusCode != http.StatusUnsupportedMediaType {
 		t.Errorf("anonymous upload: %d", resp.StatusCode)
 	}
 }

@@ -74,8 +74,10 @@ func TestFilesAPIOverHTTP(t *testing.T) {
 		t.Errorf("content type: %q", ct)
 	}
 
-	// Anonymous writes are rejected
-	if r := anon.doRaw("PUT", base+"/evil.txt", []byte("x")); r.StatusCode != http.StatusUnauthorized {
+	// Anonymous writes are rejected. Request protection refuses the upload,
+	// which declares no Content-Type, before the handler runs (415); the
+	// bodiless DELETE passes protection and the handler refuses it (401).
+	if r := anon.doRaw("PUT", base+"/evil.txt", []byte("x")); r.StatusCode != http.StatusUnsupportedMediaType {
 		t.Errorf("anon upload: %d", r.StatusCode)
 	}
 	if r := anon.doRaw("DELETE", base+"/notes/hello.txt", nil); r.StatusCode != http.StatusUnauthorized {

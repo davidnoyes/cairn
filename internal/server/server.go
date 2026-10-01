@@ -148,7 +148,12 @@ func adminNameFromEmail(email string) string {
 	return name
 }
 
-func (s *Server) Handler() http.Handler { return s.mux }
+// Handler wraps the route mux with request protection: every /api/ mutation
+// that doesn't carry an Authorization header is checked against the server's
+// own public origin (see protectMutations).
+func (s *Server) Handler() http.Handler {
+	return protectMutations(originOf(s.cfg.BaseURL), s.mux)
+}
 
 // Run serves until ctx is cancelled, then shuts down gracefully.
 func (s *Server) Run(ctx context.Context) error {
