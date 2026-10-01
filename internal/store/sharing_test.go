@@ -7,8 +7,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/aloisdeniel/cairn/internal/e2e"
 )
 
 func hexHash(b []byte) string {
@@ -844,6 +848,122 @@ func TestRecordWriteForAVersionOnAnotherArtifactIsErrNotFound(t *testing.T) {
 	err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
 		if err := tx.RecordWrite("missing", "db", "", 1, o.ID); !errors.Is(err, ErrNotFound) {
 			t.Errorf("RecordWrite(missing version) = %v, want ErrNotFound", err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// keyedAccount creates a verified account whose bundle carries keys tagged
+// tag, so two accounts with the same tag share a fingerprint.
+func keyedAccount(t *testing.T, s *Store, email, tag string) *User {
+	t.Helper()
+	u, err := s.CreateAccount(email, "N", "h", testBundle(tag), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkVerified(u.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	return u
+}
+
+func TestUserByIDInsideTheTransaction(t *testing.T) {
+	s := testStore(t)
+	o := keyedAccount(t, s, "o@x.y", "o")
+	m := keyedAccount(t, s, "m@x.y", "m")
+	if err := s.SetUserDisabled(m.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := s.CreateAccount("p@x.y", "P", "h", testBundle("p"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := ownedArtifact(t, s, o)
+	err = s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+		got, err := tx.UserByID(m.ID)
+		if err != nil {
+			return err
+		}
+		b := testBundle("m")
+		wantFP := hex.EncodeToString(e2e.Fingerprint(b.X25519Pub, b.Ed25519Pub))
+		if got.ID != m.ID || got.Email != "m@x.y" || !bytes.Equal(got.X25519Pub, b.X25519Pub) ||
+			!bytes.Equal(got.Ed25519Pub, b.Ed25519Pub) || got.FP != wantFP || !got.Verified || !got.Disabled {
+			t.Errorf("UserByID: %+v, want fp %s", got, wantFP)
+		}
+		if got, err := tx.UserByID(pending.ID); err != nil || got.Verified || got.Disabled {
+			t.Errorf("unverified account: %v %+v", err, got)
+		}
+		if _, err := tx.UserByID("missing"); !errors.Is(err, ErrNotFound) {
+			t.Errorf("missing user: %v", err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUsersSharingMatchesFingerprintOrEmail(t *testing.T) {
+	s := testStore(t)
+	o := keyedAccount(t, s, "o@x.y", "o")
+	m := keyedAccount(t, s, "m@x.y", "m")
+	twin := keyedAccount(t, s, "twin@x.y", "m") // m's public keys under another ID
+	other := keyedAccount(t, s, "other@x.y", "other")
+	a := ownedArtifact(t, s, o)
+	b := testBundle("m")
+	fpM := hex.EncodeToString(e2e.Fingerprint(b.X25519Pub, b.Ed25519Pub))
+	err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+		got, err := tx.UsersSharing(fpM, "nobody@x.y")
+		if err != nil {
+			return err
+		}
+		want := []string{m.ID, twin.ID}
+		sort.Strings(want)
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("by fingerprint: %v, want %v", got, want)
+		}
+		got, err = tx.UsersSharing(strings.Repeat("0", 64), " Other@X.Y")
+		if err != nil {
+			return err
+		}
+		if len(got) != 1 || got[0] != other.ID {
+			t.Errorf("by email: %v, want [%s]", got, other.ID)
+		}
+		got, err = tx.UsersSharing(strings.Repeat("0", 64), "nobody@x.y")
+		if err != nil || len(got) != 0 {
+			t.Errorf("no match: %v %v", err, got)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReplaceWrapOverwritesTheUsersWrapForThatEpoch(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	m := testAccount(t, s, "m@x.y")
+	a := ownedArtifact(t, s, o)
+	err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+		if err := tx.PutWrap(Wrap{UserID: m.ID, Epoch: 1, Wrapped: []byte("old"), FP: "fp-old"}); err != nil {
+			return err
+		}
+		if err := tx.ReplaceWrap(Wrap{UserID: m.ID, Epoch: 1, Wrapped: []byte("new"), FP: "fp-new"}); err != nil {
+			return err
+		}
+		if err := tx.ReplaceWrap(Wrap{UserID: m.ID, Epoch: 2, Wrapped: []byte("two"), FP: "fp-new"}); err != nil {
+			return err
+		}
+		ws, err := tx.Wraps()
+		if err != nil {
+			return err
+		}
+		if len(ws) != 2 || string(ws[0].Wrapped) != "new" || ws[0].FP != "fp-new" || ws[1].Epoch != 2 {
+			t.Errorf("wraps after ReplaceWrap: %+v", ws)
 		}
 		return nil
 	})

@@ -429,6 +429,9 @@ member whose key changed through a reset, and a previous owner kept as an
 editor. A wrap that members re-made for themselves when they rotated their
 keys counts, so updating a rotated member's `fp` needs no new wrap.
 
+A next-epoch record lists every member under their current fingerprint, so
+the owner lists a member whose key changed under the new `fp` or removes them.
+
 The owner holds no wraps. The owner reads every epoch through the estate
 copy.
 

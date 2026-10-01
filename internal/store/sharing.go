@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 
+	"github.com/aloisdeniel/cairn/internal/e2e"
 	"github.com/google/uuid"
 )
 
@@ -353,6 +354,60 @@ func (t *ArtifactTx) SetPublicToken(hash string, epoch int) error {
 	return err
 }
 
+// Users and their current keys
+
+// KeyedUser is a user with the public keys of their bundle. FP is the hex
+// fingerprint of those keys, computed on each read and never stored.
+type KeyedUser struct {
+	ID         string
+	Email      string
+	X25519Pub  []byte
+	Ed25519Pub []byte
+	FP         string
+	Verified   bool
+	Disabled   bool
+}
+
+const keyedUserCols = `u.id, u.email, b.x25519_pub, b.ed25519_pub, u.verified_at IS NOT NULL, u.disabled`
+
+func scanKeyedUser(row interface{ Scan(...any) error }) (*KeyedUser, error) {
+	var u KeyedUser
+	if err := row.Scan(&u.ID, &u.Email, &u.X25519Pub, &u.Ed25519Pub, &u.Verified, &u.Disabled); err != nil {
+		return nil, err
+	}
+	u.FP = hex.EncodeToString(e2e.Fingerprint(u.X25519Pub, u.Ed25519Pub))
+	return &u, nil
+}
+
+// UserByID reads a user and their current keys inside the transaction. A
+// missing user is ErrNotFound.
+func (t *ArtifactTx) UserByID(id string) (*KeyedUser, error) {
+	return scanKeyedUser(t.tx.QueryRow(`SELECT `+keyedUserCols+` FROM users u JOIN key_bundles b ON b.user_id = u.id WHERE u.id = ?`, id))
+}
+
+// UsersSharing returns the IDs, sorted, of every user whose current
+// fingerprint is fp or whose normalized email is email's. Fingerprints are
+// not stored, so this reads every user's keys.
+func (t *ArtifactTx) UsersSharing(fp, email string) ([]string, error) {
+	rows, err := t.tx.Query(`SELECT ` + keyedUserCols + ` FROM users u JOIN key_bundles b ON b.user_id = u.id ORDER BY u.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	email = e2e.NormalizeEmail(email)
+	var out []string
+	for rows.Next() {
+		u, err := scanKeyedUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		if u.FP == fp || e2e.NormalizeEmail(u.Email) == email {
+			out = append(out, u.ID)
+		}
+	}
+	return out, rows.Err()
+}
+
 // Members and excluded entries
 
 // SetMembers replaces the member list.
@@ -429,6 +484,14 @@ func (t *ArtifactTx) PutWrap(w Wrap) error {
 	if isUniqueViolation(err) {
 		return ErrExists
 	}
+	return err
+}
+
+// ReplaceWrap stores a wrap, replacing any the user holds for that epoch,
+// as when a member whose key changed is wrapped to again.
+func (t *ArtifactTx) ReplaceWrap(w Wrap) error {
+	_, err := t.tx.Exec(`INSERT OR REPLACE INTO artifact_keys (artifact_id, epoch, user_id, wrapped, fp) VALUES (?, ?, ?, ?, ?)`,
+		t.id, w.Epoch, w.UserID, w.Wrapped, w.FP)
 	return err
 }
 
