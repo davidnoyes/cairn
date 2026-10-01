@@ -126,6 +126,10 @@ var ErrExists = errors.New("already exists")
 // one: a wrong seq, or a prev that is not the hash of the latest body.
 var ErrStale = errors.New("record does not follow the latest record")
 
+// ErrEpochMoved is returned when a write declared an epoch that is not the
+// artifact's current one.
+var ErrEpochMoved = errors.New("the artifact moved to a new epoch")
+
 // ErrLegacyData is returned by Open when the data directory holds accounts
 // or artifacts from a Cairn version that predates this schema. They cannot be
 // migrated automatically: start the server with a fresh data directory, or

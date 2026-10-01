@@ -453,7 +453,7 @@ func TestVersionPusherAndWriteEpochs(t *testing.T) {
 	s := testStore(t)
 	o := testAccount(t, s, "o@x.y")
 	a := ownedArtifact(t, s, o)
-	v, err := s.CreateVersion(a.ID, "v1", "", "c1", "")
+	v, err := s.CreateVersion(a.ID, "v1", "", "c1", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +490,7 @@ func TestVersionWritesStampThePusherAndEpoch(t *testing.T) {
 	if err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error { return tx.AppendRecord(record(1, "", 2, "b1")) }); err != nil {
 		t.Fatal(err)
 	}
-	v, err := s.CreateVersion(a.ID, "v1", "", "c1", o.ID)
+	v, err := s.CreateVersion(a.ID, "v1", "", "c1", o.ID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -512,7 +512,7 @@ func TestVersionWritesStampThePusherAndEpoch(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SwapVersionContent(a.ID, v.ID, "c2", "v1", "", p.ID); err != nil {
+	if _, err := s.SwapVersionContent(a.ID, v.ID, "c2", "v1", "", p.ID, 0); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := s.VersionByID(a.ID, v.ID); got.PushedBy != p.ID || got.Epoch != 3 {
@@ -587,7 +587,7 @@ func TestDeleteUserCascadesTheirSharingRows(t *testing.T) {
 	m := testAccount(t, s, "m@x.y")
 	other := testAccount(t, s, "other@x.y")
 	a := ownedArtifact(t, s, o)
-	v, err := s.CreateVersion(a.ID, "v1", "", "c1", m.ID)
+	v, err := s.CreateVersion(a.ID, "v1", "", "c1", m.ID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -749,7 +749,7 @@ func TestVersionWritesRefuseAVersionOnAnotherArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	vb, err := s.CreateVersion(b.ID, "v1", "", "c1", "")
+	vb, err := s.CreateVersion(b.ID, "v1", "", "c1", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1008,5 +1008,41 @@ func TestReplaceWrapOverwritesTheUsersWrapForThatEpoch(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A push or re-upload that declares an epoch fails once the artifact's epoch
+// has moved on, and writes nothing.
+func TestVersionWritesDeclareTheirEpoch(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	a := ownedArtifact(t, s, o)
+	setEpoch := func(epoch int) {
+		if _, err := s.db.Exec(`UPDATE artifacts SET epoch = ? WHERE id = ?`, epoch, a.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setEpoch(1)
+	v, err := s.CreateVersion(a.ID, "v1", "", "c1", o.ID, 1)
+	if err != nil || v.Epoch != 1 {
+		t.Fatalf("push declaring the current epoch: %v %+v", err, v)
+	}
+	setEpoch(2)
+	if _, err := s.CreateVersion(a.ID, "v2", "", "c2", o.ID, 1); !errors.Is(err, ErrEpochMoved) {
+		t.Errorf("push declaring epoch 1 at epoch 2: %v, want ErrEpochMoved", err)
+	}
+	if _, err := s.SwapVersionContent(a.ID, v.ID, "c3", "v1", "", o.ID, 1); !errors.Is(err, ErrEpochMoved) {
+		t.Errorf("re-upload declaring epoch 1 at epoch 2: %v, want ErrEpochMoved", err)
+	}
+	if vs, _ := s.ListVersions(a.ID); len(vs) != 1 || vs[0].ContentDir != "c1" || vs[0].Epoch != 1 {
+		t.Errorf("versions after refused writes: %+v, want the original untouched", vs)
+	}
+	// 0 declares nothing and takes the current epoch.
+	v2, err := s.CreateVersion(a.ID, "v2", "", "c2", o.ID, 0)
+	if err != nil || v2.Epoch != 2 {
+		t.Errorf("push declaring nothing: %v %+v, want epoch 2", err, v2)
+	}
+	if _, err := s.CreateVersion(a.ID, "v3", "", "c3", o.ID, 2); err != nil {
+		t.Errorf("push declaring epoch 2: %v", err)
 	}
 }

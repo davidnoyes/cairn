@@ -508,6 +508,20 @@ they were written under. The server refuses any epoch but the current one
 with `409`, inside the transaction that holds the artifact row lock, so a
 write cannot land under the old epoch after an epoch change.
 
+Until content is encrypted, the epoch travels in the `X-Cairn-Epoch` request
+header, a positive decimal without leading zeros (anything else is `400`),
+and the header is optional: `cairn.js` does not send it. A write that omits
+it takes the current epoch. Milestone 4 makes it required on a version push,
+and milestone 5 on a database revision and a file write. A push compares the
+epoch in the same statement that writes the version. A database exec or
+batch and a file write run under the artifact row lock, so no epoch change
+lands during one that declares an epoch. Their data lives outside the
+metadata database, so the write and the lock's commit are not one
+transaction: a failed commit leaves a write that was checked but not
+recorded. A database exec or batch holds the lock for as long as it runs,
+and a file write holds it only for the move into place. Milestone 5 moves
+these writes into the metadata store, which closes that.
+
 #### Creating an artifact
 
 `POST /api/artifacts`:

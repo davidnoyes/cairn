@@ -114,6 +114,10 @@ func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
 // any previous content. The file is staged in tmp/ and renamed into place
 // (same volume) so concurrent readers never see a partial write.
 func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
+	declared, ok := declaredEpoch(w, r)
+	if !ok {
+		return
+	}
 	_, target, ok := s.resolveVersionFile(w, r)
 	if !ok {
 		return
@@ -139,12 +143,21 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	os.Chmod(tmp.Name(), 0o644)
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		writeError(w, http.StatusConflict, "path conflicts with an existing file")
+	// The body is staged above, outside the lock; only the move into place
+	// holds it.
+	var conflict string
+	if err := s.underEpoch(requestArtifact(r).ID, declared, func() {
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			conflict = "path conflicts with an existing file"
+		} else if err := os.Rename(tmp.Name(), target); err != nil {
+			conflict = "path conflicts with an existing directory"
+		}
+	}); err != nil {
+		s.writeStoreError(w, err, "artifact")
 		return
 	}
-	if err := os.Rename(tmp.Name(), target); err != nil {
-		writeError(w, http.StatusConflict, "path conflicts with an existing directory")
+	if conflict != "" {
+		writeError(w, http.StatusConflict, conflict)
 		return
 	}
 	writeJSON(w, http.StatusOK, fileInfo{
@@ -155,25 +168,43 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request) {
+	declared, ok := declaredEpoch(w, r)
+	if !ok {
+		return
+	}
 	root, target, ok := s.resolveVersionFile(w, r)
 	if !ok {
 		return
 	}
-	st, err := os.Lstat(target)
-	if err != nil || st.IsDir() {
+	var status int
+	var removeErr error
+	if err := s.underEpoch(requestArtifact(r).ID, declared, func() {
+		st, err := os.Lstat(target)
+		if err != nil || st.IsDir() {
+			status = http.StatusNotFound
+			return
+		}
+		if removeErr = os.Remove(target); removeErr != nil {
+			return
+		}
+		// Prune now-empty parent directories (they are invisible to the API).
+		for dir := filepath.Dir(target); len(dir) > len(root); dir = filepath.Dir(dir) {
+			if os.Remove(dir) != nil {
+				break
+			}
+		}
+	}); err != nil {
+		s.writeStoreError(w, err, "artifact")
+		return
+	}
+	if status == http.StatusNotFound {
 		writeError(w, http.StatusNotFound, "file not found")
 		return
 	}
-	if err := os.Remove(target); err != nil {
-		s.log.Error("delete file", "err", err)
+	if removeErr != nil {
+		s.log.Error("delete file", "err", removeErr)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
-	}
-	// Prune now-empty parent directories (they are invisible to the API).
-	for dir := filepath.Dir(target); len(dir) > len(root); dir = filepath.Dir(dir) {
-		if os.Remove(dir) != nil {
-			break
-		}
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

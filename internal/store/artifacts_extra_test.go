@@ -13,7 +13,7 @@ func TestArtifactLookupsAndListing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err := s.CreateVersion(a.ID, "v1", "initial", "c1", "")
+	v, err := s.CreateVersion(a.ID, "v1", "initial", "c1", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}

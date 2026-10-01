@@ -292,3 +292,17 @@ internal/server/web/admin-init.mjs	for (const { name } of lists) listFailed(name
 internal/server/web/ui.mjs	errorEl.hidden = true; // a wrong group's error, from an earlier try	;	node --test internal/server/web/ui_test.mjs
 internal/server/web/account.mjs	x25519Raw?.fill(0);	;	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	ed25519Raw?.fill(0);	;	node --test internal/server/web/account_test.mjs
+internal/store/artifacts.go	FROM artifacts WHERE id = ? AND (? = 0 OR epoch = ?)	FROM artifacts WHERE id = ? AND (? = 0 OR epoch = epoch OR ? = 0)	go test ./internal/store -run TestVersionWritesDeclareTheirEpoch
+internal/store/artifacts.go	AND (? = 0 OR (SELECT epoch FROM artifacts WHERE id = ?) = ?)	AND (? = 0 OR (SELECT epoch FROM artifacts WHERE id = ?) = ? OR 1)	go test ./internal/store -run TestVersionWritesDeclareTheirEpoch
+internal/server/epoch.go	if a.Epoch != declared {	if a.Epoch == 0 {	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
+internal/server/epoch.go	if declared == 0 {	if declared >= 0 {	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
+internal/server/epoch.go	v[0] == '0'	v[0] == 'z'	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
+internal/server/epoch.go	len(vals) == 0	len(vals) == 0 || vals[0] == ""	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
+internal/server/upload.go	v, err := s.store.CreateVersion(a.ID, name, changelog, contentDir, requestUser(r).ID, declared)	v, err := s.store.CreateVersion(a.ID, name, changelog, contentDir, requestUser(r).ID, declared*0)	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
+internal/server/upload.go	changelog, requestUser(r).ID, declared)	changelog, requestUser(r).ID, declared*0)	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
+internal/server/handlers_db.go	var execErr error	var execErr error; declared = 0	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
+internal/server/handlers_db.go	var batchErr error	var batchErr error; declared = 0	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
+internal/server/handlers_files.go	var conflict string	var conflict string; declared = 0	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
+internal/server/handlers_files.go	var removeErr error	var removeErr error; declared = 0	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
+internal/client/client.go	strconv.Itoa(epoch)	strconv.Itoa(epoch + 1)	go test ./internal/client -run 'TestPushDeclaresTheChainEpoch|TestPushNamesAMovedEpoch'
+internal/client/client.go	return nil, ErrEpochMoved	return nil, err	go test ./internal/client -run 'TestPushDeclaresTheChainEpoch|TestPushNamesAMovedEpoch'

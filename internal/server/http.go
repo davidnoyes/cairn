@@ -45,6 +45,10 @@ func (s *Server) writeStoreError(w http.ResponseWriter, err error, what string) 
 		writeError(w, http.StatusNotFound, what+" not found")
 		return
 	}
+	if errors.Is(err, store.ErrEpochMoved) {
+		writeError(w, http.StatusConflict, err.Error()+"; run the command again")
+		return
+	}
 	s.log.Error("internal error", "err", err)
 	writeError(w, http.StatusInternalServerError, "internal error")
 }

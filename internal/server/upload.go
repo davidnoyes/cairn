@@ -26,11 +26,15 @@ var errNoIndex = errors.New("archive must contain an index.html at its root (or 
 // Form fields: archive (file, required), name, changelog.
 func (s *Server) handleUploadVersion(w http.ResponseWriter, r *http.Request) {
 	a := requestArtifact(r)
+	declared, ok := declaredEpoch(w, r)
+	if !ok {
+		return
+	}
 	contentDir, name, changelog, ok := s.receiveUpload(w, r, a.ID)
 	if !ok {
 		return
 	}
-	v, err := s.store.CreateVersion(a.ID, name, changelog, contentDir, requestUser(r).ID)
+	v, err := s.store.CreateVersion(a.ID, name, changelog, contentDir, requestUser(r).ID, declared)
 	if err != nil {
 		os.RemoveAll(s.layout.ContentDir(a.ID, contentDir))
 		s.writeStoreError(w, err, "version")
@@ -45,6 +49,10 @@ func (s *Server) handleUploadVersion(w http.ResponseWriter, r *http.Request) {
 // versions). The version's shared database is untouched.
 func (s *Server) handleReplaceVersion(w http.ResponseWriter, r *http.Request) {
 	a := requestArtifact(r)
+	declared, ok := declaredEpoch(w, r)
+	if !ok {
+		return
+	}
 	v, err := s.store.VersionByID(a.ID, r.PathValue("vid"))
 	if err != nil {
 		s.writeStoreError(w, err, "version")
@@ -60,7 +68,7 @@ func (s *Server) handleReplaceVersion(w http.ResponseWriter, r *http.Request) {
 	if changelog == "" {
 		changelog = v.Changelog
 	}
-	prev, err := s.store.SwapVersionContent(v.ArtifactID, v.ID, contentDir, name, changelog, requestUser(r).ID)
+	prev, err := s.store.SwapVersionContent(v.ArtifactID, v.ID, contentDir, name, changelog, requestUser(r).ID, declared)
 	if err != nil {
 		os.RemoveAll(s.layout.ContentDir(v.ArtifactID, contentDir))
 		s.writeStoreError(w, err, "version")

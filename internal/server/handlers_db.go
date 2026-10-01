@@ -24,6 +24,10 @@ func (s *Server) resolveVersion(w http.ResponseWriter, r *http.Request) (string,
 // Callers who may write data get the read-write pool; every other reader
 // the query_only pool — enforcement is at the connection level.
 func (s *Server) handleDBQuery(w http.ResponseWriter, r *http.Request) {
+	declared, ok := declaredEpoch(w, r)
+	if !ok {
+		return
+	}
 	aid, ok := s.resolveVersion(w, r)
 	if !ok {
 		return
@@ -37,9 +41,21 @@ func (s *Server) handleDBQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writable := access.Check(requestAccess(r), access.WriteData) == access.Allow
-	res, err := s.dbs.Exec(r.Context(), aid, r.PathValue("vid"), writable, stmt)
-	if err != nil {
-		s.writeDBError(w, err)
+	// A statement is not classified as a read or a write, so only a caller
+	// who may write is held to the declared epoch.
+	if !writable {
+		declared = 0
+	}
+	var res *versiondb.Result
+	var execErr error
+	if err := s.underEpoch(aid, declared, func() {
+		res, execErr = s.dbs.Exec(r.Context(), aid, r.PathValue("vid"), writable, stmt)
+	}); err != nil {
+		s.writeStoreError(w, err, "artifact")
+		return
+	}
+	if execErr != nil {
+		s.writeDBError(w, execErr)
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
@@ -52,6 +68,10 @@ type batchRequest struct {
 // handleDBBatch runs statements atomically in one transaction (client-driven
 // migrations rely on this).
 func (s *Server) handleDBBatch(w http.ResponseWriter, r *http.Request) {
+	declared, ok := declaredEpoch(w, r)
+	if !ok {
+		return
+	}
 	aid, ok := s.resolveVersion(w, r)
 	if !ok {
 		return
@@ -64,9 +84,16 @@ func (s *Server) handleDBBatch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "statements are required")
 		return
 	}
-	results, err := s.dbs.Batch(r.Context(), aid, r.PathValue("vid"), req.Statements)
-	if err != nil {
-		s.writeDBError(w, err)
+	var results []*versiondb.Result
+	var batchErr error
+	if err := s.underEpoch(aid, declared, func() {
+		results, batchErr = s.dbs.Batch(r.Context(), aid, r.PathValue("vid"), req.Statements)
+	}); err != nil {
+		s.writeStoreError(w, err, "artifact")
+		return
+	}
+	if batchErr != nil {
+		s.writeDBError(w, batchErr)
 		return
 	}
 	writeJSON(w, http.StatusOK, results)

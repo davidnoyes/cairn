@@ -1,6 +1,9 @@
 package store
 
 import (
+	"database/sql"
+	"errors"
+
 	"github.com/google/uuid"
 )
 
@@ -187,15 +190,26 @@ func scanVersion(row interface{ Scan(...any) error }) (*Version, error) {
 
 // CreateVersion inserts the next version, stamped with its pusher and the
 // artifact's epoch. The INSERT reads the epoch itself, so no epoch change can
-// land between the read and the write.
-func (s *Store) CreateVersion(artifactID, name, changelog, contentDir, pushedBy string) (*Version, error) {
+// land between the read and the write. A declaredEpoch other than 0 must be
+// the artifact's current epoch, checked by the same statement; otherwise
+// nothing is written and the answer is ErrEpochMoved.
+func (s *Store) CreateVersion(artifactID, name, changelog, contentDir, pushedBy string, declaredEpoch int) (*Version, error) {
 	t := now()
 	v := &Version{ID: uuid.NewString(), ArtifactID: artifactID, Name: name, Changelog: changelog, ContentDir: contentDir, CreatedAt: t, UpdatedAt: t, PushedBy: pushedBy}
 	err := s.db.QueryRow(`INSERT INTO versions (id, artifact_id, name, changelog, seq, content_dir, created_at, updated_at, pushed_by, epoch)
-		VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM versions WHERE artifact_id = ?), ?, ?, ?, NULLIF(?, ''),
-			(SELECT epoch FROM artifacts WHERE id = ?))
+		SELECT ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM versions WHERE artifact_id = ?), ?, ?, ?, NULLIF(?, ''), epoch
+		FROM artifacts WHERE id = ? AND (? = 0 OR epoch = ?)
 		RETURNING seq, epoch`,
-		v.ID, v.ArtifactID, v.Name, v.Changelog, artifactID, v.ContentDir, v.CreatedAt, v.UpdatedAt, pushedBy, artifactID).Scan(&v.Seq, &v.Epoch)
+		v.ID, v.ArtifactID, v.Name, v.Changelog, artifactID, v.ContentDir, v.CreatedAt, v.UpdatedAt, pushedBy, artifactID,
+		declaredEpoch, declaredEpoch).Scan(&v.Seq, &v.Epoch)
+	if errors.Is(err, sql.ErrNoRows) {
+		// No row means no such artifact, or an epoch other than the declared one.
+		var epoch int
+		if aerr := s.db.QueryRow(`SELECT epoch FROM artifacts WHERE id = ?`, artifactID).Scan(&epoch); aerr != nil {
+			return nil, aerr
+		}
+		return nil, ErrEpochMoved
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -230,8 +244,11 @@ func (s *Store) ListVersions(artifactID string) ([]*Version, error) {
 
 // SwapVersionContent atomically points a version at a freshly extracted
 // content dir (re-upload), restamping its pusher and the artifact's epoch in
-// the same transaction. Returns the previous content dir for cleanup.
-func (s *Store) SwapVersionContent(artifactID, versionID, contentDir, name, changelog, pushedBy string) (string, error) {
+// the same transaction. Returns the previous content dir for cleanup. A
+// declaredEpoch other than 0 must be the artifact's current epoch, checked by
+// the UPDATE itself; otherwise nothing changes and the answer is
+// ErrEpochMoved.
+func (s *Store) SwapVersionContent(artifactID, versionID, contentDir, name, changelog, pushedBy string, declaredEpoch int) (string, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return "", err
@@ -241,10 +258,17 @@ func (s *Store) SwapVersionContent(artifactID, versionID, contentDir, name, chan
 	if err := tx.QueryRow(`SELECT content_dir FROM versions WHERE id = ? AND artifact_id = ?`, versionID, artifactID).Scan(&prev); err != nil {
 		return "", err
 	}
-	if _, err := tx.Exec(`UPDATE versions SET content_dir = ?, name = ?, changelog = ?, updated_at = ?, pushed_by = NULLIF(?, ''),
-		epoch = (SELECT epoch FROM artifacts WHERE id = ?) WHERE id = ?`,
-		contentDir, name, changelog, now(), pushedBy, artifactID, versionID); err != nil {
+	res, err := tx.Exec(`UPDATE versions SET content_dir = ?, name = ?, changelog = ?, updated_at = ?, pushed_by = NULLIF(?, ''),
+		epoch = (SELECT epoch FROM artifacts WHERE id = ?) WHERE id = ?
+		AND (? = 0 OR (SELECT epoch FROM artifacts WHERE id = ?) = ?)`,
+		contentDir, name, changelog, now(), pushedBy, artifactID, versionID, declaredEpoch, artifactID, declaredEpoch)
+	if err != nil {
 		return "", err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return "", err
+	} else if n == 0 {
+		return "", ErrEpochMoved
 	}
 	if err := tx.Commit(); err != nil {
 		return "", err

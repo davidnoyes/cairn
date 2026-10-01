@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
@@ -65,12 +66,20 @@ type apiError struct {
 }
 
 func (c *Client) do(method, path string, body io.Reader, contentType string, out any) error {
+	return c.doWithHeaders(method, path, body, contentType, nil, out)
+}
+
+// doWithHeaders is do with extra request headers.
+func (c *Client) doWithHeaders(method, path string, body io.Reader, contentType string, headers http.Header, out any) error {
 	req, err := http.NewRequest(method, c.Host+path, body)
 	if err != nil {
 		return err
 	}
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
+	}
+	for k, v := range headers {
+		req.Header[k] = v
 	}
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
@@ -189,9 +198,28 @@ func (c *Client) ListVersions(artifactID string) ([]*store.Version, error) {
 	return out, c.doJSON("GET", "/api/artifacts/"+artifactID+"/versions", nil, &out)
 }
 
+// ErrEpochMoved means the artifact's epoch changed while the command ran, so
+// the server refused the write.
+var ErrEpochMoved = errors.New("the artifact moved to a new epoch; run the command again")
+
 // Push zips dir and uploads it as a new version, or replaces versionID when
-// non-empty.
+// non-empty. It verifies the artifact's membership chain first and declares
+// the chain's epoch on the write, so the server refuses it if the epoch has
+// moved since; it refuses itself when that epoch is below the one the
+// keyring pins.
 func (c *Client) Push(artifactID, versionID, dir, name, changelog string) (*store.Version, error) {
+	k, err := c.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	va, err := c.VerifyArtifact(k, artifactID, "")
+	if err != nil {
+		return nil, err
+	}
+	epoch := va.Chain.Latest.Epoch
+	if err := e2e.CheckEncryptEpoch(va.Keyring.EpochPin(artifactID), epoch); err != nil {
+		return nil, err
+	}
 	tmp, err := os.CreateTemp("", "cairn-push-*.zip")
 	if err != nil {
 		return nil, err
@@ -221,7 +249,13 @@ func (c *Client) Push(artifactID, versionID, dir, name, changelog string) (*stor
 		method, path = "PUT", path+"/"+versionID
 	}
 	var out store.Version
-	return &out, c.do(method, path, tmp, mw.FormDataContentType(), &out)
+	hdr := http.Header{"X-Cairn-Epoch": {strconv.Itoa(epoch)}}
+	err = c.doWithHeaders(method, path, tmp, mw.FormDataContentType(), hdr, &out)
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.Status == http.StatusConflict {
+		return nil, ErrEpochMoved
+	}
+	return &out, err
 }
 
 // zipDir writes dir's regular files into a zip stream, preserving relative
