@@ -62,16 +62,25 @@ export function toHex(bytes) {
   return out;
 }
 
+// fromHex and unb64 never echo the input in their error messages: both take
+// attacker-influenced wire data, and an error message is a place that data
+// could otherwise leak into a log line.
 export function fromHex(hex) {
-  if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(hex)) {
-    throw new FormatError(`bad hex: ${hex}`);
+  if (typeof hex !== 'string' || hex.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(hex)) {
+    throw new FormatError('bad hex');
   }
   const out = new Uint8Array(hex.length / 2);
   for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   return out;
 }
 
-// b64/unb64: base64url without padding, matching Go's base64.RawURLEncoding.
+// b64/unb64: base64url without padding, matching Go's
+// base64.RawURLEncoding.Strict(). unb64 accepts only the URL-safe alphabet
+// (no "+", "/", or "="), no padding, and zero unused bits in a partial
+// group's last character: decoding, then re-encoding and comparing, catches
+// non-zero trailing bits without a separate bit-level check.
+const BASE64URL_RE = /^[A-Za-z0-9_-]*$/;
+
 export function b64(bytes) {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -79,17 +88,19 @@ export function b64(bytes) {
 }
 
 export function unb64(str) {
-  if (str.length % 4 === 1) throw new FormatError(`bad base64url length: ${str.length}`);
+  if (typeof str !== 'string' || !BASE64URL_RE.test(str)) throw new FormatError('bad base64url: invalid character');
+  if (str.length % 4 === 1) throw new FormatError('bad base64url: invalid length');
   const standard = str.replace(/-/g, '+').replace(/_/g, '/');
   const padded = standard + '='.repeat((4 - (standard.length % 4)) % 4);
   let binary;
   try {
     binary = atob(padded);
   } catch {
-    throw new FormatError(`bad base64url: ${str}`);
+    throw new FormatError('bad base64url');
   }
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  if (b64(bytes) !== str) throw new FormatError('bad base64url: non-canonical encoding');
   return bytes;
 }
 
@@ -141,8 +152,22 @@ export const LABELS = {
 // error.
 const KEY_LEN = 32;
 
+// checkKeyLen skips the length check for a CryptoKey: its length is already
+// fixed by its algorithm at import/derive time, and it has no .length to
+// read in the first place.
 function checkKeyLen(key) {
+  if (key instanceof CryptoKey) return;
   if (key.length !== KEY_LEN) throw new FormatError(`key length ${key.length}, want ${KEY_LEN}`);
+}
+
+// checkEpoch requires a safe non-negative integer, matching Go's uint64
+// epoch and the decimal-ASCII-no-leading-zeros rule the wire format uses: a
+// float, a negative number, or a value too large to round-trip exactly in a
+// float64 would silently encode the wrong decimal string.
+function checkEpoch(epoch) {
+  if (!Number.isSafeInteger(epoch) || epoch < 0) {
+    throw new FormatError('epoch must be a safe non-negative integer');
+  }
 }
 
 const DERIVED_KEY_BITS = 256;
@@ -165,6 +190,25 @@ export async function derive(ikm, salt, label, ...fields) {
   return new Uint8Array(bits);
 }
 
+// importHKDFKey imports raw key bytes as a non-extractable HKDF CryptoKey
+// usable by both derive (deriveBits) and deriveKey (deriveKey) below, so a
+// master, estate, or artifact key can be held and derived from without ever
+// being extractable again after this call.
+export async function importHKDFKey(raw) {
+  return subtle.importKey('raw', toBytes(raw), 'HKDF', false, ['deriveBits', 'deriveKey']);
+}
+
+// deriveKey derives a non-extractable key of the given algorithm directly
+// via HKDF: unlike derive, the derived key material never exists as a plain
+// Uint8Array in JS memory. ikm is raw bytes or a non-extractable HKDF
+// CryptoKey (see importHKDFKey).
+async function deriveKey(ikm, salt, label, fields, algorithm, usages) {
+  const info = enc(label, ...fields);
+  const key = ikm instanceof CryptoKey ? ikm : await importHKDFKey(ikm);
+  const saltBytes = salt ? toBytes(salt) : new Uint8Array(0);
+  return subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: saltBytes, info }, key, algorithm, false, usages);
+}
+
 // Argon2id floor and ceiling. Clients refuse parameters below the floor, so
 // the server can raise them later without breaking existing accounts, but
 // never lower them. The ceiling catches a server (malicious or broken)
@@ -184,12 +228,16 @@ export function checkFloor(params) {
   if (!params || params.alg !== 'argon2id') {
     throw new FloorError(`alg ${params && params.alg}`);
   }
+  if (!Number.isInteger(params.m) || !Number.isInteger(params.t) || !Number.isInteger(params.p)) {
+    throw new FloorError('m, t, and p must be integers');
+  }
+  if (!(params.salt instanceof Uint8Array)) throw new FloorError('salt must be a Uint8Array');
   if (params.m < FLOOR_MEMORY) throw new FloorError(`memory ${params.m} below floor`);
   if (params.m > CEILING_MEMORY) throw new FloorError(`memory ${params.m} above ceiling`);
   if (params.t < FLOOR_TIME) throw new FloorError(`time ${params.t} below floor`);
   if (params.t > CEILING_TIME) throw new FloorError(`time ${params.t} above ceiling`);
   if (params.p < 1 || params.p > 4) throw new FloorError(`threads ${params.p} out of range`);
-  const saltLen = params.salt ? params.salt.length : 0;
+  const saltLen = params.salt.length;
   if (saltLen < FLOOR_SALT_MIN || saltLen > FLOOR_SALT_MAX) {
     throw new FloorError(`salt length ${saltLen} out of range`);
   }
@@ -433,25 +481,61 @@ export async function ekSealKey(ek) {
 }
 export async function linkToken(ak, artifact, epoch) {
   checkKeyLen(ak);
+  checkEpoch(epoch);
   return derive(ak, null, LABELS.linkToken, artifact, String(epoch));
 }
 export async function fileKey(ak, artifact, epoch) {
   checkKeyLen(ak);
+  checkEpoch(epoch);
   return derive(ak, null, LABELS.fileKey, artifact, String(epoch));
+}
+
+// mkSealCryptoKey, ekSealCryptoKey, indexCryptoKey, and fileCryptoKey are the
+// non-extractable-CryptoKey counterparts of mkSealKey, ekSealKey, indexKey,
+// and fileKey: mk/ek/ak may be raw bytes or a non-extractable HKDF CryptoKey
+// (see importHKDFKey), and the result is a non-extractable CryptoKey of the
+// right algorithm for seal/open (AES-GCM) or the HMAC helpers, never a raw
+// Uint8Array.
+const HMAC_SHA256_ALG = { name: 'HMAC', hash: 'SHA-256' };
+// HMAC_SHA256_DERIVE_ALG fixes the derived key at 256 bits, matching
+// DERIVED_KEY_BITS: HMAC's own default derived-key length is the hash's
+// block size (512 bits for SHA-256), not its output size, which would
+// silently derive a different key than derive()'s deriveBits call does for
+// the same ikm/salt/info.
+const HMAC_SHA256_DERIVE_ALG = { name: 'HMAC', hash: 'SHA-256', length: DERIVED_KEY_BITS };
+const AES_GCM_256_ALG = { name: 'AES-GCM', length: 256 };
+
+export async function mkSealCryptoKey(mk) {
+  checkKeyLen(mk);
+  return deriveKey(mk, null, LABELS.mkSeal, [], AES_GCM_256_ALG, ['encrypt', 'decrypt']);
+}
+export async function ekSealCryptoKey(ek) {
+  checkKeyLen(ek);
+  return deriveKey(ek, null, LABELS.ekSeal, [], AES_GCM_256_ALG, ['encrypt', 'decrypt']);
+}
+export async function indexCryptoKey(mk) {
+  checkKeyLen(mk);
+  return deriveKey(mk, null, LABELS.index, [], HMAC_SHA256_DERIVE_ALG, ['sign']);
+}
+export async function fileCryptoKey(ak, artifact, epoch) {
+  checkKeyLen(ak);
+  checkEpoch(epoch);
+  return deriveKey(ak, null, LABELS.fileKey, [artifact, String(epoch)], HMAC_SHA256_DERIVE_ALG, ['sign']);
 }
 
 // akCommit is a public commitment to an artifact's AK at a given epoch, so a
 // party without AK can confirm two sources agree on it without learning it.
 export async function akCommit(ak, artifact, epoch) {
   checkKeyLen(ak);
+  checkEpoch(epoch);
   const commit = await derive(ak, null, LABELS.akCommit, artifact, String(epoch));
   return toHex(commit);
 }
 
+// hmacSha256 accepts either a raw key or a non-extractable HMAC-SHA256
+// CryptoKey (see indexCryptoKey/fileCryptoKey).
 async function hmacSha256(key, message) {
-  const hmacKey = await subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, [
-    'sign',
-  ]);
+  const hmacKey = key instanceof CryptoKey ? key : await subtle.importKey('raw', key, HMAC_SHA256_ALG, false, ['sign']);
   const mac = await subtle.sign('HMAC', hmacKey, message);
   return new Uint8Array(mac);
 }
@@ -483,10 +567,13 @@ function sealAD(fields) {
   return enc(LABELS.seal, ...fields);
 }
 
-// importAesGcmKey always checks the key is exactly 32 bytes before handing
-// it to WebCrypto, which would otherwise happily treat a 16- or 24-byte key
-// as AES-128 or AES-192: this module only ever uses AES-256-GCM.
+// importAesGcmKey accepts either a raw 32-byte key or an already-imported
+// non-extractable AES-GCM CryptoKey (see mkSealCryptoKey/ekSealCryptoKey),
+// always checking the key is exactly 32 bytes before handing a raw one to
+// WebCrypto, which would otherwise happily treat a 16- or 24-byte key as
+// AES-128 or AES-192: this module only ever uses AES-256-GCM.
 async function importAesGcmKey(key, usage) {
+  if (key instanceof CryptoKey) return key;
   checkKeyLen(key);
   return subtle.importKey('raw', key, 'AES-GCM', false, [usage]);
 }
@@ -570,7 +657,9 @@ export async function sealBlob(ak, ctx, pt) {
   const salt = new Uint8Array(BLOB_SALT_SIZE);
   crypto.getRandomValues(salt);
   const header = blobHeader(salt);
-  const aesKey = await importAesGcmKey(await blobKey(ak, salt, ctx), 'encrypt');
+  const blobKeyBytes = await blobKey(ak, salt, ctx);
+  const aesKey = await importAesGcmKey(blobKeyBytes, 'encrypt');
+  blobKeyBytes.fill(0); // best-effort zeroing: the derived blob key is no longer needed once imported
 
   const n = pt.length;
   let chunks = Math.floor(n / BLOB_CHUNK_SIZE);
@@ -611,20 +700,27 @@ export async function openBlob(ak, ctx, blob) {
   }
   const header = blob.slice(0, BLOB_HEADER_SIZE);
   const salt = blob.slice(BLOB_MAGIC.length + 1, BLOB_HEADER_SIZE);
-  let rest = blob.slice(BLOB_HEADER_SIZE);
-  if (rest.length === 0) {
+  if (blob.length === BLOB_HEADER_SIZE) {
     // A valid blob always has at least one chunk, even an empty one.
     throw new DecryptError('no chunks');
   }
 
-  const aesKey = await importAesGcmKey(await blobKey(ak, salt, ctx), 'decrypt');
+  const blobKeyBytes = await blobKey(ak, salt, ctx);
+  const aesKey = await importAesGcmKey(blobKeyBytes, 'decrypt');
+  blobKeyBytes.fill(0); // best-effort zeroing: the derived blob key is no longer needed once imported
 
   const parts = [];
+  let offset = BLOB_HEADER_SIZE;
   let i = 0;
-  while (rest.length > 0) {
-    const last = rest.length <= BLOB_FULL_CHUNK_SIZE;
-    const chunkCT = last ? rest : rest.slice(0, BLOB_FULL_CHUNK_SIZE);
-    rest = last ? new Uint8Array(0) : rest.slice(BLOB_FULL_CHUNK_SIZE);
+  // subarray, not slice: a view into blob rather than a copy of everything
+  // from offset onward, so decrypting n chunks does O(n) work total instead
+  // of O(n^2) from re-copying a shrinking remainder on every iteration.
+  while (offset < blob.length) {
+    const remaining = blob.length - offset;
+    const last = remaining <= BLOB_FULL_CHUNK_SIZE;
+    const chunkSize = last ? remaining : BLOB_FULL_CHUNK_SIZE;
+    const chunkCT = blob.subarray(offset, offset + chunkSize);
+    offset += chunkSize;
     try {
       const pt = await subtle.decrypt(
         { name: 'AES-GCM', iv: chunkNonce(i, last), additionalData: header },
@@ -657,11 +753,25 @@ async function importX25519Pub(raw) {
 
 // x25519PublicFromPrivate derives the public key for a raw private scalar by
 // importing it as extractable and reading the "x" coordinate back out of its
-// JWK form, which WebCrypto computes for us.
+// JWK form, which WebCrypto computes for us. The extractable import is
+// transient: its only use is this one export, and the key is discarded
+// immediately afterward.
 async function x25519PublicFromPrivate(raw) {
   const key = await importX25519Priv(raw, true, ['deriveBits']);
   const jwk = await subtle.exportKey('jwk', key);
   return unb64(jwk.x);
+}
+
+// importX25519PrivateKey imports a 32-byte private scalar as a non-
+// extractable X25519 CryptoKey, computing its public key once here (the only
+// time it can be read back out) rather than leaving the caller to try later,
+// when the returned privateKey is no longer extractable. The result is
+// accepted directly by unwrap.
+export async function importX25519PrivateKey(raw) {
+  if (raw.length !== 32) throw new FormatError('x25519 private key length, want 32');
+  const publicKey = await x25519PublicFromPrivate(raw);
+  const privateKey = await importX25519Priv(raw, false, ['deriveBits']);
+  return { privateKey, publicKey };
 }
 
 function isAllZero(bytes) {
@@ -691,6 +801,7 @@ const WRAP_TAG_SIZE = 16;
 const WRAP_SIZE = 1 + WRAP_PUB_SIZE + KEY_LEN + WRAP_TAG_SIZE;
 
 async function wrapKeyDerive(shared, ctx, ephPub) {
+  checkEpoch(ctx.epoch);
   return derive(
     shared,
     null,
@@ -721,6 +832,7 @@ export async function wrap(ctx, key) {
   checkKeyLen(key);
   const { priv: ephPriv, pub: ephPub } = await generateX25519();
   const ephPrivKey = await importX25519Priv(ephPriv, false, ['deriveBits']);
+  ephPriv.fill(0); // best-effort zeroing: the raw scalar is no longer needed once imported
   let recipientPubKey;
   let shared;
   try {
@@ -731,32 +843,44 @@ export async function wrap(ctx, key) {
   }
   if (shared === null) throw new FormatError('all-zero shared secret');
 
-  const aesKey = await importAesGcmKey(await wrapKeyDerive(shared, ctx, ephPub), 'encrypt');
+  const wrapKeyBytes = await wrapKeyDerive(shared, ctx, ephPub);
+  shared.fill(0); // best-effort zeroing: the shared secret is no longer needed
+  const aesKey = await importAesGcmKey(wrapKeyBytes, 'encrypt');
+  wrapKeyBytes.fill(0); // best-effort zeroing: the derived wrap key is no longer needed once imported
   const zeroNonce = new Uint8Array(GCM_NONCE_SIZE);
   const ct = new Uint8Array(await subtle.encrypt({ name: 'AES-GCM', iv: zeroNonce }, aesKey, key));
   return concatBytes([new Uint8Array([WRAP_VERSION]), ephPub, ct]);
 }
 
-// unwrap decrypts a key wrapped with wrap. The recipient's public key is
-// derived from priv rather than trusted from ctx.recipientPub, so a caller
-// who passes a priv/ctx pair that don't match fails closed instead of
-// deriving a wrap key under the wrong public key.
-export async function unwrap(priv, ctx, wrapped) {
-  if (wrapped.length !== WRAP_SIZE || wrapped[0] !== WRAP_VERSION || priv.length !== WRAP_PUB_SIZE) {
+// unwrap decrypts a key wrapped with wrap. privOrKeyObj is either a raw
+// 32-byte private scalar (as before, for tests and vectors) or the
+// {privateKey, publicKey} object importX25519PrivateKey returns. Either way,
+// the recipient's public key comes from priv itself rather than from
+// ctx.recipientPub — recomputed from the raw scalar, or taken from the
+// precomputed value a non-extractable CryptoKey can't be read back out to
+// recompute — so a caller who passes a priv/ctx pair that don't match fails
+// closed instead of deriving a wrap key under the wrong public key.
+export async function unwrap(privOrKeyObj, ctx, wrapped) {
+  if (wrapped.length !== WRAP_SIZE || wrapped[0] !== WRAP_VERSION) {
     throw new DecryptError('bad wrapped value');
   }
-  let recipientPub;
-  try {
-    recipientPub = await x25519PublicFromPrivate(priv);
-  } catch {
-    throw new DecryptError('bad private key');
+  let privKey, recipientPub;
+  if (privOrKeyObj instanceof Uint8Array) {
+    if (privOrKeyObj.length !== WRAP_PUB_SIZE) throw new DecryptError('bad wrapped value');
+    try {
+      recipientPub = await x25519PublicFromPrivate(privOrKeyObj);
+    } catch {
+      throw new DecryptError('bad private key');
+    }
+    privKey = await importX25519Priv(privOrKeyObj, false, ['deriveBits']);
+  } else {
+    ({ privateKey: privKey, publicKey: recipientPub } = privOrKeyObj);
   }
   if (!bytesEqual(recipientPub, ctx.recipientPub)) throw new DecryptError('recipientPub does not match priv');
 
   const ephPub = wrapped.slice(1, 1 + WRAP_PUB_SIZE);
   const ct = wrapped.slice(1 + WRAP_PUB_SIZE);
 
-  const privKey = await importX25519Priv(priv, false, ['deriveBits']);
   let shared;
   try {
     const ephPubKey = await importX25519Pub(ephPub);
@@ -768,7 +892,10 @@ export async function unwrap(priv, ctx, wrapped) {
 
   // ctx is bound into the derivation here, so a wrap moved to another
   // purpose, artifact, epoch, or recipient fails to decrypt.
-  const aesKey = await importAesGcmKey(await wrapKeyDerive(shared, ctx, ephPub), 'decrypt');
+  const wrapKeyBytes = await wrapKeyDerive(shared, ctx, ephPub);
+  shared.fill(0); // best-effort zeroing: the shared secret is no longer needed
+  const aesKey = await importAesGcmKey(wrapKeyBytes, 'decrypt');
+  wrapKeyBytes.fill(0); // best-effort zeroing: the derived wrap key is no longer needed once imported
   const zeroNonce = new Uint8Array(GCM_NONCE_SIZE);
   let pt;
   try {
@@ -804,25 +931,54 @@ function sigMessage(purpose, body) {
 
 const ED25519_SEED_SIZE = 32;
 
-// sign signs body over sig = Ed25519(signingKey, enc("cairn/v1/sig", purpose, body)).
-export async function sign(seed, purpose, body) {
+// importEd25519SigningKey imports a 32-byte seed as a non-extractable
+// Ed25519 signing CryptoKey, so a long-term signing key can be held without
+// ever being extractable again after this call. Its result is accepted
+// directly by sign.
+export async function importEd25519SigningKey(seed) {
   if (seed.length !== ED25519_SEED_SIZE) {
     throw new FormatError(`seed length ${seed.length}, want ${ED25519_SEED_SIZE}`);
   }
-  const privKey = await importEd25519Priv(seed, false, ['sign']);
+  return importEd25519Priv(seed, false, ['sign']);
+}
+
+// sign signs body over sig = Ed25519(signingKey, enc("cairn/v1/sig", purpose, body)).
+// seedOrKey is either a 32-byte seed (as before, for tests and vectors) or a
+// non-extractable Ed25519 CryptoKey from importEd25519SigningKey.
+export async function sign(seedOrKey, purpose, body) {
+  const privKey = seedOrKey instanceof CryptoKey ? seedOrKey : await importEd25519SigningKey(seedOrKey);
   const sig = await subtle.sign('Ed25519', privKey, sigMessage(purpose, body));
   return new Uint8Array(sig);
 }
 
-// SMALL_ORDER_ED25519 is the well-known list of Ed25519 public key encodings
-// whose decoded point has order dividing 8: the four points of the curve's
-// torsion subgroup that aren't the identity, plus the non-canonical
-// encodings of those with y < 19 (y+p is still < 2^255 and so still
-// decodes, to the same point, on a decoder that doesn't reject y >= p). This
+// ED25519_P is the field prime shared by Curve25519 and Ed25519: 2^255-19.
+const ED25519_P = (1n << 255n) - 19n;
+const ED25519_P_MINUS_1 = ED25519_P - 1n;
+// ED25519_L is the prime order of the Ed25519 base point (RFC 8032), used to
+// refuse a non-canonical signature (S >= L) explicitly: Go's crypto/ed25519
+// already refuses one, but WebCrypto implementations vary.
+const ED25519_L = (1n << 252n) + 27742317777372353535851937790883648493n;
+
+// leBytesToBigInt interprets bytes as a little-endian unsigned integer, the
+// byte order every key and coordinate in this module uses.
+function leBytesToBigInt(bytes) {
+  let v = 0n;
+  for (let i = bytes.length - 1; i >= 0; i--) v = (v << 8n) | BigInt(bytes[i]);
+  return v;
+}
+
+// CANONICAL_SMALL_ORDER_ED25519 is the 8 canonical Ed25519 public key
+// encodings whose decoded point has order dividing 8: the identity, the
+// order-2 point, the two order-4 points, and the four order-8 points. This
 // is the same list, verbatim, as internal/e2e/sign.go's smallOrderEd25519 —
 // see that file's comment for how it was derived and confirmed; it is not
 // reinvented here.
-const SMALL_ORDER_ED25519 = [
+//
+// Every other invalid or non-canonical encoding — a y coordinate >= p, or
+// the impossible combination x=0 with the sign bit set — is rejected
+// structurally by isSmallOrderEd25519 below instead of by a longer list; see
+// that function's comment.
+const CANONICAL_SMALL_ORDER_ED25519 = [
   '0100000000000000000000000000000000000000000000000000000000000000',
   'ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f',
   '0000000000000000000000000000000000000000000000000000000000000000',
@@ -831,36 +987,62 @@ const SMALL_ORDER_ED25519 = [
   'c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa',
   'c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a',
   '26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05',
-  'eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f',
-  'edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f',
-  'edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
 ].map((h) => fromHex(h));
 
+// isSmallOrderEd25519 rejects a public key encoding a verifier must never
+// accept: a non-canonical y coordinate (the low 255 bits, little-endian, >=
+// p), the impossible combination x=0 with the sign bit set (only y=1 or
+// y=p-1 give x=0, so a set sign bit there is not an encoding this curve ever
+// produces), or one of the 8 canonical small-order points. Mirrors
+// isSmallOrderEd25519 in internal/e2e/sign.go.
 function isSmallOrderEd25519(pub) {
   if (pub.length !== 32) return false;
-  return SMALL_ORDER_ED25519.some((p) => bytesEqual(p, pub));
+  const signSet = (pub[31] & 0x80) !== 0;
+  const yBytes = pub.slice();
+  yBytes[31] &= 0x7f;
+  const y = leBytesToBigInt(yBytes);
+  if (y >= ED25519_P) return true;
+  if (signSet && (y === 1n || y === ED25519_P_MINUS_1)) return true;
+  return CANONICAL_SMALL_ORDER_ED25519.some((p) => bytesEqual(p, pub));
 }
 
-// checkPublicKeys rejects a malformed or low-order X25519 or Ed25519 public
-// key, so a user's keyring can never be made to hold a key an attacker chose
-// to force a predictable shared secret or a universally-valid signature.
+// isNonCanonicalX25519 rejects an X25519 public key that isn't the unique
+// canonical encoding of its u-coordinate: the high bit of the last byte set,
+// or the full 32-byte little-endian value >= p. Checking the raw, unmasked
+// value catches both cases in one comparison, since a set high bit alone
+// already puts the value at or above 2^255 > p. Mirrors isNonCanonicalX25519
+// in internal/e2e/sign.go.
+function isNonCanonicalX25519(pub) {
+  return leBytesToBigInt(pub) >= ED25519_P;
+}
+
+// checkPublicKeys rejects a malformed, non-canonical, or low-order X25519 or
+// Ed25519 public key, so a user's keyring can never be made to hold a key an
+// attacker chose to force a predictable shared secret or a universally-valid
+// signature.
 //
-// An X25519 key is checked by attempting ECDH with a fresh ephemeral key:
-// WebCrypto refuses the all-zero output RFC 7748 requires implementations to
-// reject, which is what every low-order point produces. An Ed25519 key is
-// checked against the hardcoded small-order list.
+// An X25519 key is checked for canonical form, then by attempting ECDH with
+// a fresh ephemeral key: WebCrypto refuses the all-zero output RFC 7748
+// requires implementations to reject, which is what every low-order point
+// produces. An Ed25519 key is checked structurally and against the
+// hardcoded small-order list; see isSmallOrderEd25519.
 export async function checkPublicKeys(x25519Pub, ed25519Pub) {
   if (x25519Pub.length !== 32) throw new FormatError('x25519 public key length, want 32');
   if (ed25519Pub.length !== 32) throw new FormatError('ed25519 public key length, want 32');
+  if (isNonCanonicalX25519(x25519Pub)) {
+    throw new FormatError('x25519 public key is not canonically encoded');
+  }
   let shared;
   try {
     const pubKey = await importX25519Pub(x25519Pub);
     const { priv: freshPriv } = await generateX25519();
     const freshPrivKey = await importX25519Priv(freshPriv, false, ['deriveBits']);
+    freshPriv.fill(0); // best-effort zeroing: the raw scalar is no longer needed once imported
     shared = await x25519Shared(freshPrivKey, pubKey);
   } catch {
     throw new FormatError('x25519 public key is malformed');
   }
+  if (shared) shared.fill(0); // best-effort zeroing: only used to test for the all-zero result
   if (shared === null) throw new FormatError('x25519 public key is low-order');
   if (isSmallOrderEd25519(ed25519Pub)) throw new FormatError('ed25519 public key is low-order');
 }
@@ -868,10 +1050,14 @@ export async function checkPublicKeys(x25519Pub, ed25519Pub) {
 // verify checks a signature produced by sign. It refuses a public key of the
 // wrong length and a public key that is one of the small-order Ed25519
 // encodings, which would let a forged "signature" verify against more than
-// one message under a cofactored verifier. Unlike every other failure in
-// this module, a bad signature is reported as false, matching Go's Verify.
+// one message under a cofactored verifier, and a signature whose S
+// component isn't canonically reduced (S >= L) — Go's crypto/ed25519 already
+// refuses this, but WebCrypto implementations vary, so it's checked
+// explicitly here too. Unlike every other failure in this module, a bad
+// signature is reported as false, matching Go's Verify.
 export async function verify(pub, purpose, body, sig) {
-  if (pub.length !== 32 || isSmallOrderEd25519(pub)) return false;
+  if (!pub || pub.length !== 32 || isSmallOrderEd25519(pub)) return false;
+  if (!sig || sig.length !== 64 || leBytesToBigInt(sig.slice(32)) >= ED25519_L) return false;
   try {
     const pubKey = await importEd25519Pub(pub);
     return await subtle.verify('Ed25519', pubKey, sig, sigMessage(purpose, body));
@@ -905,14 +1091,109 @@ export async function signRotation(oldSeed, newSeed, signer, body) {
   return { ...env, newSig: b64(newSig) };
 }
 
+// decodeTextStrict decodes bytesOrText into a JSON text string, refusing a
+// leading UTF-8 BOM, invalid UTF-8, and an unpaired UTF-16 surrogate escape —
+// none of which JSON.parse itself rejects: a BOM is a valid-but-unexpected
+// character, invalid UTF-8 is impossible to produce from a JS string input
+// but must be refused when decoding bytes, and an unpaired \uD800-\uDFFF
+// escape is silently turned into an actual lone surrogate code unit by
+// JSON.parse rather than rejected, any of which would let two different
+// inputs decode to the same value. Mirrors checkStrictBytes in
+// internal/e2e/envelope.go.
+function decodeTextStrict(bytesOrText) {
+  let text;
+  if (typeof bytesOrText === 'string') {
+    text = bytesOrText;
+  } else {
+    const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+    try {
+      text = decoder.decode(bytesOrText);
+    } catch {
+      throw new FormatError('invalid UTF-8');
+    }
+  }
+  if (text.charCodeAt(0) === 0xfeff) throw new FormatError('UTF-8 BOM');
+  checkNoLoneSurrogates(text);
+  return text;
+}
+
+// checkNoLoneSurrogates scans text for \uXXXX escapes and refuses a high
+// surrogate (D800-DBFF) not immediately followed by a low surrogate
+// (DC00-DFFF) escape, or a low surrogate not immediately preceded by one.
+// Mirrors checkNoLoneSurrogates in internal/e2e/envelope.go.
+function checkNoLoneSurrogates(text) {
+  const n = text.length;
+  let i = 0;
+  while (i < n) {
+    if (text[i] !== '\\') {
+      i++;
+      continue;
+    }
+    if (text[i + 1] !== 'u') {
+      i += 2;
+      continue;
+    }
+    const hi = parseInt(text.slice(i + 2, i + 6), 16);
+    if (Number.isNaN(hi)) throw new FormatError('bad unicode escape');
+    i += 6;
+    if (hi >= 0xd800 && hi <= 0xdbff) {
+      if (text[i] === '\\' && text[i + 1] === 'u') {
+        const lo = parseInt(text.slice(i + 2, i + 6), 16);
+        if (!Number.isNaN(lo) && lo >= 0xdc00 && lo <= 0xdfff) {
+          i += 6;
+          continue;
+        }
+      }
+      throw new FormatError('unpaired high surrogate');
+    }
+    if (hi >= 0xdc00 && hi <= 0xdfff) throw new FormatError('unpaired low surrogate');
+  }
+}
+
+// STRICT_NUMBER_RE matches the only JSON number lexemes this package
+// accepts: zero, or a non-zero digit followed by more digits. No sign, no
+// fraction, and no exponent — those are all syntactically valid JSON
+// numbers, so JSON.parse itself doesn't reject them, but none of this
+// package's wire format ever needs one.
+const STRICT_NUMBER_RE = /^(0|[1-9][0-9]*)$/;
+
+// MAX_SAFE_INTEGER_WIRE is 2^53-1, the largest integer a float64 represents
+// exactly. A wire format number above it could round-trip differently
+// between Go and the browser.
+const MAX_SAFE_INTEGER_WIRE = BigInt(Number.MAX_SAFE_INTEGER);
+
+function checkStrictNumber(lexeme) {
+  if (!STRICT_NUMBER_RE.test(lexeme)) {
+    throw new FormatError('number is not a non-negative integer literal');
+  }
+  if (BigInt(lexeme) > MAX_SAFE_INTEGER_WIRE) {
+    throw new FormatError('number exceeds 2^53-1');
+  }
+}
+
+// decodeJSONString decodes a JSON string literal's escapes (raw is the text
+// between the quotes) the same way JSON.parse would, so two differently
+// escaped spellings of the same key compare equal: the duplicate-key walk
+// below must not be fooled by, say, "manifest" and "ma" + "n" + "ifest"
+// (the second spelled with a unicode escape) looking different in the raw
+// bytes but decoding to the same key.
+function decodeJSONString(raw) {
+  try {
+    return JSON.parse(`"${raw}"`);
+  } catch {
+    throw new FormatError('bad string escape');
+  }
+}
+
 // checkNoDuplicateKeys walks text character by character, tracking just
 // enough JSON structure (object/array nesting, and whether the next token in
 // an object is a key or a value) to fail if any JSON object, at any depth,
 // repeats a key — the one thing JSON.parse resolves silently instead of
-// rejecting. It does not otherwise validate JSON grammar; JSON.parse does
-// that afterward. Mirrors checkNoDuplicateKeys in internal/e2e/envelope.go,
-// adapted from Go's token-based walk to a hand-rolled one, since JavaScript
-// has no streaming JSON tokenizer.
+// rejecting — or if any JSON number isn't a non-negative integer lexeme at
+// most 2^53-1 (see checkStrictNumber). It does not otherwise validate JSON
+// grammar; JSON.parse does that afterward. Mirrors checkNoDuplicateKeys in
+// internal/e2e/envelope.go, adapted from Go's token-based walk to a
+// hand-rolled one, since JavaScript has no streaming JSON tokenizer.
 function checkNoDuplicateKeys(text) {
   const n = text.length;
   let i = 0;
@@ -926,7 +1207,7 @@ function checkNoDuplicateKeys(text) {
         continue;
       }
       if (text[j] === '"') {
-        const s = text.slice(i + 1, j);
+        const s = decodeJSONString(text.slice(i + 1, j));
         i = j + 1;
         return s;
       }
@@ -984,10 +1265,13 @@ function checkNoDuplicateKeys(text) {
     }
     // A number, or true/false/null: consume up to the next structural
     // character or whitespace. JSON.parse checks the shape is actually
-    // valid; this pass only needs to know a value went by.
+    // valid; this pass only needs to know a value went by, except for a
+    // number, whose lexeme must also pass the wire format's own stricter
+    // rule (see checkStrictNumber).
     const start = i;
     while (i < n && !',}] \t\n\r:'.includes(text[i])) i++;
     if (i === start) throw new FormatError(`unexpected character ${JSON.stringify(c)}`);
+    if (c === '-' || (c >= '0' && c <= '9')) checkStrictNumber(text.slice(start, i));
     afterValue();
   }
 }
@@ -1159,7 +1443,12 @@ function decodeValue(value, f) {
     case 'array':
       if (value === null) return null;
       if (!Array.isArray(value)) throw new FormatError('expected an array');
-      return value.map((item) => decodeObject(item, f.item));
+      return value.map((item) => {
+        if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+          throw new FormatError('expected an object');
+        }
+        return decodeObject(item, f.item);
+      });
     default:
       throw new TypeError(`unknown field type ${f.type}`);
   }
@@ -1167,12 +1456,20 @@ function decodeValue(value, f) {
 
 // decodeObject builds a plain object with exactly schema's fields, each
 // looked up case-insensitively in obj (preferring an exact match) or given
-// its zero value when absent.
+// its zero value when absent. A field marked omitEmpty (used only by
+// ENVELOPE_SCHEMA's newSig, matching Go's envelopeJSON) is left out of the
+// result entirely when its decoded value is the zero value, whether that's
+// because the input omitted it or supplied the zero value explicitly —
+// mirroring Go's `json:",omitempty"`, which drops a zero value on marshal
+// either way, so decodeStrict's round-trip comparison treats "absent" and
+// "present but empty" the same for that field, and only those two.
 function decodeObject(obj, schema) {
   const out = {};
   for (const [name, f] of Object.entries(schema)) {
     const key = findKey(obj, name);
-    out[name] = key === null ? zeroValue(f) : decodeValue(obj[key], f);
+    const value = key === null ? zeroValue(f) : decodeValue(obj[key], f);
+    if (f.omitEmpty && deepEqual(value, zeroValue(f))) continue;
+    out[name] = value;
   }
   return out;
 }
@@ -1200,7 +1497,7 @@ function deepEqual(a, b) {
 // side and not reproduced by the other makes the two values differ. Mirrors
 // DecodeStrict in internal/e2e/envelope.go.
 export function decodeStrict(bytes, schema) {
-  const text = typeof bytes === 'string' ? bytes : new TextDecoder().decode(bytes);
+  const text = decodeTextStrict(bytes);
   checkNoDuplicateKeys(text);
   let original;
   try {
@@ -1218,6 +1515,41 @@ export function decodeStrict(bytes, schema) {
   }
   return decoded;
 }
+
+// ENVELOPE_SCHEMA is the raw envelope wrapper's own shape:
+// {body,sig,signer[,newSig]}. newSig is omitEmpty, matching Go's
+// envelopeJSON struct tag, since it's only present on a rotation envelope.
+const ENVELOPE_SCHEMA = {
+  body: field('string'),
+  sig: field('string'),
+  signer: field('string'),
+  newSig: field('string', { omitEmpty: true }),
+};
+
+// decodeEnvelope strictly decodes a raw envelope's JSON bytes or text:
+// {body,sig,signer[,newSig]}, nothing else, no duplicate keys, no case
+// variants, and no trailing data — mirroring Go's
+// Envelope.UnmarshalJSON/DecodeStrict (see TestOpenEnvelopeJSONItselfIsStrict
+// in internal/e2e/envelope_test.go for the cases this refuses). The result
+// is the same {body,sig,signer[,newSig]} b64-string shape openEnvelope and
+// openRotation already accept; body/sig/newSig are also checked for valid
+// base64url here, so a malformed one is caught at this point rather than
+// later inside verify.
+export function decodeEnvelope(bytesOrText) {
+  const env = decodeStrict(bytesOrText, ENVELOPE_SCHEMA);
+  unb64(env.body);
+  unb64(env.sig);
+  if (env.newSig) unb64(env.newSig);
+  return env;
+}
+
+// openEnvelope and openRotation verify a signature and decode a body; that
+// is all they do. Neither binds signer to pub, binds a membership record's
+// owner to the signer, binds a rotation's user/old to the key being rotated
+// away from, or enforces a monotonic seq. The caller must do all of that —
+// signer is untrusted wire data, never a key lookup by itself — and must run
+// checkPublicKeys/CheckPublicKeys on a rotated key pair and on any wrap
+// recipient before trusting it.
 
 // openEnvelope verifies env's signature against pub for purpose, strictly
 // decodes its body against BODY_SCHEMAS[purpose], and requires the body's

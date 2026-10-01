@@ -94,18 +94,29 @@ The overrides, and which primitives read them:
   "missing newSig" case isn't a vector here, since the schema has no way to
   say an override makes a field absent rather than unset; it's a direct Go
   test (`envelope_test.go`) instead.
-- **`ed25519Strict`**: `pub` and `why`. Most entries are one of the
-  hardcoded small-order encodings, with `purpose`, `body`, and `sig` empty,
-  and must fail both `CheckPublicKeys` and `Verify` on their own. One entry
-  is a genuine key with a non-canonical signature instead: `purpose`,
-  `body`, and `sig` (the S component replaced by S + L) are all set, and
-  only `Verify` applies.
+- **`ed25519Strict`**: `pub` and `why`. Most entries are one of the hardcoded
+  canonical small-order encodings or a known non-canonical encoding of one
+  (a y coordinate >= p, or x=0 with the sign bit set), with `purpose`,
+  `body`, and `sig` empty, and must fail both `CheckPublicKeys` and `Verify`
+  — including the universal R=B,S=1 forgery — on their own. One entry is a
+  genuine key with a non-canonical signature instead: `purpose`, `body`, and
+  `sig` (the S component replaced by S + L) are all set, and only `Verify`
+  applies.
+- **`x25519Strict`**: `pub` and `why`. Every entry is a non-canonical (high
+  bit set, or u >= p) or low-order X25519 public key that must fail
+  `CheckPublicKeys` on its own.
 - **`fingerprint`**: `x25519Pub`, `ed25519Pub`, `want` (32 bytes), `display`
   (the formatted short form).
 - **`linkToken`**: `ak`, `artifact`, `epoch`, `want`, `hash`
   (`LinkTokenHash(want)`).
 - **`fileAddress`**: `fileKey`, `path`, `want`.
 - **`blindIndex`**: `indexKey`, `type`, `value`, `want`.
+- **`strictJSON`**: a raw body or envelope byte string `DecodeStrict`/
+  `decodeStrict` must refuse. `purpose` (which `BODY_SCHEMAS` entry to decode
+  `body` against), `body` (hex, since some entries are invalid UTF-8), `why`.
+- **`base64url`**: `bytes` (hex) and its canonical `encoded` form, plus
+  `negative` entries (a non-URL character, padding, or non-zero trailing
+  bits in a partial group) that `UnB64`/`unb64` must refuse.
 
 ## Blob transforms
 

@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"regexp"
+	"strconv"
+	"unicode/utf8"
 )
 
 // Purpose bodies. Every field a verifier doesn't recognize, every duplicate
@@ -128,6 +131,9 @@ type bodyVersion struct {
 // variant (or any other field) decoded away by one side and not thrown away
 // by the other makes the two values differ.
 func DecodeStrict(data []byte, out any) error {
+	if err := checkStrictBytes(data); err != nil {
+		return err
+	}
 	if err := checkNoDuplicateKeys(data); err != nil {
 		return err
 	}
@@ -157,7 +163,11 @@ func DecodeStrict(data []byte, out any) error {
 }
 
 // checkNoDuplicateKeys walks data token by token and fails if any JSON
-// object, at any depth, repeats a key.
+// object, at any depth, repeats a key, or if any JSON number in data isn't a
+// non-negative integer lexeme at most 2^53-1 (see checkStrictNumber) — every
+// number this package's wire format carries is a count, a revision, an
+// epoch, or a size, never a fraction or anything requiring more precision
+// than JavaScript's Number can hold exactly.
 func checkNoDuplicateKeys(data []byte) error {
 	type frame struct {
 		isObject  bool
@@ -165,6 +175,7 @@ func checkNoDuplicateKeys(data []byte) error {
 		seen      map[string]bool
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	var stack []*frame
 	closeContainer := func() {
 		stack = stack[:len(stack)-1]
@@ -191,6 +202,11 @@ func checkNoDuplicateKeys(data []byte) error {
 			}
 			continue
 		}
+		if num, ok := tok.(json.Number); ok {
+			if err := checkStrictNumber(string(num)); err != nil {
+				return err
+			}
+		}
 		if len(stack) == 0 {
 			continue // a bare top-level scalar
 		}
@@ -208,6 +224,108 @@ func checkNoDuplicateKeys(data []byte) error {
 	}
 	return nil
 }
+
+// strictNumberRe matches the only JSON number lexemes this package accepts:
+// zero, or a non-zero digit followed by more digits. No sign, no fraction,
+// and no exponent — those are all syntactically valid JSON numbers, so
+// json.Decoder itself doesn't reject them, but none of this package's wire
+// format ever needs one.
+var strictNumberRe = regexp.MustCompile(`^(0|[1-9][0-9]*)$`)
+
+// maxSafeInteger is 2^53-1, the largest integer a float64 (and so a
+// JavaScript Number) represents exactly. A wire format number above it could
+// round-trip differently between Go and the browser.
+const maxSafeInteger = (uint64(1) << 53) - 1
+
+func checkStrictNumber(lexeme string) error {
+	if !strictNumberRe.MatchString(lexeme) {
+		return fmt.Errorf("%w: number %q is not a non-negative integer literal", ErrFormat, lexeme)
+	}
+	n, err := strconv.ParseUint(lexeme, 10, 64)
+	if err != nil || n > maxSafeInteger {
+		return fmt.Errorf("%w: number %q exceeds 2^53-1", ErrFormat, lexeme)
+	}
+	return nil
+}
+
+// checkStrictBytes refuses a leading UTF-8 BOM, invalid UTF-8, and an
+// unpaired UTF-16 surrogate escape — none of which json.Unmarshal itself
+// rejects: a BOM is a valid-but-unexpected character, invalid UTF-8 inside a
+// string is silently accepted by Go's decoder, and an unpaired \uD800-\uDFFF
+// escape is silently replaced with U+FFFD rather than rejected, any of which
+// would let two different inputs decode to the same value.
+func checkStrictBytes(data []byte) error {
+	if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+		return fmt.Errorf("%w: UTF-8 BOM", ErrFormat)
+	}
+	if !utf8.Valid(data) {
+		return fmt.Errorf("%w: invalid UTF-8", ErrFormat)
+	}
+	return checkNoLoneSurrogates(data)
+}
+
+// checkNoLoneSurrogates scans data for \uXXXX escapes inside JSON string
+// literals and refuses a high surrogate (D800-DBFF) not immediately followed
+// by a low surrogate (DC00-DFFF) escape, or a low surrogate not immediately
+// preceded by one.
+func checkNoLoneSurrogates(data []byte) error {
+	inString := false
+	n := len(data)
+	for i := 0; i < n; {
+		c := data[i]
+		if !inString {
+			if c == '"' {
+				inString = true
+			}
+			i++
+			continue
+		}
+		switch c {
+		case '"':
+			inString = false
+			i++
+		case '\\':
+			if i+1 >= n {
+				return fmt.Errorf("%w: truncated escape", ErrFormat)
+			}
+			if data[i+1] != 'u' {
+				i += 2
+				continue
+			}
+			if i+6 > n {
+				return fmt.Errorf("%w: truncated unicode escape", ErrFormat)
+			}
+			hi, err := strconv.ParseUint(string(data[i+2:i+6]), 16, 32)
+			if err != nil {
+				return fmt.Errorf("%w: bad unicode escape", ErrFormat)
+			}
+			i += 6
+			switch {
+			case hi >= 0xD800 && hi <= 0xDBFF:
+				if i+6 <= n && data[i] == '\\' && data[i+1] == 'u' {
+					if lo, err := strconv.ParseUint(string(data[i+2:i+6]), 16, 32); err == nil && lo >= 0xDC00 && lo <= 0xDFFF {
+						i += 6
+						continue
+					}
+				}
+				return fmt.Errorf("%w: unpaired high surrogate", ErrFormat)
+			case hi >= 0xDC00 && hi <= 0xDFFF:
+				return fmt.Errorf("%w: unpaired low surrogate", ErrFormat)
+			}
+		default:
+			i++
+		}
+	}
+	return nil
+}
+
+// OpenEnvelope and OpenRotation verify a signature and decode a body; that is
+// all they do. Neither binds Signer to pub, binds a membership record's
+// owner to the signer, binds a rotation's user/old to the key being rotated
+// away from, or enforces a monotonic seq. The caller must do all of that —
+// Signer is untrusted wire data, never a key lookup by itself — and must run
+// CheckPublicKeys on a rotated key pair and on any wrap recipient before
+// trusting it.
 
 // OpenEnvelope verifies env's signature against pub for purpose, strictly
 // decodes its body into out, and requires the body's "v" field to be 1.

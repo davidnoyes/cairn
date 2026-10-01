@@ -1099,57 +1099,72 @@
     {
       "name": "small-order-0",
       "pub": "0100000000000000000000000000000000000000000000000000000000000000",
-      "why": "small-order Ed25519 public key"
+      "why": "small-order or non-canonical Ed25519 public key"
     },
     {
       "name": "small-order-1",
       "pub": "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
-      "why": "small-order Ed25519 public key"
+      "why": "small-order or non-canonical Ed25519 public key"
     },
     {
       "name": "small-order-2",
       "pub": "0000000000000000000000000000000000000000000000000000000000000000",
-      "why": "small-order Ed25519 public key"
+      "why": "small-order or non-canonical Ed25519 public key"
     },
     {
       "name": "small-order-3",
       "pub": "0000000000000000000000000000000000000000000000000000000000000080",
-      "why": "small-order Ed25519 public key"
+      "why": "small-order or non-canonical Ed25519 public key"
     },
     {
       "name": "small-order-4",
       "pub": "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85",
-      "why": "small-order Ed25519 public key"
+      "why": "small-order or non-canonical Ed25519 public key"
     },
     {
       "name": "small-order-5",
       "pub": "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa",
-      "why": "small-order Ed25519 public key"
+      "why": "small-order or non-canonical Ed25519 public key"
     },
     {
       "name": "small-order-6",
       "pub": "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
-      "why": "small-order Ed25519 public key"
+      "why": "small-order or non-canonical Ed25519 public key"
     },
     {
       "name": "small-order-7",
       "pub": "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",
-      "why": "small-order Ed25519 public key"
+      "why": "small-order or non-canonical Ed25519 public key"
     },
     {
       "name": "small-order-8",
       "pub": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
-      "why": "small-order Ed25519 public key"
+      "why": "small-order or non-canonical Ed25519 public key"
     },
     {
       "name": "small-order-9",
       "pub": "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
-      "why": "small-order Ed25519 public key"
+      "why": "small-order or non-canonical Ed25519 public key"
     },
     {
       "name": "small-order-10",
       "pub": "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-      "why": "small-order Ed25519 public key"
+      "why": "small-order or non-canonical Ed25519 public key"
+    },
+    {
+      "name": "small-order-11",
+      "pub": "0100000000000000000000000000000000000000000000000000000000000080",
+      "why": "small-order or non-canonical Ed25519 public key"
+    },
+    {
+      "name": "small-order-12",
+      "pub": "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "why": "small-order or non-canonical Ed25519 public key"
+    },
+    {
+      "name": "small-order-13",
+      "pub": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "why": "small-order or non-canonical Ed25519 public key"
     },
     {
       "name": "non-canonical-s",
@@ -1158,6 +1173,28 @@
       "body": "626f647920666f72206e6f6e2d63616e6f6e6963616c20532074657374",
       "sig": "444323653b8b347e1cc40a3334b1dd9c052778dd953e0545519e656a6644a7887a87c9dccb80b75cad949647b99434efe7f3a2a2cced89e80b11fd1102a79a11",
       "why": "non-canonical S (S + L)"
+    }
+  ],
+  "x25519Strict": [
+    {
+      "name": "high-bit-set",
+      "pub": "785993a7f3c83954bfdeb84ba8ec129baec001b12d0e81f531b5ed96055a6aea",
+      "why": "the high bit of the last byte is set"
+    },
+    {
+      "name": "u-equals-p",
+      "pub": "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "why": "u equals the field prime (non-canonical encoding of 0)"
+    },
+    {
+      "name": "u-above-p",
+      "pub": "f2ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "why": "u is a few values above the field prime, high bit clear"
+    },
+    {
+      "name": "low-order-order8",
+      "pub": "5f9c95bca3508c24b1d0b1559c83ef5b04445cc4581c8e86d8224eddd09f1157",
+      "why": "a low-order point reaching the X25519 branch directly"
     }
   ],
   "fingerprint": [
@@ -1194,6 +1231,110 @@
       "type": "session",
       "value": "abc123",
       "want": "b500f0b823ceda026cb37d1dd24af3a320d5b61cf4519fa1c019fff0b09d39ed"
+    }
+  ],
+  "strictJSON": [
+    {
+      "name": "escaped-duplicate-key",
+      "purpose": "vouch",
+      "body": "7b2276223a312c226172746966616374223a226131222c2276657273696f6e223a227631222c226d616e6966657374223a226d222c226d615c75303036656966657374223a2278227d",
+      "why": "duplicate key, one spelled with a unicode escape"
+    },
+    {
+      "name": "number-fraction",
+      "purpose": "revision",
+      "body": "7b2276223a312c226172746966616374223a226131222c2276657273696f6e223a227631222c227265766973696f6e223a312e302c2265706f6368223a332c22736861323536223a226465616462656566227d",
+      "why": "number has a fraction"
+    },
+    {
+      "name": "number-exponent",
+      "purpose": "revision",
+      "body": "7b2276223a312c226172746966616374223a226131222c2276657273696f6e223a227631222c227265766973696f6e223a3165302c2265706f6368223a332c22736861323536223a226465616462656566227d",
+      "why": "number has an exponent"
+    },
+    {
+      "name": "number-fraction-nonzero",
+      "purpose": "revision",
+      "body": "7b2276223a312c226172746966616374223a226131222c2276657273696f6e223a227631222c227265766973696f6e223a312e352c2265706f6368223a332c22736861323536223a226465616462656566227d",
+      "why": "number has a nonzero fraction"
+    },
+    {
+      "name": "number-negative",
+      "purpose": "revision",
+      "body": "7b2276223a312c226172746966616374223a226131222c2276657273696f6e223a227631222c227265766973696f6e223a2d312c2265706f6368223a332c22736861323536223a226465616462656566227d",
+      "why": "number is negative"
+    },
+    {
+      "name": "number-too-large",
+      "purpose": "revision",
+      "body": "7b2276223a312c226172746966616374223a226131222c2276657273696f6e223a227631222c227265766973696f6e223a393030373139393235343734303939332c2265706f6368223a332c22736861323536223a226465616462656566227d",
+      "why": "number exceeds 2^53-1"
+    },
+    {
+      "name": "invalid-utf8",
+      "purpose": "vouch",
+      "body": "7b2276223a312c226172746966616374223a226131222c2276657273696f6e223a227631222c226d616e6966657374223a22ff227d",
+      "why": "invalid UTF-8 byte in a string"
+    },
+    {
+      "name": "utf8-bom",
+      "purpose": "vouch",
+      "body": "efbbbf7b2276223a312c226172746966616374223a226131222c2276657273696f6e223a227631222c226d616e6966657374223a226d227d",
+      "why": "a UTF-8 BOM before the JSON value"
+    },
+    {
+      "name": "unpaired-surrogate",
+      "purpose": "vouch",
+      "body": "7b2276223a312c226172746966616374223a226131222c2276657273696f6e223a227631222c226d616e6966657374223a225c7564383030227d",
+      "why": "an unpaired UTF-16 surrogate escape"
+    }
+  ],
+  "base64url": [
+    {
+      "name": "len-1",
+      "bytes": "00",
+      "encoded": "AA",
+      "negative": [
+        {
+          "why": "non-zero trailing bits",
+          "input": "AB"
+        },
+        {
+          "why": "contains a plus sign",
+          "input": "+A"
+        },
+        {
+          "why": "contains a slash",
+          "input": "/A"
+        },
+        {
+          "why": "padded with equals",
+          "input": "AA="
+        }
+      ]
+    },
+    {
+      "name": "len-2",
+      "bytes": "0001",
+      "encoded": "AAE",
+      "negative": [
+        {
+          "why": "non-zero trailing bits",
+          "input": "AAF"
+        },
+        {
+          "why": "contains a plus sign",
+          "input": "+AE"
+        },
+        {
+          "why": "contains a slash",
+          "input": "/AE"
+        },
+        {
+          "why": "padded with equals",
+          "input": "AAE="
+        }
+      ]
     }
   ]
 }

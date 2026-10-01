@@ -39,6 +39,13 @@ async function assertThrows(fn, errorClass) {
   await assert.rejects(fn, errorClass ?? Error);
 }
 
+// testKeyBytes returns a deterministic, distinct 32-byte key for test n, so
+// tests don't need real randomness for inputs whose exact value doesn't
+// matter.
+function testKeyBytes(n) {
+  return new Uint8Array(32).fill(n);
+}
+
 test('enc', () => {
   for (const v of vf.enc) {
     const fields = (v.fields ?? []).map(hex);
@@ -136,6 +143,22 @@ test('apiKey', async () => {
   }
 });
 
+test('apiKey: rejects each part with the wrong individual length', () => {
+  const full = vf.apiKey[0].full;
+  const [, keyId, authSecret, keySecret] = full.match(/^cairn_([0-9a-f]+)_([0-9a-f]+)_([0-9a-f]+)$/);
+  const cases = [
+    `cairn_${keyId.slice(1)}_${authSecret}_${keySecret}`, // keyId one hex digit short
+    `cairn_${keyId}a_${authSecret}_${keySecret}`, // keyId one hex digit long
+    `cairn_${keyId}_${authSecret.slice(1)}_${keySecret}`, // authSecret one short
+    `cairn_${keyId}_${authSecret}a_${keySecret}`, // authSecret one long
+    `cairn_${keyId}_${authSecret}_${keySecret.slice(1)}`, // keySecret one short
+    `cairn_${keyId}_${authSecret}_${keySecret}a`, // keySecret one long
+  ];
+  for (const c of cases) {
+    assert.throws(() => e2e.parseApiKey(c), e2e.FormatError, c);
+  }
+});
+
 test('seal', async () => {
   for (const v of vf.seal) {
     const key = hex(v.key);
@@ -151,6 +174,52 @@ test('seal', async () => {
       await assertThrows(() => e2e.open(useKey, useFields, hex(n.input)), e2e.DecryptError);
     }
   }
+});
+
+// A wrong-length key (16 and 24 bytes, AES-128 and AES-192 sizes WebCrypto
+// would otherwise happily accept) must be refused by every function this
+// module guards with checkKeyLen, mirroring internal/e2e's
+// TestNewGCMRejectsWrongKeyLength, TestAKCommitRejectsWrongKeyLength, the
+// derive loop in seal_test.go, TestSealBlobRejectsWrongKeyLength,
+// TestOpenBlobRejectsWrongKeyLength, and TestWrapRejectsWrongKeyLength.
+test('wrong-length keys are rejected everywhere checkKeyLen guards', async () => {
+  const sealed = hex(vf.seal[0].want);
+  const fields = vf.seal[0].fields.map(hex);
+  const blob = hex(vf.blob[0].want);
+  const ctx = vf.blob[0].ctx;
+  const wrapCtx = wrapCtxFromVec(vf.wrap[0].ctx);
+
+  for (const n of [16, 24]) {
+    const badKey = new Uint8Array(n);
+    await assertThrows(() => e2e.seal(badKey, fields, new Uint8Array(1)), e2e.FormatError);
+    // open wraps every decrypt-path error, including a bad key length, into
+    // DecryptError -- matching Go's Open, which returns ErrDecrypt here too.
+    await assertThrows(() => e2e.open(badKey, fields, sealed), e2e.DecryptError);
+    await assertThrows(() => e2e.sealBlob(badKey, ctx, new Uint8Array(1)), e2e.FormatError);
+    await assertThrows(() => e2e.openBlob(badKey, ctx, blob), e2e.FormatError);
+    await assertThrows(() => e2e.wrap(wrapCtx, badKey), e2e.FormatError);
+    await assertThrows(() => e2e.mkSealKey(badKey), e2e.FormatError);
+    await assertThrows(() => e2e.indexKey(badKey), e2e.FormatError);
+    await assertThrows(() => e2e.ekSealKey(badKey), e2e.FormatError);
+    await assertThrows(() => e2e.linkToken(badKey, 'artifact-1', 3), e2e.FormatError);
+    await assertThrows(() => e2e.fileKey(badKey, 'artifact-1', 3), e2e.FormatError);
+    await assertThrows(() => e2e.akCommit(badKey, 'artifact-1', 3), e2e.FormatError);
+  }
+});
+
+test('open rejects a truncated sealed value', async () => {
+  const sealed = hex(vf.seal[0].want);
+  const key = hex(vf.seal[0].key);
+  const fields = vf.seal[0].fields.map(hex);
+  await assertThrows(() => e2e.open(key, fields, sealed.slice(0, 5)), e2e.DecryptError);
+});
+
+test('open rejects a wrong-version sealed value', async () => {
+  const sealed = hex(vf.seal[0].want).slice();
+  sealed[0] = 0x02;
+  const key = hex(vf.seal[0].key);
+  const fields = vf.seal[0].fields.map(hex);
+  await assertThrows(() => e2e.open(key, fields, sealed), e2e.DecryptError);
 });
 
 // applyBlobTransform implements the blob negative `transform` ops documented
@@ -247,6 +316,119 @@ test('wrap', async () => {
   }
 });
 
+test('unwrap rejects a wrong-length wrapped value', async () => {
+  const v = vf.wrap[0];
+  const ctx = wrapCtxFromVec(v.ctx);
+  const priv = hex(v.recipientPriv);
+  const wrapped = hex(v.want);
+  await assertThrows(() => e2e.unwrap(priv, ctx, wrapped.slice(0, -1)), e2e.DecryptError);
+  await assertThrows(
+    () => e2e.unwrap(priv, ctx, new Uint8Array([...wrapped, 0])),
+    e2e.DecryptError,
+  );
+});
+
+test('unwrap rejects a wrong-version wrapped value', async () => {
+  const v = vf.wrap[0];
+  const ctx = wrapCtxFromVec(v.ctx);
+  const priv = hex(v.recipientPriv);
+  const wrapped = hex(v.want).slice();
+  wrapped[0] = 0x02;
+  await assertThrows(() => e2e.unwrap(priv, ctx, wrapped), e2e.DecryptError);
+});
+
+test('unwrap rejects a wrong-length private key', async () => {
+  const v = vf.wrap[0];
+  const ctx = wrapCtxFromVec(v.ctx);
+  const wrapped = hex(v.want);
+  for (const n of [16, 24, 31, 33]) {
+    await assertThrows(() => e2e.unwrap(new Uint8Array(n), ctx, wrapped), e2e.DecryptError);
+  }
+});
+
+// Isolates the recipientPub check: the correct private key, but a ctx whose
+// recipientPub has been overridden to something else, must still fail —
+// proving the comparison actually runs rather than trivially passing because
+// priv and ctx.recipientPub usually agree.
+test('unwrap rejects the correct private key with recipientPub overridden', async () => {
+  const v = vf.wrap[0];
+  const ctx = { ...wrapCtxFromVec(v.ctx), recipientPub: testKeyBytes(9) };
+  const priv = hex(v.recipientPriv);
+  const wrapped = hex(v.want);
+  await assertThrows(() => e2e.unwrap(priv, ctx, wrapped), e2e.DecryptError);
+});
+
+// non-extractable keys: the importers return CryptoKey objects that cannot
+// be read back out to raw bytes, and every function that accepts one gives
+// the identical result it would for the equivalent raw bytes.
+test('non-extractable keys: importer outputs are non-extractable', async () => {
+  const { seed } = await e2e.generateEd25519();
+  const signingKey = await e2e.importEd25519SigningKey(seed);
+  assert.equal(signingKey.extractable, false);
+
+  const { priv } = await e2e.generateX25519();
+  const { privateKey } = await e2e.importX25519PrivateKey(priv);
+  assert.equal(privateKey.extractable, false);
+
+  const mk = testKeyBytes(1);
+  assert.equal((await e2e.mkSealCryptoKey(mk)).extractable, false);
+  assert.equal((await e2e.ekSealCryptoKey(mk)).extractable, false);
+  assert.equal((await e2e.indexCryptoKey(mk)).extractable, false);
+  assert.equal((await e2e.fileCryptoKey(mk, 'artifact-1', 3)).extractable, false);
+  assert.equal((await e2e.importHKDFKey(mk)).extractable, false);
+});
+
+test('non-extractable keys: sign with a CryptoKey matches sign with the seed', async () => {
+  const { seed } = await e2e.generateEd25519();
+  const signingKey = await e2e.importEd25519SigningKey(seed);
+  const body = new TextEncoder().encode('body');
+  const viaSeed = await e2e.sign(seed, 'manifest', body);
+  const viaKey = await e2e.sign(signingKey, 'manifest', body);
+  assert.equal(toHex(viaKey), toHex(viaSeed));
+});
+
+test('non-extractable keys: unwrap with a CryptoKey matches unwrap with raw bytes', async () => {
+  const v = vf.wrap[0];
+  const ctx = wrapCtxFromVec(v.ctx);
+  const viaBytes = await e2e.unwrap(hex(v.recipientPriv), ctx, hex(v.want));
+  const keyObj = await e2e.importX25519PrivateKey(hex(v.recipientPriv));
+  const viaKey = await e2e.unwrap(keyObj, ctx, hex(v.want));
+  assert.equal(toHex(viaKey), toHex(viaBytes));
+  assert.equal(toHex(viaKey), v.key);
+});
+
+test('non-extractable keys: seal/open with mkSealCryptoKey matches raw mkSealKey', async () => {
+  const mk = testKeyBytes(2);
+  const fields = [new TextEncoder().encode('mk')];
+  const pt = new TextEncoder().encode('thirty-two-byte-master-key-material');
+  const rawKey = await e2e.mkSealKey(mk);
+  const cryptoKey = await e2e.mkSealCryptoKey(mk);
+  const sealedViaKey = await e2e.seal(cryptoKey, fields, pt);
+  const openedViaRaw = await e2e.open(rawKey, fields, sealedViaKey);
+  assert.equal(toHex(openedViaRaw), toHex(pt));
+  const sealedViaRaw = await e2e.seal(rawKey, fields, pt);
+  const openedViaKey = await e2e.open(cryptoKey, fields, sealedViaRaw);
+  assert.equal(toHex(openedViaKey), toHex(pt));
+});
+
+test('non-extractable keys: fileAddress with fileCryptoKey matches raw fileKey', async () => {
+  const ak = testKeyBytes(3);
+  const rawKey = await e2e.fileKey(ak, 'artifact-1', 3);
+  const cryptoKey = await e2e.fileCryptoKey(ak, 'artifact-1', 3);
+  const viaRaw = await e2e.fileAddress(rawKey, '/images/logo.png');
+  const viaKey = await e2e.fileAddress(cryptoKey, '/images/logo.png');
+  assert.equal(viaKey, viaRaw);
+});
+
+test('non-extractable keys: blindIndex with indexCryptoKey matches raw indexKey', async () => {
+  const mk = testKeyBytes(4);
+  const rawKey = await e2e.indexKey(mk);
+  const cryptoKey = await e2e.indexCryptoKey(mk);
+  const viaRaw = await e2e.blindIndex(rawKey, 'session', 'abc123');
+  const viaKey = await e2e.blindIndex(cryptoKey, 'session', 'abc123');
+  assert.equal(viaKey, viaRaw);
+});
+
 test('signature', async () => {
   for (const v of vf.signature) {
     const pub = hex(v.pub);
@@ -274,70 +456,111 @@ test('signature', async () => {
 // all valid JSON), so these mirror internal/e2e/envelope_test.go directly:
 // hand-written bodies exercising decodeStrict's duplicate-key, case-variant,
 // unknown-key, missing-key, and trailing-data rejections through
-// openEnvelope.
-test('envelope strictness', async () => {
-  const textEncoder = new TextEncoder();
-  const { seed, pub } = await e2e.generateEd25519();
+// openEnvelope. Split into one test per case (rather than one long test
+// asserting all of them) so a regression in one doesn't hide a regression in
+// the rest.
+const textEncoder = new TextEncoder();
+const { seed: envSeed, pub: envPub } = await e2e.generateEd25519();
 
-  async function envelopeFor(purpose, body) {
-    return e2e.newEnvelope(seed, 'user-1', purpose, textEncoder.encode(body));
-  }
+async function envelopeFor(purpose, body) {
+  return e2e.newEnvelope(envSeed, 'user-1', purpose, textEncoder.encode(body));
+}
 
-  const vouchBody = `{"v":1,"artifact":"a1","version":"v1","manifest":"deadbeef"}`;
-  const env = await envelopeFor('vouch', vouchBody);
-  const body = await e2e.openEnvelope(env, pub, 'vouch');
+test('envelope strictness: valid body decodes', async () => {
+  const env = await envelopeFor('vouch', `{"v":1,"artifact":"a1","version":"v1","manifest":"deadbeef"}`);
+  const body = await e2e.openEnvelope(env, envPub, 'vouch');
   assert.equal(body.artifact, 'a1');
+});
 
-  const duplicate = await envelopeFor(
+test('envelope strictness: duplicate key', async () => {
+  const env = await envelopeFor(
     'vouch',
     `{"v":1,"artifact":"a1","version":"v1","manifest":"deadbeef","manifest":"beefdead"}`,
   );
-  await assertThrows(() => e2e.openEnvelope(duplicate, pub, 'vouch'), e2e.FormatError);
+  await assertThrows(() => e2e.openEnvelope(env, envPub, 'vouch'), e2e.FormatError);
+});
 
-  const caseVariant = await envelopeFor(
+test('envelope strictness: case-variant key', async () => {
+  const env = await envelopeFor(
     'manifest',
     `{"v":1,"artifact":"a1","version":"v1","epoch":3,"Files":[],"files":[]}`,
   );
-  await assertThrows(() => e2e.openEnvelope(caseVariant, pub, 'manifest'), e2e.FormatError);
+  await assertThrows(() => e2e.openEnvelope(env, envPub, 'manifest'), e2e.FormatError);
+});
 
-  const unknown = await envelopeFor(
+test('envelope strictness: unknown key', async () => {
+  const env = await envelopeFor(
     'vouch',
     `{"v":1,"artifact":"a1","version":"v1","manifest":"deadbeef","extra":"nope"}`,
   );
-  await assertThrows(() => e2e.openEnvelope(unknown, pub, 'vouch'), e2e.FormatError);
+  await assertThrows(() => e2e.openEnvelope(env, envPub, 'vouch'), e2e.FormatError);
+});
 
-  const missing = await envelopeFor('vouch', `{"v":1,"artifact":"a1","version":"v1"}`);
-  await assertThrows(() => e2e.openEnvelope(missing, pub, 'vouch'), e2e.FormatError);
+test('envelope strictness: missing key', async () => {
+  const env = await envelopeFor('vouch', `{"v":1,"artifact":"a1","version":"v1"}`);
+  await assertThrows(() => e2e.openEnvelope(env, envPub, 'vouch'), e2e.FormatError);
+});
 
-  const trailing = await envelopeFor(
+test('envelope strictness: trailing garbage', async () => {
+  const env = await envelopeFor(
     'vouch',
     `{"v":1,"artifact":"a1","version":"v1","manifest":"deadbeef"} garbage`,
   );
-  await assertThrows(() => e2e.openEnvelope(trailing, pub, 'vouch'), e2e.FormatError);
+  await assertThrows(() => e2e.openEnvelope(env, envPub, 'vouch'), e2e.FormatError);
+});
 
-  const wrongVersion = await envelopeFor(
+test('envelope strictness: wrong version', async () => {
+  const env = await envelopeFor(
     'vouch',
     `{"v":2,"artifact":"a1","version":"v1","manifest":"deadbeef"}`,
   );
-  await assertThrows(() => e2e.openEnvelope(wrongVersion, pub, 'vouch'), e2e.FormatError);
+  await assertThrows(() => e2e.openEnvelope(env, envPub, 'vouch'), e2e.FormatError);
+});
 
-  await assertThrows(() => e2e.openEnvelope(env, pub, 'manifest'), e2e.DecryptError);
+test('envelope strictness: wrong purpose', async () => {
+  const env = await envelopeFor('vouch', `{"v":1,"artifact":"a1","version":"v1","manifest":"deadbeef"}`);
+  await assertThrows(() => e2e.openEnvelope(env, envPub, 'manifest'), e2e.DecryptError);
+});
 
+test('envelope strictness: bad signature', async () => {
+  const env = await envelopeFor('vouch', `{"v":1,"artifact":"a1","version":"v1","manifest":"deadbeef"}`);
   const badSig = { ...env, sig: e2e.b64(e2e.fromHex('00'.repeat(64))) };
-  await assertThrows(() => e2e.openEnvelope(badSig, pub, 'vouch'), e2e.DecryptError);
+  await assertThrows(() => e2e.openEnvelope(badSig, envPub, 'vouch'), e2e.DecryptError);
+});
 
-  // A rotation envelope with no newSig at all.
+test('envelope strictness: rotation missing newSig', async () => {
   // The new key's seed is deliberately unused: this envelope is never
   // signed with it, which is exactly the "missing newSig" condition.
   const { pub: newPub } = await e2e.generateEd25519();
   const { pub: x25519Pub } = await e2e.generateX25519();
   const rotationBody = JSON.stringify({
     v: 1, user: 'user-1', seq: 1,
-    old: { x25519: e2e.b64(x25519Pub), ed25519: e2e.b64(pub) },
+    old: { x25519: e2e.b64(x25519Pub), ed25519: e2e.b64(envPub) },
     new: { x25519: e2e.b64(x25519Pub), ed25519: e2e.b64(newPub) },
   });
   const noNewSig = await envelopeFor('rotation', rotationBody);
-  await assertThrows(() => e2e.openRotation(noNewSig, pub), e2e.FormatError);
+  await assertThrows(() => e2e.openRotation(noNewSig, envPub), e2e.FormatError);
+});
+
+// envelope wrapper strictness mirrors TestOpenEnvelopeJSONItselfIsStrict in
+// internal/e2e/envelope_test.go: decodeEnvelope (not openEnvelope, which
+// takes an already-parsed object) must refuse a case-variant key, an unknown
+// key, and a missing field in the raw envelope JSON itself.
+test('envelope wrapper strictness', async () => {
+  const env = await envelopeFor('vouch', `{"v":1,"artifact":"a1","version":"v1","manifest":"deadbeef"}`);
+  const good = JSON.stringify(env);
+  const cases = [
+    good.slice(0, -1) + `,"Body":"AA"}`, // case-variant key
+    good.slice(0, -1) + `,"extra":1}`, // unknown key
+    `{"sig":"AA","signer":"user-1"}`, // missing body
+  ];
+  for (const c of cases) {
+    assert.throws(() => e2e.decodeEnvelope(c), e2e.FormatError, c);
+  }
+  // decodeEnvelope's output is exactly what openEnvelope already accepts.
+  const decoded = e2e.decodeEnvelope(good);
+  const body = await e2e.openEnvelope(decoded, envPub, 'vouch');
+  assert.equal(body.artifact, 'a1');
 });
 
 test('rotation', async () => {
@@ -357,6 +580,18 @@ test('rotation', async () => {
   }
 });
 
+// edwards25519BasePoint is the standard compressed encoding of the Ed25519
+// base point B (y = 4/5 mod p, x even). Paired with S=1, R=B satisfies the
+// cofactored verification equation for ANY message whenever the public key
+// has order dividing 8 — a universal forgery against any verifier that
+// doesn't itself refuse a small-order or non-canonical key first.
+const edwards25519BasePoint = hex(
+  '5866666666666666666666666666666666666666666666666666666666666666',
+);
+const forgedS = new Uint8Array(32);
+forgedS[0] = 1;
+const forgedSig = new Uint8Array([...edwards25519BasePoint, ...forgedS]);
+
 test('ed25519Strict', async () => {
   for (const v of vf.ed25519Strict) {
     const pub = hex(v.pub);
@@ -367,15 +602,47 @@ test('ed25519Strict', async () => {
       assert.equal(ok, false, `${v.name}: ${v.why}`);
       continue;
     }
-    // A small-order key must fail on its own, for any purpose, body, and
-    // signature.
+    // A small-order or non-canonical key must fail on its own, for any
+    // purpose, body, and signature — including the R=B,S=1 forgery.
     await assertThrows(
       () => e2e.checkPublicKeys(new Uint8Array(32).fill(1), pub),
       e2e.FormatError,
     );
-    const sig = new Uint8Array(64);
-    const ok = await e2e.verify(pub, 'manifest', new TextEncoder().encode('body'), sig);
-    assert.equal(ok, false, `${v.name}: ${v.why}`);
+    for (const body of ['body', 'a different message']) {
+      const ok = await e2e.verify(pub, 'manifest', new TextEncoder().encode(body), forgedSig);
+      assert.equal(ok, false, `${v.name}: ${v.why}`);
+    }
+  }
+});
+
+test('x25519Strict', async () => {
+  const genuineEd25519Pub = new Uint8Array(32).fill(2);
+  for (const v of vf.x25519Strict) {
+    await assertThrows(
+      () => e2e.checkPublicKeys(hex(v.pub), genuineEd25519Pub),
+      e2e.FormatError,
+      `${v.name}: ${v.why}`,
+    );
+  }
+});
+
+test('strictJSON', () => {
+  for (const v of vf.strictJSON) {
+    const schema = e2e.BODY_SCHEMAS[v.purpose];
+    assert.throws(
+      () => e2e.decodeStrict(hex(v.body), schema),
+      e2e.FormatError,
+      `${v.name}: ${v.why}`,
+    );
+  }
+});
+
+test('base64url', () => {
+  for (const v of vf.base64url) {
+    assert.equal(toHex(e2e.unb64(v.encoded)), v.bytes, v.name);
+    for (const neg of v.negative) {
+      assert.throws(() => e2e.unb64(neg.input), e2e.FormatError, `${v.name}: ${neg.why}`);
+    }
   }
 });
 
@@ -410,8 +677,9 @@ test('blindIndex', async () => {
 test('vectors.json has no section this file does not check', () => {
   const handled = [
     'enc', 'derive', 'argon2', 'recoveryCode', 'apiKey', 'akCommit', 'seal',
-    'blob', 'wrap', 'signature', 'rotation', 'ed25519Strict', 'fingerprint',
-    'linkToken', 'fileAddress', 'blindIndex',
+    'blob', 'wrap', 'signature', 'rotation', 'ed25519Strict', 'x25519Strict',
+    'fingerprint', 'linkToken', 'fileAddress', 'blindIndex', 'strictJSON',
+    'base64url',
   ];
   const unhandled = Object.keys(vf).filter((k) => !handled.includes(k));
   assert.deepEqual(unhandled, []);
