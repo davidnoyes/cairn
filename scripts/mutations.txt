@@ -8,3 +8,6 @@
 
 internal/server/middleware.go	|| strings.Contains(next, `\`) {	{	go test ./internal/server -run 'TestSafeNext|TestLoginNextRejectsBackslash'
 internal/mail/mail.go	if strings.ContainsAny(m.To, "\r\n") || strings.ContainsAny(m.Subject, "\r\n") {	if false {	go test ./internal/mail -run TestSendRejectsHeaderInjection
+internal/server/serving.go	if _, err := os.Stat(filepath.Join(root, clean)); err != nil {	if true {	go test ./internal/server -run TestSqlJSPrecedence
+internal/mail/mail.go	func (l *Log) Send(_ context.Context, m Message) error {	func (l *Log) Send(_ context.Context, m Message) error { validate := func(Message) error { return nil }	go test ./internal/mail -run TestMailersRejectInvalidMessages
+internal/mail/mail.go	func (s *SMTP) Send(_ context.Context, m Message) error {	func (s *SMTP) Send(_ context.Context, m Message) error { validate := func(Message) error { return nil }	go test ./internal/mail -run TestMailersRejectInvalidMessages
