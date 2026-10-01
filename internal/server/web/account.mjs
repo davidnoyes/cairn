@@ -28,6 +28,15 @@ export class ApiError extends Error {
   }
 }
 
+// IncompleteLinkError is a link whose fragment has no token: opened a second
+// time (the first open removed the fragment), or cut short in the mail.
+export class IncompleteLinkError extends Error {
+  constructor() {
+    super('This link is incomplete. Open the link from your email again.');
+    this.name = 'IncompleteLinkError';
+  }
+}
+
 export class WeakPasswordError extends Error {
   constructor(feedback) {
     super('That password is too weak. Use a longer, less predictable passphrase, and leave out your name and email.');
@@ -75,28 +84,36 @@ function randomBytes(n) {
 async function generateAccount(deps, email, password) {
   const params = { alg: 'argon2id', m: 65536, t: 3, p: 1, salt: randomBytes(16) };
   const stretched = await deps.stretch(password, email, params);
-  const { authKey, kek } = await e2e.passwordCryptoKeys(stretched, 'seal');
-  stretched.fill(0);
+  let authKey, kek;
+  try {
+    ({ authKey, kek } = await e2e.passwordCryptoKeys(stretched, 'seal'));
+  } finally {
+    stretched.fill(0);
+  }
 
   const mk = randomBytes(32);
   const ek = randomBytes(32);
-  const recovery = e2e.newRecoveryCode();
-  const x25519 = await e2e.generateX25519();
-  const ed25519 = await e2e.generateEd25519();
-  const sealKey = await e2e.mkSealCryptoKey(mk);
+  let recovery, x25519, ed25519;
+  try {
+    recovery = e2e.newRecoveryCode();
+    x25519 = await e2e.generateX25519();
+    ed25519 = await e2e.generateEd25519();
+    const sealKey = await e2e.mkSealCryptoKey(mk);
 
-  const bundle = {
-    kdf: { alg: params.alg, m: params.m, t: params.t, p: params.p, salt: e2e.b64(params.salt) },
-    mkPassword: await sealField(kek, 'mk', mk),
-    mkRecovery: await sealField(await e2e.recoveryKekCryptoKey(recovery.code, 'seal'), 'mk', mk),
-    x25519Pub: e2e.b64(x25519.pub),
-    x25519Priv: await sealField(sealKey, 'x25519', x25519.priv),
-    ed25519Pub: e2e.b64(ed25519.pub),
-    ed25519Priv: await sealField(sealKey, 'ed25519', ed25519.seed),
-    ek: await sealField(sealKey, 'ek', ek),
-  };
-  for (const secret of [mk, ek, recovery.code, x25519.priv, ed25519.seed]) secret.fill(0);
-  return { authKey: e2e.b64(authKey), bundle, recoveryCode: recovery.display };
+    const bundle = {
+      kdf: { alg: params.alg, m: params.m, t: params.t, p: params.p, salt: e2e.b64(params.salt) },
+      mkPassword: await sealField(kek, 'mk', mk),
+      mkRecovery: await sealField(await e2e.recoveryKekCryptoKey(recovery.code, 'seal'), 'mk', mk),
+      x25519Pub: e2e.b64(x25519.pub),
+      x25519Priv: await sealField(sealKey, 'x25519', x25519.priv),
+      ed25519Pub: e2e.b64(ed25519.pub),
+      ed25519Priv: await sealField(sealKey, 'ed25519', ed25519.seed),
+      ek: await sealField(sealKey, 'ek', ek),
+    };
+    return { authKey: e2e.b64(authKey), bundle, recoveryCode: recovery.display };
+  } finally {
+    for (const secret of [mk, ek, recovery?.code, x25519?.priv, ed25519?.seed]) secret?.fill(0);
+  }
 }
 
 // signUp generates the keys and signs up. Nothing but wrapped material and
@@ -126,8 +143,12 @@ export async function signIn(deps, { email, password }) {
   const kdf = parseKdf(await post(deps, '/api/auth/prelogin', { email }));
   e2e.checkFloor(kdf);
   const stretched = await deps.stretch(password, email, kdf);
-  const { authKey, kek } = await e2e.passwordCryptoKeys(stretched, 'open');
-  stretched.fill(0);
+  let authKey, kek;
+  try {
+    ({ authKey, kek } = await e2e.passwordCryptoKeys(stretched, 'open'));
+  } finally {
+    stretched.fill(0);
+  }
 
   const { user, bundle } = await post(deps, '/api/auth/login', { email, authKey: e2e.b64(authKey), client: 'web' });
   try {
@@ -146,9 +167,10 @@ export async function signIn(deps, { email, password }) {
 async function openBundle(user, bundle, kek) {
   const mk = await e2e.openKey(kek, ['mk'], e2e.unb64(bundle.mkPassword));
   const mkSeal = await e2e.mkSealCryptoKey(mk);
-  const x25519Raw = await e2e.open(mkSeal, ['x25519'], e2e.unb64(bundle.x25519Priv));
-  const ed25519Raw = await e2e.open(mkSeal, ['ed25519'], e2e.unb64(bundle.ed25519Priv));
+  let x25519Raw, ed25519Raw;
   try {
+    x25519Raw = await e2e.open(mkSeal, ['x25519'], e2e.unb64(bundle.x25519Priv));
+    ed25519Raw = await e2e.open(mkSeal, ['ed25519'], e2e.unb64(bundle.ed25519Priv));
     return {
       userId: user.id,
       email: user.email,
@@ -159,8 +181,8 @@ async function openBundle(user, bundle, kek) {
       ed25519: await e2e.importEd25519SigningKey(ed25519Raw),
     };
   } finally {
-    x25519Raw.fill(0);
-    ed25519Raw.fill(0);
+    x25519Raw?.fill(0);
+    ed25519Raw?.fill(0);
   }
 }
 
@@ -171,7 +193,7 @@ export function takeToken(location, history) {
   const hash = location.hash;
   history.replaceState(null, '', location.pathname + location.search);
   const match = /^#token=([A-Za-z0-9_-]+)$/.exec(hash);
-  if (!match) throw new Error('This link is incomplete. Open the link from your email again.');
+  if (!match) throw new IncompleteLinkError();
   return match[1];
 }
 
@@ -213,23 +235,29 @@ export async function resetWithRecovery(deps, { token, info, recoveryCode, passw
   } catch {
     throw new Error('That is not a recovery code. It has 26 letters and digits in groups of four.');
   }
-  let mk;
+  // The recovery KEK has to decrypt MK to raw bytes, which the non-extractable
+  // recoveryKekCryptoKey cannot do (it only unwraps into a non-extractable
+  // key), so its raw bytes are zeroed with the rest.
+  let recoveryKek, mk, seed, stretched, proof, params, authKey, mkPassword;
   try {
-    mk = await e2e.open(await e2e.recoveryKek(code), ['mk'], e2e.unb64(info.mkRecovery));
-  } catch {
-    throw new Error('wrong recovery code');
-  }
-  const seed = await e2e.open(await e2e.mkSealKey(mk), ['ed25519'], e2e.unb64(info.ed25519Priv));
-  const proofBody = enc.encode(JSON.stringify({ v: 1, user: info.id, token: await tokenHash(token) }));
-  const proof = await e2e.sign(seed, 'reset', proofBody);
-  seed.fill(0);
+    try {
+      recoveryKek = await e2e.recoveryKek(code);
+      mk = await e2e.open(recoveryKek, ['mk'], e2e.unb64(info.mkRecovery));
+    } catch {
+      throw new Error('That recovery code does not open this account. Check that you typed all 26 characters, in groups of four. If you lost it, choose "Start with new keys".');
+    }
+    seed = await e2e.open(await e2e.mkSealCryptoKey(mk), ['ed25519'], e2e.unb64(info.ed25519Priv));
+    const proofBody = enc.encode(JSON.stringify({ v: 1, user: info.id, token: await tokenHash(token) }));
+    proof = await e2e.sign(seed, 'reset', proofBody);
 
-  const params = { alg: 'argon2id', m: 65536, t: 3, p: 1, salt: randomBytes(16) };
-  const stretched = await deps.stretch(password, info.email, params);
-  const { authKey, kek } = await e2e.passwordCryptoKeys(stretched, 'seal');
-  stretched.fill(0);
-  const mkPassword = await sealField(kek, 'mk', mk);
-  mk.fill(0);
+    params = { alg: 'argon2id', m: 65536, t: 3, p: 1, salt: randomBytes(16) };
+    stretched = await deps.stretch(password, info.email, params);
+    let kek;
+    ({ authKey, kek } = await e2e.passwordCryptoKeys(stretched, 'seal'));
+    mkPassword = await sealField(kek, 'mk', mk);
+  } finally {
+    for (const secret of [code, recoveryKek, mk, seed, stretched]) secret?.fill(0);
+  }
   await post(deps, '/api/auth/reset/complete', {
     token,
     mode: 'recovery',

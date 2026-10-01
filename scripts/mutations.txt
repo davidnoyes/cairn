@@ -221,7 +221,8 @@ internal/client/public.go	if !on && writes != nil {	if false {	go test ./interna
 internal/client/client.go	req.Header.Set("X-Cairn-Link-Token", c.LinkToken)	_ = c.LinkToken	go test ./internal/client -run 'TestPublic|TestSharingRecords|TestOpenLink'
 cmd/cairn/share_cmds.go	if !on && writes != nil {	if false {	go test ./cmd/cairn -run 'TestPublic'
 internal/server/sharing.go	a.PublicTokenHash == "" || a.PublicEpoch != a.Epoch {	a.PublicTokenHash == "" {	go test ./internal/server -run TestLinkTokenIsOnlyForTheStoredEpoch
-||||||| bb34c6f
+
+# Browser account pages (milestone 2 part E).
 internal/server/web/account.mjs	export const MIN_SCORE = 3;	export const MIN_SCORE = 0;	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	e2e.checkFloor(kdf);	void 0;	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	history.replaceState(null, '', location.pathname + location.search);	void 0;	node --test internal/server/web/account_test.mjs
@@ -236,3 +237,28 @@ internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStatic
 internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "forgot" { mux.HandleFunc("GET /"+page, s.handleStaticPage(page+".html")) } else { mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
 internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "reset" { mux.HandleFunc("GET /"+page, s.handleStaticPage(page+".html")) } else { mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
 internal/server/serving.go	contentType := "text/javascript; charset=utf-8"	contentType := "text/plain; charset=utf-8"	go test ./internal/server -run TestAccountPageAssetsAreServed
+
+# Browser account pages: review fixes (worker lifetime, zeroed secrets, admin
+# errors, DOM layer, capability check, asset ETag).
+internal/server/web/argon2-client.mjs	if (pending.size === 0) stop();	void 0;	node --test internal/server/web/argon2-client_test.mjs
+internal/server/web/argon2-client.mjs	      stop();	      void 0;	node --test internal/server/web/argon2-client_test.mjs
+internal/server/web/argon2-client.mjs	    worker = undefined;	    void 0;	node --test internal/server/web/argon2-client_test.mjs
+internal/server/web/account.mjs	for (const secret of [code, recoveryKek, mk, seed, stretched]) secret?.fill(0);	for (const secret of []) secret?.fill(0);	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	for (const secret of [mk, ek, recovery?.code, x25519?.priv, ed25519?.seed]) secret?.fill(0);	for (const secret of []) secret?.fill(0);	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	const stretched = await deps.stretch(password, email, kdf);	const stretched = Object.assign(await deps.stretch(password, email, kdf), { fill() {} });	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	const stretched = await deps.stretch(password, email, params);	const stretched = Object.assign(await deps.stretch(password, email, params), { fill() {} });	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	stretched = await deps.stretch(password, info.email, params);	stretched = Object.assign(await deps.stretch(password, info.email, params), { fill() {} });	node --test internal/server/web/account_test.mjs
+internal/server/web/admin-init.mjs	if (!(err instanceof UnauthenticatedError)) fail(err);	void 0;	node --test internal/server/web/admin-init_test.mjs
+internal/server/web/admin-init.mjs	if (!(err instanceof UnauthenticatedError)) listFailed(name, err);	throw err;	node --test internal/server/web/admin-init_test.mjs
+internal/server/web/ui.mjs	button.disabled = false;	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/account.mjs	/^#token=([A-Za-z0-9_-]+)$/	/^#token=([A-Za-z0-9_-]+)/	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	/^#token=([A-Za-z0-9_-]+)$/	/#token=([A-Za-z0-9_-]+)$/	node --test internal/server/web/account_test.mjs
+internal/server/web/ui.mjs	codeEl.textContent = '';	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	form.removeEventListener('submit', previous.submit);	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	if (!scope.isSecureContext || !subtle) return false;	if (!subtle) return false;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	await subtle.generateKey('X25519', false, ['deriveBits']);	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	await subtle.generateKey('Ed25519', false, ['sign']);	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	if (err.name === 'NetworkError')	if (err instanceof TypeError)	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	throw new NetworkError(err.message);	throw err;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	for (const control of form.elements) control.disabled = true;	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/serving.go	w.Header().Set("ETag", etag)	_ = etag	go test ./internal/server -run TestAppAssetsRevalidateWithAnETag

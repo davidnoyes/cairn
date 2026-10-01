@@ -391,6 +391,12 @@ H6); `frame-ancestors 'none'` on app pages (H1); worker update headers (M4);
 no plaintext in content-origin storage (L1); key removed from the address
 bar (L2).
 
+The browser key store depends on this milestone. Until artifacts are served
+from separate content origins, an artifact script shares the app's origin and
+can open the `cairn-keys` IndexedDB database and use its non-extractable keys:
+`deriveBits` on MK yields every key derived from it. Nothing earlier can close
+that, so the browser account pages carry a README caveat until this lands.
+
 Done when: the browser suite passes on all three engines, the Safari check
 has been run once by hand, and a security architect review has reported.
 

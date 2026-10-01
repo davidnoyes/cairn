@@ -293,6 +293,14 @@ test('takeToken reads the fragment token and strips the fragment', () => {
   assert.deepEqual(page.events, [['replaceState', '/verify']]);
 });
 
+test('takeToken accepts only a fragment that is exactly #token=<token>', () => {
+  for (const hash of ['#token=abc&x=y', '#foo#token=abc', '#x=1&token=abc', '#token=', '#token=a b', '']) {
+    const page = fakePage(hash);
+    assert.throws(() => account.takeToken(page.location, page.history), /incomplete/, hash);
+    assert.equal(page.events.length, 1, 'the fragment is stripped even when refused');
+  }
+});
+
 test('takeToken strips the fragment even when it holds no token, then refuses', () => {
   const page = fakePage('#other=1');
   assert.throws(() => account.takeToken(page.location, page.history), /incomplete/);
@@ -375,7 +383,7 @@ test('reset with a wrong recovery code sends no complete request', async () => {
   const deps = makeDeps(server);
   const { info } = await account.resetBeginFromLink(deps, fakePage('#token=' + token));
   const wrong = e2e.formatRecoveryCode(new Uint8Array(16));
-  await assert.rejects(account.resetWithRecovery(deps, { token, info, recoveryCode: wrong, password: NEW_STRONG, confirm: NEW_STRONG }), /wrong recovery code/);
+  await assert.rejects(account.resetWithRecovery(deps, { token, info, recoveryCode: wrong, password: NEW_STRONG, confirm: NEW_STRONG }), /26 characters.*groups of four.*Start with new keys/);
   await assert.rejects(account.resetWithRecovery(deps, { token, info, recoveryCode: 'not a code', password: NEW_STRONG, confirm: NEW_STRONG }));
   assert.equal(call(server, '/api/auth/reset/complete').length, 0);
 });
@@ -451,4 +459,128 @@ test('signOut leaves the keyring anchor in localStorage', async () => {
   await account.signOut(deps);
   assert.equal(deps.keyStore.cleared, 1);
   assert.equal(localStorage.getItem('cairn.keyringAnchor'), '{"rev":12}');
+});
+
+// ------------------------------------------------- raw key bytes are zeroed
+
+// spyCrypto records every raw key an importKey call receives, every 32-byte
+// array getRandomValues fills, and every buffer decrypt returns, so a test can
+// check afterwards that none of those secrets is left in memory. It also lets
+// a test make one SubtleCrypto method throw. The patches sit on the instances
+// and are removed by restore().
+function spyCrypto() {
+  const spy = { raws: [], randoms: [], decrypted: [], failing: new Set() };
+  const { subtle } = crypto;
+  const realImport = subtle.importKey.bind(subtle);
+  const realDecrypt = subtle.decrypt.bind(subtle);
+  const realRandom = crypto.getRandomValues.bind(crypto);
+  const maybeFail = (name) => { if (spy.failing.has(name)) throw new Error(`injected ${name} failure`); };
+  subtle.importKey = (format, data, ...rest) => {
+    if (format === 'raw') spy.raws.push(data);
+    return realImport(format, data, ...rest);
+  };
+  subtle.decrypt = async (...args) => {
+    const pt = await realDecrypt(...args);
+    spy.decrypted.push(pt);
+    return pt;
+  };
+  subtle.deriveBits = (...args) => { maybeFail('deriveBits'); return Object.getPrototypeOf(subtle).deriveBits.apply(subtle, args); };
+  subtle.encrypt = (...args) => { maybeFail('encrypt'); return Object.getPrototypeOf(subtle).encrypt.apply(subtle, args); };
+  crypto.getRandomValues = (a) => {
+    if (a.length === 32) spy.randoms.push(a);
+    return realRandom(a);
+  };
+  spy.restore = () => {
+    for (const name of ['importKey', 'decrypt', 'deriveBits', 'encrypt']) delete subtle[name];
+    delete crypto.getRandomValues;
+  };
+  return spy;
+}
+
+const isZero = (b) => new Uint8Array(b.buffer ?? b).every((x) => x === 0);
+
+// stretchKeeping returns a stretch dep that hands out buffers it remembers,
+// and runs onStretch (to arm an injected failure) once it has answered.
+function stretchKeeping(kept, onStretch = () => {}) {
+  return async (password, email, params) => {
+    const out = await fakeStretch(password, email, params);
+    kept.push(out);
+    onStretch();
+    return out;
+  };
+}
+
+test('signUp zeroes the stretched key when deriving from it throws', async () => {
+  const kept = [];
+  const spy = spyCrypto();
+  try {
+    const deps = makeDeps(fakeServer(), { stretch: stretchKeeping(kept, () => spy.failing.add('deriveBits')) });
+    await assert.rejects(account.signUp(deps, { email: 'a@example.com', name: 'A', password: STRONG, confirm: STRONG }), /injected deriveBits/);
+  } finally {
+    spy.restore();
+  }
+  assert.equal(kept.length, 1);
+  assert.ok(isZero(kept[0]), 'the stretched key was left in memory');
+});
+
+test('signUp zeroes MK, EK, the key seeds, and the recovery code when sealing throws', async () => {
+  const kept = [];
+  const spy = spyCrypto();
+  try {
+    const deps = makeDeps(fakeServer(), { stretch: stretchKeeping(kept, () => {}) });
+    spy.failing.add('encrypt');
+    await assert.rejects(account.signUp(deps, { email: 'a@example.com', name: 'A', password: STRONG, confirm: STRONG }), /injected encrypt/);
+  } finally {
+    spy.restore();
+  }
+  assert.ok(spy.randoms.length >= 4, 'MK, EK, and both key seeds are read at random');
+  for (const secret of [...spy.randoms, ...spy.raws, ...kept]) assert.ok(isZero(secret), 'a secret was left in memory');
+});
+
+test('signIn zeroes the stretched key when deriving from it throws', async () => {
+  const server = fakeServer();
+  await signedUp(server);
+  const kept = [];
+  const spy = spyCrypto();
+  try {
+    const deps = makeDeps(server, { stretch: stretchKeeping(kept, () => spy.failing.add('deriveBits')) });
+    await assert.rejects(account.signIn(deps, { email: 'ada@example.com', password: STRONG }), /injected deriveBits/);
+  } finally {
+    spy.restore();
+  }
+  assert.equal(kept.length, 1);
+  assert.ok(isZero(kept[0]), 'the stretched key was left in memory');
+});
+
+test('reset with the recovery code zeroes the code, its key, MK, and the seed when the stretch throws', async () => {
+  const server = fakeServer();
+  const { recoveryCode } = await signedUp(server);
+  const token = resetToken(server, 'ada@example.com');
+  const { info } = await account.resetBeginFromLink(makeDeps(server), fakePage('#token=' + token));
+  const spy = spyCrypto();
+  try {
+    const deps = makeDeps(server, { stretch: async () => { throw new Error('stretch failed'); } });
+    await assert.rejects(account.resetWithRecovery(deps, { token, info, recoveryCode, password: NEW_STRONG, confirm: NEW_STRONG }), /stretch failed/);
+  } finally {
+    spy.restore();
+  }
+  assert.ok(spy.decrypted.length >= 2, 'MK and the seed were opened');
+  for (const secret of [...spy.decrypted, ...spy.raws]) assert.ok(isZero(secret), 'a secret was left in memory');
+  assert.equal(call(server, '/api/auth/reset/complete').length, 0);
+});
+
+test('reset with the recovery code zeroes the stretched key when deriving from it throws', async () => {
+  const server = fakeServer();
+  const { recoveryCode } = await signedUp(server);
+  const token = resetToken(server, 'ada@example.com');
+  const { info } = await account.resetBeginFromLink(makeDeps(server), fakePage('#token=' + token));
+  const kept = [];
+  const spy = spyCrypto();
+  try {
+    const deps = makeDeps(server, { stretch: stretchKeeping(kept, () => spy.failing.add('deriveBits')) });
+    await assert.rejects(account.resetWithRecovery(deps, { token, info, recoveryCode, password: NEW_STRONG, confirm: NEW_STRONG }), /injected deriveBits/);
+  } finally {
+    spy.restore();
+  }
+  for (const secret of [...kept, ...spy.decrypted, ...spy.raws]) assert.ok(isZero(secret), 'a secret was left in memory');
 });

@@ -2,18 +2,20 @@
 // fragment and leaves the address bar before the first request. With the
 // recovery code the account keeps its keys; without it, it gets new ones.
 import { resetBeginFromLink, resetWithRecovery, resetWithoutRecovery } from './account.mjs';
-import { $, pageDeps, onSubmit, watchStrength, showRecoveryCode, describeError } from './ui.mjs';
+import { $, startPage, onSubmit, watchStrength, confirmRecoveryCode, describeError } from './ui.mjs';
 
-const deps = pageDeps();
 const form = $('form');
+const deps = await startPage({ form, errorEl: $('linkError') });
 
 let session; // {token, info}, held in memory because the address bar no longer has it
-try {
-  session = await resetBeginFromLink(deps, { location, history });
-} catch (err) {
-  $('linkError').textContent = describeError(err);
-  $('linkError').hidden = false;
-  $('linkLinks').hidden = false;
+if (deps) {
+  try {
+    session = await resetBeginFromLink(deps, { location, history });
+  } catch (err) {
+    $('linkError').textContent = describeError(err);
+    $('linkError').hidden = false;
+    $('linkLinks').hidden = false;
+  }
 }
 $('working').hidden = true;
 
@@ -40,22 +42,13 @@ if (session) {
     }
     const { recoveryCode } = await resetWithoutRecovery(deps, fields);
     form.hidden = true;
-    const confirmed = showRecoveryCode(
-      { codeEl: $('newCode'), promptEl: $('groupPrompt'), input: $('group') },
+    confirmRecoveryCode(
+      {
+        form: $('confirmForm'), panel: $('recovery'), codeEl: $('newCode'), promptEl: $('groupPrompt'),
+        input: $('group'), errorEl: $('confirmError'),
+      },
       recoveryCode,
+      () => { $('done').hidden = false; },
     );
-    $('recovery').hidden = false;
-    $('group').focus();
-    $('confirmForm').addEventListener('submit', (event) => {
-      event.preventDefault();
-      if (!confirmed()) {
-        $('confirmError').textContent = 'That is not the group shown above. Check the code and try again.';
-        $('confirmError').hidden = false;
-        return;
-      }
-      $('newCode').textContent = '';
-      $('recovery').hidden = true;
-      $('done').hidden = false;
-    });
   });
 }

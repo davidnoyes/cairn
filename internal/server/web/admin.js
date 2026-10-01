@@ -3,13 +3,14 @@
 // rule refuses a string assigned to innerHTML.
 import { signOut } from './account.mjs';
 import { createKeyStore } from './keystore.mjs';
+import { UnauthenticatedError, startAdmin } from './admin-init.mjs';
 
 const $ = (s, el) => (el || document).querySelector(s);
 const $$ = (s, el) => [...(el || document).querySelectorAll(s)];
 
 async function api(path, options) {
   const resp = await fetch(path, options);
-  if (resp.status === 401) { location.href = '/login?next=/admin'; throw new Error('unauthenticated'); }
+  if (resp.status === 401) { location.href = '/login?next=/admin'; throw new UnauthenticatedError(); }
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
   return data;
@@ -25,7 +26,8 @@ function flash(msg) {
   clearTimeout(flashTimer);
   flashTimer = setTimeout(() => { el.hidden = true; }, 4000);
 }
-function fail(err) { flash('✗ ' + err.message); }
+// fail shows an error. The sign-in redirect needs none: the page is leaving.
+function fail(err) { if (!(err instanceof UnauthenticatedError)) flash('✗ ' + err.message); }
 
 // Sign out clears the unwrapped keys first, then ends the session. The
 // keyring anchor in localStorage stays.
@@ -89,14 +91,14 @@ async function loadArtifacts() {
     tr.appendChild(td((a.updatedAt || '').slice(0, 10), 'mono'));
     const actions = el('div', 'actions');
     actions.append(
-      btn('versions', '', () => toggleVersions(tr, a)),
+      btn('versions', '', () => toggleVersions(tr, a).catch(fail)),
     );
     // Visibility changes only through a signed membership record, which
     // this page cannot make; only the owner may delete.
     if (a.access === 'owner') {
       actions.append(btn('delete', 'danger', async () => {
         if (!confirm('Delete artifact "' + a.name + '" and all its versions and data?')) return;
-        try { await del('/api/artifacts/' + a.id); flash('artifact deleted'); loadArtifacts(); } catch (e) { fail(e); }
+        try { await del('/api/artifacts/' + a.id); flash('artifact deleted'); loadArtifacts().catch(fail); } catch (e) { fail(e); }
       }));
     }
     tr.appendChild(td(actions));
@@ -150,14 +152,14 @@ async function loadUsers() {
     const actions = el('div', 'actions');
     actions.append(
       btn(u.isAdmin ? 'revoke admin' : 'make admin', '', async () => {
-        try { await patch('/api/admin/users/' + u.id, {isAdmin: !u.isAdmin}); loadUsers(); } catch (e) { fail(e); }
+        try { await patch('/api/admin/users/' + u.id, {isAdmin: !u.isAdmin}); loadUsers().catch(fail); } catch (e) { fail(e); }
       }),
       btn(u.disabled ? 'enable' : 'disable', '', async () => {
-        try { await patch('/api/admin/users/' + u.id, {disabled: !u.disabled}); loadUsers(); } catch (e) { fail(e); }
+        try { await patch('/api/admin/users/' + u.id, {disabled: !u.disabled}); loadUsers().catch(fail); } catch (e) { fail(e); }
       }),
       btn('delete', 'danger', async () => {
         if (!confirm('Delete ' + u.email + '?')) return;
-        try { await del('/api/admin/users/' + u.id); loadUsers(); } catch (e) { fail(e); }
+        try { await del('/api/admin/users/' + u.id); loadUsers().catch(fail); } catch (e) { fail(e); }
       }),
     );
     tr.appendChild(td(actions));
@@ -183,7 +185,7 @@ async function loadKeys() {
     const actions = el('div', 'actions');
     actions.appendChild(btn('revoke', 'danger', async () => {
       if (!confirm('Revoke this key?')) return;
-      try { await del('/api/keys/' + k.id); loadKeys(); } catch (e) { fail(e); }
+      try { await del('/api/keys/' + k.id); loadKeys().catch(fail); } catch (e) { fail(e); }
     }));
     tr.appendChild(td(actions));
     t.appendChild(tr);
@@ -192,8 +194,19 @@ async function loadKeys() {
 }
 
 // ------------------------------------------------------------------ init
-try {
-  const me = await api('/api/me');
-  $('#who').textContent = me.email;
-  await Promise.all([loadArtifacts(), loadUsers(), loadKeys()]);
-} catch (e) { /* redirected to login */ }
+// A list that fails to load says so in its own box and in the flash line.
+const lists = [
+  { name: 'artifacts', box: '#artifactList', load: loadArtifacts },
+  { name: 'users', box: '#userList', load: loadUsers },
+  { name: 'API keys', box: '#keyList', load: loadKeys },
+];
+await startAdmin({
+  api,
+  lists,
+  setWho: (email) => { $('#who').textContent = email; },
+  listFailed(name, err) {
+    $(lists.find((l) => l.name === name).box).replaceChildren(el('p', 'empty', 'Could not load ' + name + ': ' + err.message));
+    fail(err);
+  },
+  fail,
+});

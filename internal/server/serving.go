@@ -1,6 +1,9 @@
 package server
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"html/template"
 	"net/http"
@@ -8,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/aloisdeniel/cairn/internal/server/web"
 	"github.com/aloisdeniel/cairn/internal/store"
@@ -322,6 +326,7 @@ var appAssets = map[string]string{
 	"/forgot.js":         "forgot.js",
 	"/reset.js":          "reset.js",
 	"/admin.js":          "admin.js",
+	"/admin-init.mjs":    "admin-init.mjs",
 	"/argon2-worker.js":  "argon2-worker.js",
 	"/zxcvbn.js":         "vendor/zxcvbn.js",
 }
@@ -329,6 +334,9 @@ var appAssets = map[string]string{
 // serveAppAsset serves one embedded file, with a content type from its
 // extension. It sets no Content-Security-Policy: the argon2 worker runs
 // without Trusted Types enforcement, and the other files are not documents.
+// The ETag is a hash of the embedded bytes, computed once, and no-cache makes
+// the browser revalidate with it, so an unchanged file costs a 304 rather
+// than a download (zxcvbn.js is 822 KB).
 func serveAppAsset(file string) http.HandlerFunc {
 	contentType := "text/javascript; charset=utf-8"
 	switch path.Ext(file) {
@@ -337,16 +345,18 @@ func serveAppAsset(file string) http.HandlerFunc {
 	case ".svg":
 		contentType = "image/svg+xml"
 	}
+	data, err := web.Assets.ReadFile(file)
+	if err != nil {
+		return http.NotFound
+	}
+	sum := sha256.Sum256(data)
+	etag := `"` + hex.EncodeToString(sum[:]) + `"`
 	return func(w http.ResponseWriter, r *http.Request) {
-		data, err := web.Assets.ReadFile(file)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
 		w.Header().Set("Content-Type", contentType)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-cache")
-		w.Write(data)
+		w.Header().Set("ETag", etag)
+		http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(data))
 	}
 }
 

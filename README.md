@@ -80,6 +80,10 @@ Your browser stretches the password and creates your keys on your device, so
 the server never sees the password. The page keeps your unwrapped keys in
 IndexedDB as non-extractable keys, and clears them when you sign out.
 
+Until Cairn serves artifacts from separate content origins, an artifact you
+open runs on the same origin as your keys and can use them. Open only artifacts
+you trust.
+
 ### Push your first artifact
 
 ```sh

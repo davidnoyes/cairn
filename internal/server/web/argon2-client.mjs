@@ -4,8 +4,16 @@
 // responsive.
 //
 // The app CSP has require-trusted-types-for 'script', and a worker's script
-// URL is one of those sinks, so the URL goes through a policy that accepts
-// exactly one value.
+// URL is one of those sinks, so the URL goes through a policy. The policy
+// returns only the worker URL and throws for any other value. The CSP has no
+// trusted-types allowlist, so any script on the page may create policies of
+// its own: this policy does not stop one. It makes sure this module never
+// passes the worker constructor anything else, and the CSP catches an
+// accidental sink elsewhere.
+//
+// The worker's wasm heap holds the password, the 64 MiB matrix, and the
+// stretched key, so a worker lives only while a request is pending: it is
+// terminated after the last reply and a later call starts a fresh one.
 const WORKER_URL = '/argon2-worker.js';
 
 // createWorkerArgon2 takes the global scope so a test can pass a fake Worker
@@ -25,9 +33,9 @@ export function createWorkerArgon2(scope = globalThis) {
   let worker;
   let nextId = 0;
   const pending = new Map();
-  const failAll = (message) => {
-    for (const { reject } of pending.values()) reject(new Error(message));
-    pending.clear();
+  const stop = () => {
+    worker.terminate();
+    worker = undefined;
   };
   const start = () => {
     worker = new scope.Worker(url);
@@ -35,10 +43,18 @@ export function createWorkerArgon2(scope = globalThis) {
       const call = pending.get(data.id);
       if (!call) return;
       pending.delete(data.id);
+      if (pending.size === 0) stop();
       if (data.error) call.reject(new Error(data.error));
       else call.resolve(data.key);
     };
-    worker.onerror = () => failAll('the password worker failed');
+    worker.onerror = () => {
+      const calls = [...pending.values()];
+      pending.clear();
+      stop();
+      for (const { reject } of calls) {
+        reject(new Error('the password worker failed to load or run. Reload the page and try again.'));
+      }
+    };
   };
 
   return (password, salt, t, m, p) =>

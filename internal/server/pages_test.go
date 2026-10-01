@@ -214,3 +214,43 @@ func TestLoginPageHasNoClaimFlow(t *testing.T) {
 		}
 	}
 }
+
+// TestAppAssetsRevalidateWithAnETag checks that an asset carries a strong
+// ETag and answers a matching If-None-Match with 304 and no body, so a page
+// load does not download the 822 KB estimator again.
+func TestAppAssetsRevalidateWithAnETag(t *testing.T) {
+	_, ts := testServer(t)
+	for _, path := range []string{"/zxcvbn.js", "/account.mjs", "/app.css"} {
+		first := get(t, ts.URL+path, "", "")
+		full := body(t, first)
+		etag := first.Header.Get("ETag")
+		if first.StatusCode != http.StatusOK || etag == "" || strings.HasPrefix(etag, "W/") {
+			t.Fatalf("%s: status %d, ETag %q, want 200 and a strong ETag", path, first.StatusCode, etag)
+		}
+		if got := first.Header.Get("Cache-Control"); got != "no-cache" {
+			t.Errorf("%s: Cache-Control %q, want no-cache", path, got)
+		}
+
+		req, _ := http.NewRequest("GET", ts.URL+path, nil)
+		req.Header.Set("If-None-Match", etag)
+		resp, err := noRedirectClient().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusNotModified {
+			t.Errorf("%s: matching If-None-Match gave %d, want 304", path, resp.StatusCode)
+		}
+		if got := body(t, resp); got != "" {
+			t.Errorf("%s: 304 carried a %d-byte body", path, len(got))
+		}
+
+		req.Header.Set("If-None-Match", `"stale"`)
+		resp, err = noRedirectClient().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := body(t, resp); resp.StatusCode != http.StatusOK || got != full {
+			t.Errorf("%s: a stale If-None-Match gave %d, want 200 with the full body", path, resp.StatusCode)
+		}
+	}
+}
