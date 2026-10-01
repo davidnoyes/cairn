@@ -30,6 +30,18 @@ const keyringRetries = 5
 // another device.
 var ErrKeyringBusy = errors.New("the keyring kept changing on the server while this client tried to update it; try again")
 
+// KeyringRefusedError means the keyring the server served would not open, or
+// the anchor refused it. UserID and FP name the anchor that was checked.
+type KeyringRefusedError struct {
+	UserID, FP string
+	Err        error
+}
+
+func (e *KeyringRefusedError) Error() string {
+	return "refusing the server's keyring: " + e.Err.Error()
+}
+func (e *KeyringRefusedError) Unwrap() error { return e.Err }
+
 type keyringWire struct {
 	Rev     int    `json:"rev"`
 	Keyring string `json:"keyring"`
@@ -65,11 +77,11 @@ func (c *Client) readKeyring(k *UnlockedKeys) (*e2e.Keyring, e2e.KeyringAnchor, 
 	}
 	sealed, err := e2e.UnB64(resp.Keyring)
 	if err != nil {
-		return nil, e2e.KeyringAnchor{}, fmt.Errorf("the keyring is not base64: %w", err)
+		return nil, e2e.KeyringAnchor{}, &KeyringRefusedError{k.UserID, k.FP, fmt.Errorf("the keyring is not base64: %w", err)}
 	}
 	kr, next, err := e2e.OpenKeyring(k.MKSealKey, resp.Rev, sealed, anchor)
 	if err != nil {
-		return nil, e2e.KeyringAnchor{}, fmt.Errorf("refusing the server's keyring: %w", err)
+		return nil, e2e.KeyringAnchor{}, &KeyringRefusedError{k.UserID, k.FP, err}
 	}
 	if err := store.SaveAnchor(k.UserID, k.FP, next); err != nil {
 		return nil, e2e.KeyringAnchor{}, fmt.Errorf("saving the keyring anchor: %w", err)
@@ -176,14 +188,31 @@ func (c *Client) VerifyArtifact(k *UnlockedKeys, artifactID, currentOwnerFP stri
 // recordChain stores a verified chain as artifactID's epochs entry, and a
 // first-sight pin for its creator, unless the keyring already holds both.
 // On a merge it keeps whichever entry has the higher seq, so a later chain
-// another device stored is not replaced by this one.
+// another device stored is not replaced by this one. It refuses a merge that
+// finds the creator pinned at another fingerprint than the chain was
+// verified against (ErrPinConflict), or the same seq at another head
+// (e2e.ErrFork).
 func (c *Client) recordChain(k *UnlockedKeys, kr *e2e.Keyring, artifactID string, chain *e2e.Chain, creator string, pin *e2e.Pin) (*e2e.Keyring, error) {
 	want := e2e.KeyringEpoch{Epoch: chain.Latest.Epoch, Seq: chain.Latest.Seq, Head: chain.Head, Ack: kr.Epochs[artifactID].Ack}
 	if kr.Epochs[artifactID] == want && pin == nil {
 		return kr, nil
 	}
+	// The fingerprint the chain was anchored at; none when the caller is the creator.
+	var anchorFP string
+	if pin != nil {
+		anchorFP = pin.FP
+	} else if creator != k.UserID {
+		anchorFP = kr.Pins[creator].FP
+	}
 	return c.UpdateKeyring(k, func(kr *e2e.Keyring) error {
-		if cur, ok := kr.Epochs[artifactID]; !ok || cur.Seq < chain.Latest.Seq {
+		if p, ok := kr.Pins[creator]; ok && anchorFP != "" && p.FP != anchorFP {
+			return fmt.Errorf("%w: %s", ErrPinConflict, creator)
+		}
+		cur, ok := kr.Epochs[artifactID]
+		if ok && cur.Seq == chain.Latest.Seq && cur.Head != chain.Head {
+			return fmt.Errorf("%w: record %d of artifact %s", e2e.ErrFork, cur.Seq, artifactID)
+		}
+		if !ok || cur.Seq < chain.Latest.Seq {
 			kr.SetEpoch(artifactID, chain)
 		}
 		if _, ok := kr.Pins[creator]; pin != nil && !ok {

@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/aloisdeniel/cairn/internal/client"
 	"github.com/aloisdeniel/cairn/internal/e2e"
@@ -62,7 +64,45 @@ func readConfigFile() (configFile, error) {
 	return f, nil
 }
 
+// syncFile flushes a file to disk. It is a variable so tests can fail it.
+var syncFile = func(f *os.File) error { return f.Sync() }
+
+// writeConfigFile replaces the config file atomically: it writes a 0600
+// temp file in the same directory, syncs it, and renames it over the old
+// one, so a failure leaves the previous file intact.
 func writeConfigFile(f configFile) error {
+	path, err := configPath()
+	if err != nil {
+		return err
+	}
+	data, _ := json.MarshalIndent(f, "", "  ")
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name()) // a no-op after a successful rename
+	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := syncFile(tmp); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+// updateConfigFile reads the config file, applies change, and writes it
+// back, all under the config lock, so concurrent cairn processes do not
+// lose each other's changes. A change that fails writes nothing.
+func updateConfigFile(change func(f *configFile) error) error {
 	path, err := configPath()
 	if err != nil {
 		return err
@@ -70,8 +110,19 @@ func writeConfigFile(f configFile) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	data, _ := json.MarshalIndent(f, "", "  ")
-	return os.WriteFile(path, data, 0o600)
+	unlock, err := lockConfig(path + ".lock")
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	f, err := readConfigFile()
+	if err != nil {
+		return err
+	}
+	if err := change(&f); err != nil {
+		return err
+	}
+	return writeConfigFile(f)
 }
 
 func loadConfig() cliConfig {
@@ -82,12 +133,10 @@ func loadConfig() cliConfig {
 // saveConfig replaces the login and keeps the anchors. It refuses to
 // overwrite a config file it cannot parse, which would lose them.
 func saveConfig(cfg cliConfig) error {
-	f, err := readConfigFile()
-	if err != nil {
-		return err
-	}
-	f.cliConfig = cfg
-	return writeConfigFile(f)
+	return updateConfigFile(func(f *configFile) error {
+		f.cliConfig = cfg
+		return nil
+	})
 }
 
 // configAnchors keeps keyring anchors in the config file, for one host.
@@ -98,7 +147,15 @@ type configAnchors struct{ host string }
 // starts with no anchor and accepts the empty keyring the reset leaves. A
 // server cannot use this to roll a keyring back, because it cannot make the
 // user's keys change.
-func (a configAnchors) key(userID, fp string) string { return a.host + " " + userID + " " + fp }
+// The scheme and host are compared in lowercase, as URLs do.
+func (a configAnchors) key(userID, fp string) string {
+	host := a.host
+	if u, err := url.Parse(host); err == nil && u.Scheme != "" && u.Host != "" {
+		u.Scheme, u.Host = strings.ToLower(u.Scheme), strings.ToLower(u.Host)
+		host = u.String()
+	}
+	return host + " " + userID + " " + fp
+}
 
 func (a configAnchors) LoadAnchor(userID, fp string) (*e2e.KeyringAnchor, error) {
 	f, err := readConfigFile()
@@ -112,16 +169,25 @@ func (a configAnchors) LoadAnchor(userID, fp string) (*e2e.KeyringAnchor, error)
 	return &anchor, nil
 }
 
+// SaveAnchor never lowers an anchor's rev, and never replaces the hash at
+// the same rev: the stored anchor stays and the error says so.
 func (a configAnchors) SaveAnchor(userID, fp string, anchor e2e.KeyringAnchor) error {
-	f, err := readConfigFile()
-	if err != nil {
-		return err
-	}
-	if f.Anchors == nil {
-		f.Anchors = map[string]e2e.KeyringAnchor{}
-	}
-	f.Anchors[a.key(userID, fp)] = anchor
-	return writeConfigFile(f)
+	key := a.key(userID, fp)
+	return updateConfigFile(func(f *configFile) error {
+		if cur, ok := f.Anchors[key]; ok {
+			if anchor.Rev < cur.Rev {
+				return fmt.Errorf("%w: refusing to lower the stored anchor from rev %d to %d", e2e.ErrKeyringRollback, cur.Rev, anchor.Rev)
+			}
+			if anchor.Rev == cur.Rev && anchor.Hash != cur.Hash {
+				return fmt.Errorf("%w: refusing to replace the stored anchor at rev %d", e2e.ErrKeyringFork, cur.Rev)
+			}
+		}
+		if f.Anchors == nil {
+			f.Anchors = map[string]e2e.KeyringAnchor{}
+		}
+		f.Anchors[key] = anchor
+		return nil
+	})
 }
 
 // apiClient builds a client from, in priority order: CAIRN_HOST/CAIRN_API_KEY

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"strings"
@@ -36,6 +37,21 @@ func showFP(fp string) string {
 	return e2e.FormatFingerprint(b)
 }
 
+// explainRefusal adds to a keyring refusal what it means and how to go on
+// once the user has checked with their admin; any other error is unchanged.
+func explainRefusal(c *client.Client, err error) error {
+	var refused *client.KeyringRefusedError
+	if !errors.As(err, &refused) {
+		return err
+	}
+	path, perr := configPath()
+	if perr != nil {
+		path = "the cairn config file"
+	}
+	key := configAnchors{host: c.Host}.key(refused.UserID, refused.FP)
+	return fmt.Errorf("%w\nThe server is serving an older or altered keyring, for example after a restore from backup; it can also be tampering. Do not go on until you confirm with your admin which it is. If the server was restored, remove the \"anchors\" entry %q from %s, then run the command again", err, key, path)
+}
+
 func runPin(args []string) error {
 	const usage = "cairn pin USER [--verified] [--accept-new-key] [--json]"
 	fs := flag.NewFlagSet("pin", flag.ExitOnError)
@@ -52,7 +68,7 @@ func runPin(args []string) error {
 	}
 	res, err := c.Pin(pos[0], *verified, *acceptNewKey)
 	if err != nil {
-		return err
+		return explainRefusal(c, err)
 	}
 	if *jsonOut {
 		return printJSON(map[string]string{"user": res.User.ID, "email": res.User.Email, "fp": res.User.FP, "prior": res.Prior, "state": res.State})
@@ -79,7 +95,7 @@ func runMembers(args []string) error {
 	}
 	va, rows, err := c.Members(a.ID)
 	if err != nil {
-		return err
+		return explainRefusal(c, err)
 	}
 	if *jsonOut {
 		out := make([]map[string]string, 0, len(rows))
@@ -119,7 +135,7 @@ func runShare(args []string) error {
 	}
 	res, err := c.Share(a.ID, pos[1], *role, *acceptNewKey)
 	if err != nil {
-		return err
+		return explainRefusal(c, err)
 	}
 	if *jsonOut {
 		return printJSON(map[string]any{

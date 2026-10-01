@@ -2326,8 +2326,15 @@ export function loadKeyringAnchor(storage, userId, fp) {
   return { rev: a.rev, hash: a.hash };
 }
 
-// saveKeyringAnchor stores the anchor for userId under fingerprint fp.
+// saveKeyringAnchor stores the anchor for userId under fingerprint fp. It
+// never lowers the stored rev (KeyringRollbackError), and never replaces the
+// hash at the stored rev (KeyringForkError); the stored anchor stays.
 export function saveKeyringAnchor(storage, userId, fp, anchor) {
   checkKeyringAnchor(anchor);
+  const cur = loadKeyringAnchor(storage, userId, fp);
+  if (cur) {
+    if (anchor.rev < cur.rev) throw new KeyringRollbackError(`refusing to lower the stored keyring anchor from rev ${cur.rev} to ${anchor.rev}`);
+    if (anchor.rev === cur.rev && anchor.hash !== cur.hash) throw new KeyringForkError(`refusing to replace the stored keyring anchor at rev ${cur.rev}`);
+  }
   storage.setItem(keyringAnchorStorageKey(userId, fp), JSON.stringify({ rev: anchor.rev, hash: anchor.hash }));
 }

@@ -329,3 +329,57 @@ func TestResetNewDeletesKeyring(t *testing.T) {
 	}
 	c.mustDo("PUT", "/api/me/keyring", keyringWire{Rev: 1, Keyring: e2e.B64([]byte("new"))}, nil, http.StatusOK)
 }
+
+// TestResetRecoveryKeepsKeyring: recovery mode keeps MK, so the keyring
+// sealed under it still opens. The reset goes through SetPassword, which
+// must leave the keyring and its rev alone.
+func TestResetRecoveryKeepsKeyring(t *testing.T) {
+	s, ts := testServer(t)
+	w, seed, _ := signedBundleWire(t)
+	hash, err := auth.HashPassword(string(testAuthKey("pw")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := decodeBundle(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := s.store.CreateAccount("ada@example.com", "Ada", hash, bundle, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.MarkVerified(u.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	c := &testClient{t: t, base: ts.URL}
+	loginAgain(t, c, "ada@example.com", "pw")
+	sealed := e2e.B64([]byte("keyring sealed under the kept MK"))
+	c.mustDo("PUT", "/api/me/keyring", keyringWire{Rev: 1, Keyring: sealed}, nil, http.StatusOK)
+
+	forgotPassword(t, ts.URL, "ada@example.com")
+	msg, _ := mailer(s).Last("ada@example.com")
+	rawToken := extractFragmentToken(t, msg.Body)
+	tokenBytes, err := e2e.UnB64(rawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(resetProofBody{V: 1, User: u.ID, Token: hashToken(tokenBytes)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := e2e.Sign(seed, "reset", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.mustDo("POST", "/api/auth/reset/complete", map[string]any{
+		"token": rawToken, "mode": "recovery", "authKey": e2e.B64(testAuthKey("new-pw")),
+		"kdf": testBundleWire().KDF, "mkPassword": testBundleWire().MKPassword, "proof": e2e.B64(sig),
+	}, nil, http.StatusOK)
+
+	loginAgain(t, c, "ada@example.com", "new-pw")
+	var got keyringWire
+	c.mustDo("GET", "/api/me/keyring", nil, &got, http.StatusOK)
+	if got.Rev != 1 || got.Keyring != sealed {
+		t.Errorf("keyring after a recovery-mode reset = %+v, want rev 1 and the sealed bytes kept", got)
+	}
+}

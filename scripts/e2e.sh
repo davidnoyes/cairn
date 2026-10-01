@@ -71,7 +71,7 @@ AUTH=(-H "Authorization: Bearer $BEARER")
 curl -sf -X POST "$HOST/api/artifacts/$AID/resources" \
   "${AUTH[@]}" -H 'Content-Type: application/json' \
   -d '{"type":"claude-session","value":"sess-e2e"}' >/dev/null
-curl -sf "${AUTH[@]}" "$HOST/api/artifacts/sess-e2e" | grep -q "$AID" || fail "API lookup by resource value"
+curl -sf "${AUTH[@]}" "$HOST/api/artifacts/sess-e2e" | grep "$AID" >/dev/null || fail "API lookup by resource value"
 pass "API resolves resource value to artifact"
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/artifacts/sess-e2e")
 [[ "$STATUS" == "404" ]] || fail "anonymous lookup of a private artifact ($STATUS)"
@@ -83,11 +83,14 @@ echo "== serving"
 LOC=$(curl -s -o /dev/null -w '%{redirect_url}' "${AUTH[@]}" "$HOST/artifacts/$AID")
 [[ "$LOC" == "$HOST/artifacts/$AID/$VID/" || "$LOC" == "/artifacts/$AID/$VID/" ]] || fail "latest redirect ($LOC)"
 pass "artifact redirects to latest version"
-curl -sf "${AUTH[@]}" "$HOST/artifacts/$AID/$VID/" | grep -q "Guestbook" || fail "index served"
+# grep without -q reads the whole body. With -q it exits at the first match,
+# curl then fails writing to the closed pipe (exit 23), and pipefail reports
+# the pipeline as failed, which is how "cairn.js injected" flaked.
+curl -sf "${AUTH[@]}" "$HOST/artifacts/$AID/$VID/" | grep "Guestbook" >/dev/null || fail "index served"
 pass "index.html served"
-curl -sf "${AUTH[@]}" "$HOST/artifacts/$AID/$VID/cairn.js" | grep -q "cairn.js" || fail "cairn.js injected"
+curl -sf "${AUTH[@]}" "$HOST/artifacts/$AID/$VID/cairn.js" | grep "cairn.js" >/dev/null || fail "cairn.js injected"
 pass "cairn.js available inside version"
-curl -sf "${AUTH[@]}" "$HOST/shared/$AID" | grep -q "iframe" || fail "shared shell"
+curl -sf "${AUTH[@]}" "$HOST/shared/$AID" | grep "iframe" >/dev/null || fail "shared shell"
 pass "shared shell renders"
 
 echo "== shared database"
@@ -102,7 +105,7 @@ pass "SQL write + read through CLI"
 # The bearer reads over plain HTTP. The artifact is private, so an anonymous
 # caller finds nothing, read or write.
 curl -sf -X POST "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/db/query" \
-  -H 'Content-Type: application/json' -d '{"sql":"SELECT COUNT(*) FROM entries"}' | grep -q '\[\[1\]\]' \
+  -H 'Content-Type: application/json' -d '{"sql":"SELECT COUNT(*) FROM entries"}' | grep '\[\[1\]\]' >/dev/null \
   || fail "bearer read"
 pass "bearer read over HTTP"
 for SQL in 'SELECT COUNT(*) FROM entries' 'DELETE FROM entries'; do
@@ -118,7 +121,7 @@ echo "hello file" > "$WORK/note.txt"
 "$BIN" files list --artifact guestbook | grep -q "notes/hello.txt" || fail "file list"
 "$BIN" files get notes/hello.txt --artifact guestbook | grep -q "hello file" || fail "file get"
 pass "file put + list + get through CLI"
-curl -sf "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt" | grep -q "hello file" \
+curl -sf "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt" | grep "hello file" >/dev/null \
   || fail "bearer file read"
 pass "bearer file read over HTTP"
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt")
@@ -141,7 +144,7 @@ VID2=$(python3 -c "import json;print(json.load(open('$WORK/push2.json'))['versio
 # v2's database is fresh; the old version's data is still reachable read-only.
 curl -sf -X POST "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/db/query" \
   -H 'Content-Type: application/json' -d '{"sql":"SELECT message FROM entries"}' \
-  | grep -q "hello from e2e" || fail "old version data lost"
+  | grep "hello from e2e" >/dev/null || fail "old version data lost"
 pass "per-version databases isolated; old data readable"
 "$BIN" push "$ROOT/examples/guestbook" --artifact guestbook --overwrite latest --changelog "rewritten" >/dev/null
 pass "re-upload (overwrite latest)"
@@ -196,7 +199,7 @@ pass "cairn share adds a viewer and pins their key unverified"
 "$BIN" members notes | grep -E "viewer +share@e2e.test +verified" >/dev/null || fail "members after pin --verified"
 pass "cairn pin --verified shows in cairn members"
 
-curl -sf "${AUTH2[@]}" "$HOST/artifacts/$NID/$NVID/" | grep -q "Guestbook" || fail "the member cannot read the artifact"
+curl -sf "${AUTH2[@]}" "$HOST/artifacts/$NID/$NVID/" | grep "Guestbook" >/dev/null || fail "the member cannot read the artifact"
 curl -sf "${AUTH2[@]}" "$HOST/api/artifacts/$NID/keys" \
   | python3 -c "import json,sys;k=json.load(sys.stdin);assert [w['epoch'] for w in k['wraps']]==[1] and k['estate']==[], k" \
   || fail "the member holds no wrap of epoch 1"
@@ -215,6 +218,55 @@ python3 -c "import json;c=json.load(open('$CONFIG2'));assert c['apiKey']=='' and
 echo "share-flow-strong-pw-1" | CAIRN_CONFIG="$CONFIG2" "$BIN" login --host "$HOST" --email share@e2e.test --password-stdin >/dev/null
 CAIRN_CONFIG="$CONFIG2" "$BIN" members "$NID" | grep -E "editor +share@e2e.test +self" >/dev/null || fail "members after signing in again"
 pass "logout keeps the keyring anchor, and signing in again reads the keyring against it"
+
+echo "== keyring refusals"
+"$BIN" members notes --json > "$WORK/members.json" || fail "members --json"
+jq -e '(.artifact | type == "string") and (.epoch | type == "number") and (.seq | type == "number")
+  and (.members | type == "array" and length == 2)
+  and all(.members[]; has("user") and has("name") and has("email") and has("role") and has("fp") and has("state"))' \
+  "$WORK/members.json" >/dev/null || fail "members --json fields: $(cat "$WORK/members.json")"
+"$BIN" pin share@e2e.test --json > "$WORK/pin.json" || fail "pin --json"
+jq -e '.email == "share@e2e.test" and (.user | length > 0) and (.fp | length == 64) and .prior == "verified" and .state == "verified"' \
+  "$WORK/pin.json" >/dev/null || fail "pin --json fields: $(cat "$WORK/pin.json")"
+pass "members --json and pin --json carry the fields an agent reads"
+
+if "$BIN" share notes nobody@e2e.test >/dev/null 2>"$WORK/unknown.err"; then
+  fail "share with an unknown email succeeded"
+fi
+grep -q "no user with that email or id" "$WORK/unknown.err" || fail "share failed for another reason: $(cat "$WORK/unknown.err")"
+pass "share with an unknown email is refused"
+
+# Roll the admin's keyring back in the server's own database, as a restore
+# from backup would. Reading and writing the row straight in sqlite is the
+# attack the anchor exists for.
+keyring_row() {  # get, or put REV HEX
+  python3 - "$WORK/data/cairn.db" "$@" <<'PY'
+import sqlite3, sys
+db = sqlite3.connect(sys.argv[1], timeout=10)
+who = "(SELECT id FROM users WHERE email = 'admin@e2e.test')"
+if sys.argv[2] == "get":
+    rev, kr = db.execute(f"SELECT rev, keyring FROM user_keyrings WHERE user_id = {who}").fetchone()
+    print(rev, kr.hex())
+else:
+    db.execute(f"UPDATE user_keyrings SET rev = ?, keyring = ? WHERE user_id = {who}", (int(sys.argv[3]), bytes.fromhex(sys.argv[4])))
+    db.commit()
+PY
+}
+OLD_ROW=$(keyring_row get)
+"$BIN" artifact create rollback-probe >/dev/null     # writes the keyring, so the anchor moves past OLD_ROW
+NEW_ROW=$(keyring_row get)
+[[ "$OLD_ROW" != "$NEW_ROW" ]] || fail "creating an artifact did not change the keyring"
+keyring_row put $OLD_ROW
+if "$BIN" members notes >/dev/null 2>"$WORK/rollback.err"; then
+  fail "members accepted a rolled-back keyring"
+fi
+grep -q "older or altered keyring" "$WORK/rollback.err" || fail "rollback refused without the recovery message: $(cat "$WORK/rollback.err")"
+grep -q "$CAIRN_CONFIG" "$WORK/rollback.err" || fail "the recovery message does not name the config file: $(cat "$WORK/rollback.err")"
+grep -q "$HOST " "$WORK/rollback.err" || fail "the recovery message does not name the anchors entry: $(cat "$WORK/rollback.err")"
+pass "a rolled-back keyring is refused, with how to recover"
+keyring_row put $NEW_ROW
+"$BIN" members notes >/dev/null || fail "members after the keyring was put back"
+pass "the same keyring, put back, is accepted again"
 
 echo "== backup"
 "$BIN" backup --data-dir "$WORK/data" --out "$WORK/backup" >/dev/null

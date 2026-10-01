@@ -7,7 +7,7 @@
 # mutation must still compile: a build failure is reported, not counted.
 
 internal/server/middleware.go	|| strings.Contains(next, `\`) {	{	go test ./internal/server -run 'TestSafeNext|TestLoginNextRejectsBackslash'
-internal/mail/mail.go	if strings.ContainsAny(m.To, "\r\n") || strings.ContainsAny(m.Subject, "\r\n") {	if false {	go test ./internal/mail -run TestSendRejectsHeaderInjection
+internal/mail/mail.go	if strings.ContainsAny(m.To, "\r\n") || strings.ContainsAny(m.Subject, "\r\n") {	if false && strings.ContainsAny(m.To, "\r\n") {	go test ./internal/mail -run TestSendRejectsHeaderInjection
 internal/server/serving.go	if _, err := os.Stat(filepath.Join(root, clean)); err != nil {	if true {	go test ./internal/server -run TestSqlJSPrecedence
 internal/mail/mail.go	func (l *Log) Send(_ context.Context, m Message) error {	func (l *Log) Send(_ context.Context, m Message) error { validate := func(Message) error { return nil }	go test ./internal/mail -run TestMailersRejectInvalidMessages
 internal/mail/mail.go	func (s *SMTP) Send(_ context.Context, m Message) error {	func (s *SMTP) Send(_ context.Context, m Message) error { validate := func(Message) error { return nil }	go test ./internal/mail -run TestMailersRejectInvalidMessages
@@ -54,18 +54,39 @@ internal/client/keyring.go	if errors.As(err, &apiErr) && apiErr.Status == http.S
 internal/client/keyring.go	CurrentOwnerFP: currentOwnerFP, Pin: kr.EpochPin(artifactID),	CurrentOwnerFP: currentOwnerFP, Pin: nil,	go test ./internal/client -run 'TestVerifyRefusesAShortenedOrForkedChain'
 internal/client/keyring.go	if p, ok := kr.Pins[creator]; ok {	if p, ok := kr.Pins[creator]; ok && false {	go test ./internal/client -run 'TestVerifyAnchorsAtThePinNotTheDirectory'
 internal/client/keyring.go	if kr.Epochs[artifactID] == want && pin == nil {	if kr.Epochs[artifactID] == want || pin == nil {	go test ./internal/client -run 'TestCreateArtifactRecordsTheEpoch|TestShareAddsAMember'
-internal/client/keyring.go	if cur, ok := kr.Epochs[artifactID]; !ok || cur.Seq < chain.Latest.Seq {	if true {	go test ./internal/client -run 'TestRecordChainKeepsTheLaterEntry'
+internal/client/keyring.go	if !ok || cur.Seq < chain.Latest.Seq {	if true {	go test ./internal/client -run 'TestRecordChainKeepsTheLaterEntry'
 internal/client/keyring.go	if _, ok := kr.Pins[creator]; pin != nil && !ok {	if _, ok := kr.Pins[creator]; pin != nil || !ok {	go test ./internal/client -run 'TestRecordChainKeepsAPinStoredMeanwhile'
 internal/client/share.go	if !acceptNewKey {	if false {	go test ./internal/client -run 'TestShareRefusesAChangedKey'
 internal/client/share.go	if e := ExcludedMatch(latest.Excluded, u); e != nil {	if e := ExcludedMatch(latest.Excluded, u); false && e != nil {	go test ./internal/client -run 'TestShareRefusesAnExcludedUser'
 internal/client/share.go	if err := CheckDirectory(dir); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -run 'TestShareRefusesADuplicateDirectory'
 internal/client/share.go	case members[i].Role == "editor" && role == "viewer":	case false:	go test ./internal/client -run 'TestSharePromotesAndRefusesDemotion'
 internal/client/share.go	if want, ok := commits[e.Epoch]; !ok || commit != want {	if want, ok := commits[e.Epoch]; !ok && commit != want {	go test ./internal/client -run 'TestShareRefusesAnEstateCopyThatMissesTheCommit'
-cmd/cairn/config.go	f.cliConfig = cfg	f = configFile{cliConfig: cfg}	go test ./cmd/cairn -run TestKeyringAnchorSurvivesLogoutAndLogin
+cmd/cairn/config.go	f.cliConfig = cfg	*f = configFile{cliConfig: cfg}	go test ./cmd/cairn -run TestKeyringAnchorSurvivesLogoutAndLogin
 internal/client/share.go	if e.User == u.ID || e.FP == u.FP || e2e.NormalizeEmail(e.Email) == email {	if e.User == u.ID || e.FP == u.FP || e.Email == email {	go test ./internal/client -run TestExcludedMatch
 internal/store/archives.go	DELETE FROM user_keyrings WHERE user_id = ?	DELETE FROM user_keyrings WHERE user_id = '-'	go test ./internal/store -run TestResetAccountDeletesKeyring
 internal/server/handlers_auth.go	return func() error { return s.store.ResetAccount(u.ID, authHash, bundle, s.clk.Now()) }, true	return func() error { return s.store.SetPassword(u.ID, authHash, "{}", bundle.MKPassword) }, true	go test ./internal/server -run TestResetNewDeletesKeyring
-cmd/cairn/config.go	return a.host + " " + userID + " " + fp }	return a.host + " " + userID }	go test ./cmd/cairn -run TestConfigAnchorsAreKeyedByHostUserAndFingerprint
+cmd/cairn/config.go	return host + " " + userID + " " + fp	return host + " " + userID	go test ./cmd/cairn -run TestConfigAnchorsAreKeyedByHostUserAndFingerprint
 internal/client/keyring.go	store.LoadAnchor(k.UserID, k.FP)	store.LoadAnchor(k.UserID, "")	go test ./internal/client -run TestKeyringAnchorIsPerFingerprint
 internal/server/web/e2e.mjs	if (typeof fp !== 'string' || fp === '') throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	return `cairn.keyringAnchor.${userId}.${fp}`;	return `cairn.keyringAnchor.${userId}`;	node --test internal/server/web/e2e_test.mjs
+
+# Pin and chain races, the CLI anchor store, and the recovery guidance (milestone 3 step 4 fixes).
+internal/client/share.go	case cur.FP == pin.FP && cur.State == e2e.PinVerified:	case false:	go test ./internal/client -run TestStorePinHoldsAgainstAConcurrentPin
+internal/client/share.go	case cur.FP != pin.FP && cur.FP != basedOn:	case false:	go test ./internal/client -run TestStorePinHoldsAgainstAConcurrentPin
+internal/client/share.go	}, nil); err != nil {	}, nil); err != nil && false {	go test ./internal/client -run TestShareLeavesNoPinWhenTheMembershipWriteFails
+internal/client/keyring.go	if p, ok := kr.Pins[creator]; ok && anchorFP != "" && p.FP != anchorFP {	if p, ok := kr.Pins[creator]; ok && anchorFP != "" && p.FP != anchorFP && false {	go test ./internal/client -run TestRecordChainRefusesAMismatchedCreatorPin
+internal/client/keyring.go	anchorFP = pin.FP	anchorFP = ""	go test ./internal/client -run TestRecordChainRefusesAMismatchedCreatorPin
+internal/client/keyring.go	anchorFP = kr.Pins[creator].FP	anchorFP = ""	go test ./internal/client -run TestRecordChainRefusesAMismatchedCreatorPin
+internal/client/keyring.go	if ok && cur.Seq == chain.Latest.Seq && cur.Head != chain.Head {	if false && ok && cur.Seq == chain.Latest.Seq && cur.Head != chain.Head {	go test ./internal/client -run TestRecordChainRefusesAForkedEpochEntry
+internal/client/keyring.go	&KeyringRefusedError{k.UserID, k.FP, err}	&KeyringRefusedError{k.UserID, "", err}	go test ./cmd/cairn -run TestRefusedKeyringTellsTheUserHowToRecover
+cmd/cairn/config.go	if anchor.Rev < cur.Rev {	if false {	go test ./cmd/cairn -run 'TestSaveAnchorIsMonotonic|TestConfigAnchorKeyNormalizesTheHost'
+cmd/cairn/config.go	if anchor.Rev == cur.Rev && anchor.Hash != cur.Hash {	if false {	go test ./cmd/cairn -run TestSaveAnchorIsMonotonic
+cmd/cairn/config.go	unlock, err := lockConfig(path + ".lock")	unlock, err := func(string) (func(), error) { return func() {}, nil }(path + ".lock")	go test -count=3 ./cmd/cairn -run TestSaveAnchorConcurrentWritersEndAtTheMax
+cmd/cairn/config.go	if err := syncFile(tmp); err != nil {	if err := error(nil); err != nil {	go test ./cmd/cairn -run TestConfigWriteFailureKeepsThePreviousFile
+cmd/cairn/config.go	if err := os.Chmod(tmp.Name(), 0o600); err != nil {	if err := os.Chmod(tmp.Name(), 0o644); err != nil {	go test ./cmd/cairn -run TestConfigFileIsPrivate
+cmd/cairn/config.go	u.Scheme, u.Host = strings.ToLower(u.Scheme), strings.ToLower(u.Host)	_ = strings.ToLower; u.Scheme, u.Host = u.Scheme, u.Host	go test ./cmd/cairn -run TestConfigAnchorKeyNormalizesTheHost
+cmd/cairn/share_cmds.go	if !errors.As(err, &refused) {	if errors.As(err, &refused) {	go test ./cmd/cairn -run 'TestRefusedKeyringTellsTheUserHowToRecover'
+cmd/cairn/share_cmds.go	key := configAnchors{host: c.Host}.key(refused.UserID, refused.FP)	key := configAnchors{host: c.Host}.key(refused.UserID, "")	go test ./cmd/cairn -run TestRefusedKeyringTellsTheUserHowToRecover
+internal/server/web/e2e.mjs	if (anchor.rev < cur.rev) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (anchor.rev === cur.rev && anchor.hash !== cur.hash) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
+internal/store/bundles.go	if _, err := tx.Exec(`UPDATE users SET auth_hash = ?, token_version = token_version + 1 WHERE id = ?`, authHash, userID); err != nil {	tx.Exec(`DELETE FROM user_keyrings WHERE user_id = ?`, userID); if _, err := tx.Exec(`UPDATE users SET auth_hash = ?, token_version = token_version + 1 WHERE id = ?`, authHash, userID); err != nil {	go test ./internal/server -run TestResetRecoveryKeepsKeyring

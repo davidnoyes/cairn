@@ -1371,6 +1371,26 @@ test('the keyring anchor is kept per user and fingerprint and survives signing o
   assert.throws(() => e2e.saveKeyringAnchor(storage, 'u-ada', FP_A, { rev: 1, hash: 'nope' }), e2e.FormatError);
 });
 
+test('saving a keyring anchor never lowers the rev or replaces the hash at it', async () => {
+  const storage = fakeStorage();
+  const key = await e2e.mkSealKey(testKeyBytes(8));
+  const k = e2e.newKeyring();
+  const anchors = [];
+  for (const rev of [1, 2]) {
+    k.rev = rev;
+    anchors.push((await e2e.openKeyring(key, rev, await e2e.sealKeyring(key, k), null)).anchor);
+  }
+  const other = { rev: 2, hash: 'c'.repeat(64) };
+
+  e2e.saveKeyringAnchor(storage, 'u-ada', FP_A, anchors[1]);
+  e2e.saveKeyringAnchor(storage, 'u-ada', FP_A, anchors[1]); // the same anchor again is fine
+  assert.throws(() => e2e.saveKeyringAnchor(storage, 'u-ada', FP_A, anchors[0]), e2e.KeyringRollbackError);
+  assert.throws(() => e2e.saveKeyringAnchor(storage, 'u-ada', FP_A, other), e2e.KeyringForkError);
+  assert.deepEqual(e2e.loadKeyringAnchor(storage, 'u-ada', FP_A), anchors[1]);
+  e2e.saveKeyringAnchor(storage, 'u-ada', FP_A, { rev: 3, hash: 'd'.repeat(64) });
+  assert.equal(e2e.loadKeyringAnchor(storage, 'u-ada', FP_A).rev, 3);
+});
+
 test('vectors.json has no section this file does not check', () => {
   const handled = [
     'enc', 'derive', 'argon2', 'recoveryCode', 'apiKey', 'akCommit', 'seal',

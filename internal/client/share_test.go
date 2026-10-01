@@ -628,6 +628,162 @@ func TestVerifyWritesTheKeyringOnlyOnChange(t *testing.T) {
 	}
 }
 
+// TestStorePinHoldsAgainstAConcurrentPin has another device pin bob after
+// this command decided to pin him: a pin it would downgrade is kept, and a
+// pin at another fingerprint is an error, never overwritten.
+func TestStorePinHoldsAgainstAConcurrentPin(t *testing.T) {
+	s := newSharing(t)
+	k := mustUnlock(t, s.ada)
+	bobID := s.userID(t, s.bob)
+	dir, err := s.ada.Directory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bob, err := FindUser(dir, "bob@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unverified := e2e.Pin{FP: bob.FP, State: e2e.PinUnverified}
+	pinned := func() e2e.Pin {
+		kr, err := s.ada.ReadKeyring(k)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return kr.Pins[bobID]
+	}
+
+	// Another device verified the same fingerprint meanwhile.
+	if _, err := s.ada.Pin("bob@example.com", true, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ada.storePin(k, bobID, unverified, ""); err != nil {
+		t.Fatalf("storePin over a verified pin at the same fingerprint: %v", err)
+	}
+	if p := pinned(); p.State != e2e.PinVerified {
+		t.Errorf("pin = %+v, want the verified state kept", p)
+	}
+
+	// Another device pinned a different fingerprint meanwhile.
+	other := testPin(5)
+	if _, err := s.ada.UpdateKeyring(k, func(kr *e2e.Keyring) error {
+		kr.Pins[bobID] = other
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ada.storePin(k, bobID, unverified, ""); !errors.Is(err, ErrPinConflict) {
+		t.Errorf("storePin over another device's pin: %v, want ErrPinConflict", err)
+	}
+	if p := pinned(); p != other {
+		t.Errorf("pin = %+v, want the other device's %+v kept", p, other)
+	}
+	// A decision made on that very fingerprint, as --accept-new-key does, replaces it.
+	if err := s.ada.storePin(k, bobID, unverified, other.FP); err != nil {
+		t.Fatalf("storePin replacing the pin the decision was based on: %v", err)
+	}
+	if p := pinned(); p != unverified {
+		t.Errorf("pin = %+v, want %+v", p, unverified)
+	}
+}
+
+// TestShareLeavesNoPinWhenTheMembershipWriteFails fails the membership PUT
+// and checks the keyring still holds no pin for the user.
+func TestShareLeavesNoPinWhenTheMembershipWriteFails(t *testing.T) {
+	s := newSharing(t)
+	k := mustUnlock(t, s.ada)
+	before, err := s.ada.ReadKeyring(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.ada.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method == "PUT" && strings.HasSuffix(r.URL.Path, "/membership") {
+			return &http.Response{
+				StatusCode: 500, Header: http.Header{"Content-Type": {"application/json"}},
+				Body: io.NopCloser(strings.NewReader(`{"error":"disk on fire"}`)), Request: r,
+			}, nil
+		}
+		return http.DefaultTransport.RoundTrip(r)
+	})}
+	_, err = s.ada.Share(s.artifact, "bob@example.com", "viewer", false)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != 500 {
+		t.Fatalf("Share: %v, want the server's 500", err)
+	}
+	after, err := s.ada.ReadKeyring(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Rev != before.Rev || len(after.Pins) != len(before.Pins) {
+		t.Errorf("keyring after a failed share = rev %d with %d pins, want rev %d with %d", after.Rev, len(after.Pins), before.Rev, len(before.Pins))
+	}
+}
+
+// TestRecordChainRefusesAMismatchedCreatorPin has another device change the
+// creator's pin after this one verified the chain against the old one.
+func TestRecordChainRefusesAMismatchedCreatorPin(t *testing.T) {
+	s := newSharing(t)
+	if _, err := s.ada.Share(s.artifact, "bob@example.com", "viewer", false); err != nil {
+		t.Fatal(err)
+	}
+	k := mustUnlock(t, s.bob)
+	va, err := s.bob.VerifyArtifact(k, s.artifact, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	adaID := s.userID(t, s.ada)
+	verifiedAgainst := va.Keyring.Pins[adaID]
+	other := testPin(7)
+	if _, err := s.bob.UpdateKeyring(k, func(kr *e2e.Keyring) error {
+		kr.Pins[adaID] = other
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, pin := range map[string]*e2e.Pin{"first-sight pin": &verifiedAgainst, "stored pin": nil} {
+		stale := e2e.NewKeyring()
+		stale.Pins[adaID] = verifiedAgainst
+		if _, err := s.bob.recordChain(k, stale, s.artifact, va.Chain, adaID, pin); !errors.Is(err, ErrPinConflict) {
+			t.Errorf("recordChain with a %s: %v, want ErrPinConflict", name, err)
+		}
+	}
+	kr, err := s.bob.ReadKeyring(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kr.Pins[adaID] != other {
+		t.Errorf("pin = %+v, want the other device's %+v kept", kr.Pins[adaID], other)
+	}
+}
+
+// TestRecordChainRefusesAForkedEpochEntry has the keyring hold the same seq
+// at another head: the chain just verified forks from what was stored.
+func TestRecordChainRefusesAForkedEpochEntry(t *testing.T) {
+	s := newSharing(t)
+	k := mustUnlock(t, s.ada)
+	va, err := s.ada.VerifyArtifact(k, s.artifact, k.FP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forked := e2e.KeyringEpoch{Epoch: va.Chain.Latest.Epoch, Seq: va.Chain.Latest.Seq, Head: strings.Repeat("a", 64)}
+	if _, err := s.ada.UpdateKeyring(k, func(kr *e2e.Keyring) error {
+		kr.Epochs[s.artifact] = forked
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ada.recordChain(k, e2e.NewKeyring(), s.artifact, va.Chain, k.UserID, nil); !errors.Is(err, e2e.ErrFork) {
+		t.Errorf("recordChain over an entry at another head: %v, want ErrFork", err)
+	}
+	kr, err := s.ada.ReadKeyring(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kr.Epochs[s.artifact] != forked {
+		t.Errorf("epochs entry = %+v, want the stored one kept", kr.Epochs[s.artifact])
+	}
+}
+
 // TestRecordChainKeepsAPinStoredMeanwhile has bob verify ada's pin while a
 // first-sight recordChain still holds a keyring without it: the merge must
 // keep the verified pin, not overwrite it with the unverified one.

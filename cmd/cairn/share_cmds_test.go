@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -276,5 +278,211 @@ func TestShareCommandRefusals(t *testing.T) {
 	res := runJSON[map[string]any](t, runShare, artifact, "bob@example.com", "--role", "editor", "--accept-new-key", "--json")
 	if res["prior"] != e2e.PinChanged || res["fp"] != changed.CurrentFP {
 		t.Errorf("share --accept-new-key = %v", res)
+	}
+}
+
+// resetBob resets bob's account without his recovery code, so his keys change.
+func resetBob(t *testing.T, host string, m *mail.Capture) {
+	t.Helper()
+	if err := client.New(host, "").Forgot("bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.New(host, "").ResetNew(verifyLink(t, m, "bob@example.com"), "a brand new password"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPinCommand(t *testing.T) {
+	host, m, artifact := shareSetup(t)
+	if _, err := runQuiet(t, runPin, "nobody@example.com"); !errors.Is(err, client.ErrUnknownUser) {
+		t.Errorf("pin an unknown user: %v, want ErrUnknownUser", err)
+	}
+	if _, err := runQuiet(t, runShare, artifact, "bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if pin := runJSON[map[string]string](t, runPin, "bob@example.com", "--verified", "--json"); pin["state"] != e2e.PinVerified {
+		t.Fatalf("pin --verified = %v", pin)
+	}
+	// Pinning again without --verified must not take the verification back.
+	again := runJSON[map[string]string](t, runPin, "bob@example.com", "--json")
+	if again["prior"] != e2e.PinVerified || again["state"] != e2e.PinVerified {
+		t.Errorf("pin without --verified = %v, want verified kept", again)
+	}
+	if r := membersByEmail(t, artifact)["bob@example.com"]; r.State != e2e.PinVerified {
+		t.Errorf("bob's row = %+v, want verified", r)
+	}
+
+	resetBob(t, host, m)
+	_, err := runQuiet(t, runPin, "bob@example.com")
+	var changed *client.KeyChangedError
+	if !errors.As(err, &changed) || !strings.Contains(err.Error(), "--accept-new-key") {
+		t.Fatalf("pin a changed key: %v, want a KeyChangedError naming --accept-new-key", err)
+	}
+	if r := membersByEmail(t, artifact)["bob@example.com"]; r.State != e2e.PinChanged {
+		t.Errorf("bob's row after the refusal = %+v, want still changed", r)
+	}
+	res := runJSON[map[string]string](t, runPin, "bob@example.com", "--verified", "--accept-new-key", "--json")
+	if res["prior"] != e2e.PinChanged || res["state"] != e2e.PinVerified || res["fp"] != changed.CurrentFP {
+		t.Errorf("pin --verified --accept-new-key = %v", res)
+	}
+	if r := membersByEmail(t, artifact)["bob@example.com"]; r.State != e2e.PinVerified || r.FP == "" {
+		t.Errorf("bob's row after accepting = %+v, want verified", r)
+	}
+}
+
+func TestShareAlreadyAMemberAndNotOwner(t *testing.T) {
+	host, _, artifact := shareSetup(t)
+	if _, err := runQuiet(t, runShare, artifact, "bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runQuiet(t, runShare, artifact, "bob@example.com")
+	if err != nil || !strings.Contains(out, "already a viewer of shared; nothing changed") {
+		t.Errorf("sharing again printed %q, %v, want %q", out, err, "already a viewer of shared; nothing changed")
+	}
+	if res := runJSON[map[string]any](t, runShare, artifact, "bob@example.com", "--json"); res["unchanged"] != true {
+		t.Errorf("sharing again --json = %v, want unchanged", res)
+	}
+
+	t.Setenv("CAIRN_CONFIG", filepath.Join(t.TempDir(), "bob.json"))
+	cliLogin(t, host, "bob@example.com", sharePassword)
+	if _, err := runQuiet(t, runShare, artifact, "ada@example.com"); !errors.Is(err, client.ErrNotOwner) {
+		t.Errorf("share by a member who is not the owner: %v, want ErrNotOwner", err)
+	}
+}
+
+// TestMembersListsAMemberMissingFromTheDirectory drops bob from the
+// directory the server lists: his row stays, with no email and state "-".
+func TestMembersListsAMemberMissingFromTheDirectory(t *testing.T) {
+	host, _, artifact := shareSetup(t)
+	if _, err := runQuiet(t, runShare, artifact, "bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	target, err := url.Parse(host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := httputil.NewSingleHostReverseProxy(target)
+	p.ModifyResponse = func(resp *http.Response) error {
+		if resp.Request.URL.Path != "/api/users" {
+			return nil
+		}
+		var users []map[string]any
+		data, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err := json.Unmarshal(data, &users); err != nil {
+			return err
+		}
+		kept := users[:0]
+		for _, u := range users {
+			if u["email"] != "bob@example.com" {
+				kept = append(kept, u)
+			}
+		}
+		data, _ = json.Marshal(kept)
+		resp.Body = io.NopCloser(bytes.NewReader(data))
+		resp.ContentLength = int64(len(data))
+		resp.Header.Set("Content-Length", strconv.Itoa(len(data)))
+		return nil
+	}
+	ts := httptest.NewServer(p)
+	t.Cleanup(ts.Close)
+	cliLogin(t, ts.URL, "ada@example.com", sharePassword)
+
+	var bob memberRow
+	for _, r := range runJSON[struct {
+		Members []memberRow `json:"members"`
+	}](t, runMembers, artifact, "--json").Members {
+		if r.Role == "viewer" {
+			bob = r
+		}
+	}
+	if bob.User == "" || bob.Email != "" || bob.State != "-" {
+		t.Errorf("bob's row = %+v, want a viewer with no email and state -", bob)
+	}
+	text, err := runQuiet(t, runMembers, artifact)
+	if err != nil || !strings.Contains(text, "viewer  "+bob.User) {
+		t.Errorf("cairn members printed %q, %v, want bob listed by id", text, err)
+	}
+}
+
+// TestAPIClientFromEnvironmentKeepsAnchorsInTheConfig logs in through the
+// environment only, with CAIRN_CONFIG at a file that holds no login: the
+// anchor lands in that file.
+func TestAPIClientFromEnvironmentKeepsAnchorsInTheConfig(t *testing.T) {
+	host, _, artifact := shareSetup(t)
+	login := loadConfig()
+	path := filepath.Join(t.TempDir(), "agent.json")
+	t.Setenv("CAIRN_CONFIG", path)
+	t.Setenv("CAIRN_HOST", host)
+	t.Setenv("CAIRN_API_KEY", login.APIKey)
+
+	if out := runJSON[map[string]any](t, runMembers, artifact, "--json"); out["artifact"] != artifact {
+		t.Fatalf("members through the environment = %v", out)
+	}
+	f, err := readConfigFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.cliConfig != (cliConfig{}) {
+		t.Errorf("login in the agent's config = %+v, want none written", f.cliConfig)
+	}
+	if len(f.Anchors) != 1 {
+		t.Fatalf("anchors = %v, want one", f.Anchors)
+	}
+	for key, a := range f.Anchors {
+		if !strings.HasPrefix(key, host+" ") || a.Rev < 1 {
+			t.Errorf("anchor %q = %+v, want one for %s at rev 1 or more", key, a, host)
+		}
+	}
+}
+
+// TestRefusedKeyringTellsTheUserHowToRecover serves each keyring command a
+// wiped keyring and checks the error names the cause and the anchors entry
+// to remove, with the config file's real path.
+func TestRefusedKeyringTellsTheUserHowToRecover(t *testing.T) {
+	host, _, artifact := shareSetup(t)
+	var override atomic.Pointer[string]
+	proxy := keyringProxy(t, host, &override)
+	cliLogin(t, proxy, "ada@example.com", sharePassword)
+	runJSON[map[string]any](t, runMembers, artifact, "--json") // records the anchor
+	c, err := apiClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, err := c.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := configPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wiped := `{"rev":0,"keyring":""}`
+	override.Store(&wiped)
+
+	key := proxy + " " + k.UserID + " " + k.FP
+	for name, run := range map[string]func() error{
+		"pin":     func() error { _, err := runQuiet(t, runPin, "bob@example.com"); return err },
+		"members": func() error { _, err := runQuiet(t, runMembers, artifact); return err },
+		"share":   func() error { _, err := runQuiet(t, runShare, artifact, "bob@example.com"); return err },
+	} {
+		err := run()
+		if !errors.Is(err, e2e.ErrKeyringRollback) {
+			t.Errorf("%s: %v, want ErrKeyringRollback kept in the chain", name, err)
+			continue
+		}
+		for _, want := range []string{
+			"older or altered keyring", "restore from backup", "tampering", "confirm with your admin",
+			`remove the "anchors" entry "` + key + `" from ` + path,
+		} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: message %q lacks %q", name, err, want)
+			}
+		}
+	}
+	// A failure that is not a refusal gets no recovery advice.
+	override.Store(nil)
+	if _, err := runQuiet(t, runPin, "nobody@example.com"); err == nil || strings.Contains(err.Error(), "anchors") {
+		t.Errorf("pin an unknown user: %v, want an error with no anchor advice", err)
 	}
 }

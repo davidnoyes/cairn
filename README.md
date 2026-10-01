@@ -261,6 +261,19 @@ your keyring, sealed on the server. Each machine keeps a small anchor for
 it in its `cairn` config file, so a server that serves an older keyring, or a
 shorter membership chain, gets refused. `cairn logout` keeps the anchor.
 
+A refusal means the server is serving an older or altered keyring, for
+example after a restore from backup, or that someone tampered with it. The
+error prints the config path and the entry to look at. Confirm with your
+administrator which it is. If the server was restored, remove the `anchors`
+entry for `<host> <user ID> <fingerprint>` from that file. The next command
+then trusts the keyring the server serves.
+
+A device with no anchor, such as a new config file or cleared browser
+storage, trusts the first keyring it sees. Headless use with `CAIRN_HOST` and
+`CAIRN_API_KEY` keeps its anchor in the same config file, so point
+`CAIRN_CONFIG` at a persistent, writable file. Otherwise each run starts
+with no anchor and gets no rollback protection.
+
 A ready-made **Claude Code skill** ships in
 [`.claude/skills/cairn-artifact/`](.claude/skills/cairn-artifact/SKILL.md): it
 teaches Claude the whole build → test locally → publish → iterate workflow and

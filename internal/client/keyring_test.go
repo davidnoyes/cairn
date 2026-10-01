@@ -1,9 +1,12 @@
 package client
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -17,6 +20,9 @@ type memAnchors struct {
 	mu      sync.Mutex
 	m       map[string]e2e.KeyringAnchor
 	loadErr error
+	// saveErr is what the failSave'th save returns instead of storing.
+	saves, failSave int
+	saveErr         error
 }
 
 func newMemAnchors() *memAnchors { return &memAnchors{m: map[string]e2e.KeyringAnchor{}} }
@@ -37,6 +43,10 @@ func (s *memAnchors) LoadAnchor(userID, fp string) (*e2e.KeyringAnchor, error) {
 func (s *memAnchors) SaveAnchor(userID, fp string, a e2e.KeyringAnchor) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.saves++
+	if s.failSave != 0 && s.saves == s.failSave {
+		return s.saveErr
+	}
 	s.m[userID+" "+fp] = a
 	return nil
 }
@@ -354,6 +364,87 @@ func TestUpdateKeyringRefusesWithoutWriting(t *testing.T) {
 	}
 	if raw := rawKeyring(t, c); raw.Rev != 0 {
 		t.Errorf("server rev = %d after two refused changes, want 0", raw.Rev)
+	}
+}
+
+// roundTripFunc is an http.RoundTripper made from a function.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// TestUpdateKeyringRefusesARollbackAfterAConflict has device B write between
+// A's read and write, so A gets 409; then the server serves A an older
+// keyring on the re-read. A must return the refusal and make no second write.
+func TestUpdateKeyringRefusesARollbackAfterAConflict(t *testing.T) {
+	host, full := keyedLogin(t)
+	a, b := keyedFor(t, host, full), keyedFor(t, host, full)
+	ka, kb := mustUnlock(t, a), mustUnlock(t, b)
+	addPin(t, a, ka, "u1")
+	old := rawKeyring(t, a)
+	addPin(t, a, ka, "u2")
+	anchor := a.Anchors.(*memAnchors).get(t, ka.UserID, ka.FP)
+
+	puts, conflicted := 0, false
+	a.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/api/me/keyring" {
+			return http.DefaultTransport.RoundTrip(r)
+		}
+		if r.Method == "PUT" {
+			puts++
+			if !conflicted {
+				conflicted = true
+				addPin(t, b, kb, "from-b") // the server now holds rev 3
+			}
+			return http.DefaultTransport.RoundTrip(r)
+		}
+		resp, err := http.DefaultTransport.RoundTrip(r)
+		if err != nil || !conflicted {
+			return resp, err
+		}
+		resp.Body.Close()
+		body, _ := json.Marshal(old)
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		resp.ContentLength = int64(len(body))
+		return resp, nil
+	})}
+	_, err := a.UpdateKeyring(ka, func(kr *e2e.Keyring) error {
+		kr.Pins["from-a"] = testPin(1)
+		return nil
+	})
+	if !errors.Is(err, e2e.ErrKeyringRollback) {
+		t.Errorf("UpdateKeyring: %v, want ErrKeyringRollback", err)
+	}
+	if puts != 1 {
+		t.Errorf("A made %d writes, want only the one that got 409", puts)
+	}
+	if got := a.Anchors.(*memAnchors).get(t, ka.UserID, ka.FP); got != anchor {
+		t.Errorf("anchor moved to %+v, want %+v", got, anchor)
+	}
+}
+
+// TestUpdateKeyringReportsAFailedAnchorSave makes the anchor store fail the
+// save that follows a successful write: the caller must learn the keyring
+// changed but its anchor did not move.
+func TestUpdateKeyringReportsAFailedAnchorSave(t *testing.T) {
+	host, full := keyedLogin(t)
+	c := keyedFor(t, host, full)
+	k := mustUnlock(t, c)
+	saveErr := errors.New("disk full")
+	anchors := c.Anchors.(*memAnchors)
+	anchors.failSave, anchors.saveErr = 2, saveErr // save 1 is the read's, save 2 follows the write
+
+	_, err := c.UpdateKeyring(k, func(kr *e2e.Keyring) error {
+		kr.Pins["u1"] = testPin(1)
+		return nil
+	})
+	if !errors.Is(err, saveErr) || !strings.Contains(err.Error(), "the keyring was written, but saving its anchor failed") {
+		t.Errorf("UpdateKeyring: %v, want the save error wrapped", err)
+	}
+	if raw := rawKeyring(t, c); raw.Rev != 1 {
+		t.Errorf("server rev = %d, want the write to have landed", raw.Rev)
+	}
+	if got := anchors.get(t, k.UserID, k.FP); got.Rev != 0 {
+		t.Errorf("anchor = %+v, want it left at rev 0", got)
 	}
 }
 

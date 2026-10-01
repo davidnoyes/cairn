@@ -29,6 +29,10 @@ var (
 	ErrNotOwner = errors.New("only the artifact's owner can change its members")
 	// ErrShareSelf means the owner tried to share with themselves.
 	ErrShareSelf = errors.New("the owner already has access to the artifact")
+	// ErrPinConflict means another device pinned the user at a different
+	// fingerprint than the one this command decided on, between its read of
+	// the keyring and its write.
+	ErrPinConflict = errors.New("another device pinned this user at a different fingerprint; run the command again")
 )
 
 // KeyChangedError means a user's current keys differ from the ones pinned
@@ -187,9 +191,21 @@ func checkPin(kr *e2e.Keyring, u DirectoryUser, acceptNewKey bool) (string, *e2e
 	return state, nil, nil
 }
 
-// storePin writes a pin for user, replacing any other.
-func (c *Client) storePin(k *UnlockedKeys, user string, pin e2e.Pin) error {
+// storePin writes a pin for user. basedOn is the fingerprint the keyring
+// pinned for user when the caller decided on pin, or "" if it pinned none.
+// Against the keyring as it is when written, which another device may have
+// changed since: a pin at the same fingerprint is never downgraded from
+// verified, and a pin at a fingerprint other than basedOn is ErrPinConflict.
+func (c *Client) storePin(k *UnlockedKeys, user string, pin e2e.Pin, basedOn string) error {
 	_, err := c.UpdateKeyring(k, func(kr *e2e.Keyring) error {
+		if cur, ok := kr.Pins[user]; ok {
+			switch {
+			case cur.FP == pin.FP && cur.State == e2e.PinVerified:
+				return nil
+			case cur.FP != pin.FP && cur.FP != basedOn:
+				return fmt.Errorf("%w: %s", ErrPinConflict, user)
+			}
+		}
 		kr.Pins[user] = pin
 		return nil
 	})
@@ -203,7 +219,7 @@ type PinResult struct {
 	State string // the state stored
 }
 
-// Pin records who's current fingerprint in the keyring, unverified, or
+// Pin records the current fingerprint of who in the keyring, unverified, or
 // verified when the caller has compared it with them. A changed key is a
 // *KeyChangedError unless acceptNewKey.
 func (c *Client) Pin(who string, verified, acceptNewKey bool) (*PinResult, error) {
@@ -235,7 +251,7 @@ func (c *Client) Pin(who string, verified, acceptNewKey bool) (*PinResult, error
 		pin.State = e2e.PinVerified
 	}
 	if kr.Pins[u.ID] != *pin {
-		if err := c.storePin(k, u.ID, *pin); err != nil {
+		if err := c.storePin(k, u.ID, *pin, kr.Pins[u.ID].FP); err != nil {
 			return nil, err
 		}
 	}
@@ -366,12 +382,13 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 		res.Unchanged = !res.Promoted && !needsWraps
 		members[i] = e2e.Member{User: u.ID, Role: role, FP: u.FP}
 	}
-	if pin != nil {
-		if err := c.storePin(k, u.ID, *pin); err != nil {
-			return nil, err
-		}
-	}
+	basedOn := va.Keyring.Pins[u.ID].FP
 	if res.Unchanged {
+		if pin != nil {
+			if err := c.storePin(k, u.ID, *pin, basedOn); err != nil {
+				return nil, err
+			}
+		}
 		return res, nil
 	}
 	slices.SortFunc(members, func(a, b e2e.Member) int { return strings.Compare(a.User, b.User) })
@@ -418,6 +435,11 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 		"membership": env, "wraps": wraps, "estate": []any{}, "linkTokenHash": "",
 	}, nil); err != nil {
 		return nil, err
+	}
+	if pin != nil {
+		if err := c.storePin(k, u.ID, *pin, basedOn); err != nil {
+			return nil, fmt.Errorf("the server accepted the new membership record, but pinning %s failed: %w", u.Email, err)
+		}
 	}
 	if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
 		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
