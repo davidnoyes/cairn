@@ -744,8 +744,8 @@ public keys, and per-artifact CI keys follow as later milestones.
 5. **Encrypted metadata.** Names, descriptions, changelogs, resource values,
    and file names are all encrypted. Titles alone would tell a manager a great
    deal.
-6. **Hard divergence from upstream**, after offering the link-handling and
-   Mermaid work upstream.
+6. **Hard divergence from upstream.** Nothing from this fork is offered back
+   to `aloisdeniel/cairn`.
 7. **Self-signup** restricted by domain, with email verification.
 8. **No administrator recovery.** Passwords are reset only by an emailed link,
    and data returns only with the recovery code. Two-administrator recovery
