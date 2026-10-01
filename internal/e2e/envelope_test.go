@@ -216,6 +216,46 @@ func TestOpenRotationRejectsMissingNewSig(t *testing.T) {
 	}
 }
 
+// A rotation envelope proves control of the new key only through newSig,
+// which OpenEnvelope does not check, so OpenEnvelope must refuse the purpose.
+func TestOpenEnvelopeRefusesRotation(t *testing.T) {
+	oldSeed, oldPub, err := GenerateEd25519(newDRBG("rotation-generic-old"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	newSeed, newPub, err := GenerateEd25519(newDRBG("rotation-generic-new"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, x25519Pub, err := GenerateX25519(newDRBG("rotation-generic-x25519"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodyBytes, err := json.Marshal(RotationBody{
+		V: 1, User: "user-1", Seq: 1,
+		Old: KeyPair{X25519: B64(x25519Pub), Ed25519: B64(oldPub)},
+		New: KeyPair{X25519: B64(x25519Pub), Ed25519: B64(newPub)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := SignRotation(oldSeed, newSeed, bodyBytes, "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out RotationBody
+	if err := OpenRotation(env, oldPub, &out); err != nil {
+		t.Fatalf("OpenRotation: %v", err)
+	}
+	if err := OpenEnvelope(env, oldPub, "rotation", &out); !errors.Is(err, ErrFormat) {
+		t.Fatalf("OpenEnvelope(rotation): got %v, want ErrFormat", err)
+	}
+	env.NewSig = nil
+	if err := OpenEnvelope(env, oldPub, "rotation", &out); !errors.Is(err, ErrFormat) {
+		t.Fatalf("OpenEnvelope(rotation) without newSig: got %v, want ErrFormat", err)
+	}
+}
+
 func TestCheckPublicKeysAcceptsGenuineKeys(t *testing.T) {
 	_, x25519Pub, err := GenerateX25519(newDRBG("checkpub-x25519"))
 	if err != nil {

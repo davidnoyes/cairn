@@ -3,6 +3,7 @@ package e2e
 import (
 	"crypto/ed25519"
 	"crypto/sha512"
+	"encoding/json"
 	"io"
 	"math/big"
 	"testing"
@@ -192,6 +193,24 @@ func ed25519StrictTorsionVectors(t testing.TB) []ed25519StrictVec {
 		}
 	}
 
+	// R = p+k for the smallest k > 1 that is a curve y-coordinate: a
+	// non-canonical spelling of a point that is neither the identity nor
+	// small-order, unlike r-non-canonical's p+1. No signature with this R
+	// passes any curve equation (its discrete log is unknown), so only the
+	// encoding checks matter here.
+	var nonCanonicalPoint []byte
+	for k := int64(2); nonCanonicalPoint == nil; k++ {
+		canonical := encodeLE255(big.NewInt(k), false)
+		if p, err := new(edwards25519.Point).SetBytes(canonical[:]); err == nil && !isSmallOrderEd25519(canonical[:]) && p.Equal(edwards25519.NewIdentityPoint()) == 0 {
+			enc := encodeLE255(new(big.Int).Add(edwards25519P, big.NewInt(k)), false)
+			nonCanonicalPoint = enc[:]
+		}
+	}
+	sigEntries = append(sigEntries, ed25519StrictVec{
+		Name: "r-non-canonical-point", Pub: hexEnc(aEnc), Purpose: purpose, Body: hexEnc(body),
+		Sig: hexEnc(withR(nonCanonicalPoint, zero)), Why: "R spells an on-curve point other than the identity with y = p+k",
+	})
+
 	given := hexDec(t, mixedOrderKey)
 	if p := mustPoint(t, given); isSmallOrderEd25519(given) || inPrimeOrderSubgroup(t, p) {
 		t.Fatalf("%s is not a mixed-order key", mixedOrderKey)
@@ -207,4 +226,69 @@ func ed25519StrictTorsionVectors(t testing.TB) []ed25519StrictVec {
 		ed25519StrictVec{Name: "mixed-order-key", Pub: mixedOrderKey, Why: "on the curve and not small-order, but with a torsion component"},
 		ed25519StrictVec{Name: "not-on-curve", Pub: hexEnc(offCurve), Why: "y is canonical but no x satisfies the curve equation"},
 	)
+}
+
+// mixedOrderX25519 is the Montgomery u-coordinate of mixedOrderKey: a
+// canonical X25519 public key on the curve with a torsion component.
+func mixedOrderX25519(t testing.TB) []byte {
+	t.Helper()
+	p := mustPoint(t, hexDec(t, mixedOrderKey))
+	if inPrimeOrderSubgroup(t, p) {
+		t.Fatal("mixedOrderKey has no torsion component")
+	}
+	u := p.BytesMontgomery()
+	if isNonCanonicalX25519(u) {
+		t.Fatalf("%x is not canonical", u)
+	}
+	return u
+}
+
+// mixedOrderRotation is a rotation envelope whose new Ed25519 key is
+// mixed-order, A' = A + T with T of order 8, signed by the old key and with
+// a newSig that crypto/ed25519 accepts under A': the cofactorless equation
+// holds when k = 0 mod 8, so r is ground until it does. Only the key check
+// on the new Ed25519 key can refuse it as malformed.
+func mixedOrderRotation(t testing.TB, oldSeed, oldPub, x25519Pub []byte) rotationVec {
+	t.Helper()
+	newSeed := make([]byte, 32)
+	if _, err := io.ReadFull(newDRBG("vector-rotation-mixed-new"), newSeed); err != nil {
+		t.Fatal(err)
+	}
+	a, aEnc := ed25519Secret(t, newSeed)
+	order8 := mustPoint(t, smallOrderEd25519[4][:])
+	mixedPub := new(edwards25519.Point).Add(mustPoint(t, aEnc), order8).Bytes()
+	body, err := json.Marshal(RotationBody{
+		V: 1, User: "user-1", Seq: 2,
+		Old: KeyPair{X25519: B64(x25519Pub), Ed25519: B64(oldPub)},
+		New: KeyPair{X25519: B64(x25519Pub), Ed25519: B64(mixedPub)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := Enc([]byte(LabelSig), []byte("rotation"), body)
+	var newSig []byte
+	rnd := newDRBG("vector-rotation-mixed-r")
+	for i := 0; newSig == nil; i++ {
+		if i == 1000 {
+			t.Fatal("no k = 0 mod 8 in 1000 tries")
+		}
+		r := randomScalar(t, rnd)
+		rEnc := new(edwards25519.Point).ScalarBaseMult(r).Bytes()
+		if k := challenge(t, rEnc, mixedPub, msg); k.Bytes()[0]&7 == 0 {
+			newSig = sigWith(rEnc, r, k, a)
+		}
+	}
+	if !ed25519.Verify(mixedPub, msg, newSig) {
+		t.Fatal("newSig fails crypto/ed25519, so it would not isolate the new key check")
+	}
+	sig, err := Sign(oldSeed, "rotation", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rotationVec{
+		Name: "mixed-order-new-ed25519", OldSeed: hexEnc(oldSeed), OldPub: hexEnc(oldPub),
+		NewSeed: hexEnc(newSeed), NewPub: hexEnc(mixedPub), Signer: "user-1",
+		Body: hexEnc(body), Sig: hexEnc(sig), NewSig: hexEnc(newSig),
+		Refuse: "the new Ed25519 key has a torsion component; newSig passes the cofactorless equation",
+	}
 }

@@ -76,7 +76,10 @@ The overrides, and which primitives read them:
 - **`seal`**: one entry per row of the wire-format spec's sealed-value
   table. `key`, `fields`, `nonce` (the nonce embedded in `want`, for
   reference only — a verifier reads it from `want` itself), `pt`, `want`
-  (the sealed value).
+  (the sealed value). Every row but the keyring seals a 32-byte key, so its
+  `want` is 61 bytes and `OpenKey`/`openKey` must open it. The keyring isn't
+  a key, so `OpenKey`/`openKey` must refuse it with `ErrDecrypt`/
+  `DecryptError`, and only the generic `Open`/`open` opens it.
 - **`blob`**: one entry per tested size or shape. `ak`, `ctx` (`artifact`,
   `version`, `kind`, `name`), `salt`, `pt` or `ptRule`, `want` (the full
   blob). A `ptRule` (`{"rule": "i mod 251", "len": N}`) replaces `pt` for
@@ -86,7 +89,11 @@ The overrides, and which primitives read them:
   `artifact`, `epoch`, `recipientId`, `recipientPub`), `recipientPriv`,
   `ephPriv` (the ephemeral private key `want` was wrapped with — not part of
   the wire format, kept so a reader can confirm the ephemeral public key
-  inside `want` independently), `key` (the wrapped key), `want`.
+  inside `want` independently), `key` (the wrapped key), `want`. The
+  negatives include an `input` whose ephemeral public key is non-canonical:
+  one with the high bit set, and one encoding the base point as u = p+9.
+  Each is otherwise a valid wrap under the canonical key it reduces to, so
+  only a canonical-encoding check on the ephemeral public key refuses it.
 - **`signature`**: one entry per purpose in the wire-format spec's
   signature table, with a realistic body for that purpose. `purpose`,
   `seed`, `pub`, `body`, `signer`, `want` (the signature).
@@ -96,10 +103,12 @@ The overrides, and which primitives read them:
   `refuse` string has two valid signatures over a body that names a bad new
   key, such as a low-order X25519 key. `OpenRotation`/`openRotation` must
   refuse that entry as a whole with `ErrFormat`/`FormatError`, and `refuse`
-  says why. The "missing newSig" case isn't a vector here, since the
-  schema has no way to say an override makes a field absent rather than
-  unset; it's a direct Go
-  test (`envelope_test.go`) instead.
+  says why. In the `mixed-order-new-ed25519` entry, `newPub` is a prime-order
+  point plus a point of order 8, and `newSeed` is the seed of the prime-order
+  part. `newSig` passes the cofactorless equation under `newPub`, so only the
+  torsion check refuses it. The "missing newSig" case isn't a vector here,
+  since the schema has no way to say an override makes a field absent rather
+  than unset; it's a direct Go test (`envelope_test.go`) instead.
 - **`ed25519Strict`**: `pub` and `why`. Entries come in two kinds:
   - **A bad key.** `purpose`, `body`, and `sig` are empty, and the key alone
     must fail both `CheckPublicKeys` and `Verify`, including the universal
@@ -109,16 +118,19 @@ The overrides, and which primitives read them:
     canonical y with no matching x.
   - **A bad signature.** `purpose`, `body`, and `sig` are all set, and only
     `Verify` applies. The signatures are: S replaced by S + L; R the
-    identity, of order 8, or the identity encoded with y = p+1; R with a
-    torsion component; and a signature under a key with a torsion component
-    that passes the cofactorless equation.
+    identity, of order 8, or the identity encoded with y = p+1; R a
+    non-identity point encoded with y = p+k (`r-non-canonical-point`); R
+    with a torsion component; and a signature under a key with a torsion
+    component that passes the cofactorless equation.
 
   Each bad signature must also fail before the curve equation runs:
   `signatureEncodingOK` in Go, and `verify` with `subtle.verify` stubbed in
   JS. A verifier that relied on the equation would accept some of them.
-- **`x25519Strict`**: `pub` and `why`. Every entry is a non-canonical (high
-  bit set, or u >= p) or low-order X25519 public key that must fail
-  `CheckPublicKeys` on its own.
+- **`x25519Strict`**: `pub`, `why`, and `accept`. An entry without `accept`
+  is a non-canonical (high bit set, or u >= p) or low-order X25519 public
+  key that must fail `CheckPublicKeys` on its own. An entry with
+  `accept: true` must pass: `mixed-order` is a canonical key with a torsion
+  component, which X25519 clamping makes harmless.
 - **`fingerprint`**: `x25519Pub`, `ed25519Pub`, `want` (32 bytes), `display`
   (the formatted short form).
 - **`linkToken`**: `ak`, `artifact`, `epoch`, `want`, `hash`

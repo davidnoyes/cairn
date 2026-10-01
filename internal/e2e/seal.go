@@ -163,6 +163,20 @@ func Open(key []byte, fields [][]byte, sealed []byte) ([]byte, error) {
 	return pt, nil
 }
 
+// sealedKeySize is the only length of a sealed 32-byte key:
+// version(1) + nonce(12) + key(32) + tag(16).
+const sealedKeySize = 1 + gcmNonceSize + keyLen + 16
+
+// OpenKey opens a sealed 32-byte key (MK, EK, or an AK): Open, plus
+// ErrDecrypt for a sealed value of any length but sealedKeySize, so the
+// plaintext it returns is always 32 bytes.
+func OpenKey(key []byte, fields [][]byte, sealed []byte) ([]byte, error) {
+	if len(sealed) != sealedKeySize {
+		return nil, ErrDecrypt
+	}
+	return Open(key, fields, sealed)
+}
+
 func newGCM(key []byte) (cipher.AEAD, error) {
 	if err := checkKeyLen(key); err != nil {
 		return nil, err

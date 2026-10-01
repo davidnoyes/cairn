@@ -308,11 +308,12 @@ export async function passwordKeys(stretched) {
 }
 
 // passwordCryptoKeys is passwordKeys with kek as a non-extractable AES-GCM
-// CryptoKey (see KEK_USAGES), so the raw kek never exists in JS memory.
-// authKey stays raw bytes: it is sent to the server.
-export async function passwordCryptoKeys(stretched) {
+// CryptoKey for one purpose (see kekUsages), so the raw kek never exists in
+// JS memory. authKey stays raw bytes: it is sent to the server.
+export async function passwordCryptoKeys(stretched, purpose) {
+  const usages = kekUsages(purpose);
   const authKey = await derive(stretched, null, LABELS.auth);
-  const kek = await deriveKey(stretched, null, LABELS.kek, [], AES_GCM_256_ALG, KEK_USAGES);
+  const kek = await deriveKey(stretched, null, LABELS.kek, [], AES_GCM_256_ALG, usages);
   return { authKey, kek };
 }
 
@@ -419,9 +420,10 @@ export async function recoveryKek(code) {
   return derive(code, null, LABELS.recovery);
 }
 
-// recoveryKekCryptoKey is recoveryKek as a non-extractable AES-GCM CryptoKey.
-export async function recoveryKekCryptoKey(code) {
-  return deriveKey(code, null, LABELS.recovery, [], AES_GCM_256_ALG, KEK_USAGES);
+// recoveryKekCryptoKey is recoveryKek as a non-extractable AES-GCM CryptoKey
+// for one purpose (see kekUsages).
+export async function recoveryKekCryptoKey(code, purpose) {
+  return deriveKey(code, null, LABELS.recovery, [], AES_GCM_256_ALG, kekUsages(purpose));
 }
 
 // API keys: cairn_<keyid>_<authSecret>_<keySecret>, each part in hex, so the
@@ -485,9 +487,10 @@ export async function apiKeyKek(keySecret, keyId) {
   return derive(keySecret, null, LABELS.apiKey, keyId);
 }
 
-// apiKeyKekCryptoKey is apiKeyKek as a non-extractable AES-GCM CryptoKey.
-export async function apiKeyKekCryptoKey(keySecret, keyId) {
-  return deriveKey(keySecret, null, LABELS.apiKey, [keyId], AES_GCM_256_ALG, KEK_USAGES);
+// apiKeyKekCryptoKey is apiKeyKek as a non-extractable AES-GCM CryptoKey
+// for one purpose (see kekUsages).
+export async function apiKeyKekCryptoKey(keySecret, keyId, purpose) {
+  return deriveKey(keySecret, null, LABELS.apiKey, [keyId], AES_GCM_256_ALG, kekUsages(purpose));
 }
 
 // apiKeyAuthHash is what the server stores for authSecret: the hash of the
@@ -538,10 +541,21 @@ const HMAC_SHA256_ALG = { name: 'HMAC', hash: 'SHA-256' };
 // the same ikm/salt/info.
 const HMAC_SHA256_DERIVE_ALG = { name: 'HMAC', hash: 'SHA-256', length: DERIVED_KEY_BITS };
 const AES_GCM_256_ALG = { name: 'AES-GCM', length: 256 };
-// KEK_USAGES are the usages of every AES-GCM CryptoKey that seals a key: seal
-// and open take encrypt/decrypt, and openKey takes unwrapKey.
+// KEK_USAGES are the usages of mkSealCryptoKey and ekSealCryptoKey: seal and
+// open take encrypt/decrypt, and openKey takes unwrapKey.
 const KEK_USAGES = ['encrypt', 'decrypt', 'unwrapKey'];
 
+// kekUsages maps a KEK CryptoKey's purpose to its one usage. A KEK (kek,
+// recoveryKek, apiKeyKek) seals only the 32-byte MK: 'seal' encrypts it, and
+// 'open' unwraps it through openKey, so no KEK can decrypt MK into JS memory.
+// There is no default: anything else is a FormatError.
+function kekUsages(purpose) {
+  if (purpose === 'seal') return ['encrypt'];
+  if (purpose === 'open') return ['unwrapKey'];
+  throw new FormatError(`KEK purpose must be 'seal' or 'open', got ${String(purpose)}`);
+}
+
+// These keep decrypt: they seal X25519/Ed25519 private keys, which WebCrypto can't unwrap raw.
 export async function mkSealCryptoKey(mk) {
   checkKeyLen(mk);
   return deriveKey(mk, null, LABELS.mkSeal, [], AES_GCM_256_ALG, KEK_USAGES);
@@ -960,6 +974,10 @@ export async function unwrap(privOrKeyObj, ctx, wrapped) {
 
   const ephPub = wrapped.slice(1, 1 + WRAP_PUB_SIZE);
   const ct = wrapped.slice(1 + WRAP_PUB_SIZE);
+  // X25519 masks the high bit and reduces mod p, so a non-canonical
+  // spelling of ephPub gives the same shared secret; refuse it, so each
+  // wrap has exactly one valid encoding.
+  if (isNonCanonicalX25519(ephPub)) throw new DecryptError('non-canonical ephemeral public key');
 
   let shared;
   try {
@@ -1263,11 +1281,18 @@ export async function checkPublicKeys(x25519Pub, ed25519Pub) {
 // S >= L. These checks make the result the same under every one, and the
 // same as Go's Verify (signatureEncodingOK). Unlike every other failure in
 // this module, a bad signature is reported as false, matching Go's Verify.
+// verify works on copies of pub and sig, so a caller reusing its buffers
+// mid-call cannot change what was checked, and runs the cheap checks before
+// the torsion checks' point multiplications.
 export async function verify(pub, purpose, body, sig) {
-  if (!(pub instanceof Uint8Array) || pub.length !== 32 || !isPrimeOrderEd25519Key(pub)) return false;
+  if (!(pub instanceof Uint8Array) || pub.length !== 32) return false;
   if (!(sig instanceof Uint8Array) || sig.length !== 64) return false;
+  pub = new Uint8Array(pub);
+  sig = new Uint8Array(sig);
+  const R = sig.subarray(0, 32);
   if (leBytesToBigInt(sig.subarray(32)) >= ED25519_L) return false;
-  if (!isPrimeOrderEd25519(sig.subarray(0, 32))) return false;
+  if (isSmallOrderEd25519(pub) || isSmallOrderEd25519(R)) return false;
+  if (!isPrimeOrderEd25519Key(pub) || !isPrimeOrderEd25519(R)) return false;
   try {
     const pubKey = await importEd25519Pub(pub);
     return await subtle.verify('Ed25519', pubKey, sig, sigMessage(purpose, body));
@@ -1768,8 +1793,14 @@ export function decodeEnvelope(bytesOrText) {
 
 // openEnvelope verifies env's signature against pub for purpose, strictly
 // decodes its body against BODY_SCHEMAS[purpose], and requires the body's
-// "v" field to be 1.
+// "v" field to be 1. It refuses purpose 'rotation' with FormatError: a
+// rotation also needs newSig, which only openRotation checks.
 export async function openEnvelope(env, pub, purpose) {
+  if (purpose === 'rotation') throw new FormatError('open a rotation envelope with openRotation');
+  return openEnvelopeBody(env, pub, purpose);
+}
+
+async function openEnvelopeBody(env, pub, purpose) {
   const schema = BODY_SCHEMAS[purpose];
   if (!schema) throw new FormatError(`unknown purpose: ${purpose}`);
   if (!(await verifyEnvelope(pub, purpose, env))) throw new DecryptError('bad envelope signature');
@@ -1783,7 +1814,7 @@ export async function openEnvelope(env, pub, purpose) {
 // the body itself, so a rotation can't be accepted without proof of control
 // over both the key it moves from and the key it moves to.
 export async function openRotation(env, oldPub) {
-  const body = await openEnvelope(env, oldPub, 'rotation');
+  const body = await openEnvelopeBody(env, oldPub, 'rotation');
   if (!env.newSig) throw new FormatError('rotation envelope missing newSig');
   const newX25519 = unb64(body.new.x25519);
   const newPub = unb64(body.new.ed25519);

@@ -141,7 +141,8 @@ ad = enc("cairn/v1/seal", fields…)
 
 The nonce is random. Opening checks the version byte and fails on any
 authentication error. The plaintext of every sealed key is 32 bytes, so a
-sealed key is exactly 61 bytes. The version byte is outside the AEAD's
+sealed key is exactly 61 bytes. Opening a sealed key checks that length, and
+refuses any other. The version byte is outside the AEAD's
 authenticated data, so a reader must check it rather than rely on the tag.
 
 Every sealed value in the system:
@@ -232,6 +233,11 @@ The wrap key is used once, because the ephemeral key is fresh, so the zero
 nonce is safe. A wrapped 32-byte key is 81 bytes. Unwrapping refuses any
 other length, and computes `recipientPub` from the recipient's own private
 key rather than taking it from the caller.
+
+Unwrapping also refuses a non-canonical `eph.public`. Read its 32 bytes as a
+little-endian integer, with no bit masked; the value must be below
+`p = 2^255 − 19`. X25519 masks the high bit and reduces mod `p`, so without
+this rule one wrap would have several encodings that all decrypt.
 
 A wrap proves nothing about who made it: anyone with the recipient's public
 key, the server included, can wrap a key of their choosing. So an unwrapped
@@ -337,11 +343,16 @@ surrogate.
   for each record of that purpose the user signs. A verifier refuses a `seq`
   no higher than the last it accepted, so an old record cannot be replayed.
 - A rotation envelope carries a second signature, `newSig`, made by the new
-  Ed25519 key over the same message. It proves the user holds the new key, so
-  nobody can rotate a user onto a key that belongs to someone else. Before it
-  checks `newSig`, a verifier applies the key rules in this section to both
-  new keys. `newSig` may be absent from other envelopes, but where present it
-  must be a non-empty string: `""` and `null` are refused.
+  Ed25519 key over the same message. It proves the user holds the new Ed25519
+  key, so nobody can rotate a user onto an Ed25519 key that belongs to someone
+  else. It proves nothing about the new X25519 key, so a rotation can name
+  someone else's X25519 key, either as is or as one of the seven other public
+  keys that give the same shared secrets. Before it checks `newSig`, a verifier
+  applies the key rules in this section to both new keys. `newSig` may be
+  absent from other envelopes, but where present it must be a non-empty
+  string: `""` and `null` are refused. The generic envelope opener never checks
+  `newSig`, so it refuses the `rotation` purpose; open a rotation with the
+  rotation opener.
 - A vouch's `manifest` is `hex(SHA-256)` of the manifest envelope's body.
 - A reset's `token` is `hex(SHA-256)` of the reset token from the emailed
   link, so the proof cannot be replayed with another link.

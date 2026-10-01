@@ -330,8 +330,17 @@ func checkNoLoneSurrogates(data []byte) error {
 // signatures verify.
 
 // OpenEnvelope verifies env's signature against pub for purpose, strictly
-// decodes its body into out, and requires the body's "v" field to be 1.
+// decodes its body into out, and requires the body's "v" field to be 1. It
+// refuses purpose "rotation" with ErrFormat: a rotation also needs newSig,
+// which only OpenRotation checks.
 func OpenEnvelope(env Envelope, pub ed25519.PublicKey, purpose string, out any) error {
+	if purpose == "rotation" {
+		return fmt.Errorf("%w: open a rotation envelope with OpenRotation", ErrFormat)
+	}
+	return openEnvelope(env, pub, purpose, out)
+}
+
+func openEnvelope(env Envelope, pub ed25519.PublicKey, purpose string, out any) error {
 	if !Verify(pub, purpose, env.Body, env.Sig) {
 		return ErrDecrypt
 	}
@@ -369,7 +378,7 @@ func SignRotation(oldSeed, newSeed, body []byte, signer string) (Envelope, error
 // the body itself, so a rotation can't be accepted without proof of control
 // over both the key it moves from and the key it moves to.
 func OpenRotation(env Envelope, oldPub ed25519.PublicKey, out *RotationBody) error {
-	if err := OpenEnvelope(env, oldPub, "rotation", out); err != nil {
+	if err := openEnvelope(env, oldPub, "rotation", out); err != nil {
 		return err
 	}
 	if len(env.NewSig) == 0 {

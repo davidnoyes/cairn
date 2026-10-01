@@ -109,6 +109,12 @@ func Unwrap(priv []byte, ctx WrapContext, wrapped []byte) ([]byte, error) {
 	}
 	ephPub := wrapped[1 : 1+wrapPubSize]
 	ct := wrapped[1+wrapPubSize:]
+	// X25519 masks the high bit and reduces mod p, so a non-canonical
+	// spelling of ephPub gives the same shared secret; refuse it, so each
+	// wrap has exactly one valid encoding.
+	if isNonCanonicalX25519(ephPub) {
+		return nil, ErrDecrypt
+	}
 
 	shared, zero := x25519Shared(priv, ephPub)
 	defer clear(shared) // best-effort zeroing, as in Wrap

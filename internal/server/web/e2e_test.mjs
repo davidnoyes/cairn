@@ -490,30 +490,65 @@ test('non-extractable keys: seal/open with mkSealCryptoKey matches raw mkSealKey
   assert.equal(toHex(openedViaKey), toHex(pt));
 });
 
-// assertSameAesKey proves a non-extractable AES-GCM CryptoKey and raw key
-// bytes are the same key: each opens what the other sealed.
-async function assertSameAesKey(cryptoKey, rawKey, label) {
-  assert.equal(cryptoKey.extractable, false, label);
-  assert.equal(cryptoKey.algorithm.name, 'AES-GCM', label);
+// assertKekPurposes proves a KEK's 'seal' and 'open' CryptoKeys are the raw
+// KEK, each limited to its one job. A KEK seals only the 32-byte MK, so
+// 'seal' can only encrypt and 'open' can only unwrap through openKey: neither
+// can decrypt, so neither can read a sealed value back into JS memory.
+async function assertKekPurposes(sealKey, openWith, rawKey, label) {
+  for (const [k, usages] of [[sealKey, ['encrypt']], [openWith, ['unwrapKey']]]) {
+    assert.equal(k.extractable, false, label);
+    assert.equal(k.algorithm.name, 'AES-GCM', label);
+    assert.deepEqual([...k.usages].sort(), usages, label);
+  }
   const fields = [new TextEncoder().encode(label)];
-  const pt = testKeyBytes(6);
-  assert.equal(toHex(await e2e.open(rawKey, fields, await e2e.seal(cryptoKey, fields, pt))), toHex(pt), label);
-  assert.equal(toHex(await e2e.open(cryptoKey, fields, await e2e.seal(rawKey, fields, pt))), toHex(pt), label);
+  const mk = testKeyBytes(6);
+  assert.equal(toHex(await e2e.open(rawKey, fields, await e2e.seal(sealKey, fields, mk))), toHex(mk), label);
+  const sealed = await e2e.seal(rawKey, fields, mk);
+  const opened = await e2e.openKey(openWith, fields, sealed);
+  assert.equal(toHex(await e2e.mkSealKey(opened)), toHex(await e2e.mkSealKey(mk)), label);
+  await assertThrows(() => e2e.open(openWith, fields, sealed), e2e.DecryptError);
+  await assertThrows(() => e2e.openKey(sealKey, fields, sealed), e2e.DecryptError);
+  await assertThrows(() => e2e.open(sealKey, fields, sealed), e2e.DecryptError);
+  await assertThrows(() => e2e.seal(openWith, fields, mk));
 }
 
-test('non-extractable keys: KEK CryptoKey variants match the raw KEKs', async () => {
+test('non-extractable keys: KEK CryptoKey variants match the raw KEKs, one purpose each', async () => {
   const stretched = testKeyBytes(7);
   const raw = await e2e.passwordKeys(stretched);
-  const viaKey = await e2e.passwordCryptoKeys(stretched);
-  assert.equal(toHex(viaKey.authKey), toHex(raw.authKey));
-  await assertSameAesKey(viaKey.kek, raw.kek, 'kek');
+  const forSeal = await e2e.passwordCryptoKeys(stretched, 'seal');
+  const forOpen = await e2e.passwordCryptoKeys(stretched, 'open');
+  assert.equal(toHex(forSeal.authKey), toHex(raw.authKey));
+  assert.equal(toHex(forOpen.authKey), toHex(raw.authKey));
+  await assertKekPurposes(forSeal.kek, forOpen.kek, raw.kek, 'kek');
 
   const code = e2e.newRecoveryCode().code;
   assert.equal(code.length, 16);
-  await assertSameAesKey(await e2e.recoveryKekCryptoKey(code), await e2e.recoveryKek(code), 'recoveryKek');
+  await assertKekPurposes(
+    await e2e.recoveryKekCryptoKey(code, 'seal'),
+    await e2e.recoveryKekCryptoKey(code, 'open'),
+    await e2e.recoveryKek(code),
+    'recoveryKek',
+  );
 
   const { keyId, keySecret } = e2e.newApiKey();
-  await assertSameAesKey(await e2e.apiKeyKekCryptoKey(keySecret, keyId), await e2e.apiKeyKek(keySecret, keyId), 'apiKeyKek');
+  await assertKekPurposes(
+    await e2e.apiKeyKekCryptoKey(keySecret, keyId, 'seal'),
+    await e2e.apiKeyKekCryptoKey(keySecret, keyId, 'open'),
+    await e2e.apiKeyKek(keySecret, keyId),
+    'apiKeyKek',
+  );
+});
+
+// No KEK CryptoKey has a default purpose: leaving it out, or naming any
+// other, is a FormatError rather than a key with every usage.
+test('non-extractable keys: KEK CryptoKeys require a purpose', async () => {
+  const code = e2e.newRecoveryCode().code;
+  const { keyId, keySecret } = e2e.newApiKey();
+  for (const purpose of [undefined, '', 'both', 'decrypt', 'Open']) {
+    await assertThrows(async () => e2e.passwordCryptoKeys(testKeyBytes(7), purpose), e2e.FormatError);
+    await assertThrows(async () => e2e.recoveryKekCryptoKey(code, purpose), e2e.FormatError);
+    await assertThrows(async () => e2e.apiKeyKekCryptoKey(keySecret, keyId, purpose), e2e.FormatError);
+  }
 });
 
 // openKey opens a sealed 32-byte key straight into a non-extractable HKDF
@@ -525,21 +560,47 @@ test('non-extractable keys: openKey matches open, under every sealing key', asyn
   const ek = testKeyBytes(9);
   const fields = [new TextEncoder().encode('mk')];
   const { kek: rawKek } = await e2e.passwordKeys(testKeyBytes(7));
-  const { kek } = await e2e.passwordCryptoKeys(testKeyBytes(7));
+  const { kek } = await e2e.passwordCryptoKeys(testKeyBytes(7), 'open');
+  // The last column says whether open works with the same key: the 'open'
+  // KEK CryptoKey has no decrypt usage, so it opens only through openKey.
   const sealers = [
-    ['raw kek', rawKek, rawKek, mk],
-    ['kek CryptoKey', rawKek, kek, mk],
-    ['mkSealCryptoKey', await e2e.mkSealKey(mk), await e2e.mkSealCryptoKey(mk), ek],
-    ['ekSealCryptoKey', await e2e.ekSealKey(ek), await e2e.ekSealCryptoKey(ek), mk],
+    ['raw kek', rawKek, rawKek, mk, true],
+    ['kek CryptoKey', rawKek, kek, mk, false],
+    ['mkSealCryptoKey', await e2e.mkSealKey(mk), await e2e.mkSealCryptoKey(mk), ek, true],
+    ['ekSealCryptoKey', await e2e.ekSealKey(ek), await e2e.ekSealCryptoKey(ek), mk, true],
   ];
-  for (const [label, sealWith, openWith, secret] of sealers) {
+  for (const [label, sealWith, openWith, secret, opensRaw] of sealers) {
     const sealed = await e2e.seal(sealWith, fields, secret);
     const opened = await e2e.openKey(openWith, fields, sealed);
     assert.equal(opened.extractable, false, label);
     assert.equal(opened.algorithm.name, 'HKDF', label);
     assert.equal(toHex(await e2e.mkSealKey(opened)), toHex(await e2e.mkSealKey(secret)), label);
-    assert.equal(toHex(await e2e.open(openWith, fields, sealed)), toHex(secret), label);
+    if (opensRaw) {
+      assert.equal(toHex(await e2e.open(openWith, fields, sealed)), toHex(secret), label);
+    } else {
+      await assertThrows(() => e2e.open(openWith, fields, sealed), e2e.DecryptError);
+    }
   }
+});
+
+// Every seal vector but the keyring seals a 32-byte key, so openKey opens it
+// into a CryptoKey that derives exactly what the vector's plaintext derives.
+// The keyring is not a key, and openKey refuses it on length alone.
+test('seal: openKey over every sealed-key vector', async () => {
+  let keys = 0;
+  for (const v of vf.seal) {
+    const args = [hex(v.key), v.fields.map(hex), hex(v.want)];
+    const pt = hex(v.pt ?? '');
+    if (new TextDecoder().decode(hex(v.fields[0])) === 'keyring') {
+      await assertThrows(() => e2e.openKey(...args), e2e.DecryptError);
+      continue;
+    }
+    assert.equal(pt.length, 32, `${v.name}: a sealed key's plaintext is 32 bytes`);
+    const opened = await e2e.openKey(...args);
+    assert.equal(toHex(await e2e.mkSealKey(opened)), toHex(await e2e.mkSealKey(pt)), v.name);
+    keys++;
+  }
+  assert.ok(keys > 0, 'no sealed-key vectors');
 });
 
 test('openKey refuses what open refuses, and any plaintext but 32 bytes', async () => {
@@ -707,6 +768,55 @@ test('envelope strictness: rotation missing newSig', async () => {
   await assertThrows(() => e2e.openRotation(noNewSig, envPub), e2e.FormatError);
 });
 
+// signedRotation is a rotation from envPub that openRotation accepts.
+async function signedRotation() {
+  const { seed: newSeed, pub: newPub } = await e2e.generateEd25519();
+  const { pub: x25519Pub } = await e2e.generateX25519();
+  const body = textEncoder.encode(JSON.stringify({
+    v: 1, user: 'user-1', seq: 1,
+    old: { x25519: e2e.b64(x25519Pub), ed25519: e2e.b64(envPub) },
+    new: { x25519: e2e.b64(x25519Pub), ed25519: e2e.b64(newPub) },
+  }));
+  const env = await e2e.signRotation(envSeed, newSeed, 'user-1', body);
+  await e2e.openRotation(env, envPub); // positive control
+  return env;
+}
+
+// An empty or null newSig is missing, and is refused as such: "" would
+// otherwise reach verify as a zero-length signature (DecryptError), and null
+// would fail inside unb64 for an unrelated reason.
+test('envelope strictness: rotation with an empty or null newSig', async () => {
+  const env = await signedRotation();
+  for (const newSig of ['', null]) {
+    await assert.rejects(
+      () => e2e.openRotation({ ...env, newSig }, envPub),
+      { name: 'FormatError', message: /newSig/ },
+      `newSig ${JSON.stringify(newSig)}`,
+    );
+  }
+});
+
+// openEnvelope never checks newSig, so it must refuse the rotation purpose
+// outright rather than accept a rotation on the old key's signature alone.
+test('envelope strictness: openEnvelope refuses rotation', async () => {
+  const env = await signedRotation();
+  await assertThrows(() => e2e.openEnvelope(env, envPub, 'rotation'), e2e.FormatError);
+  const withoutNewSig = { ...env };
+  delete withoutNewSig.newSig;
+  await assertThrows(() => e2e.openEnvelope(withoutNewSig, envPub, 'rotation'), e2e.FormatError);
+});
+
+// verify works on its own copy of sig: a caller that reuses its buffer while
+// verification is in flight does not change the outcome.
+test('verify copies sig on entry', async () => {
+  const v = vf.signature[0];
+  const pub = hex(v.pub);
+  const sig = hex(v.want);
+  const pending = e2e.verify(pub, v.purpose, hex(v.body), sig);
+  sig.fill(0);
+  assert.equal(await pending, true);
+});
+
 // envelope wrapper strictness mirrors TestOpenEnvelopeJSONItselfIsStrict in
 // internal/e2e/envelope_test.go: decodeEnvelope (not openEnvelope, which
 // takes an already-parsed object) must refuse a case-variant key, an unknown
@@ -818,6 +928,10 @@ test('x25519Strict', async () => {
   // Ed25519 key, which would make every case here pass for the wrong reason.
   const { pub: genuineEd25519Pub } = await e2e.generateEd25519();
   for (const v of vf.x25519Strict) {
+    if (v.accept) {
+      await e2e.checkPublicKeys(hex(v.pub), genuineEd25519Pub);
+      continue;
+    }
     await assertThrows(
       () => e2e.checkPublicKeys(hex(v.pub), genuineEd25519Pub),
       e2e.FormatError,

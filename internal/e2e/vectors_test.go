@@ -360,9 +360,10 @@ type ed25519StrictVec struct {
 // x25519StrictVec is an X25519 public key CheckPublicKeys must refuse on its
 // own: non-canonical (high bit set, or u >= p) or low-order.
 type x25519StrictVec struct {
-	Name string `json:"name"`
-	Pub  string `json:"pub"`
-	Why  string `json:"why"`
+	Name   string `json:"name"`
+	Pub    string `json:"pub"`
+	Accept bool   `json:"accept,omitempty"`
+	Why    string `json:"why"`
 }
 
 // strictJSONVec is a raw body or envelope byte string DecodeStrict must
@@ -485,6 +486,28 @@ type blindIndexVec struct {
 	Value    string     `json:"value"`
 	Want     string     `json:"want"`
 	Negative []negative `json:"negative"`
+}
+
+// nonCanonicalEphWrapped wraps key to the recipient under the ephemeral
+// public key spelled as ephPub, a non-canonical encoding of canonicalU: the
+// shared secret comes from canonicalU, and the wrap key binds the ephPub
+// bytes exactly as sent, so only a canonical-encoding check on ephPub can
+// refuse the result.
+func nonCanonicalEphWrapped(t testing.TB, recipientPriv []byte, ctx WrapContext, key, ephPub, canonicalU []byte) string {
+	t.Helper()
+	if !isNonCanonicalX25519(ephPub) {
+		t.Fatalf("%x is a canonical X25519 encoding", ephPub)
+	}
+	shared, zero := x25519Shared(recipientPriv, canonicalU)
+	if zero {
+		t.Fatal("all-zero shared secret")
+	}
+	gcm, err := newGCM(wrapKey(shared, ctx, ephPub))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := append([]byte{wrapVersion}, ephPub...)
+	return hexEnc(gcm.Seal(out, make([]byte, gcmNonceSize), key, nil))
 }
 
 // wrongKeyLenNegatives overrides the key with one too short or too long.
@@ -658,9 +681,9 @@ func generateVectors(t testing.TB) vectorFile {
 		fields [][]byte
 		pt     []byte
 	}{
-		{"mk-under-password", testKey("vec-kek"), [][]byte{[]byte("mk")}, []byte("master-key-material-32-bytes!!!")},
-		{"mk-under-recovery", testKey("vec-recovery-kek"), [][]byte{[]byte("mk")}, []byte("master-key-material-32-bytes!!!")},
-		{"mk-under-apikey", testKey("vec-apikey-kek"), [][]byte{[]byte("mk"), []byte("keyid-abc123")}, []byte("master-key-material-32-bytes!!!")},
+		{"mk-under-password", testKey("vec-kek"), [][]byte{[]byte("mk")}, []byte("master-key-material-32-bytes!!!!")},
+		{"mk-under-recovery", testKey("vec-recovery-kek"), [][]byte{[]byte("mk")}, []byte("master-key-material-32-bytes!!!!")},
+		{"mk-under-apikey", testKey("vec-apikey-kek"), [][]byte{[]byte("mk"), []byte("keyid-abc123")}, []byte("master-key-material-32-bytes!!!!")},
 		{"x25519-private", testKey("vec-mkseal"), [][]byte{[]byte("x25519")}, bytes.Repeat([]byte{7}, 32)},
 		{"ed25519-seed", testKey("vec-mkseal"), [][]byte{[]byte("ed25519")}, bytes.Repeat([]byte{8}, 32)},
 		{"ek", testKey("vec-mkseal"), [][]byte{[]byte("ek")}, bytes.Repeat([]byte{9}, 32)},
@@ -760,6 +783,13 @@ func generateVectors(t testing.TB) vectorFile {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Two non-canonical spellings of a genuine ephemeral key: one with the
+	// high bit set, and the base point u = 9 spelled as p+9. X25519 reduces
+	// both to the canonical u, so each wrap below decrypts unless Unwrap
+	// refuses the spelling itself.
+	basePointU := make([]byte, 32)
+	basePointU[0] = 9
+	basePointPlusP := encodeLE255(new(big.Int).Add(edwards25519P, big.NewInt(9)), false)
 	lowOrderWrapped := func(ephPub []byte) string {
 		b := make([]byte, wrapSize)
 		b[0] = wrapVersion
@@ -796,6 +826,8 @@ func generateVectors(t testing.TB) vectorFile {
 		}
 		mutated := append([]byte(nil), wrapped...)
 		mutated[len(mutated)-1] ^= 0x01
+		highBitEph := append([]byte(nil), wrapped[1:1+wrapPubSize]...)
+		highBitEph[31] |= 0x80
 		vf.Wrap = append(vf.Wrap, wrapVec{
 			Name: purpose,
 			Ctx: wrapCtxVec{
@@ -815,6 +847,8 @@ func generateVectors(t testing.TB) vectorFile {
 				{Why: "wrong recipient private key", Key: hexEnc(otherRecipientPriv)},
 				{Why: "all-zero ephemeral public key", Input: lowOrderWrapped(make([]byte, 32))},
 				{Why: "order-8 ephemeral public key", Input: lowOrderWrapped(order8EphPub)},
+				{Why: "ephemeral public key with the high bit set", Input: nonCanonicalEphWrapped(t, recipientPriv, wctx, key, highBitEph, wrapped[1:1+wrapPubSize])},
+				{Why: "ephemeral public key u = p+9, the base point", Input: nonCanonicalEphWrapped(t, recipientPriv, wctx, key, basePointPlusP[:], basePointU)},
 			},
 		})
 	}
@@ -925,6 +959,7 @@ func generateVectors(t testing.TB) vectorFile {
 			Body: hexEnc(badBody), Sig: hexEnc(badEnv.Sig), NewSig: hexEnc(badEnv.NewSig),
 			Refuse: "the new X25519 key is low-order; both signatures are valid",
 		})
+		vf.Rotation = append(vf.Rotation, mixedOrderRotation(t, oldSeed, oldPub, x25519Pub))
 	}
 
 	// ed25519Strict: every hardcoded small-order public key, plus every known
@@ -972,6 +1007,7 @@ func generateVectors(t testing.TB) vectorFile {
 			{Name: "u-equals-p", Pub: hexEnc(uEqualsP[:]), Why: "u equals the field prime (non-canonical encoding of 0)"},
 			{Name: "u-above-p", Pub: hexEnc(uAboveP[:]), Why: "u is a few values above the field prime, high bit clear"},
 			{Name: "low-order-order8", Pub: hexEnc(order8EphPub), Why: "a low-order point reaching the X25519 branch directly"},
+			{Name: "mixed-order", Pub: hexEnc(mixedOrderX25519(t)), Accept: true, Why: "canonical, with a torsion component: the clamped scalar is a multiple of the cofactor, so no torsion check applies"},
 		}
 	}
 
@@ -1270,6 +1306,16 @@ func checkVectors(t *testing.T, vf vectorFile) {
 			if err != nil || hexEnc(got) != v.Pt {
 				t.Errorf("%s: Open failed: %v", v.Name, err)
 			}
+			// Every row but the keyring seals a 32-byte key, which OpenKey
+			// opens; the keyring is not 61 bytes, so OpenKey refuses it.
+			gotKey, err := OpenKey(key, fields, sealed)
+			if string(fields[0]) == "keyring" {
+				if !errors.Is(err, ErrDecrypt) {
+					t.Errorf("%s: OpenKey = %v, want ErrDecrypt", v.Name, err)
+				}
+			} else if err != nil || hexEnc(gotKey) != v.Pt {
+				t.Errorf("%s: OpenKey failed: %v", v.Name, err)
+			}
 			for _, neg := range v.Negative {
 				input := sealed
 				if neg.Input != "" {
@@ -1471,7 +1517,11 @@ func checkVectors(t *testing.T, vf vectorFile) {
 		}
 		for _, v := range vf.X25519Strict {
 			pub := hexDec(t, v.Pub)
-			if err := CheckPublicKeys(pub, genuineEd25519Pub); err == nil {
+			err := CheckPublicKeys(pub, genuineEd25519Pub)
+			if v.Accept && err != nil {
+				t.Errorf("%s (%s): CheckPublicKeys refused it: %v", v.Name, v.Why, err)
+			}
+			if !v.Accept && err == nil {
 				t.Errorf("%s (%s): CheckPublicKeys accepted it", v.Name, v.Why)
 			}
 		}

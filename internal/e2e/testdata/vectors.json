@@ -392,12 +392,12 @@
         "6d6b"
       ],
       "nonce": "3c42d8571e3c0d3c925d37c3",
-      "pt": "6d61737465722d6b65792d6d6174657269616c2d33322d6279746573212121",
-      "want": "013c42d8571e3c0d3c925d37c3c9cb18a07866c015db32a81de2bd655e70155e4bac0fab9ef0e1e50cb70c2e17f968b892309bf9a5e556e86ed4d231",
+      "pt": "6d61737465722d6b65792d6d6174657269616c2d33322d627974657321212121",
+      "want": "013c42d8571e3c0d3c925d37c3c9cb18a07866c015db32a81de2bd655e70155e4bac0fab9ef0e1e50cb70c2e82d1a42ebaf440cc67c2899abfd2661947",
       "negative": [
         {
           "why": "flipped last bit",
-          "input": "013c42d8571e3c0d3c925d37c3c9cb18a07866c015db32a81de2bd655e70155e4bac0fab9ef0e1e50cb70c2e17f968b892309bf9a5e556e86ed4d230"
+          "input": "013c42d8571e3c0d3c925d37c3c9cb18a07866c015db32a81de2bd655e70155e4bac0fab9ef0e1e50cb70c2e82d1a42ebaf440cc67c2899abfd2661946"
         },
         {
           "why": "wrong key",
@@ -419,12 +419,12 @@
         "6d6b"
       ],
       "nonce": "a2de8132a4dbf599c882dd2e",
-      "pt": "6d61737465722d6b65792d6d6174657269616c2d33322d6279746573212121",
-      "want": "01a2de8132a4dbf599c882dd2ee176ad0906fe0a82bf830cd28ac8f95e6fb1812905fc721b800e9645a84b4baad67b76a3114f85b288bd50ddbfcc71",
+      "pt": "6d61737465722d6b65792d6d6174657269616c2d33322d627974657321212121",
+      "want": "01a2de8132a4dbf599c882dd2ee176ad0906fe0a82bf830cd28ac8f95e6fb1812905fc721b800e9645a84b4bd56fe69c82c79bf49834576589fa4fef4c",
       "negative": [
         {
           "why": "flipped last bit",
-          "input": "01a2de8132a4dbf599c882dd2ee176ad0906fe0a82bf830cd28ac8f95e6fb1812905fc721b800e9645a84b4baad67b76a3114f85b288bd50ddbfcc70"
+          "input": "01a2de8132a4dbf599c882dd2ee176ad0906fe0a82bf830cd28ac8f95e6fb1812905fc721b800e9645a84b4bd56fe69c82c79bf49834576589fa4fef4d"
         },
         {
           "why": "wrong key",
@@ -447,12 +447,12 @@
         "6b657969642d616263313233"
       ],
       "nonce": "5710f899322d5211a5ac883b",
-      "pt": "6d61737465722d6b65792d6d6174657269616c2d33322d6279746573212121",
-      "want": "015710f899322d5211a5ac883b0a46f7e049f729cb4d3740abe28ddd03b7ce672d6a5752fa7308f1de151cfdf41cd6ab0bb91e7c602125fb28ade7ab",
+      "pt": "6d61737465722d6b65792d6d6174657269616c2d33322d627974657321212121",
+      "want": "015710f899322d5211a5ac883b0a46f7e049f729cb4d3740abe28ddd03b7ce672d6a5752fa7308f1de151cfdc73571dcb954b8d81f51e6a5e38683e232",
       "negative": [
         {
           "why": "flipped last bit",
-          "input": "015710f899322d5211a5ac883b0a46f7e049f729cb4d3740abe28ddd03b7ce672d6a5752fa7308f1de151cfdf41cd6ab0bb91e7c602125fb28ade7aa"
+          "input": "015710f899322d5211a5ac883b0a46f7e049f729cb4d3740abe28ddd03b7ce672d6a5752fa7308f1de151cfdc73571dcb954b8d81f51e6a5e38683e233"
         },
         {
           "why": "wrong key",
@@ -881,6 +881,14 @@
         {
           "why": "order-8 ephemeral public key",
           "input": "015f9c95bca3508c24b1d0b1559c83ef5b04445cc4581c8e86d8224eddd09f1157000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "why": "ephemeral public key with the high bit set",
+          "input": "01b22844c1c3b1dc4f56e12ca05e91a773122622ce0f58d179ff29e6f74fb62ed14df4ea9b8e6f0c8e06701e76c3a23fcd54608fdbe5a604ea1b26e46422005cfb5aa60b46237f50742a09e508ea86c53c"
+        },
+        {
+          "why": "ephemeral public key u = p+9, the base point",
+          "input": "01f6ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f2e130bdd5d6b8c87282ba9be8b423713dfc60e05e11a96d228ca3ad47492798dd6cb06b185734914fae86996b54df4e9"
         }
       ]
     },
@@ -937,6 +945,14 @@
         {
           "why": "order-8 ephemeral public key",
           "input": "015f9c95bca3508c24b1d0b1559c83ef5b04445cc4581c8e86d8224eddd09f1157000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "why": "ephemeral public key with the high bit set",
+          "input": "01d40ecd4fe8a586fbf0aef1754e49404f3dae5df3a1f0cfcd20f44121b62e2887d89b4416e8694ce2fa953671b25b95e0b1f73a38afe780b80544ea6f0c15c949bab3581d2971a43f83acd0598c8622a3"
+        },
+        {
+          "why": "ephemeral public key u = p+9, the base point",
+          "input": "01f6ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7fa5505e36597e7dc33fec7f729892a70506c7fdc2333d5a916b2568cf29618b57046dab7cfd7744582d439ccf9e5ecf2c"
         }
       ]
     }
@@ -1106,6 +1122,19 @@
       "newSig": "dc45537b20f4318840ed0f7158c6c89097cc95aeae58eb5377ad3b12e51c36e5b89559a927d355dbcf2bfeccec29c953fd7d706c0f9a88d8b0a2864abbb47f05",
       "negative": null,
       "refuse": "the new X25519 key is low-order; both signatures are valid"
+    },
+    {
+      "name": "mixed-order-new-ed25519",
+      "oldSeed": "e6b2dee8501dd31b19dc5050b776844b7fe28f6bfe9cbf8f7c531c8a0339794d",
+      "oldPub": "388d54c7efd27b4ecb76d653279d7d6c8a335a1af8098c420a82b1c29b6d7d54",
+      "newSeed": "ef95638ec92ac99a471d80a6c19b3417463fd07110ccdafe9987eb60255c5587",
+      "newPub": "e0f2557f571d4b3465a282942a2c401e3bbcd39baf2e893ef10ee320334c8192",
+      "signer": "user-1",
+      "body": "7b2276223a312c2275736572223a22757365722d31222c22736571223a322c226f6c64223a7b22783235353139223a22325950312d766a5a72386937315355414e7a5a65594f4d58714f596639704f764b6a383661756c2d76586f222c2265643235353139223a224f493155782d5f536530374c64745a544a35313962496f7a5768723443597843436f4b7877707474665651227d2c226e6577223a7b22783235353139223a22325950312d766a5a72386937315355414e7a5a65594f4d58714f596639704f764b6a383661756c2d76586f222c2265643235353139223a2234504a5666316364537a526c6f6f4b554b697841486a7538303575764c6f6b2d3851376a49444e4d675a49227d7d",
+      "sig": "7000294d701531d59b37b1b57dcbaef88c4e5628d5b60758d28d46c5acec57e427c822e0fd3658991f4cf22a4add44dd9369e71f55dca08cc0aed83900537a0d",
+      "newSig": "2ff1f4bd9948bdc4289602868ab859cb11c52ee6bf94b362e38856fe21a17a11aa181bb60695ab0a16ca47aef2da3bef14c284b3790407f4f816925a1ddecc07",
+      "negative": null,
+      "refuse": "the new Ed25519 key has a torsion component; newSig passes the cofactorless equation"
     }
   ],
   "ed25519Strict": [
@@ -1228,6 +1257,14 @@
       "why": "the key has a torsion component; the signature passes the cofactorless equation"
     },
     {
+      "name": "r-non-canonical-point",
+      "pub": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "purpose": "reset",
+      "body": "7b2276223a312c2275736572223a227531222c22746f6b656e223a2274227d",
+      "sig": "f0ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f8923ceadc84d04ebb79bdbf2213fa47368a14df32d02cf0f78cb5f4dc1d82303",
+      "why": "R spells an on-curve point other than the identity with y = p+k"
+    },
+    {
       "name": "mixed-order-key",
       "pub": "ea9d1a3a083c9b4655ae5e7e6e0dc9064a2a2ce0861e1f5ac01cfea6ec46b3e6",
       "why": "on the curve and not small-order, but with a torsion component"
@@ -1258,6 +1295,12 @@
       "name": "low-order-order8",
       "pub": "5f9c95bca3508c24b1d0b1559c83ef5b04445cc4581c8e86d8224eddd09f1157",
       "why": "a low-order point reaching the X25519 branch directly"
+    },
+    {
+      "name": "mixed-order",
+      "pub": "0dc0f0d4fc5a3bec9413f55e170e9c156f6bf0ca0a2b327c9175cd003a88713a",
+      "accept": true,
+      "why": "canonical, with a torsion component: the clamped scalar is a multiple of the cofactor, so no torsion check applies"
     }
   ],
   "fingerprint": [
