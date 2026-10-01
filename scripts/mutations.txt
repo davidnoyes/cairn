@@ -63,3 +63,9 @@ internal/client/share.go	case members[i].Role == "editor" && role == "viewer":	c
 internal/client/share.go	if want, ok := commits[e.Epoch]; !ok || commit != want {	if want, ok := commits[e.Epoch]; !ok && commit != want {	go test ./internal/client -run 'TestShareRefusesAnEstateCopyThatMissesTheCommit'
 cmd/cairn/config.go	f.cliConfig = cfg	f = configFile{cliConfig: cfg}	go test ./cmd/cairn -run TestKeyringAnchorSurvivesLogoutAndLogin
 internal/client/share.go	if e.User == u.ID || e.FP == u.FP || e2e.NormalizeEmail(e.Email) == email {	if e.User == u.ID || e.FP == u.FP || e.Email == email {	go test ./internal/client -run TestExcludedMatch
+internal/store/archives.go	DELETE FROM user_keyrings WHERE user_id = ?	DELETE FROM user_keyrings WHERE user_id = '-'	go test ./internal/store -run TestResetAccountDeletesKeyring
+internal/server/handlers_auth.go	return func() error { return s.store.ResetAccount(u.ID, authHash, bundle, s.clk.Now()) }, true	return func() error { return s.store.SetPassword(u.ID, authHash, "{}", bundle.MKPassword) }, true	go test ./internal/server -run TestResetNewDeletesKeyring
+cmd/cairn/config.go	return a.host + " " + userID + " " + fp }	return a.host + " " + userID }	go test ./cmd/cairn -run TestConfigAnchorsAreKeyedByHostUserAndFingerprint
+internal/client/keyring.go	store.LoadAnchor(k.UserID, k.FP)	store.LoadAnchor(k.UserID, "")	go test ./internal/client -run TestKeyringAnchorIsPerFingerprint
+internal/server/web/e2e.mjs	if (typeof fp !== 'string' || fp === '') throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	return `cairn.keyringAnchor.${userId}.${fp}`;	return `cairn.keyringAnchor.${userId}`;	node --test internal/server/web/e2e_test.mjs

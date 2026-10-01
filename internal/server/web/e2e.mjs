@@ -2296,18 +2296,25 @@ export async function pinState(pin, x25519Pub, ed25519Pub) {
   return { state: pin.fp === fp ? pin.state : PIN_CHANGED, fp };
 }
 
-function keyringAnchorStorageKey(userId) {
+// The key is scoped to the user's own fingerprint as well as the user ID. A
+// reset without the recovery code changes the user's keys, so the device
+// starts with no anchor and accepts the empty keyring the reset leaves. A
+// server cannot use this to roll a keyring back, because it cannot make the
+// user's keys change.
+function keyringAnchorStorageKey(userId, fp) {
   if (typeof userId !== 'string' || userId === '') throw new FormatError('a keyring anchor needs a user ID');
-  return `cairn.keyringAnchor.${userId}`;
+  if (typeof fp !== 'string' || fp === '') throw new FormatError('a keyring anchor needs a fingerprint');
+  return `cairn.keyringAnchor.${userId}.${fp}`;
 }
 
-// loadKeyringAnchor reads userId's anchor from storage, a Storage-like
-// object (localStorage in the browser), or returns null if none is stored.
-// The anchor is kept per user and survives signing out, so a server cannot
-// roll the keyring back between sessions. A malformed stored anchor throws
-// FormatError rather than reading as no anchor.
-export function loadKeyringAnchor(storage, userId) {
-  const raw = storage.getItem(keyringAnchorStorageKey(userId));
+// loadKeyringAnchor reads the anchor for userId under fingerprint fp from
+// storage, a Storage-like object (localStorage in the browser), or returns
+// null if none is stored. The anchor is kept per user and fingerprint and
+// survives signing out, so a server cannot roll the keyring back between
+// sessions. A malformed stored anchor throws FormatError rather than
+// reading as no anchor.
+export function loadKeyringAnchor(storage, userId, fp) {
+  const raw = storage.getItem(keyringAnchorStorageKey(userId, fp));
   if (raw === null) return null;
   let a;
   try {
@@ -2319,8 +2326,8 @@ export function loadKeyringAnchor(storage, userId) {
   return { rev: a.rev, hash: a.hash };
 }
 
-// saveKeyringAnchor stores userId's anchor in storage.
-export function saveKeyringAnchor(storage, userId, anchor) {
+// saveKeyringAnchor stores the anchor for userId under fingerprint fp.
+export function saveKeyringAnchor(storage, userId, fp, anchor) {
   checkKeyringAnchor(anchor);
-  storage.setItem(keyringAnchorStorageKey(userId), JSON.stringify({ rev: anchor.rev, hash: anchor.hash }));
+  storage.setItem(keyringAnchorStorageKey(userId, fp), JSON.stringify({ rev: anchor.rev, hash: anchor.hash }));
 }

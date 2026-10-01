@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestKeyring(t *testing.T) {
@@ -35,5 +36,31 @@ func TestKeyring(t *testing.T) {
 	// Another user's keyring is untouched.
 	if rev, sealed, _ := s.Keyring(b.ID); rev != 0 || sealed != nil {
 		t.Errorf("b's keyring: %d %q", rev, sealed)
+	}
+}
+
+// TestResetAccountDeletesKeyring: a reset without the recovery code changes
+// MK, so the keyring sealed under the old one can never open again. It goes
+// with the reset, and another user's stays.
+func TestResetAccountDeletesKeyring(t *testing.T) {
+	s := testStore(t)
+	a := testAccount(t, s, "a@b.c")
+	b := testAccount(t, s, "b@b.c")
+	for _, u := range []*User{a, b} {
+		if _, err := s.PutKeyring(u.ID, 1, []byte("sealed-"+u.ID)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.ResetAccount(a.ID, "resethash", testBundle("reset"), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if rev, sealed, err := s.Keyring(a.ID); err != nil || rev != 0 || sealed != nil {
+		t.Errorf("a's keyring after a reset: %d %q %v, want 0, nil, nil", rev, sealed, err)
+	}
+	if _, err := s.PutKeyring(a.ID, 1, []byte("fresh")); err != nil {
+		t.Errorf("first write after a reset: %v", err)
+	}
+	if rev, sealed, _ := s.Keyring(b.ID); rev != 1 || string(sealed) != "sealed-"+b.ID {
+		t.Errorf("b's keyring after a's reset: %d %q, want untouched", rev, sealed)
 	}
 }

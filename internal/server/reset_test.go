@@ -302,3 +302,30 @@ func TestResetRecoveryRejectsBadProof(t *testing.T) {
 	c.mustDo("POST", "/api/auth/reset/complete", complete(proof(seed, hashToken(tokenBytes))), nil, http.StatusOK)
 	loginAgain(t, c, "ada@example.com", "new-pw")
 }
+
+// TestResetNewDeletesKeyring: a reset without the recovery code changes MK,
+// so the keyring sealed under the old one can never open. It is deleted, and
+// the first write afterwards is rev 1.
+func TestResetNewDeletesKeyring(t *testing.T) {
+	s, ts := testServer(t)
+	seedAccount(t, s, "ada@example.com", "old-pw", false)
+	c := &testClient{t: t, base: ts.URL}
+	loginAgain(t, c, "ada@example.com", "old-pw")
+	old := e2e.B64([]byte("keyring sealed under the old MK"))
+	c.mustDo("PUT", "/api/me/keyring", keyringWire{Rev: 1, Keyring: old}, nil, http.StatusOK)
+
+	forgotPassword(t, ts.URL, "ada@example.com")
+	resetMail, _ := mailer(s).Last("ada@example.com")
+	c.mustDo("POST", "/api/auth/reset/complete", map[string]any{
+		"token": extractFragmentToken(t, resetMail.Body), "mode": "new",
+		"authKey": e2e.B64(testAuthKey("new-pw")), "bundle": testBundleWire(),
+	}, nil, http.StatusOK)
+
+	loginAgain(t, c, "ada@example.com", "new-pw")
+	var got keyringWire
+	c.mustDo("GET", "/api/me/keyring", nil, &got, http.StatusOK)
+	if got.Rev != 0 || got.Keyring != "" {
+		t.Errorf("keyring after a reset without the recovery code = %+v, want rev 0 and empty", got)
+	}
+	c.mustDo("PUT", "/api/me/keyring", keyringWire{Rev: 1, Keyring: e2e.B64([]byte("new"))}, nil, http.StatusOK)
+}

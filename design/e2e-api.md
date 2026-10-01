@@ -210,8 +210,11 @@ parameters, so raising the defaults raises them for fake responses too.
      ```
 
      The server archives the whole current bundle and the wrapped `MK` of
-     every API key, revokes every API key, stores the new bundle, and sets
-     the user's `resetAt` to now.
+     every API key, revokes every API key, stores the new bundle, deletes the
+     user's keyring, and sets the user's `resetAt` to now. The keyring was
+     sealed under the old `MK`, so `GET /api/me/keyring` answers rev 0 and
+     empty afterward. With the recovery code, `MK` is unchanged and so is
+     the keyring.
 
    Both modes increase the token version, which signs out every other
    session, and email the user that the password was reset.
@@ -827,9 +830,11 @@ device reads again and merges instead of overwriting.
 The outer `rev` is only for this check. Clients trust the `rev` sealed inside
 the keyring, and refuse a keyring whose two values differ. They also keep the
 anchor that [wire formats](e2e-wire-formats.md#the-keyring) describes, and
-refuse a keyring older than it. Sign-out in the browser and `cairn logout`
-both keep the anchor. A new device has no anchor, so it has no rollback
-protection until it first reads the keyring.
+refuse a keyring older than it. Both clients key the anchor by user ID and
+the user's own fingerprint, so after a reset without the recovery code they
+start with no anchor and accept the empty keyring. Sign-out in the browser
+and `cairn logout` both keep the anchor. A new device has no anchor, so it
+has no rollback protection until it first reads the keyring.
 
 A keyring that fails to open is an error, never an empty keyring.
 

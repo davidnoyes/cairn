@@ -92,7 +92,7 @@ func TestKeyringAnchorSurvivesLogoutAndLogin(t *testing.T) {
 	if f.cliConfig != (cliConfig{}) {
 		t.Errorf("login after logout = %+v, want cleared", f.cliConfig)
 	}
-	if a := f.Anchors[proxy+" "+k.UserID]; a.Rev != 1 {
+	if a := f.Anchors[proxy+" "+k.UserID+" "+k.FP]; a.Rev != 1 {
 		t.Errorf("anchor after logout = %+v, want rev 1 kept", a)
 	}
 
@@ -121,15 +121,15 @@ func TestConfigRefusesACorruptFile(t *testing.T) {
 		t.Errorf("saveConfig over a corrupt file: %v, want a refusal", err)
 	}
 	store := configAnchors{host: "http://example.test"}
-	if _, err := store.LoadAnchor("u1"); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
+	if _, err := store.LoadAnchor("u1", "fp1"); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
 		t.Errorf("LoadAnchor from a corrupt file: %v, want a refusal", err)
 	}
-	if err := store.SaveAnchor("u1", e2e.KeyringAnchor{Rev: 1, Hash: strings.Repeat("a", 64)}); err == nil {
+	if err := store.SaveAnchor("u1", "fp1", e2e.KeyringAnchor{Rev: 1, Hash: strings.Repeat("a", 64)}); err == nil {
 		t.Error("SaveAnchor wrote over a corrupt file")
 	}
 }
 
-func TestConfigAnchorsAreKeyedByHostAndUser(t *testing.T) {
+func TestConfigAnchorsAreKeyedByHostUserAndFingerprint(t *testing.T) {
 	t.Setenv("CAIRN_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 	want := cliConfig{Host: "http://a.test", Email: "ada@example.com", APIKey: "cairn_x_y_z"}
 	if err := saveConfig(want); err != nil {
@@ -137,18 +137,18 @@ func TestConfigAnchorsAreKeyedByHostAndUser(t *testing.T) {
 	}
 	a, b := configAnchors{host: "http://a.test"}, configAnchors{host: "http://b.test"}
 	anchor := e2e.KeyringAnchor{Rev: 3, Hash: strings.Repeat("c", 64)}
-	if err := a.SaveAnchor("u1", anchor); err != nil {
+	if err := a.SaveAnchor("u1", "fp1", anchor); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := a.LoadAnchor("u1"); err != nil || got == nil || *got != anchor {
+	if got, err := a.LoadAnchor("u1", "fp1"); err != nil || got == nil || *got != anchor {
 		t.Errorf("LoadAnchor = %v, %v, want %+v", got, err, anchor)
 	}
 	for _, tc := range []struct {
-		store configAnchors
-		user  string
-	}{{b, "u1"}, {a, "u2"}} {
-		if got, err := tc.store.LoadAnchor(tc.user); err != nil || got != nil {
-			t.Errorf("LoadAnchor(%s, %s) = %v, %v, want none", tc.store.host, tc.user, got, err)
+		store    configAnchors
+		user, fp string
+	}{{b, "u1", "fp1"}, {a, "u2", "fp1"}, {a, "u1", "fp2"}} {
+		if got, err := tc.store.LoadAnchor(tc.user, tc.fp); err != nil || got != nil {
+			t.Errorf("LoadAnchor(%s, %s, %s) = %v, %v, want none", tc.store.host, tc.user, tc.fp, got, err)
 		}
 	}
 	if got := loadConfig(); got != want {

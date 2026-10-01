@@ -21,31 +21,31 @@ type memAnchors struct {
 
 func newMemAnchors() *memAnchors { return &memAnchors{m: map[string]e2e.KeyringAnchor{}} }
 
-func (s *memAnchors) LoadAnchor(userID string) (*e2e.KeyringAnchor, error) {
+func (s *memAnchors) LoadAnchor(userID, fp string) (*e2e.KeyringAnchor, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.loadErr != nil {
 		return nil, s.loadErr
 	}
-	a, ok := s.m[userID]
+	a, ok := s.m[userID+" "+fp]
 	if !ok {
 		return nil, nil
 	}
 	return &a, nil
 }
 
-func (s *memAnchors) SaveAnchor(userID string, a e2e.KeyringAnchor) error {
+func (s *memAnchors) SaveAnchor(userID, fp string, a e2e.KeyringAnchor) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.m[userID] = a
+	s.m[userID+" "+fp] = a
 	return nil
 }
 
-func (s *memAnchors) get(t *testing.T, userID string) e2e.KeyringAnchor {
+func (s *memAnchors) get(t *testing.T, userID, fp string) e2e.KeyringAnchor {
 	t.Helper()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	a, ok := s.m[userID]
+	a, ok := s.m[userID+" "+fp]
 	if !ok {
 		t.Fatalf("no anchor stored for %s", userID)
 	}
@@ -98,7 +98,7 @@ func TestReadAndUpdateKeyring(t *testing.T) {
 	if kr.Rev != 0 || len(kr.Pins) != 0 || len(kr.Epochs) != 0 {
 		t.Errorf("first read = %+v, want the empty keyring at rev 0", kr)
 	}
-	if a := c.Anchors.(*memAnchors).get(t, k.UserID); a != e2e.KeyringAnchorOf(0, nil) {
+	if a := c.Anchors.(*memAnchors).get(t, k.UserID, k.FP); a != e2e.KeyringAnchorOf(0, nil) {
 		t.Errorf("anchor after the first read = %+v, want rev 0 over no bytes", a)
 	}
 
@@ -111,7 +111,7 @@ func TestReadAndUpdateKeyring(t *testing.T) {
 		t.Errorf("server rev = %d, want 1", raw.Rev)
 	}
 	sealed, _ := e2e.UnB64(raw.Keyring)
-	if a := c.Anchors.(*memAnchors).get(t, k.UserID); a != e2e.KeyringAnchorOf(1, sealed) {
+	if a := c.Anchors.(*memAnchors).get(t, k.UserID, k.FP); a != e2e.KeyringAnchorOf(1, sealed) {
 		t.Errorf("anchor after the write = %+v, want the hash of the bytes written at rev 1", a)
 	}
 	kr, err = c.ReadKeyring(k)
@@ -153,7 +153,7 @@ func TestReadKeyringRefusals(t *testing.T) {
 	addPin(t, c, k, "u2")
 	cur := rawKeyring(t, c)
 	anchors := c.Anchors.(*memAnchors)
-	want := anchors.get(t, k.UserID)
+	want := anchors.get(t, k.UserID, k.FP)
 
 	other := e2e.NewKeyring()
 	other.Rev = 2
@@ -195,7 +195,7 @@ func TestReadKeyringRefusals(t *testing.T) {
 			if _, err := p.UpdateKeyring(k, func(*e2e.Keyring) error { return nil }); err == nil {
 				t.Error("UpdateKeyring wrote over a keyring the anchor refuses")
 			}
-			if a := anchors.get(t, k.UserID); a != want {
+			if a := anchors.get(t, k.UserID, k.FP); a != want {
 				t.Errorf("anchor moved to %+v after a refusal, want %+v", a, want)
 			}
 		})
@@ -240,6 +240,43 @@ func TestKeyringAnchorSurvivesLogout(t *testing.T) {
 	}
 	if _, err := keyedFor(t, proxy, second.APIKey).ReadKeyring(k2); err != nil {
 		t.Errorf("a device with no anchor: %v, want the old keyring accepted (the anchor is what refuses it)", err)
+	}
+}
+
+// TestKeyringAnchorIsPerFingerprint serves the empty keyring a reset leaves
+// behind. A client with the anchor for its own fingerprint refuses it as a
+// rollback; after a reset the fingerprint is new, so there is no anchor for
+// it and the client accepts.
+func TestKeyringAnchorIsPerFingerprint(t *testing.T) {
+	host, full := keyedLogin(t)
+	c := keyedFor(t, host, full)
+	k := mustUnlock(t, c)
+	addPin(t, c, k, "u1")
+	anchors := c.Anchors.(*memAnchors)
+	if a := anchors.get(t, k.UserID, k.FP); a.Rev != 1 {
+		t.Fatalf("anchor = %+v, want rev 1", a)
+	}
+
+	proxy := tamperingProxy(t, host, "/api/me/keyring", func(m map[string]json.RawMessage) {
+		m["rev"] = mustJSON(t, 0)
+		m["keyring"] = mustJSON(t, "")
+	})
+	same := keyedFor(t, proxy, full)
+	same.Anchors = anchors
+	if _, err := same.ReadKeyring(k); !errors.Is(err, e2e.ErrKeyringRollback) {
+		t.Errorf("same fingerprint: %v, want ErrKeyringRollback", err)
+	}
+
+	reset := *k
+	reset.FP = strings.Repeat("b", 64)
+	fresh := keyedFor(t, proxy, full)
+	fresh.Anchors = anchors
+	kr, err := fresh.ReadKeyring(&reset)
+	if err != nil || kr.Rev != 0 {
+		t.Errorf("new fingerprint: %v, %+v, want the empty keyring accepted", err, kr)
+	}
+	if a := anchors.get(t, k.UserID, k.FP); a.Rev != 1 {
+		t.Errorf("the old fingerprint's anchor = %+v, want it left at rev 1", a)
 	}
 }
 

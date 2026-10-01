@@ -93,21 +93,26 @@ func saveConfig(cfg cliConfig) error {
 // configAnchors keeps keyring anchors in the config file, for one host.
 type configAnchors struct{ host string }
 
-func (a configAnchors) key(userID string) string { return a.host + " " + userID }
+// key scopes an anchor to the user's own fingerprint as well as the user ID.
+// A reset without the recovery code changes the user's keys, so the device
+// starts with no anchor and accepts the empty keyring the reset leaves. A
+// server cannot use this to roll a keyring back, because it cannot make the
+// user's keys change.
+func (a configAnchors) key(userID, fp string) string { return a.host + " " + userID + " " + fp }
 
-func (a configAnchors) LoadAnchor(userID string) (*e2e.KeyringAnchor, error) {
+func (a configAnchors) LoadAnchor(userID, fp string) (*e2e.KeyringAnchor, error) {
 	f, err := readConfigFile()
 	if err != nil {
 		return nil, err
 	}
-	anchor, ok := f.Anchors[a.key(userID)]
+	anchor, ok := f.Anchors[a.key(userID, fp)]
 	if !ok {
 		return nil, nil
 	}
 	return &anchor, nil
 }
 
-func (a configAnchors) SaveAnchor(userID string, anchor e2e.KeyringAnchor) error {
+func (a configAnchors) SaveAnchor(userID, fp string, anchor e2e.KeyringAnchor) error {
 	f, err := readConfigFile()
 	if err != nil {
 		return err
@@ -115,7 +120,7 @@ func (a configAnchors) SaveAnchor(userID string, anchor e2e.KeyringAnchor) error
 	if f.Anchors == nil {
 		f.Anchors = map[string]e2e.KeyringAnchor{}
 	}
-	f.Anchors[a.key(userID)] = anchor
+	f.Anchors[a.key(userID, fp)] = anchor
 	return writeConfigFile(f)
 }
 

@@ -13,12 +13,13 @@ import (
 )
 
 // AnchorStore keeps the keyring anchor for each account this client signs
-// in to. It holds nothing secret, and signing out must not clear it. Load
+// in to, for each fingerprint the account has had. It holds nothing secret,
+// and signing out must not clear it. Load
 // returns nil, nil when no anchor is stored, and an error, never nil, when
 // a stored one cannot be read.
 type AnchorStore interface {
-	LoadAnchor(userID string) (*e2e.KeyringAnchor, error)
-	SaveAnchor(userID string, a e2e.KeyringAnchor) error
+	LoadAnchor(userID, fp string) (*e2e.KeyringAnchor, error)
+	SaveAnchor(userID, fp string, a e2e.KeyringAnchor) error
 }
 
 // keyringRetries bounds how many times UpdateKeyring reads again and
@@ -54,7 +55,7 @@ func (c *Client) readKeyring(k *UnlockedKeys) (*e2e.Keyring, e2e.KeyringAnchor, 
 	if err != nil {
 		return nil, e2e.KeyringAnchor{}, err
 	}
-	anchor, err := store.LoadAnchor(k.UserID)
+	anchor, err := store.LoadAnchor(k.UserID, k.FP)
 	if err != nil {
 		return nil, e2e.KeyringAnchor{}, fmt.Errorf("reading the keyring anchor: %w", err)
 	}
@@ -70,7 +71,7 @@ func (c *Client) readKeyring(k *UnlockedKeys) (*e2e.Keyring, e2e.KeyringAnchor, 
 	if err != nil {
 		return nil, e2e.KeyringAnchor{}, fmt.Errorf("refusing the server's keyring: %w", err)
 	}
-	if err := store.SaveAnchor(k.UserID, next); err != nil {
+	if err := store.SaveAnchor(k.UserID, k.FP, next); err != nil {
 		return nil, e2e.KeyringAnchor{}, fmt.Errorf("saving the keyring anchor: %w", err)
 	}
 	return kr, next, nil
@@ -108,7 +109,7 @@ func (c *Client) UpdateKeyring(k *UnlockedKeys, change func(kr *e2e.Keyring) err
 		if err != nil {
 			return nil, err
 		}
-		if err := store.SaveAnchor(k.UserID, e2e.KeyringAnchorOf(next.Rev, sealed)); err != nil {
+		if err := store.SaveAnchor(k.UserID, k.FP, e2e.KeyringAnchorOf(next.Rev, sealed)); err != nil {
 			return nil, fmt.Errorf("the keyring was written, but saving its anchor failed: %w", err)
 		}
 		return next, nil

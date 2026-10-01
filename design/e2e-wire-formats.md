@@ -186,9 +186,14 @@ new. The keyring therefore carries a revision:
 - `rev` is an integer that goes up by one on every write.
 - Each client keeps an anchor for the account, `{"rev", "hash"}`: the highest
   `rev` it has seen, and `hex(SHA-256)` of the sealed keyring at that `rev`.
-  The browser keeps it in `localStorage`, keyed by user ID, and the command
-  line keeps it in its configuration file. Signing out does not clear it, and
-  it holds nothing secret.
+  The browser keeps it in `localStorage`, keyed by user ID and the user's own
+  fingerprint, and the command line keeps it in its configuration file, keyed
+  the same way. Signing out does not clear it, and it holds nothing secret.
+  A reset without the recovery code deletes the server's keyring and changes
+  the user's fingerprint, so the device starts with no anchor and accepts the
+  empty keyring. A server cannot use this to roll a keyring back, because it
+  cannot make the user's keys change. An anchor for an earlier fingerprint
+  stays where it is and is never read again.
 - A client refuses a keyring with a `rev` lower than the anchor's, or with the
   same `rev` and a different hash. `pins` and `epochs` sit inside the sealed
   keyring, so the anchor covers them too.

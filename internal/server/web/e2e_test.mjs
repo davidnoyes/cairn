@@ -1321,7 +1321,10 @@ function fakeStorage() {
   };
 }
 
-test('the keyring anchor is kept per user and survives signing out', async () => {
+const FP_A = 'a'.repeat(64);
+const FP_B = 'b'.repeat(64);
+
+test('the keyring anchor is kept per user and fingerprint and survives signing out', async () => {
   const storage = fakeStorage();
   const key = await e2e.mkSealKey(testKeyBytes(8));
   const k = e2e.newKeyring();
@@ -1330,32 +1333,42 @@ test('the keyring anchor is kept per user and survives signing out', async () =>
   k.rev = 2;
   const sealed2 = await e2e.sealKeyring(key, k);
 
-  assert.equal(e2e.loadKeyringAnchor(storage, 'u-ada'), null);
+  assert.equal(e2e.loadKeyringAnchor(storage, 'u-ada', FP_A), null);
   const read2 = await e2e.openKeyring(key, 2, sealed2, null);
-  e2e.saveKeyringAnchor(storage, 'u-ada', read2.anchor);
+  e2e.saveKeyringAnchor(storage, 'u-ada', FP_A, read2.anchor);
   storage.setItem('cairn.session', 'token');
 
   // Signing out drops the session; the anchor is a separate key.
   storage.removeItem('cairn.session');
-  assert.deepEqual(storage.keys(), ['cairn.keyringAnchor.u-ada']);
+  assert.deepEqual(storage.keys(), [`cairn.keyringAnchor.u-ada.${FP_A}`]);
 
   // Signing in again reads the anchor back, and it refuses the rev 1
   // keyring a server rolled back to.
-  const anchor = e2e.loadKeyringAnchor(storage, 'u-ada');
+  const anchor = e2e.loadKeyringAnchor(storage, 'u-ada', FP_A);
   assert.deepEqual(anchor, read2.anchor);
   await assert.rejects(() => e2e.openKeyring(key, 1, sealed1, anchor), e2e.KeyringRollbackError);
   await e2e.openKeyring(key, 2, sealed2, anchor);
 
   // Another user on the same browser has no anchor of their own yet.
-  assert.equal(e2e.loadKeyringAnchor(storage, 'u-bob'), null);
+  assert.equal(e2e.loadKeyringAnchor(storage, 'u-bob', FP_A), null);
+
+  // The same user under another fingerprint, as after a reset without the
+  // recovery code, has none either; the old anchor stays where it was.
+  assert.equal(e2e.loadKeyringAnchor(storage, 'u-ada', FP_B), null);
+  e2e.saveKeyringAnchor(storage, 'u-ada', FP_B, (await e2e.openKeyring(key, 1, sealed1, null)).anchor);
+  assert.equal(e2e.loadKeyringAnchor(storage, 'u-ada', FP_B).rev, 1);
+  assert.deepEqual(e2e.loadKeyringAnchor(storage, 'u-ada', FP_A), anchor);
+  storage.removeItem(`cairn.keyringAnchor.u-ada.${FP_B}`);
 
   // A malformed stored anchor is an error, never "no anchor".
   for (const raw of ['not json', '{"rev":-1,"hash":"' + 'a'.repeat(64) + '"}', '{"rev":1,"hash":"zz"}', 'null']) {
-    storage.setItem('cairn.keyringAnchor.u-ada', raw);
-    assert.throws(() => e2e.loadKeyringAnchor(storage, 'u-ada'), e2e.FormatError, raw);
+    storage.setItem(`cairn.keyringAnchor.u-ada.${FP_A}`, raw);
+    assert.throws(() => e2e.loadKeyringAnchor(storage, 'u-ada', FP_A), e2e.FormatError, raw);
   }
-  assert.throws(() => e2e.loadKeyringAnchor(storage, ''), e2e.FormatError);
-  assert.throws(() => e2e.saveKeyringAnchor(storage, 'u-ada', { rev: 1, hash: 'nope' }), e2e.FormatError);
+  assert.throws(() => e2e.loadKeyringAnchor(storage, '', FP_A), e2e.FormatError);
+  assert.throws(() => e2e.loadKeyringAnchor(storage, 'u-ada', ''), e2e.FormatError);
+  assert.throws(() => e2e.saveKeyringAnchor(storage, 'u-ada', '', anchor), e2e.FormatError);
+  assert.throws(() => e2e.saveKeyringAnchor(storage, 'u-ada', FP_A, { rev: 1, hash: 'nope' }), e2e.FormatError);
 });
 
 test('vectors.json has no section this file does not check', () => {
