@@ -121,3 +121,29 @@ literal ciphertext:
   chunk's worth of bytes after the real last chunk.
 - `{"op": "flip", "offset": n}`: flip byte `n` of the full blob (header plus
   chunks) by XORing it with `0x01`.
+
+## Interop files
+
+`internal/e2e/interop_test.go` and `internal/server/web/e2e_interop.mjs` check
+agreement in both directions, with real randomness rather than vectors.json's
+seeded one. `node e2e_interop.mjs emit` prints a JSON file in the shape below;
+`node e2e_interop.mjs check FILE` verifies and opens every item in a file of
+that shape, from either side, exiting non-zero on any failure. The Go test
+runs both: it checks a freshly emitted Node file with this package, and asks
+Node to check a freshly emitted Go file.
+
+Every byte value is hex, as above, with one exception: `signature.envelope`
+is the real `{body, sig, signer}` b64 JSON wire form (see "Signatures" in
+`design/e2e-wire-formats.md`), not hex, since that is what the field actually
+carries on the wire.
+
+Top-level keys: `seal` (`key`, `fields`, `pt`, `sealed`); `blob` and
+`blobMultiChunk` (`ak`, `ctx`, `pt`, `blob`), the second with a plaintext
+spanning several chunks; `wrap` (`ctx`, `recipientPriv`, `key`, `wrapped`);
+`signature` (`purpose`, `seed`, `pub`, `body`, `signer`, `sig`, `envelope`);
+`recoveryCode` (`code`, `display`, `kek`); `apiKey` (`full`, `keyId`,
+`authSecret`, `keySecret`, `kek`); `akCommit` (`ak`, `artifact`, `epoch`,
+`want`); `rotation` (`oldSeed`, `oldPub`, `newSeed`, `newPub`, `signer`,
+`body`, `sig`, `newSig`); `stretch` (`email`, `password`, `params`,
+`argonSalt`, `stretched`, `authKey`, `kek`) — run at floor Argon2id
+parameters, so the Node side's WebAssembly run stays fast.
