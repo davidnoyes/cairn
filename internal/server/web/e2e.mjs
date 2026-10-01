@@ -1294,8 +1294,10 @@ export async function verify(pub, purpose, body, sig) {
   if (isSmallOrderEd25519(pub) || isSmallOrderEd25519(R)) return false;
   if (!isPrimeOrderEd25519Key(pub) || !isPrimeOrderEd25519(R)) return false;
   try {
+    // sigMessage copies body, so it must run before the first await.
+    const message = sigMessage(purpose, body);
     const pubKey = await importEd25519Pub(pub);
-    return await subtle.verify('Ed25519', pubKey, sig, sigMessage(purpose, body));
+    return await subtle.verify('Ed25519', pubKey, sig, message);
   } catch {
     return false;
   }

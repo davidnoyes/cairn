@@ -196,8 +196,11 @@ func ed25519StrictTorsionVectors(t testing.TB) []ed25519StrictVec {
 	// R = p+k for the smallest k > 1 that is a curve y-coordinate: a
 	// non-canonical spelling of a point that is neither the identity nor
 	// small-order, unlike r-non-canonical's p+1. No signature with this R
-	// passes any curve equation (its discrete log is unknown), so only the
-	// encoding checks matter here.
+	// passes any curve equation (its discrete log is unknown). The torsion
+	// check refuses this R too: every on-curve y below 19 has a torsion
+	// component, so no prime-order point has a non-canonical spelling, and
+	// no vector can isolate the y < p rule for R. This one is a second line
+	// of defense, failing only when both checks are gone.
 	var nonCanonicalPoint []byte
 	for k := int64(2); nonCanonicalPoint == nil; k++ {
 		canonical := encodeLE255(big.NewInt(k), false)

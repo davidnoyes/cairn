@@ -126,6 +126,10 @@ The overrides, and which primitives read them:
   Each bad signature must also fail before the curve equation runs:
   `signatureEncodingOK` in Go, and `verify` with `subtle.verify` stubbed in
   JS. A verifier that relied on the equation would accept some of them.
+
+  The torsion check also refuses `r-non-canonical-point`, because no point of
+  prime order has a y coordinate below 19. No vector can test the y < p rule
+  for R on its own, so this one fails only when both checks are gone.
 - **`x25519Strict`**: `pub`, `why`, and `accept`. An entry without `accept`
   is a non-canonical (high bit set, or u >= p) or low-order X25519 public
   key that must fail `CheckPublicKeys` on its own. An entry with
