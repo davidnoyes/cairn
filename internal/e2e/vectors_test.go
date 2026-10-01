@@ -2,9 +2,9 @@ package e2e
 
 import (
 	"bytes"
-	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"math/big"
@@ -59,6 +59,63 @@ func reverse(b []byte) []byte {
 		out[len(b)-1-i] = c
 	}
 	return out
+}
+
+// encodeLE255 encodes y (which must be less than 2^255) little-endian into
+// 32 bytes, with the sign/high bit set according to sign. Used to build
+// Ed25519 and X25519 public-key encodings directly from their y/u
+// coordinate instead of transcribing hex by hand.
+func encodeLE255(y *big.Int, sign bool) [32]byte {
+	var out [32]byte
+	b := y.Bytes() // big-endian
+	for i, c := range b {
+		out[len(b)-1-i] = c
+	}
+	if sign {
+		out[31] |= 0x80
+	}
+	return out
+}
+
+// nonCanonicalEd25519 returns the known non-canonical Ed25519 public-key
+// encodings a lenient decoder still accepts: the identity and the order-4
+// point encoded with y >= p (still < 2^255, so still decodable by reducing
+// mod p), and the identity, order-2, and y+p-identity points encoded with
+// the sign bit set despite x=0 forcing it to 0. isSmallOrderEd25519 rejects
+// every one of these structurally (see sign.go); they're built here only so
+// vectors.json carries them all as explicit negatives.
+func nonCanonicalEd25519() [][32]byte {
+	one := big.NewInt(1)
+	zero := big.NewInt(0)
+	pPlus1 := new(big.Int).Add(edwards25519P, one)
+	pPlusZero := new(big.Int).Add(edwards25519P, zero)
+	return [][32]byte{
+		encodeLE255(pPlus1, false),             // y = p+1 (≡1, identity), sign 0
+		encodeLE255(pPlusZero, false),          // y = p   (≡0, order-4), sign 0
+		encodeLE255(pPlusZero, true),           // y = p   (≡0, order-4), sign 1
+		encodeLE255(one, true),                 // y = 1   (identity),    sign 1
+		encodeLE255(edwards25519PMinus1, true), // y = p-1 (order-2),     sign 1
+		encodeLE255(pPlus1, true),              // y = p+1 (≡1, identity), sign 1
+	}
+}
+
+// mutateBase64TrailingBits returns encoded with its last character replaced
+// by the next character in the base64url alphabet, which — because a
+// canonical encoding's last character in a partial group always has its
+// unused low bits zero — always introduces non-zero trailing bits without
+// changing the string's length or alphabet.
+func mutateBase64TrailingBits(t testing.TB, encoded string) string {
+	t.Helper()
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	if len(encoded) == 0 {
+		t.Fatal("mutateBase64TrailingBits: empty input")
+	}
+	last := encoded[len(encoded)-1]
+	idx := strings.IndexByte(alphabet, last)
+	if idx == -1 {
+		t.Fatalf("mutateBase64TrailingBits: %q not in the base64url alphabet", string(last))
+	}
+	return encoded[:len(encoded)-1] + string(alphabet[(idx+1)%64])
 }
 
 // applyBlobCtxOverride returns base with whichever fields ov names replaced.
@@ -199,10 +256,14 @@ type vectorFile struct {
 	Signature     []sigVec           `json:"signature"`
 	Rotation      []rotationVec      `json:"rotation"`
 	Ed25519Strict []ed25519StrictVec `json:"ed25519Strict"`
+	X25519Strict  []x25519StrictVec  `json:"x25519Strict"`
 	Fingerprint   []fingerprintVec   `json:"fingerprint"`
 	LinkToken     []linkTokenVec     `json:"linkToken"`
 	FileAddress   []fileAddressVec   `json:"fileAddress"`
 	BlindIndex    []blindIndexVec    `json:"blindIndex"`
+	StrictJSON    []strictJSONVec    `json:"strictJSON"`
+	Envelope      []envelopeVec      `json:"envelope"`
+	Base64URL     []base64Vec        `json:"base64url"`
 }
 
 type encVec struct {
@@ -278,6 +339,9 @@ type rotationVec struct {
 	Sig      string     `json:"sig"`
 	NewSig   string     `json:"newSig"`
 	Negative []negative `json:"negative"`
+	// Refuse, when set, says why the entry as a whole must be refused as
+	// malformed (ErrFormat, FormatError) even though both signatures verify.
+	Refuse string `json:"refuse,omitempty"`
 }
 
 // ed25519StrictVec covers two different rejections under one name: a
@@ -291,6 +355,36 @@ type ed25519StrictVec struct {
 	Body    string `json:"body,omitempty"`
 	Sig     string `json:"sig,omitempty"`
 	Why     string `json:"why"`
+}
+
+// x25519StrictVec is an X25519 public key CheckPublicKeys must refuse on its
+// own: non-canonical (high bit set, or u >= p) or low-order.
+type x25519StrictVec struct {
+	Name   string `json:"name"`
+	Pub    string `json:"pub"`
+	Accept bool   `json:"accept,omitempty"`
+	Why    string `json:"why"`
+}
+
+// strictJSONVec is a raw body or envelope byte string DecodeStrict must
+// refuse: Body is hex, since some entries are invalid UTF-8 and can't be
+// written as a JSON string literal. Purpose names which BODY_SCHEMAS entry
+// (Go: which body struct) to decode Body against.
+type strictJSONVec struct {
+	Name    string `json:"name"`
+	Purpose string `json:"purpose"`
+	Body    string `json:"body"`
+	Why     string `json:"why"`
+}
+
+// base64Vec checks UnB64/unb64 both accept the canonical encoding of Bytes
+// and refuse every Negative variant: a non-URL character, padding, or
+// non-zero trailing bits in a partial group.
+type base64Vec struct {
+	Name     string     `json:"name"`
+	Bytes    string     `json:"bytes"`
+	Encoded  string     `json:"encoded"`
+	Negative []negative `json:"negative"`
 }
 
 type sealVec struct {
@@ -374,19 +468,55 @@ type linkTokenVec struct {
 	Hash     string `json:"hash"`
 }
 
+// fileAddressVec and blindIndexVec carry negatives whose key override is a
+// wrong-length key: FileAddress/fileAddress and BlindIndex/blindIndex must
+// refuse it (ErrFormat/FormatError) rather than MAC under it.
 type fileAddressVec struct {
-	Name    string `json:"name"`
-	FileKey string `json:"fileKey"`
-	Path    string `json:"path"`
-	Want    string `json:"want"`
+	Name     string     `json:"name"`
+	FileKey  string     `json:"fileKey"`
+	Path     string     `json:"path"`
+	Want     string     `json:"want"`
+	Negative []negative `json:"negative"`
 }
 
 type blindIndexVec struct {
-	Name     string `json:"name"`
-	IndexKey string `json:"indexKey"`
-	Type     string `json:"type"`
-	Value    string `json:"value"`
-	Want     string `json:"want"`
+	Name     string     `json:"name"`
+	IndexKey string     `json:"indexKey"`
+	Type     string     `json:"type"`
+	Value    string     `json:"value"`
+	Want     string     `json:"want"`
+	Negative []negative `json:"negative"`
+}
+
+// nonCanonicalEphWrapped wraps key to the recipient under the ephemeral
+// public key spelled as ephPub, a non-canonical encoding of canonicalU: the
+// shared secret comes from canonicalU, and the wrap key binds the ephPub
+// bytes exactly as sent, so only a canonical-encoding check on ephPub can
+// refuse the result.
+func nonCanonicalEphWrapped(t testing.TB, recipientPriv []byte, ctx WrapContext, key, ephPub, canonicalU []byte) string {
+	t.Helper()
+	if !isNonCanonicalX25519(ephPub) {
+		t.Fatalf("%x is a canonical X25519 encoding", ephPub)
+	}
+	shared, zero := x25519Shared(recipientPriv, canonicalU)
+	if zero {
+		t.Fatal("all-zero shared secret")
+	}
+	gcm, err := newGCM(wrapKey(shared, ctx, ephPub))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := append([]byte{wrapVersion}, ephPub...)
+	return hexEnc(gcm.Seal(out, make([]byte, gcmNonceSize), key, nil))
+}
+
+// wrongKeyLenNegatives overrides the key with one too short or too long.
+func wrongKeyLenNegatives() []negative {
+	var out []negative
+	for _, n := range []int{16, 31, 33} {
+		out = append(out, negative{Why: fmt.Sprintf("%d-byte key", n), Key: hexEnc(fillBytes(n))})
+	}
+	return out
 }
 
 func vectorsPath() string {
@@ -551,9 +681,9 @@ func generateVectors(t testing.TB) vectorFile {
 		fields [][]byte
 		pt     []byte
 	}{
-		{"mk-under-password", testKey("vec-kek"), [][]byte{[]byte("mk")}, []byte("master-key-material-32-bytes!!!")},
-		{"mk-under-recovery", testKey("vec-recovery-kek"), [][]byte{[]byte("mk")}, []byte("master-key-material-32-bytes!!!")},
-		{"mk-under-apikey", testKey("vec-apikey-kek"), [][]byte{[]byte("mk"), []byte("keyid-abc123")}, []byte("master-key-material-32-bytes!!!")},
+		{"mk-under-password", testKey("vec-kek"), [][]byte{[]byte("mk")}, []byte("master-key-material-32-bytes!!!!")},
+		{"mk-under-recovery", testKey("vec-recovery-kek"), [][]byte{[]byte("mk")}, []byte("master-key-material-32-bytes!!!!")},
+		{"mk-under-apikey", testKey("vec-apikey-kek"), [][]byte{[]byte("mk"), []byte("keyid-abc123")}, []byte("master-key-material-32-bytes!!!!")},
 		{"x25519-private", testKey("vec-mkseal"), [][]byte{[]byte("x25519")}, bytes.Repeat([]byte{7}, 32)},
 		{"ed25519-seed", testKey("vec-mkseal"), [][]byte{[]byte("ed25519")}, bytes.Repeat([]byte{8}, 32)},
 		{"ek", testKey("vec-mkseal"), [][]byte{[]byte("ek")}, bytes.Repeat([]byte{9}, 32)},
@@ -653,6 +783,13 @@ func generateVectors(t testing.TB) vectorFile {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Two non-canonical spellings of a genuine ephemeral key: one with the
+	// high bit set, and the base point u = 9 spelled as p+9. X25519 reduces
+	// both to the canonical u, so each wrap below decrypts unless Unwrap
+	// refuses the spelling itself.
+	basePointU := make([]byte, 32)
+	basePointU[0] = 9
+	basePointPlusP := encodeLE255(new(big.Int).Add(edwards25519P, big.NewInt(9)), false)
 	lowOrderWrapped := func(ephPub []byte) string {
 		b := make([]byte, wrapSize)
 		b[0] = wrapVersion
@@ -689,6 +826,8 @@ func generateVectors(t testing.TB) vectorFile {
 		}
 		mutated := append([]byte(nil), wrapped...)
 		mutated[len(mutated)-1] ^= 0x01
+		highBitEph := append([]byte(nil), wrapped[1:1+wrapPubSize]...)
+		highBitEph[31] |= 0x80
 		vf.Wrap = append(vf.Wrap, wrapVec{
 			Name: purpose,
 			Ctx: wrapCtxVec{
@@ -708,6 +847,8 @@ func generateVectors(t testing.TB) vectorFile {
 				{Why: "wrong recipient private key", Key: hexEnc(otherRecipientPriv)},
 				{Why: "all-zero ephemeral public key", Input: lowOrderWrapped(make([]byte, 32))},
 				{Why: "order-8 ephemeral public key", Input: lowOrderWrapped(order8EphPub)},
+				{Why: "ephemeral public key with the high bit set", Input: nonCanonicalEphWrapped(t, recipientPriv, wctx, key, highBitEph, wrapped[1:1+wrapPubSize])},
+				{Why: "ephemeral public key u = p+9, the base point", Input: nonCanonicalEphWrapped(t, recipientPriv, wctx, key, basePointPlusP[:], basePointU)},
 			},
 		})
 	}
@@ -800,15 +941,36 @@ func generateVectors(t testing.TB) vectorFile {
 				{Why: "newSig by a wrong key", NewSig: hexEnc(wrongNewSig)},
 			},
 		}}
+
+		// Both signatures valid, but the new X25519 key is the all-zero
+		// low-order point: only the key check can refuse it.
+		body.New.X25519 = B64(make([]byte, 32))
+		badBody, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		badEnv, err := SignRotation(oldSeed, newSeed, badBody, "user-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		vf.Rotation = append(vf.Rotation, rotationVec{
+			Name: "low-order-new-x25519", OldSeed: hexEnc(oldSeed), OldPub: hexEnc(oldPub),
+			NewSeed: hexEnc(newSeed), NewPub: hexEnc(newPub), Signer: "user-1",
+			Body: hexEnc(badBody), Sig: hexEnc(badEnv.Sig), NewSig: hexEnc(badEnv.NewSig),
+			Refuse: "the new X25519 key is low-order; both signatures are valid",
+		})
+		vf.Rotation = append(vf.Rotation, mixedOrderRotation(t, oldSeed, oldPub, x25519Pub))
 	}
 
-	// ed25519Strict: every hardcoded small-order public key must fail
-	// CheckPublicKeys and Verify, and a genuine signature with its S
-	// component replaced by S+L (still congruent mod L, so a cofactored or
-	// otherwise non-strict verifier might accept it) must fail too.
-	for i, p := range smallOrderEd25519 {
+	// ed25519Strict: every hardcoded small-order public key, plus every known
+	// non-canonical encoding of one, must fail CheckPublicKeys and Verify,
+	// and a genuine signature with its S component replaced by S+L (still
+	// congruent mod L, so a cofactored or otherwise non-strict verifier might
+	// accept it) must fail too.
+	allBadEd25519 := append(append([][32]byte{}, smallOrderEd25519...), nonCanonicalEd25519()...)
+	for i, p := range allBadEd25519 {
 		vf.Ed25519Strict = append(vf.Ed25519Strict, ed25519StrictVec{
-			Name: fmt.Sprintf("small-order-%d", i), Pub: hexEnc(p[:]), Why: "small-order Ed25519 public key",
+			Name: fmt.Sprintf("small-order-%d", i), Pub: hexEnc(p[:]), Why: "small-order or non-canonical Ed25519 public key",
 		})
 	}
 	{
@@ -825,6 +987,111 @@ func generateVectors(t testing.TB) vectorFile {
 		vf.Ed25519Strict = append(vf.Ed25519Strict, ed25519StrictVec{
 			Name: "non-canonical-s", Pub: hexEnc(strictPub), Purpose: "manifest", Body: hexEnc(body),
 			Sig: hexEnc(nonCanonical), Why: "non-canonical S (S + L)",
+		})
+	}
+	vf.Ed25519Strict = append(vf.Ed25519Strict, ed25519StrictTorsionVectors(t)...)
+
+	// x25519Strict: a non-canonical (high bit set, or u >= p) or low-order
+	// X25519 public key must fail CheckPublicKeys on its own.
+	{
+		_, genuinePub, err := GenerateX25519(newDRBG("vector-x25519-strict-genuine"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		highBitSet := append([]byte(nil), genuinePub...)
+		highBitSet[31] |= 0x80
+		uEqualsP := encodeLE255(edwards25519P, false)
+		uAboveP := encodeLE255(new(big.Int).Add(edwards25519P, big.NewInt(5)), false)
+		vf.X25519Strict = []x25519StrictVec{
+			{Name: "high-bit-set", Pub: hexEnc(highBitSet), Why: "the high bit of the last byte is set"},
+			{Name: "u-equals-p", Pub: hexEnc(uEqualsP[:]), Why: "u equals the field prime (non-canonical encoding of 0)"},
+			{Name: "u-above-p", Pub: hexEnc(uAboveP[:]), Why: "u is a few values above the field prime, high bit clear"},
+			{Name: "low-order-order8", Pub: hexEnc(order8EphPub), Why: "a low-order point reaching the X25519 branch directly"},
+			{Name: "mixed-order", Pub: hexEnc(mixedOrderX25519(t)), Accept: true, Why: "canonical, with a torsion component: the clamped scalar is a multiple of the cofactor, so no torsion check applies"},
+		}
+	}
+
+	// strictJSON: a raw body or envelope byte string DecodeStrict/decodeStrict
+	// must refuse. Body is hex, since some entries are invalid UTF-8 and some
+	// (the escaped duplicate key) rely on the exact raw escape spelling.
+	{
+		invalidUTF8Body := append([]byte(`{"v":1,"artifact":"a1","version":"v1","manifest":"`), 0xff)
+		invalidUTF8Body = append(invalidUTF8Body, []byte(`"}`)...)
+		bomBody := append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"v":1,"artifact":"a1","version":"v1","manifest":"m"}`)...)
+		vf.StrictJSON = []strictJSONVec{
+			{
+				Name: "escaped-duplicate-key", Purpose: "vouch", Why: "duplicate key, one spelled with a unicode escape",
+				Body: hexEnc([]byte(`{"v":1,"artifact":"a1","version":"v1","manifest":"m","ma` + "\\u006e" + `ifest":"x"}`)),
+			},
+			{
+				Name: "number-fraction", Purpose: "revision", Why: "number has a fraction",
+				Body: hexEnc([]byte(`{"v":1,"artifact":"a1","version":"v1","revision":1.0,"epoch":3,"sha256":"deadbeef"}`)),
+			},
+			{
+				Name: "number-exponent", Purpose: "revision", Why: "number has an exponent",
+				Body: hexEnc([]byte(`{"v":1,"artifact":"a1","version":"v1","revision":1e0,"epoch":3,"sha256":"deadbeef"}`)),
+			},
+			{
+				Name: "number-fraction-nonzero", Purpose: "revision", Why: "number has a nonzero fraction",
+				Body: hexEnc([]byte(`{"v":1,"artifact":"a1","version":"v1","revision":1.5,"epoch":3,"sha256":"deadbeef"}`)),
+			},
+			{
+				Name: "number-negative", Purpose: "revision", Why: "number is negative",
+				Body: hexEnc([]byte(`{"v":1,"artifact":"a1","version":"v1","revision":-1,"epoch":3,"sha256":"deadbeef"}`)),
+			},
+			{
+				Name: "number-too-large", Purpose: "revision", Why: "number exceeds 2^53-1",
+				Body: hexEnc([]byte(`{"v":1,"artifact":"a1","version":"v1","revision":9007199254740993,"epoch":3,"sha256":"deadbeef"}`)),
+			},
+			{
+				Name: "invalid-utf8", Purpose: "vouch", Why: "invalid UTF-8 byte in a string",
+				Body: hexEnc(invalidUTF8Body),
+			},
+			{
+				Name: "utf8-bom", Purpose: "vouch", Why: "a UTF-8 BOM before the JSON value",
+				Body: hexEnc(bomBody),
+			},
+			{
+				Name: "unpaired-surrogate", Purpose: "vouch", Why: "an unpaired UTF-16 surrogate escape",
+				Body: hexEnc([]byte(`{"v":1,"artifact":"a1","version":"v1","manifest":"` + `\ud800` + `"}`)),
+			},
+			{
+				Name: "lone-low-surrogate", Purpose: "vouch", Why: "a low surrogate escape with no high surrogate before it",
+				Body: hexEnc([]byte(`{"v":1,"artifact":"a1","version":"v1","manifest":"` + `\udc00` + `"}`)),
+			},
+			{
+				Name: "high-surrogate-then-char", Purpose: "vouch", Why: "a high surrogate escape followed by a plain character",
+				Body: hexEnc([]byte(`{"v":1,"artifact":"a1","version":"v1","manifest":"` + `\ud800A` + `"}`)),
+			},
+			{
+				Name: "high-surrogate-twice", Purpose: "vouch", Why: "a high surrogate escape followed by another high surrogate escape",
+				Body: hexEnc([]byte(`{"v":1,"artifact":"a1","version":"v1","manifest":"` + `\ud800\ud800` + `"}`)),
+			},
+		}
+	}
+
+	// base64url: strict decoding accepts only the URL-safe alphabet, no
+	// padding, zero padding bits in a partial group, and no whitespace at all
+	// (Go's decoder silently skips CR and LF unless told not to); see
+	// UnB64/unb64. len-4 gives a full group plus a partial one, so an
+	// embedded line break can sit between them.
+	for _, n := range []int{1, 2, 4} {
+		b := fillBytes(n)
+		encoded := B64(b)
+		mid := len(encoded) / 2
+		vf.Base64URL = append(vf.Base64URL, base64Vec{
+			Name: fmt.Sprintf("len-%d", n), Bytes: hexEnc(b), Encoded: encoded,
+			Negative: []negative{
+				{Why: "non-zero trailing bits", Input: mutateBase64TrailingBits(t, encoded)},
+				{Why: "contains a plus sign", Input: "+" + encoded[1:]},
+				{Why: "contains a slash", Input: "/" + encoded[1:]},
+				{Why: "padded with equals", Input: encoded + "="},
+				{Why: "leading line feed", Input: "\n" + encoded},
+				{Why: "trailing line feed", Input: encoded + "\n"},
+				{Why: "embedded line feed", Input: encoded[:mid] + "\n" + encoded[mid:]},
+				{Why: "embedded carriage return and line feed", Input: encoded[:mid] + "\r\n" + encoded[mid:]},
+				{Why: "trailing carriage return", Input: encoded + "\r"},
+			},
 		})
 	}
 
@@ -853,18 +1120,30 @@ func generateVectors(t testing.TB) vectorFile {
 	// fileAddress
 	{
 		fk := testKey("vector-filekey")
+		want, err := FileAddress(fk, "/images/logo.png")
+		if err != nil {
+			t.Fatal(err)
+		}
 		vf.FileAddress = []fileAddressVec{{
-			Name: "sample", FileKey: hexEnc(fk), Path: "/images/logo.png", Want: FileAddress(fk, "/images/logo.png"),
+			Name: "sample", FileKey: hexEnc(fk), Path: "/images/logo.png", Want: want,
+			Negative: wrongKeyLenNegatives(),
 		}}
 	}
 
 	// blindIndex
 	{
 		ik := testKey("vector-indexkey")
+		want, err := BlindIndex(ik, "session", "abc123")
+		if err != nil {
+			t.Fatal(err)
+		}
 		vf.BlindIndex = []blindIndexVec{{
-			Name: "sample", IndexKey: hexEnc(ik), Type: "session", Value: "abc123", Want: BlindIndex(ik, "session", "abc123"),
+			Name: "sample", IndexKey: hexEnc(ik), Type: "session", Value: "abc123", Want: want,
+			Negative: wrongKeyLenNegatives(),
 		}}
 	}
+
+	vf.Envelope = envelopeVectors()
 
 	return vf
 }
@@ -1027,6 +1306,16 @@ func checkVectors(t *testing.T, vf vectorFile) {
 			if err != nil || hexEnc(got) != v.Pt {
 				t.Errorf("%s: Open failed: %v", v.Name, err)
 			}
+			// Every row but the keyring seals a 32-byte key, which OpenKey
+			// opens; the keyring is not 61 bytes, so OpenKey refuses it.
+			gotKey, err := OpenKey(key, fields, sealed)
+			if string(fields[0]) == "keyring" {
+				if !errors.Is(err, ErrDecrypt) {
+					t.Errorf("%s: OpenKey = %v, want ErrDecrypt", v.Name, err)
+				}
+			} else if err != nil || hexEnc(gotKey) != v.Pt {
+				t.Errorf("%s: OpenKey failed: %v", v.Name, err)
+			}
 			for _, neg := range v.Negative {
 				input := sealed
 				if neg.Input != "" {
@@ -1149,7 +1438,14 @@ func checkVectors(t *testing.T, vf vectorFile) {
 			body := hexDec(t, v.Body)
 			env := Envelope{Body: body, Sig: hexDec(t, v.Sig), Signer: v.Signer, NewSig: hexDec(t, v.NewSig)}
 			var out RotationBody
-			if err := OpenRotation(env, hexDec(t, v.OldPub), &out); err != nil {
+			err := OpenRotation(env, hexDec(t, v.OldPub), &out)
+			if v.Refuse != "" {
+				if !errors.Is(err, ErrFormat) {
+					t.Errorf("%s (%s): OpenRotation = %v, want ErrFormat", v.Name, v.Refuse, err)
+				}
+				continue
+			}
+			if err != nil {
 				t.Errorf("%s: OpenRotation failed: %v", v.Name, err)
 			}
 			for _, neg := range v.Negative {
@@ -1166,27 +1462,103 @@ func checkVectors(t *testing.T, vf vectorFile) {
 	})
 
 	t.Run("ed25519Strict", func(t *testing.T) {
+		// edwards25519BasePoint is the standard compressed encoding of the
+		// Ed25519 base point B (y = 4/5 mod p, x even). Paired with S=1, R=B
+		// satisfies the cofactored verification equation [8][1]B = [8]B +
+		// [8]h*A for ANY message whenever A has order dividing 8 — a
+		// universal forgery against any verifier that doesn't itself refuse
+		// a small-order or non-canonical A before running the curve math.
+		edwards25519BasePoint := hexDec(t, "5866666666666666666666666666666666666666666666666666666666666666")
+		forgedS := make([]byte, 32)
+		forgedS[0] = 1
+		forgedSig := append(append([]byte{}, edwards25519BasePoint...), forgedS...)
+
 		for _, v := range vf.Ed25519Strict {
 			pub := hexDec(t, v.Pub)
 			if len(pub) != 32 {
 				t.Fatalf("%s: pub is %d bytes, want 32", v.Name, len(pub))
 			}
 			if v.Sig != "" {
-				// A genuine key, with a non-canonical signature.
-				if Verify(pub, v.Purpose, hexDec(t, v.Body), hexDec(t, v.Sig)) {
+				// A signature some verifier accepts, which Verify must
+				// refuse, and must refuse before the curve equation: Go's
+				// cofactorless equation alone already fails several of
+				// these, so only the encoding checks prove each rejection.
+				sig := hexDec(t, v.Sig)
+				if Verify(pub, v.Purpose, hexDec(t, v.Body), sig) {
 					t.Errorf("%s (%s): Verify accepted it", v.Name, v.Why)
+				}
+				if signatureEncodingOK(pub, sig) {
+					t.Errorf("%s (%s): signatureEncodingOK accepted it", v.Name, v.Why)
 				}
 				continue
 			}
-			// A small-order key must fail on its own, for any purpose, body,
-			// and signature.
-			x25519Pub := testKey("ed25519-strict-x25519-" + v.Name)
-			if err := CheckPublicKeys(x25519Pub, pub); err == nil {
-				t.Errorf("%s (%s): CheckPublicKeys accepted a small-order Ed25519 key", v.Name, v.Why)
+			// A bad key must fail on its own, for any purpose, body, and
+			// signature — including the R=B,S=1 forgery. The X25519 key is
+			// genuine, so only the Ed25519 key can be the reason.
+			_, x25519Pub, err := GenerateX25519(newDRBG("ed25519-strict-x25519"))
+			if err != nil {
+				t.Fatal(err)
 			}
-			sig := make([]byte, ed25519.SignatureSize)
-			if Verify(pub, "manifest", []byte("body"), sig) {
-				t.Errorf("%s (%s): Verify accepted a small-order Ed25519 key", v.Name, v.Why)
+			if err := CheckPublicKeys(x25519Pub, pub); err == nil {
+				t.Errorf("%s (%s): CheckPublicKeys accepted a bad Ed25519 key", v.Name, v.Why)
+			}
+			for _, body := range [][]byte{[]byte("body"), []byte("a different message")} {
+				if Verify(pub, "manifest", body, forgedSig) {
+					t.Errorf("%s (%s): Verify accepted the R=B,S=1 forgery", v.Name, v.Why)
+				}
+			}
+		}
+	})
+
+	t.Run("x25519Strict", func(t *testing.T) {
+		_, genuineEd25519Pub, err := GenerateEd25519(newDRBG("x25519-strict-ed25519"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, v := range vf.X25519Strict {
+			pub := hexDec(t, v.Pub)
+			err := CheckPublicKeys(pub, genuineEd25519Pub)
+			if v.Accept && err != nil {
+				t.Errorf("%s (%s): CheckPublicKeys refused it: %v", v.Name, v.Why, err)
+			}
+			if !v.Accept && err == nil {
+				t.Errorf("%s (%s): CheckPublicKeys accepted it", v.Name, v.Why)
+			}
+		}
+	})
+
+	t.Run("envelope", func(t *testing.T) { checkEnvelopeVectors(t, vf.Envelope) })
+
+	t.Run("strictJSON", func(t *testing.T) {
+		for _, v := range vf.StrictJSON {
+			body := hexDec(t, v.Body)
+			var err error
+			switch v.Purpose {
+			case "vouch":
+				var out VouchBody
+				err = DecodeStrict(body, &out)
+			case "revision":
+				var out RevisionBody
+				err = DecodeStrict(body, &out)
+			default:
+				t.Fatalf("%s: unknown purpose %q", v.Name, v.Purpose)
+			}
+			if err == nil {
+				t.Errorf("%s (%s): DecodeStrict accepted it", v.Name, v.Why)
+			}
+		}
+	})
+
+	t.Run("base64url", func(t *testing.T) {
+		for _, v := range vf.Base64URL {
+			got, err := UnB64(v.Encoded)
+			if err != nil || hexEnc(got) != v.Bytes {
+				t.Errorf("%s: UnB64 failed: %v", v.Name, err)
+			}
+			for _, neg := range v.Negative {
+				if _, err := UnB64(neg.Input); err == nil {
+					t.Errorf("%s negative %q: UnB64 succeeded", v.Name, neg.Why)
+				}
 			}
 		}
 	})
@@ -1220,16 +1592,26 @@ func checkVectors(t *testing.T, vf vectorFile) {
 
 	t.Run("fileAddress", func(t *testing.T) {
 		for _, v := range vf.FileAddress {
-			if got := FileAddress(hexDec(t, v.FileKey), v.Path); got != v.Want {
-				t.Errorf("%s: FileAddress mismatch", v.Name)
+			if got, err := FileAddress(hexDec(t, v.FileKey), v.Path); err != nil || got != v.Want {
+				t.Errorf("%s: FileAddress mismatch (%v)", v.Name, err)
+			}
+			for _, neg := range v.Negative {
+				if _, err := FileAddress(hexDec(t, neg.Key), v.Path); !errors.Is(err, ErrFormat) {
+					t.Errorf("%s negative %q: got %v, want ErrFormat", v.Name, neg.Why, err)
+				}
 			}
 		}
 	})
 
 	t.Run("blindIndex", func(t *testing.T) {
 		for _, v := range vf.BlindIndex {
-			if got := BlindIndex(hexDec(t, v.IndexKey), v.Type, v.Value); got != v.Want {
-				t.Errorf("%s: BlindIndex mismatch", v.Name)
+			if got, err := BlindIndex(hexDec(t, v.IndexKey), v.Type, v.Value); err != nil || got != v.Want {
+				t.Errorf("%s: BlindIndex mismatch (%v)", v.Name, err)
+			}
+			for _, neg := range v.Negative {
+				if _, err := BlindIndex(hexDec(t, neg.Key), v.Type, v.Value); !errors.Is(err, ErrFormat) {
+					t.Errorf("%s negative %q: got %v, want ErrFormat", v.Name, neg.Why, err)
+				}
 			}
 		}
 	})

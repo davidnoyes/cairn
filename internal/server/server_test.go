@@ -24,13 +24,16 @@ func testBundleWire() bundleWire {
 	kdf, _ := json.Marshal(e2e.Params{Alg: "argon2id", Memory: 65536, Time: 3, Threads: 1, Salt: bytes.Repeat([]byte{0x01}, 16)})
 	sealed := func(tag byte) string { return e2e.B64(bytes.Repeat([]byte{tag}, sealedKeyLen)) }
 	pub := func(tag byte) string { return e2e.B64(bytes.Repeat([]byte{tag}, 32)) }
+	// The Ed25519 key must be a real point: validateBundle refuses one with
+	// a torsion component, which a repeated byte almost always has.
+	_, edPub, _ := e2e.GenerateEd25519(bytes.NewReader(bytes.Repeat([]byte{5}, 32)))
 	return bundleWire{
 		KDF:         kdf,
 		MKPassword:  sealed(1),
 		MKRecovery:  sealed(2),
 		X25519Pub:   pub(3),
 		X25519Priv:  sealed(4),
-		Ed25519Pub:  pub(5),
+		Ed25519Pub:  e2e.B64(edPub),
 		Ed25519Priv: sealed(6),
 		EK:          sealed(7),
 	}

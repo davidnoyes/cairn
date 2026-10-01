@@ -154,7 +154,7 @@ func TestResetNewArchivesOldBundleAndKeys(t *testing.T) {
 	rawToken := extractFragmentToken(t, resetMail.Body)
 
 	newBundle := testBundleWire()
-	newBundle.X25519Pub = e2e.B64(bytes.Repeat([]byte{0x99}, 32)) // distinguishable from the old one
+	newBundle.X25519Pub = e2e.B64(bytes.Repeat([]byte{0x29}, 32)) // distinguishable from the old one
 	c.mustDo("POST", "/api/auth/reset/complete", map[string]any{
 		"token": rawToken, "mode": "new",
 		"authKey": e2e.B64(testAuthKey("new-pw")), "bundle": newBundle,

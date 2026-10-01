@@ -69,7 +69,9 @@ func SealBlob(rnd io.Reader, ak []byte, ctx BlobContext, pt []byte) ([]byte, err
 		return nil, err
 	}
 	header := blobHeader(salt)
-	gcm, err := newGCM(blobKey(ak, salt, ctx))
+	key := blobKey(ak, salt, ctx)
+	defer clear(key) // best-effort zeroing: the AEAD holds its own key schedule
+	gcm, err := newGCM(key)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +110,9 @@ func OpenBlob(ak []byte, ctx BlobContext, blob []byte) ([]byte, error) {
 		return nil, ErrDecrypt
 	}
 
-	gcm, err := newGCM(blobKey(ak, salt, ctx))
+	key := blobKey(ak, salt, ctx)
+	defer clear(key) // best-effort zeroing, as in SealBlob
+	gcm, err := newGCM(key)
 	if err != nil {
 		return nil, ErrDecrypt
 	}
