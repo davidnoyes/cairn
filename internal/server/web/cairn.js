@@ -31,7 +31,7 @@
 (function (global) {
   'use strict';
 
-  var match = location.pathname.match(/^\/(?:artifacts|shared)\/([^\/]+)\/([^\/]+)\/?/);
+  var match = location.pathname.match(/^\/(?:artifacts|shared)\/([^/]+)\/([^/]+)\/?/);
   var isRemote = location.protocol !== 'file:' && !!match;
   var artifactId = isRemote ? match[1] : 'debug-artifact';
   var versionId = isRemote ? match[2] : 'debug-version';
@@ -99,7 +99,7 @@
 
   // ------------------------------------------------------------------- debug
   var DEBUG_USER = { id: 0, name: 'Debug', email: 'debug@localhost', isAdmin: true };
-  var SQLJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.13.0/';
+  var SQLJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.14.2/';
   var dbKey = 'db:' + location.pathname;
 
   function idb() {
@@ -284,7 +284,7 @@
           debugPersist();
           return results;
         } catch (e) {
-          try { debugDb.exec('ROLLBACK'); } catch (_) { }
+          try { debugDb.exec('ROLLBACK'); } catch (_) { /* no transaction open */ }
           throw e;
         }
       });

@@ -1,0 +1,14 @@
+{
+  "name": "cairn-dev-tools",
+  "private": true,
+  "description": "Development tooling only: linting and browser tests. Nothing here ships in the binary.",
+  "scripts": {
+    "lint": "eslint internal/server/web",
+    "test:js": "node --test --experimental-test-coverage internal/server/web/*_test.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "globals": "17.12.0"
+  }
+}

@@ -66,8 +66,9 @@ reuse them everywhere:
 - **Mail capture.** The mailer is an interface. Tests use an in-memory capture
   that records each message, so a test can read the reset link out of the
   "email" it would have sent. `scripts/e2e.sh` runs the server with
-  `--smtp-url` pointing at a tiny SMTP capture server built into the test
-  binary, not at a real relay.
+  `--smtp-url log://`, which writes each message to the server log instead
+  of sending it, and reads the links from there. The same mode suits local
+  testing. The SMTP mailer is tested against a fake SMTP server in Go.
 - **Deterministic randomness for vectors only.** Crypto functions take an
   `io.Reader` for randomness. Production passes `crypto/rand`. Only the vector
   generator passes a seeded reader, so vectors are reproducible.

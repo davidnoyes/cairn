@@ -125,6 +125,14 @@ func (s *Server) serveVersionFile(w http.ResponseWriter, r *http.Request, a *sto
 			return
 		}
 	}
+	// The vendored sql.js is likewise available next to cairn.js, which
+	// looks for it there before anywhere else.
+	if clean == "sql-wasm.js" || clean == "sql-wasm.wasm" {
+		if _, err := os.Stat(filepath.Join(root, clean)); err != nil {
+			s.serveSqlJS(w, r)
+			return
+		}
+	}
 	target := filepath.Join(root, filepath.FromSlash(clean))
 	st, err := os.Stat(target)
 	if err == nil && st.IsDir() {
@@ -304,6 +312,19 @@ func (s *Server) serveShellJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(web.ShellJS)
+}
+
+// serveSqlJS serves the vendored sql.js loader or its WebAssembly module,
+// chosen by the last path segment. Like mermaid.js it ships with the binary.
+func (s *Server) serveSqlJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	if strings.HasSuffix(r.URL.Path, ".wasm") {
+		w.Header().Set("Content-Type", "application/wasm")
+		w.Write(web.SqlWasm)
+		return
+	}
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Write(web.SqlJS)
 }
 
 // templates parses the embedded HTML templates once.

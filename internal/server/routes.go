@@ -63,6 +63,8 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /logout", s.handleLogoutPage)
 	mux.HandleFunc("GET /cairn.js", s.serveCairnJS)
 	mux.HandleFunc("GET /mermaid.js", s.serveMermaidJS)
+	mux.HandleFunc("GET /sql-wasm.js", s.serveSqlJS)
+	mux.HandleFunc("GET /sql-wasm.wasm", s.serveSqlJS)
 	mux.HandleFunc("GET /shell.js", s.serveShellJS)
 	mux.HandleFunc("GET /artifacts/{id}", s.handleArtifactRedirect)
 	mux.HandleFunc("GET /artifacts/{id}/{vid}", s.handleVersionNoSlash)

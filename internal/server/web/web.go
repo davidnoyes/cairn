@@ -32,3 +32,12 @@ func buildMermaidJS() []byte {
 
 //go:embed shell.js
 var ShellJS []byte
+
+// SqlJS and SqlWasm are the vendored sql.js loader and its WebAssembly
+// module (see vendor/README.md).
+//
+//go:embed vendor/sql-wasm.js
+var SqlJS []byte
+
+//go:embed vendor/sql-wasm.wasm
+var SqlWasm []byte

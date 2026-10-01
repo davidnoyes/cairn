@@ -291,3 +291,45 @@ func TestPagesStayInOneTab(t *testing.T) {
 		}
 	}
 }
+
+// TestSqlJSPrecedence checks an artifact's own sql-wasm.js and sql-wasm.wasm
+// win over the vendored copies when requested inside a version.
+func TestSqlJSPrecedence(t *testing.T) {
+	_, ts := testServer(t)
+	admin, aid, _ := setupArtifact(t, ts.URL, true)
+	resp := admin.upload("POST", "/api/artifacts/"+aid+"/versions", zipFrom(t, map[string]string{
+		"index.html":    "<h1>v2</h1>",
+		"sql-wasm.js":   "console.log('custom sql-wasm.js')",
+		"sql-wasm.wasm": "custom wasm bytes",
+	}), map[string]string{"name": "v2"})
+	v2 := decode[struct {
+		ID string `json:"id"`
+	}](t, resp)
+	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+v2.ID+"/sql-wasm.js", "", "")
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body(t, resp), "custom sql-wasm.js") {
+		t.Errorf("artifact-provided sql-wasm.js should win")
+	}
+	resp = get(t, ts.URL+"/artifacts/"+aid+"/"+v2.ID+"/sql-wasm.wasm", "", "")
+	if resp.StatusCode != http.StatusOK || body(t, resp) != "custom wasm bytes" {
+		t.Errorf("artifact-provided sql-wasm.wasm should win")
+	}
+}
+
+// TestSqlJSVendored checks the bundled sql.js is served globally and inside a
+// version's URL space, so no page needs a CDN to load it.
+func TestSqlJSVendored(t *testing.T) {
+	_, ts := testServer(t)
+	_, aid, vid := setupArtifact(t, ts.URL, true)
+	for _, base := range []string{ts.URL + "/", ts.URL + "/artifacts/" + aid + "/" + vid + "/"} {
+		for name, want := range map[string]string{"sql-wasm.js": "javascript", "sql-wasm.wasm": "application/wasm"} {
+			resp := get(t, base+name, "", "")
+			b := body(t, resp)
+			if resp.StatusCode != http.StatusOK || len(b) < 1000 {
+				t.Errorf("%s%s: status %d, %d bytes", base, name, resp.StatusCode, len(b))
+			}
+			if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, want) {
+				t.Errorf("%s%s: content-type %q, want %q", base, name, ct, want)
+			}
+		}
+	}
+}
