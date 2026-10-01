@@ -1,0 +1,10 @@
+# Mutation checks: each line breaks one critical check, and the listed
+# command must then fail. scripts/mutate.sh applies them one at a time in a
+# scratch copy of the tree.
+#
+# Format, tab-separated:  file  search  replacement  command
+# The search text is literal and must occur exactly once in the file. A
+# mutation must still compile: a build failure is reported, not counted.
+
+internal/server/middleware.go	|| strings.Contains(next, `\`) {	{	go test ./internal/server -run 'TestSafeNext|TestLoginNextRejectsBackslash'
+internal/mail/mail.go	if strings.ContainsAny(m.To, "\r\n") || strings.ContainsAny(m.Subject, "\r\n") {	if false {	go test ./internal/mail -run TestSendRejectsHeaderInjection

@@ -31,7 +31,7 @@
 (function (global) {
   'use strict';
 
-  var match = location.pathname.match(/^\/(?:artifacts|shared)\/([^\/]+)\/([^\/]+)\/?/);
+  var match = location.pathname.match(/^\/(?:artifacts|shared)\/([^/]+)\/([^/]+)\/?/);
   var isRemote = location.protocol !== 'file:' && !!match;
   var artifactId = isRemote ? match[1] : 'debug-artifact';
   var versionId = isRemote ? match[2] : 'debug-version';
@@ -284,7 +284,7 @@
           debugPersist();
           return results;
         } catch (e) {
-          try { debugDb.exec('ROLLBACK'); } catch (_) { }
+          try { debugDb.exec('ROLLBACK'); } catch (_) { /* no transaction open */ }
           throw e;
         }
       });

@@ -1,0 +1,49 @@
+## Lints and tests every push and pull request: Go, the embedded browser
+## JavaScript, and the end-to-end smoke test against a built binary.
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Tests must never reach a real server.
+      CAIRN_HOST: ""
+      CAIRN_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: gofmt
+        run: test -z "$(gofmt -l . | tee /dev/stderr)"
+      - name: go vet
+        run: go vet ./...
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...
+
+      - name: go test
+        run: |
+          go test -race -coverprofile=cover.out ./...
+          go tool cover -func=cover.out | tail -1
+
+      - name: npm ci
+        run: npm ci
+      - name: ESLint
+        run: npx eslint .
+      - name: node test
+        run: node --test --experimental-test-coverage internal/server/web/*_test.mjs
+
+      - name: e2e
+        run: ./scripts/e2e.sh

@@ -42,7 +42,7 @@
   function parseColor(s) {
     var m = /^rgba?\(([^)]*)\)$/.exec(s || "");
     if (!m) return null;
-    var v = m[1].split(/[\s,\/]+/).map(Number);
+    var v = m[1].split(/[\s,/]+/).map(Number);
     return [v[0], v[1], v[2], v.length > 3 ? v[3] : 1];
   }
 
