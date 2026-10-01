@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -190,17 +191,22 @@ func TestPrivateRecordClearsPublicToken(t *testing.T) {
 	r1 := record(1, "", 1, "b1")
 	r1.Public = true
 	r2 := record(2, hexHash([]byte("b1")), 1, "b2")
-	s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+	err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
 		if err := tx.AppendRecord(r1); err != nil {
 			t.Fatal(err)
 		}
 		return tx.SetPublicToken("abc", 1)
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, _ := s.ArtifactByID(a.ID)
 	if got.PublicTokenHash != "abc" || got.PublicEpoch != 1 {
 		t.Fatalf("token not stored: %+v", got)
 	}
-	s.WithArtifact(a.ID, func(tx *ArtifactTx) error { return tx.AppendRecord(r2) })
+	if err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error { return tx.AppendRecord(r2) }); err != nil {
+		t.Fatal(err)
+	}
 	got, _ = s.ArtifactByID(a.ID)
 	if got.PublicTokenHash != "" || got.PublicEpoch != 0 {
 		t.Fatalf("private record left the link live: %+v", got)
@@ -215,12 +221,15 @@ func TestOwnerChangesWithRecord(t *testing.T) {
 	r1 := record(1, "", 1, "b1")
 	r2 := record(2, hexHash([]byte("b1")), 1, "b2")
 	r2.OwnerID, r2.Transfer = n.ID, "offerhash"
-	s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+	err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
 		if err := tx.AppendRecord(r1); err != nil {
 			t.Fatal(err)
 		}
 		return tx.AppendRecord(r2)
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, _ := s.ArtifactByID(a.ID)
 	if got.OwnerID != n.ID {
 		t.Fatalf("owner not changed: %+v", got)
@@ -265,8 +274,8 @@ func TestMembersAndExcludedReplaced(t *testing.T) {
 	err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
 		return tx.SetMembers([]Member{{UserID: m1.ID, Role: "owner", FP: "f"}})
 	})
-	if err == nil {
-		t.Fatal("bad role accepted")
+	if err == nil || !strings.Contains(err.Error(), "CHECK constraint failed") {
+		t.Fatalf("bad role: got %v, want a CHECK constraint failure", err)
 	}
 }
 
@@ -347,13 +356,21 @@ func TestDeletingArtifactRemovesSharingRows(t *testing.T) {
 	o := testAccount(t, s, "o@x.y")
 	m := testAccount(t, s, "m@x.y")
 	a := ownedArtifact(t, s, o)
-	s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
-		tx.AppendRecord(record(1, "", 1, "b1"))
-		tx.SetMembers([]Member{{UserID: m.ID, Role: "viewer", FP: "f"}})
-		tx.PutWrap(Wrap{UserID: m.ID, Epoch: 1, Wrapped: []byte("w"), FP: "f"})
-		tx.PutEstate(1, []byte("s"))
-		return nil
+	err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+		if err := tx.AppendRecord(record(1, "", 1, "b1")); err != nil {
+			return err
+		}
+		if err := tx.SetMembers([]Member{{UserID: m.ID, Role: "viewer", FP: "f"}}); err != nil {
+			return err
+		}
+		if err := tx.PutWrap(Wrap{UserID: m.ID, Epoch: 1, Wrapped: []byte("w"), FP: "f"}); err != nil {
+			return err
+		}
+		return tx.PutEstate(1, []byte("s"))
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := s.DeleteArtifact(a.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -462,12 +479,18 @@ func TestAccessState(t *testing.T) {
 	o := testAccount(t, s, "o@x.y")
 	m := testAccount(t, s, "m@x.y")
 	a := ownedArtifact(t, s, o)
-	s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
-		tx.AppendRecord(record(1, "", 1, "b1"))
-		tx.SetMembers([]Member{{UserID: m.ID, Role: "editor", FP: "fm"}})
-		tx.PutWrap(Wrap{UserID: m.ID, Epoch: 1, Wrapped: []byte("w"), FP: "fm"})
-		return nil
+	err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+		if err := tx.AppendRecord(record(1, "", 1, "b1")); err != nil {
+			return err
+		}
+		if err := tx.SetMembers([]Member{{UserID: m.ID, Role: "editor", FP: "fm"}}); err != nil {
+			return err
+		}
+		return tx.PutWrap(Wrap{UserID: m.ID, Epoch: 1, Wrapped: []byte("w"), FP: "fm"})
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	st, err := s.AccessState(a.ID, m.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -498,6 +521,319 @@ func TestDeleteUserWhoOwnsAnArtifactIsErrOwnsArtifacts(t *testing.T) {
 	}
 	if _, err := s.UserByID(o.ID); err != nil {
 		t.Errorf("owner deleted anyway: %v", err)
+	}
+}
+
+const secondArtifactID = "22222222-2222-4222-8222-222222222222"
+
+func countRows(t *testing.T, s *Store, query string, args ...any) int {
+	t.Helper()
+	var n int
+	if err := s.db.QueryRow(query, args...).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func TestDeleteUserCascadesTheirSharingRows(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	m := testAccount(t, s, "m@x.y")
+	other := testAccount(t, s, "other@x.y")
+	a := ownedArtifact(t, s, o)
+	v, err := s.CreateVersion(a.ID, "v1", "", "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+		if err := tx.SetMembers([]Member{{UserID: m.ID, Role: "viewer", FP: "fm"}, {UserID: other.ID, Role: "viewer", FP: "fo"}}); err != nil {
+			return err
+		}
+		if err := tx.SetExcluded([]Excluded{{UserID: m.ID, FP: "fm", Email: "m@x.y"}}); err != nil {
+			return err
+		}
+		for _, u := range []*User{m, other} {
+			if err := tx.PutWrap(Wrap{UserID: u.ID, Epoch: 1, Wrapped: []byte("w"), FP: "f"}); err != nil {
+				return err
+			}
+			if err := tx.PutApproval(Approval{UserID: u.ID, FP: "f", Epoch: 1, Envelope: Envelope{Body: []byte("b"), Sig: []byte("s"), Signer: o.ID}}); err != nil {
+				return err
+			}
+		}
+		if err := tx.PutOffer(Offer{To: m.ID, By: "admin"}); err != nil {
+			return err
+		}
+		return tx.SetVersionWriter(v.ID, m.ID, 1)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteUser(m.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, tbl := range []struct{ name, query string }{
+		{"artifact_members", `SELECT COUNT(*) FROM artifact_members WHERE user_id = ?`},
+		{"artifact_keys", `SELECT COUNT(*) FROM artifact_keys WHERE user_id = ?`},
+		{"team_approvals", `SELECT COUNT(*) FROM team_approvals WHERE user_id = ?`},
+		{"artifact_offers", `SELECT COUNT(*) FROM artifact_offers WHERE to_user = ?`},
+	} {
+		if n := countRows(t, s, tbl.query, m.ID); n != 0 {
+			t.Errorf("%s kept %d rows for the deleted user", tbl.name, n)
+		}
+		// the other user's rows are untouched (the offer was only to m)
+		if tbl.name != "artifact_offers" {
+			if n := countRows(t, s, tbl.query, other.ID); n != 1 {
+				t.Errorf("%s: other user has %d rows, want 1", tbl.name, n)
+			}
+		}
+	}
+	got, err := s.VersionByID(a.ID, v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PushedBy != "" {
+		t.Errorf("pushed_by = %q after the pusher was deleted, want empty", got.PushedBy)
+	}
+	// artifact_excluded deliberately has no foreign key: the entry survives.
+	err = s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+		ex, err := tx.ExcludedEntries()
+		if err != nil || len(ex) != 1 || ex[0].UserID != m.ID || ex[0].Email != "m@x.y" {
+			t.Errorf("excluded entry after delete: %v %+v", err, ex)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSharingWritesStayWithinTheirArtifact(t *testing.T) {
+	var m1ID, m2ID string
+	seed := func(t *testing.T) (*Store, *Artifact) {
+		s := testStore(t)
+		o := testAccount(t, s, "o@x.y")
+		m1 := testAccount(t, s, "m1@x.y")
+		m2 := testAccount(t, s, "m2@x.y")
+		m1ID, m2ID = m1.ID, m2.ID
+		a := ownedArtifact(t, s, o)
+		b, err := s.CreateOwnedArtifact(secondArtifactID, "Other", "", o.ID, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range []string{a.ID, b.ID} {
+			err := s.WithArtifact(id, func(tx *ArtifactTx) error {
+				if err := tx.SetMembers([]Member{{UserID: m1.ID, Role: "viewer", FP: "f1"}, {UserID: m2.ID, Role: "viewer", FP: "f2"}}); err != nil {
+					return err
+				}
+				if err := tx.SetExcluded([]Excluded{{UserID: "x1", FP: "f", Email: "x1@x.y"}, {UserID: "x2", FP: "f", Email: "x2@x.y"}}); err != nil {
+					return err
+				}
+				for _, u := range []*User{m1, m2} {
+					if err := tx.PutWrap(Wrap{UserID: u.ID, Epoch: 1, Wrapped: []byte("w"), FP: "f"}); err != nil {
+						return err
+					}
+					if err := tx.PutApproval(Approval{UserID: u.ID, FP: "f", Epoch: 1, Envelope: Envelope{Body: []byte("b"), Sig: []byte("s"), Signer: o.ID}}); err != nil {
+						return err
+					}
+				}
+				if err := tx.PutEstate(1, []byte("s1")); err != nil {
+					return err
+				}
+				return tx.PutEstate(2, []byte("s2"))
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		return s, a
+	}
+	ops := map[string]func(tx *ArtifactTx) error{
+		"DeleteWrapsExcept":     func(tx *ArtifactTx) error { return tx.DeleteWrapsExcept([]string{m1ID}) },
+		"DeleteApprovalsExcept": func(tx *ArtifactTx) error { return tx.DeleteApprovalsExcept([]string{m1ID}) },
+		"DeleteWraps":           func(tx *ArtifactTx) error { return tx.DeleteWraps(m2ID) },
+		"SetMembers":            func(tx *ArtifactTx) error { return tx.SetMembers(nil) },
+		"SetExcluded":           func(tx *ArtifactTx) error { return tx.SetExcluded(nil) },
+		"DeleteEstates":         func(tx *ArtifactTx) error { return tx.DeleteEstates() },
+	}
+	for name, op := range ops {
+		t.Run(name, func(t *testing.T) {
+			s, a := seed(t)
+			if err := s.WithArtifact(a.ID, op); err != nil {
+				t.Fatal(err)
+			}
+			for _, tbl := range []string{"artifact_members", "artifact_excluded", "artifact_keys", "team_approvals", "artifact_estate_keys"} {
+				if n := countRows(t, s, `SELECT COUNT(*) FROM `+tbl+` WHERE artifact_id = ?`, secondArtifactID); n != 2 {
+					t.Errorf("%s on artifact A changed artifact B's %s: %d rows, want 2", name, tbl, n)
+				}
+			}
+		})
+	}
+}
+
+func TestDeleteWrapsExceptWithNoKeepListDeletesAll(t *testing.T) {
+	for name, keep := range map[string][]string{"nil": nil, "empty": {}} {
+		t.Run(name, func(t *testing.T) {
+			s := testStore(t)
+			o := testAccount(t, s, "o@x.y")
+			m := testAccount(t, s, "m@x.y")
+			a := ownedArtifact(t, s, o)
+			err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+				for _, u := range []string{o.ID, m.ID} {
+					if err := tx.PutWrap(Wrap{UserID: u, Epoch: 1, Wrapped: []byte("w"), FP: "f"}); err != nil {
+						return err
+					}
+				}
+				return tx.DeleteWrapsExcept(keep)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n := countRows(t, s, `SELECT COUNT(*) FROM artifact_keys WHERE artifact_id = ?`, a.ID); n != 0 {
+				t.Fatalf("%d wraps survived an empty keep list", n)
+			}
+		})
+	}
+}
+
+func TestVersionWritesRefuseAVersionOnAnotherArtifact(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	a := ownedArtifact(t, s, o)
+	b, err := s.CreateOwnedArtifact(secondArtifactID, "Other", "", o.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vb, err := s.CreateVersion(b.ID, "v1", "", "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+		if err := tx.SetVersionWriter(vb.ID, o.ID, 5); !errors.Is(err, ErrNotFound) {
+			t.Errorf("SetVersionWriter(other artifact's version) = %v, want ErrNotFound", err)
+		}
+		if err := tx.RecordWrite(vb.ID, "db", "", 5, o.ID); !errors.Is(err, ErrNotFound) {
+			t.Errorf("RecordWrite(other artifact's version) = %v, want ErrNotFound", err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.VersionByID(b.ID, vb.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PushedBy != "" || got.Epoch != 0 {
+		t.Errorf("other artifact's version changed: %+v", got)
+	}
+	if n := countRows(t, s, `SELECT COUNT(*) FROM version_writes WHERE version_id = ?`, vb.ID); n != 0 {
+		t.Errorf("%d version_writes rows recorded for another artifact's version", n)
+	}
+}
+
+func TestAcceptedOffersListsOnlyAcceptedOwnerOffers(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	e := testAccount(t, s, "e@x.y")
+	a := ownedArtifact(t, s, o)
+	owner := func(hash string) Offer {
+		return Offer{To: e.ID, By: "owner", Hash: hash, Envelope: &Envelope{Body: []byte("ob"), Sig: []byte("os"), Signer: o.ID}}
+	}
+	err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+		// an accepted admin offer has an empty hash
+		if err := tx.PutOffer(Offer{To: e.ID, By: "admin"}); err != nil {
+			return err
+		}
+		if err := tx.SetOfferState("accepted"); err != nil {
+			return err
+		}
+		// a closed owner offer has a hash but was not accepted
+		if err := tx.PutOffer(owner("h-closed")); err != nil {
+			return err
+		}
+		if err := tx.SetOfferState("closed"); err != nil {
+			return err
+		}
+		if err := tx.PutOffer(owner("h-accepted")); err != nil {
+			return err
+		}
+		if err := tx.SetOfferState("accepted"); err != nil {
+			return err
+		}
+		got, err := tx.AcceptedOffers()
+		if err != nil {
+			return err
+		}
+		if len(got) != 1 || got["h-accepted"] == nil {
+			t.Errorf("AcceptedOffers = %+v, want only h-accepted", got)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestArtifactsByResourceOrderAndMatching(t *testing.T) {
+	s := testStore(t)
+	// created in the opposite order to their dates, so a wrong order shows
+	newer, err := s.CreateArtifact("newer", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	older, err := s.CreateArtifact("older", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unrelated, err := s.CreateArtifact("unrelated", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, at := range map[string]string{older.ID: "2020-01-01T00:00:00Z", newer.ID: "2021-01-01T00:00:00Z", unrelated.ID: "2019-01-01T00:00:00Z"} {
+		if _, err := s.db.Exec(`UPDATE artifacts SET created_at = ? WHERE id = ?`, at, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// two resources on one artifact carry the same value
+	for _, add := range []struct{ artifact, value string }{
+		{newer.ID, "sess-1"}, {older.ID, "sess-1"}, {older.ID, "sess-1"}, {unrelated.ID, "other"},
+	} {
+		if _, err := s.AddResource(add.artifact, "claude-session", add.value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.ArtifactsByResource("sess-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != older.ID || got[1].ID != newer.ID {
+		t.Fatalf("ArtifactsByResource = %+v, want [older, newer] with no duplicates", got)
+	}
+	got, err = s.ArtifactsByResource("no-such-ref")
+	if err != nil || len(got) != 0 {
+		t.Fatalf("non-matching ref: %v %+v", err, got)
+	}
+}
+
+func TestSetExcludedNormalizesEmail(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	a := ownedArtifact(t, s, o)
+	err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error {
+		if err := tx.SetExcluded([]Excluded{{UserID: "u1", FP: "f", Email: "  Gone@X.Y "}}); err != nil {
+			return err
+		}
+		ex, err := tx.ExcludedEntries()
+		if err != nil {
+			return err
+		}
+		if len(ex) != 1 || ex[0].Email != "gone@x.y" {
+			t.Errorf("excluded email not normalized: %+v", ex)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

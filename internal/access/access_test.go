@@ -397,6 +397,78 @@ func TestUnknownActionIsRefused(t *testing.T) {
 	}
 }
 
+func TestContentTokenAtTeamAndLinkLevels(t *testing.T) {
+	tok := func(r Request) Request { return viaContentToken(r, aid) }
+	levels := map[string]Request{
+		"team viewer": tok(asUser(withWrap(team(base(), TeamViewer), 2), teamer)),
+		"team editor": tok(asUser(withWrap(team(base(), TeamEditor), 2), teamer)),
+		"link":        tok(asUser(withLink(public(base(), false)), someone)),
+	}
+	for name, r := range levels {
+		if got := Check(r, ReadContent); got != Allow {
+			t.Errorf("%s / %s: got %v, want Allow", name, ReadContent, got)
+		}
+		for _, a := range []Action{PushVersion, Share, Delete, Rename} {
+			if got := Check(r, a); got != NotFound {
+				t.Errorf("%s / %s: got %v, want NotFound", name, a, got)
+			}
+		}
+	}
+}
+
+func TestSignedInNeedsAUserID(t *testing.T) {
+	// A session or key with no user ID is not signed in, so it cannot match an
+	// artifact whose owner is also empty.
+	for _, k := range []Kind{Session, APIKey} {
+		r := Request{Caller: Caller{Kind: k}, Artifact: Artifact{ID: aid}}
+		if got := LevelOf(r); got != LevelNone {
+			t.Errorf("kind %d: level %v, want none", k, got)
+		}
+		for _, a := range allActions {
+			if got := Check(r, a); got != NotFound {
+				t.Errorf("kind %d / %s: got %v, want NotFound", k, a, got)
+			}
+		}
+	}
+}
+
+func TestAnonymousCallerCarryingMemberOrWrapsIsNotFound(t *testing.T) {
+	member := anon(base())
+	member.Member = &Member{Role: RoleEditor, FP: ""}
+	teamWrap := withWrap(team(anon(base()), TeamViewer), 2)
+	for name, r := range map[string]Request{"member": member, "wraps": teamWrap} {
+		if got := LevelOf(r); got != LevelNone {
+			t.Errorf("%s: level %v, want none", name, got)
+		}
+		for _, a := range allActions {
+			if got := Check(r, a); got != NotFound {
+				t.Errorf("%s / %s: got %v, want NotFound", name, a, got)
+			}
+		}
+	}
+}
+
+func TestTeamMemberCannotPushShareOrDelete(t *testing.T) {
+	for _, mode := range []string{TeamViewer, TeamEditor} {
+		r := asUser(withWrap(team(base(), mode), 2), teamer)
+		for _, a := range []Action{PushVersion, Share, Delete} {
+			if got := Check(r, a); got != Forbidden {
+				t.Errorf("team %s / %s: got %v, want Forbidden", mode, a, got)
+			}
+		}
+	}
+}
+
+func TestChangedFingerprintEditorCannotReviewOrTransfer(t *testing.T) {
+	r := asUser(base(), editor)
+	r.Caller.Fingerprint = "fp-editor-after-reset"
+	for _, a := range []Action{ReviewVersions, Transfer} {
+		if got := Check(r, a); got != Forbidden {
+			t.Errorf("%s: got %v, want Forbidden", a, got)
+		}
+	}
+}
+
 var allActions = []Action{
 	ReadContent, WriteData, PushVersion, Share, Delete, Rename, ReadMembership,
 	ReadKeys, ListPending, ApproveMember, ReviewVersions, Transfer,
