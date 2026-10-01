@@ -163,7 +163,11 @@ Branch: `e2e/m0-groundwork`.
    Check: unit tests for each.
 4. **Vendor sql.js** into `internal/server/web/vendor/`, which `cairn.js` now
    loads from a CDN, with its license and a checksum test, as Mermaid is.
-   Check: the guestbook example works with the network off.
+   Check: the server serves both files from the binary, and an artifact's
+   own copy still wins. Today a served artifact uses the server's database,
+   so sql.js runs only in debug mode. The check that an artifact database
+   works with the network off belongs to milestone 5, where sql.js becomes
+   the database.
 
 The open redirect in today's `safeNext` is fixed separately, on its own branch
 from `main`, because it affects the running server now. See
@@ -333,6 +337,7 @@ Branch: `e2e/m5-data`.
 Tests written first:
 
 - Every example in `examples/` works unchanged, through the browser suite.
+- The guestbook works with the network off, loading sql.js from the server.
 - Two browsers writing at once both land, through the `412` retry.
 - A removed editor's write is refused by the server, and a revision signed by
   a non-editor is refused by clients.
