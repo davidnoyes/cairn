@@ -172,7 +172,9 @@ from `main`, because it affects the running server now. See
 ## Milestone 1 — crypto core
 
 Branch: `e2e/m1-crypto`. The Go package `internal/e2e`, and the JavaScript
-module `internal/server/web/e2e.js`, built side by side with one vector file.
+module `internal/server/web/e2e.mjs`, built side by side with one vector
+file. The bytes they agree on are fixed in
+[wire formats](e2e-wire-formats.md).
 
 1. Commit the vector file's schema and an empty generator. Commit the Go and
    Node vector tests, which fail.
