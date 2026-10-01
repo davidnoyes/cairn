@@ -27,8 +27,10 @@ echo "== build"
 pass "built $BIN"
 
 echo "== serve"
-# No bootstrap password: the admin account is claimed at first login below.
-"$BIN" serve --addr ":$PORT" --data-dir "$WORK/data" --admin-email admin@e2e.test &
+SERVER_LOG="$WORK/server.log"
+"$BIN" serve --addr ":$PORT" --data-dir "$WORK/data" \
+  --smtp-url log:// --admin-email admin@e2e.test --signup-domain e2e.test --public-url "$HOST" \
+  >"$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 for i in $(seq 1 50); do
   curl -sf "$HOST/healthz" >/dev/null 2>&1 && break
@@ -38,17 +40,21 @@ curl -sf "$HOST/healthz" >/dev/null || fail "server did not start"
 pass "server healthy on $HOST"
 
 echo "== auth"
-# First login claims the unclaimed bootstrap admin (password chosen here).
-"$BIN" login --host "$HOST" --email admin@e2e.test \
-  --password admin-password-1 --confirm admin-password-1 >/dev/null
+# Sign up, confirm by pulling the verification link out of the log:// mailer,
+# then sign in. cairn login creates a device API key and saves it.
+echo "e2e-password-1" | "$BIN" signup --host "$HOST" --email admin@e2e.test --password-stdin >/dev/null
+VERIFY_LINK=$(grep -oE "$HOST/verify#token=[A-Za-z0-9_-]+" "$SERVER_LOG" | tail -1)
+[[ -n "$VERIFY_LINK" ]] || fail "no verification link in server log"
+"$BIN" confirm-email "$VERIFY_LINK" >/dev/null
+echo "e2e-password-1" | "$BIN" login --host "$HOST" --email admin@e2e.test --password-stdin >/dev/null
 "$BIN" whoami | grep -q admin@e2e.test || fail "whoami"
-pass "CLI first-login claim + whoami"
+pass "CLI signup + confirm-email + login + whoami"
 
-# API key flow: create a key via the admin API, then use it via env vars.
-TOKEN_JSON=$(curl -sf -X POST "$HOST/api/admin/keys" \
-  -H "Authorization: Bearer $(python3 -c "import json;print(json.load(open('$CAIRN_CONFIG'))['token'])")" \
-  -H 'Content-Type: application/json' -d '{"name":"e2e"}')
-API_KEY=$(echo "$TOKEN_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')
+# Headless use: the config file holds the full four-part API key; only the
+# two-part bearer `cairn_<keyId>_<authSecret>` ever goes on the wire; the
+# keySecret never leaves this machine.
+API_KEY=$(python3 -c "import json;print(json.load(open('$CAIRN_CONFIG'))['apiKey'])")
+BEARER=$(echo "$API_KEY" | cut -d'_' -f1-3)
 CAIRN_HOST="$HOST" CAIRN_API_KEY="$API_KEY" "$BIN" whoami | grep -q admin@e2e.test || fail "API key auth"
 pass "API key auth"
 
@@ -61,7 +67,7 @@ pass "pushed guestbook ($AID / $VID)"
 
 echo "== resource reference"
 curl -sf -X POST "$HOST/api/artifacts/$AID/resources" \
-  -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $BEARER" -H 'Content-Type: application/json' \
   -d '{"type":"claude-session","value":"sess-e2e"}' >/dev/null
 curl -sf "$HOST/api/artifacts/sess-e2e" | grep -q "$AID" || fail "API lookup by resource value"
 pass "API resolves resource value to artifact"
@@ -108,6 +114,7 @@ curl -sf "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt" | grep -
   || fail "anonymous file read"
 pass "anonymous file read on public artifact"
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+  -H 'Content-Type: application/octet-stream' \
   "$HOST/api/artifacts/$AID/versions/$VID/files/evil.txt" --data-binary 'x')
 [[ "$STATUS" == "401" ]] || fail "anonymous file write not rejected ($STATUS)"
 pass "anonymous file write rejected"
@@ -138,6 +145,55 @@ echo "== backup"
 "$BIN" backup --data-dir "$WORK/data" --out "$WORK/backup" >/dev/null
 [[ -f "$WORK/backup/cairn.db" ]] || fail "backup missing metadata db"
 pass "backup produced"
+
+echo "== keys + password reset"
+"$BIN" keys list | grep -q "(device)" || fail "keys list"
+pass "keys list shows the device key"
+
+# A second account, so resetting its password doesn't disturb admin@e2e.test's
+# session above.
+SIGNUP2_OUT="$WORK/signup2.txt"
+echo "reset-flow-strong-pw-1" | "$BIN" signup --host "$HOST" --email reset@e2e.test --password-stdin >"$SIGNUP2_OUT"
+RECOVERY_CODE=$(sed -n 's/^  \([A-Z2-7-]\{1,\}\)$/\1/p' "$SIGNUP2_OUT" | head -1)
+[[ -n "$RECOVERY_CODE" ]] || fail "no recovery code in signup output"
+VERIFY_LINK2=$(grep -oE "$HOST/verify#token=[A-Za-z0-9_-]+" "$SERVER_LOG" | tail -1)
+"$BIN" confirm-email "$VERIFY_LINK2" >/dev/null
+pass "second account signed up, with a saved recovery code"
+
+if echo "password1" | "$BIN" signup --host "$HOST" --email weak@e2e.test --password-stdin >/dev/null 2>"$WORK/weak.err"; then
+  fail "signup with a weak password succeeded"
+fi
+grep -q "too weak" "$WORK/weak.err" || fail "weak signup failed for another reason: $(cat "$WORK/weak.err")"
+pass "signup with a weak password is refused"
+
+"$BIN" forgot --host "$HOST" --email reset@e2e.test >/dev/null
+RESET_LINK=$(grep -oE "$HOST/reset#token=[A-Za-z0-9_-]+" "$SERVER_LOG" | tail -1)
+[[ -n "$RESET_LINK" ]] || fail "no reset link in server log"
+echo "reset-flow-even-stronger-pw-2" | "$BIN" reset "$RESET_LINK" --recovery-code "$RECOVERY_CODE" --password-stdin >/dev/null
+pass "password reset via recovery code"
+
+if echo "reset-flow-strong-pw-1" | "$BIN" login --host "$HOST" --email reset@e2e.test --password-stdin >/dev/null 2>"$WORK/oldpw.err"; then
+  fail "login with the old password succeeded after the reset"
+fi
+grep -q "invalid email or password" "$WORK/oldpw.err" || fail "old-password login failed for another reason: $(cat "$WORK/oldpw.err")"
+pass "the old password no longer logs in"
+
+echo "reset-flow-even-stronger-pw-2" | "$BIN" login --host "$HOST" --email reset@e2e.test --password-stdin >/dev/null
+"$BIN" whoami | grep -q reset@e2e.test || fail "login with the new password"
+pass "login with the reset password"
+
+LOGOUT_KEY=$(python3 -c "import json;print(json.load(open('$CAIRN_CONFIG'))['apiKey'])")
+[[ -n "$LOGOUT_KEY" ]] || fail "no stored API key before logout"
+CAIRN_HOST="$HOST" CAIRN_API_KEY="$LOGOUT_KEY" "$BIN" whoami >/dev/null || fail "the device key does not authenticate before logout"
+"$BIN" logout >/dev/null
+if "$BIN" whoami >/dev/null 2>&1; then
+  fail "whoami succeeded after logout"
+fi
+pass "logout clears the stored login; whoami now fails"
+if CAIRN_HOST="$HOST" CAIRN_API_KEY="$LOGOUT_KEY" "$BIN" whoami >/dev/null 2>&1; then
+  fail "the logged-out device key still authenticates"
+fi
+pass "logout revoked the device key on the server"
 
 echo
 echo "all e2e checks passed"

@@ -66,8 +66,16 @@ func TestResetRecoveryKeepsKeys(t *testing.T) {
 	if begin.Ed25519Pub != e2e.B64(pub) {
 		t.Errorf("reset/begin Ed25519Pub = %q, want %q", begin.Ed25519Pub, e2e.B64(pub))
 	}
+	// A device holding only the link and the recovery code needs the account
+	// id and the sealed signing key to build the proof.
+	if begin.ID != userID {
+		t.Errorf("reset/begin id = %q, want %q", begin.ID, userID)
+	}
+	if begin.Ed25519Priv != w.Ed25519Priv {
+		t.Errorf("reset/begin ed25519Priv = %q, want the bundle's sealed key %q", begin.Ed25519Priv, w.Ed25519Priv)
+	}
 
-	proofBody, err := json.Marshal(resetProofBody{V: 1, User: userID, Token: tokenHash})
+	proofBody, err := json.Marshal(resetProofBody{V: 1, User: begin.ID, Token: tokenHash})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -89,23 +89,8 @@ func (c *Client) doJSON(method, path string, in, out any) error {
 	return c.do(method, path, body, "application/json", out)
 }
 
-// Auth
-
-type LoginResponse struct {
-	Token      string      `json:"token"`
-	User       *store.User `json:"user"`
-	FirstLogin bool        `json:"firstLogin"`
-}
-
-func (c *Client) Login(email, password, confirm string) (*LoginResponse, error) {
-	var out LoginResponse
-	err := c.doJSON("POST", "/api/auth/login", map[string]string{"email": email, "password": password, "confirm": confirm}, &out)
-	if err != nil {
-		return nil, err
-	}
-	c.Token = out.Token
-	return &out, nil
-}
+// Auth. Signup, Login, Logout, password reset, and API key management live
+// in account.go.
 
 func (c *Client) Me() (*store.User, error) {
 	var u store.User

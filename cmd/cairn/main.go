@@ -13,9 +13,14 @@ Server:
   cairn backup           Snapshot a data directory (live-safe)
 
 Client:
-  cairn login            Authenticate against a server
-  cairn logout           Forget stored credentials
-  cairn whoami           Show the authenticated user
+  cairn signup           Generate keys, sign up, and print the recovery code
+  cairn confirm-email    Follow an emailed verification link
+  cairn login            Sign in, create a device key, and save it
+  cairn logout           Revoke the device key and forget it (--force: forget it even if the revoke fails)
+  cairn whoami           Show the authenticated user and their fingerprint
+  cairn forgot           Ask for a password reset link
+  cairn reset            Set a new password from an emailed reset link
+  cairn keys             Manage API keys (list|revoke)
   cairn artifact         Manage artifacts (list|create|show|update|delete)
   cairn push             Upload a directory as a new (or replaced) version
   cairn db               Run SQL against a version's shared database
@@ -36,12 +41,22 @@ func main() {
 	switch cmd {
 	case "serve":
 		err = runServe(args)
+	case "signup":
+		err = runSignup(args)
+	case "confirm-email":
+		err = runConfirmEmail(args)
 	case "login":
 		err = runLogin(args)
 	case "logout":
 		err = runLogout(args)
 	case "whoami":
 		err = runWhoami(args)
+	case "forgot":
+		err = runForgot(args)
+	case "reset":
+		err = runReset(args)
+	case "keys":
+		err = runKeys(args)
 	case "artifact":
 		err = runArtifact(args)
 	case "push":
