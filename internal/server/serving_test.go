@@ -310,3 +310,20 @@ func TestSqlJSVendored(t *testing.T) {
 		}
 	}
 }
+
+// TestArgon2WasmVendored checks the bundled Argon2id WebAssembly module and
+// its Go runtime glue are served at the app origin. Unlike sql.js, these are
+// not available inside a version's URL space.
+func TestArgon2WasmVendored(t *testing.T) {
+	_, ts := testServer(t)
+	for name, want := range map[string]string{"argon2.wasm": "application/wasm", "wasm_exec.js": "javascript"} {
+		resp := get(t, ts.URL+"/"+name, "", "")
+		b := body(t, resp)
+		if resp.StatusCode != http.StatusOK || len(b) < 1000 {
+			t.Errorf("%s: status %d, %d bytes", name, resp.StatusCode, len(b))
+		}
+		if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, want) {
+			t.Errorf("%s: content-type %q, want %q", name, ct, want)
+		}
+	}
+}

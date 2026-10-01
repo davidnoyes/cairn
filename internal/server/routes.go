@@ -66,6 +66,8 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /sql-wasm.js", s.serveSqlJS)
 	mux.HandleFunc("GET /sql-wasm.wasm", s.serveSqlJS)
 	mux.HandleFunc("GET /shell.js", s.serveShellJS)
+	mux.HandleFunc("GET /argon2.wasm", s.serveArgon2Wasm)
+	mux.HandleFunc("GET /wasm_exec.js", s.serveWasmExecJS)
 	mux.HandleFunc("GET /artifacts/{id}", s.handleArtifactRedirect)
 	mux.HandleFunc("GET /artifacts/{id}/{vid}", s.handleVersionNoSlash)
 	mux.HandleFunc("GET /artifacts/{id}/{vid}/{path...}", s.handleVersionPage)

@@ -327,6 +327,22 @@ func (s *Server) serveSqlJS(w http.ResponseWriter, r *http.Request) {
 	w.Write(web.SqlJS)
 }
 
+// serveArgon2Wasm serves the vendored Argon2id WebAssembly module. Like
+// sql.js it ships with the binary, but it is an app-origin asset only: it is
+// not available inside a version's URL space.
+func (s *Server) serveArgon2Wasm(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Content-Type", "application/wasm")
+	w.Write(web.Argon2Wasm)
+}
+
+// serveWasmExecJS serves the Go runtime glue that runs argon2.wasm.
+func (s *Server) serveWasmExecJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Write(web.WasmExecJS)
+}
+
 // templates parses the embedded HTML templates once.
 func (s *Server) templates() *template.Template {
 	s.tmplOnce.Do(func() {

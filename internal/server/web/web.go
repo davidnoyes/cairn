@@ -41,3 +41,12 @@ var SqlJS []byte
 
 //go:embed vendor/sql-wasm.wasm
 var SqlWasm []byte
+
+// Argon2Wasm and WasmExecJS are the vendored Argon2id WebAssembly module and
+// the Go runtime glue needed to run it (see vendor/README.md).
+//
+//go:embed vendor/argon2.wasm
+var Argon2Wasm []byte
+
+//go:embed vendor/wasm_exec.js
+var WasmExecJS []byte

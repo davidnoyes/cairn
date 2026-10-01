@@ -35,6 +35,29 @@ call `mermaid.run()`. See `serveMermaidJS` in `internal/server/serving.go`.
 The server serves both at `/sql-wasm.js` and `/sql-wasm.wasm`, and inside every
 version's URL space next to `cairn.js`.
 
+## Argon2id
+
+`argon2.wasm` and `wasm_exec.js` let the browser stretch a password with
+Argon2id, matching the parameters the server returns from prelogin (see
+"Password stretching" in `design/e2e-wire-formats.md`).
+
+- **Source:** `argon2.wasm` is built from `cmd/argon2wasm`, which calls
+  `golang.org/x/crypto/argon2` at the version pinned in `go.mod`
+  (currently v0.54.0). `wasm_exec.js` is the Go runtime's own WebAssembly
+  glue, copied from `$(go env GOROOT)/lib/wasm/wasm_exec.js`.
+- **License:** the BSD-3-Clause License, copyright the Go Authors. The full
+  text is in `LICENSE.golang` (not `LICENSE.go`: that extension would make
+  the Go toolchain try to compile it as source).
+- **Rebuilding:** run `scripts/build-argon2-wasm.sh` (or
+  `go generate ./internal/server/web`) and commit the result. The build is
+  reproducible: `GOOS=js GOARCH=wasm go build -trimpath` with a stripped,
+  empty build ID, and the script pins the Go toolchain with `GOTOOLCHAIN`,
+  so every rebuild produces the same bytes. CI checks that it does.
+
+The server serves both at `/argon2.wasm` and `/wasm_exec.js`.
+`internal/server/web/argon2.mjs` loads them to derive a key in the main
+thread; `argon2-worker.js` does the same off the UI thread.
+
 ## Checksums
 
 `SHA256SUMS` pins every vendored file. `vendor_test.go` fails when a file
@@ -47,5 +70,6 @@ changes, or when a file is missing from the list.
 3. Regenerate the checksums in this directory:
 
    ```sh
-   shasum -a 256 mermaid.min.js sql-wasm.js sql-wasm.wasm > SHA256SUMS
+   shasum -a 256 argon2.wasm mermaid.min.js sql-wasm.js sql-wasm.wasm \
+     wasm_exec.js > SHA256SUMS
    ```
