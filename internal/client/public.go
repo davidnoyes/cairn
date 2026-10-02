@@ -26,8 +26,10 @@ type PublicResult struct {
 	// NewEpoch is set when making the artifact private started a new epoch,
 	// because anyone holding the link already has the old epoch's key.
 	// Excluded are the team members who held a wrap, and are excluded.
+	// Listed are approved team members the new record lists.
 	NewEpoch bool
 	Excluded []ExcludedUser
+	Listed   []DirectoryUser
 }
 
 // Public makes the artifact public, or sets whether a signed-in link holder
@@ -80,8 +82,8 @@ func (c *Client) Public(artifactID string, on bool, writes *bool) (*PublicResult
 		res.Unchanged = true
 	} else if err := c.putRecord(k, artifactID, va, next, nil, nil, ""); err != nil {
 		return nil, err
-	} else if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
-		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
+	} else if err := c.readBack(k, artifactID, ""); err != nil {
+		return nil, err
 	}
 	return res, nil
 }
@@ -98,14 +100,14 @@ func (c *Client) publicOffNextEpoch(k *UnlockedKeys, artifactID string, va *Veri
 	}
 	next := va.Chain.Latest
 	next.Public, next.PublicWrites = false, false
-	change, _, err := c.putNextEpoch(k, artifactID, va, dir, pending, nextEpochRecord{next: next})
+	change, listed, err := c.putNextEpoch(k, artifactID, va, dir, pending, nextEpochRecord{next: next})
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
-		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
+	if err := c.readBack(k, artifactID, ""); err != nil {
+		return nil, err
 	}
-	return &PublicResult{Epoch: va.Chain.Latest.Epoch + 1, NewEpoch: true, Excluded: change.Excluded}, nil
+	return &PublicResult{Epoch: va.Chain.Latest.Epoch + 1, NewEpoch: true, Excluded: change.Excluded, Listed: listed}, nil
 }
 
 // linkTokenHashFor is the hash of the epoch's link token the server stores

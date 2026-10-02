@@ -46,7 +46,7 @@ func TestPublicCommand(t *testing.T) {
 	}
 	res := runJSON[map[string]any](t, runPublic, w.artifact, "on", "--writes", "off", "--json")
 	if res["artifact"] != w.artifact || res["public"] != true || res["publicWrites"] != false || res["epoch"] != float64(1) ||
-		res["link"] != link || res["unchanged"] != false || res["newEpoch"] != false || len(res) != 8 {
+		res["link"] != link || res["unchanged"] != false || res["newEpoch"] != false || len(res["listed"].([]any)) != 0 || len(res) != 9 {
 		t.Errorf("cairn public --json = %v", res)
 	}
 	res = runJSON[map[string]any](t, runPublic, w.artifact, "on", "--json")

@@ -184,6 +184,15 @@ func epochChangeJSON(out map[string]any, ch client.EpochChange) {
 	out["newEpoch"], out["excluded"], out["link"] = ch.NewEpoch, excluded, ch.Link
 }
 
+// excludedLabel names an excluded user by email and name, or by user ID when
+// their account was deleted and the directory no longer has them.
+func excludedLabel(u client.DirectoryUser) string {
+	if u.Email == "" {
+		return "deleted account " + u.ID
+	}
+	return fmt.Sprintf("%s (%s)", u.Email, u.Name)
+}
+
 // printEpochChange says that a new epoch started, who it excluded and why,
 // the new public link if there is one, and how many versions now need review
 // because their pusher is no longer an editor. It prints nothing when ch did
@@ -194,7 +203,7 @@ func printEpochChange(c *client.Client, artifact string, epoch int, ch client.Ep
 	}
 	fmt.Printf("started epoch %d: the old key no longer opens the artifact\n", epoch)
 	for _, x := range ch.Excluded {
-		fmt.Printf("excluded %s (%s), fingerprint %s: %s\n", x.User.Email, x.User.Name, showFP(x.User.FP), x.Reason)
+		fmt.Printf("excluded %s, fingerprint %s: %s\n", excludedLabel(x.User), showFP(x.User.FP), x.Reason)
 	}
 	if len(ch.Excluded) > 0 {
 		fmt.Printf("to let an excluded user back in, compare their fingerprint with them, then run: cairn share %s USER\n", artifact)
@@ -240,7 +249,11 @@ func runUnshare(args []string) error {
 		epochChangeJSON(out, res.EpochChange)
 		return printJSON(out)
 	}
-	fmt.Printf("removed %s (%s) from %s\n", res.User.Email, res.User.ID, a.Name)
+	if res.User.Email == "" {
+		fmt.Printf("removed deleted account %s from %s\n", res.User.ID, a.Name)
+	} else {
+		fmt.Printf("removed %s (%s) from %s\n", res.User.Email, res.User.ID, a.Name)
+	}
 	printEpochChange(c, a.ID, res.Epoch, res.EpochChange)
 	for _, d := range res.Listed {
 		fmt.Printf("listed approved team member %s (%s), fingerprint %s\n", d.Email, d.Name, showFP(d.FP))
@@ -567,6 +580,7 @@ func runPublic(args []string) error {
 			"artifact": a.ID, "public": res.Public, "publicWrites": res.PublicWrites, "epoch": res.Epoch,
 			"link": res.Link, "unchanged": res.Unchanged,
 		}
+		out["listed"], _ = listingJSON(res.Listed, nil)
 		epochChangeJSON(out, client.EpochChange{NewEpoch: res.NewEpoch, Excluded: res.Excluded, Link: res.Link})
 		return printJSON(out)
 	}
@@ -574,6 +588,7 @@ func runPublic(args []string) error {
 		if res.NewEpoch {
 			fmt.Printf("%s is private\n", a.Name)
 			printEpochChange(c, a.ID, res.Epoch, client.EpochChange{NewEpoch: true, Excluded: res.Excluded})
+			printListing(a.ID, "", res.Listed, nil)
 		} else {
 			fmt.Printf("%s is already private; nothing changed\n", a.Name)
 		}

@@ -460,8 +460,8 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 			return nil, fmt.Errorf("the server accepted the new membership record, but pinning %s failed: %w", u.Email, err)
 		}
 	}
-	if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
-		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
+	if err := c.readBack(k, artifactID, ""); err != nil {
+		return nil, err
 	}
 	return res, nil
 }
@@ -482,8 +482,8 @@ func (c *Client) shareNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 			return nil, fmt.Errorf("the server accepted the new membership record, but pinning %s failed: %w", u.Email, err)
 		}
 	}
-	if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
-		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
+	if err := c.readBack(k, artifactID, change.Link); err != nil {
+		return nil, err
 	}
 	return res, nil
 }

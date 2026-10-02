@@ -2,10 +2,12 @@ package main
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/aloisdeniel/cairn/internal/client"
+	"github.com/aloisdeniel/cairn/internal/e2e"
 )
 
 func TestUnshareCommand(t *testing.T) {
@@ -121,5 +123,67 @@ func TestPublicOffCommandStartsANewEpoch(t *testing.T) {
 	res = runJSON[map[string]any](t, runPublic, w.artifact, "off", "--json")
 	if res["public"] != false || res["link"] != "" || res["unchanged"] != false || res["newEpoch"] != true || res["epoch"] != float64(3) {
 		t.Errorf("cairn public off --json = %v", res)
+	}
+}
+
+// A member whose account was deleted is unshared by user ID, and the output
+// names them by it.
+func TestUnshareCommandOnADeletedAccount(t *testing.T) {
+	w := newTeamWorld(t)
+	w.as(t, "ada")
+	if _, err := runQuiet(t, runShare, w.artifact, "dan@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	dan := membersByEmail(t, w.artifact)["dan@example.com"].User
+	signupVerify(t, w.host, w.m, "admin@example.com", sharePassword)
+	out, err := client.New(w.host, "").Login("admin@example.com", sharePassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := e2e.ParseAPIKey(out.APIKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest("DELETE", w.host+"/api/admin/users/"+dan, nil)
+	req.Header.Set("Authorization", "Bearer "+client.NewWithKey(w.host, key).Token)
+	if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		t.Fatalf("deleting dan: %v %v", resp, err)
+	}
+
+	got, err := runQuiet(t, runUnshare, w.artifact, dan)
+	if err != nil {
+		t.Fatalf("cairn unshare of a deleted account: %v", err)
+	}
+	for _, want := range []string{"removed deleted account " + dan, "excluded deleted account " + dan} {
+		if !strings.Contains(got, want) {
+			t.Errorf("cairn unshare printed %q, want %q", got, want)
+		}
+	}
+}
+
+// Making a team artifact private lists an approved team member who held a
+// wrap, and says so.
+func TestPublicOffCommandReportsTheTeamMembersItLists(t *testing.T) {
+	for _, jsonOut := range []bool{false, true} {
+		w := newTeamWorld(t)
+		w.as(t, "bob")
+		if _, err := runQuiet(t, runApprove, w.artifact, "cat@example.com"); err != nil {
+			t.Fatal(err)
+		}
+		w.as(t, "ada")
+		if _, err := runQuiet(t, runPublic, w.artifact, "on"); err != nil {
+			t.Fatal(err)
+		}
+		if jsonOut {
+			res := runJSON[map[string]any](t, runPublic, w.artifact, "off", "--json")
+			if l, _ := res["listed"].([]any); len(l) != 1 || l[0].(map[string]any)["email"] != "cat@example.com" {
+				t.Errorf("cairn public off --json = %v, want cat listed", res)
+			}
+			continue
+		}
+		out, err := runQuiet(t, runPublic, w.artifact, "off")
+		if err != nil || !strings.Contains(out, "listed approved team member cat@example.com") {
+			t.Errorf("cairn public off printed %q, %v, want cat listed", out, err)
+		}
 	}
 }

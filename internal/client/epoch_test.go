@@ -2,6 +2,8 @@ package client
 
 import (
 	"errors"
+	"io"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -10,12 +12,17 @@ import (
 )
 
 // ownWraps opens every AK wrap c holds for the artifact, by epoch. A user
-// the server no longer lets read has none.
+// the server no longer lets read gets a 404 and has none; any other error
+// fails the test.
 func ownWraps(t *testing.T, c *Client, artifact string) map[int][]byte {
 	t.Helper()
 	k := mustUnlock(t, c)
 	keys, err := c.Keys(artifact)
 	if err != nil {
+		var api *APIError
+		if !errors.As(err, &api) || api.Status != http.StatusNotFound {
+			t.Fatalf("Keys: %v, want a wrap list or a 404", err)
+		}
 		return map[int][]byte{}
 	}
 	out := map[int][]byte{}
@@ -267,6 +274,48 @@ func TestUnshareOnATeamArtifactListsAnApprovedMember(t *testing.T) {
 	}
 }
 
+// Unsharing an approved team member the record already lists removes them,
+// even when the server still reports them approved: the team listing does
+// not put them back.
+func TestUnshareRemovesAListedTeamMember(t *testing.T) {
+	w := newTeam(t)
+	w.setup(t, "viewer")
+	if err := approve(t, w.bob, w.artifact, "cat@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	pendingPath := "/api/artifacts/" + w.artifact + "/pending"
+	var cat map[string]any
+	if _, err := rewritingList(t, w.ada, pendingPath, func(list []map[string]any) []map[string]any {
+		cat = catEntry(list)
+		return list
+	}).Pending(w.artifact); err != nil || cat == nil {
+		t.Fatalf("pending: %v, cat entry %v", err, cat)
+	}
+	// This share lists cat too, under the role the team grants.
+	if _, err := w.ada.Share(w.artifact, "dan@example.com", "viewer", false); err != nil {
+		t.Fatal(err)
+	}
+	if rows := memberRows(t, w.ada, w.artifact); rows["cat@example.com"].Role != "viewer" {
+		t.Fatalf("rows = %+v, want cat listed before the unshare", rows)
+	}
+	lying := rewritingList(t, w.ada, pendingPath, func(list []map[string]any) []map[string]any {
+		return append(list, cat)
+	})
+	res, err := lying.Unshare(w.artifact, "cat@example.com")
+	if err != nil {
+		t.Fatalf("Unshare: %v", err)
+	}
+	if len(res.Listed) != 0 || len(res.Excluded) != 1 || res.Excluded[0].User.Email != "cat@example.com" {
+		t.Errorf("Listed = %+v, Excluded = %+v, want only cat excluded", res.Listed, res.Excluded)
+	}
+	if rows := memberRows(t, w.ada, w.artifact); rows["cat@example.com"].Role != "" {
+		t.Errorf("rows = %+v, want cat gone", rows)
+	}
+	if got := ownWraps(t, w.cat, w.artifact); got[2] != nil {
+		t.Error("cat holds a wrap for the new epoch")
+	}
+}
+
 // An approved member whose approval fails a check is excluded and reported:
 // the record cannot leave them out of both lists, and the client never lists
 // a user on the server's word alone.
@@ -512,5 +561,185 @@ func TestNextEpochKeepsExistingExclusions(t *testing.T) {
 	latest := latestRecord(t, w.ada, w.artifact)
 	if latest.Epoch != 3 || !slices.Equal(excludedEmails(latest), []string{"bob@example.com", "cat@example.com"}) {
 		t.Errorf("latest = epoch %d, excluded %v, want epoch 3 with bob and cat", latest.Epoch, excludedEmails(latest))
+	}
+}
+
+// A member whose account an administrator deleted is gone from the directory.
+// Every other next epoch refuses until the owner unshares them by user ID,
+// which excludes them by ID and the fingerprint the record listed.
+func TestUnshareRemovesAMemberWhoseAccountWasDeleted(t *testing.T) {
+	w := newTeam(t)
+	for _, who := range []string{"bob@example.com", "dan@example.com"} {
+		if _, err := w.ada.Share(w.artifact, who, "viewer", false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dan := memberRows(t, w.ada, w.artifact)["dan@example.com"]
+	signupVerify(t, w.host, w.m, "admin@example.com", testPassword)
+	out, err := New(w.host, "").Login("admin@example.com", testPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := keyedFor(t, w.host, out.APIKey).doJSON("DELETE", "/api/admin/users/"+dan.User, nil, nil); err != nil {
+		t.Fatalf("deleting dan: %v", err)
+	}
+
+	if _, err := w.ada.Unshare(w.artifact, "bob@example.com"); err == nil ||
+		!strings.Contains(err.Error(), "cairn unshare "+w.artifact+" "+dan.User) {
+		t.Fatalf("Unshare with a deleted member listed: %v, want it to name the unshare to run first", err)
+	}
+	res, err := w.ada.Unshare(w.artifact, dan.User)
+	if err != nil {
+		t.Fatalf("Unshare of the deleted member by ID: %v", err)
+	}
+	if len(res.Excluded) != 1 || res.Excluded[0].User.ID != dan.User {
+		t.Errorf("Excluded = %+v, want dan", res.Excluded)
+	}
+	ex := latestRecord(t, w.ada, w.artifact).Excluded
+	if len(ex) != 1 || ex[0].User != dan.User || ex[0].FP != dan.FP {
+		t.Errorf("excluded = %+v, want dan under the fingerprint the record listed", ex)
+	}
+	if _, err := w.ada.Unshare(w.artifact, "bob@example.com"); err != nil {
+		t.Errorf("Unshare once the deleted member is excluded: %v", err)
+	}
+}
+
+// keyChangedHolder leaves cat holding a wrap bob approved for her old keys,
+// after she reset them. With pin, ada pinned the old keys first.
+func keyChangedHolder(t *testing.T, pin bool) (*team, string) {
+	t.Helper()
+	w := newTeam(t)
+	w.setup(t, "viewer")
+	if err := approve(t, w.bob, w.artifact, "cat@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	old := mustUnlock(t, w.cat).FP
+	if pin {
+		if _, err := w.ada.Pin("cat@example.com", true, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resetUser(t, w, "cat@example.com", &w.cat)
+	if states := pendingStates(t, w.ada, w.artifact); states["cat@example.com"] != PendingKeyChanged {
+		t.Fatalf("pending = %v, want cat keyChanged", states)
+	}
+	return w, old
+}
+
+func TestTeamNoneExcludesAKeyChangedHolderUnderThePinnedKey(t *testing.T) {
+	w, old := keyChangedHolder(t, true)
+	res, err := w.ada.Team(w.artifact, "none")
+	if err != nil {
+		t.Fatalf("Team none: %v", err)
+	}
+	if len(res.Excluded) != 1 || res.Excluded[0].User.Email != "cat@example.com" || !strings.Contains(res.Excluded[0].Reason, "keys changed") {
+		t.Errorf("Excluded = %+v, want cat, whose keys changed", res.Excluded)
+	}
+	if x := latestRecord(t, w.ada, w.artifact).Excluded; len(x) != 1 || x[0].FP != old {
+		t.Errorf("excluded = %+v, want cat under her old fingerprint %s", x, old)
+	}
+}
+
+func TestTeamNoneRefusesAKeyChangedHolderItCannotPlace(t *testing.T) {
+	w, _ := keyChangedHolder(t, false)
+	before := recordCount(t, w.ada, w.artifact)
+	_, err := w.ada.Team(w.artifact, "none")
+	if err == nil || !strings.Contains(err.Error(), "cat@example.com") || !strings.Contains(err.Error(), "--accept-new-key") {
+		t.Fatalf("Team none = %v, want a refusal naming cat and --accept-new-key", err)
+	}
+	if got := recordCount(t, w.ada, w.artifact); got != before {
+		t.Errorf("a refused change wrote a record: %d records, was %d", got, before)
+	}
+	// The way out the message gives works.
+	if _, err := w.ada.Share(w.artifact, "cat@example.com", "viewer", true); err != nil {
+		t.Fatalf("Share --accept-new-key: %v", err)
+	}
+	if _, err := w.ada.Unshare(w.artifact, "cat@example.com"); err != nil {
+		t.Fatalf("Unshare: %v", err)
+	}
+	if _, err := w.ada.Team(w.artifact, "none"); err != nil {
+		t.Errorf("Team none after the way out: %v", err)
+	}
+}
+
+func TestUnshareExcludesAKeyChangedHolderUnderThePinnedKey(t *testing.T) {
+	w, old := keyChangedHolder(t, true)
+	if _, err := w.ada.Unshare(w.artifact, "cat@example.com"); err != nil {
+		t.Fatalf("Unshare: %v", err)
+	}
+	if x := latestRecord(t, w.ada, w.artifact).Excluded; len(x) != 1 || x[0].FP != old {
+		t.Errorf("excluded = %+v, want cat under her old fingerprint %s", x, old)
+	}
+}
+
+func TestEditorCannotApproveAUserAnUnshareExcluded(t *testing.T) {
+	w := newTeam(t)
+	w.setup(t, "viewer")
+	if err := approve(t, w.bob, w.artifact, "cat@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.ada.Unshare(w.artifact, "cat@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.bob.Approve(w.artifact, "cat@example.com", false); !errors.Is(err, ErrExcluded) {
+		t.Errorf("an editor's Approve of an excluded user: %v, want ErrExcluded", err)
+	}
+}
+
+func TestUnshareTwiceAndUnshareTheOwner(t *testing.T) {
+	s := newSharing(t)
+	if _, err := s.ada.Share(s.artifact, "bob@example.com", "viewer", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ada.Unshare(s.artifact, "bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	before := recordCount(t, s.ada, s.artifact)
+	if _, err := s.ada.Unshare(s.artifact, "bob@example.com"); !errors.Is(err, ErrNotMember) {
+		t.Errorf("a second unshare: %v, want ErrNotMember", err)
+	}
+	if _, err := s.ada.Unshare(s.artifact, "ada@example.com"); !errors.Is(err, ErrUnshareOwner) {
+		t.Errorf("unsharing the owner: %v, want ErrUnshareOwner", err)
+	}
+	if got := recordCount(t, s.ada, s.artifact); got != before {
+		t.Errorf("a refused unshare wrote a record: %d records, was %d", got, before)
+	}
+}
+
+// A read-back that fails after the record landed still names the new link:
+// the old one already stopped working.
+func TestUnshareNamesTheNewLinkWhenTheReadBackFails(t *testing.T) {
+	s := newSharing(t)
+	if _, err := s.ada.Share(s.artifact, "bob@example.com", "viewer", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ada.Public(s.artifact, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Every GET after the record's PUT fails.
+	c := NewWithKey(s.ada.Host, *s.ada.Key)
+	c.Anchors = s.ada.Anchors
+	put := false
+	c.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if put && r.Method == "GET" {
+			return &http.Response{
+				StatusCode: 500, Header: http.Header{"Content-Type": {"application/json"}},
+				Body: io.NopCloser(strings.NewReader(`{"error":"disk on fire"}`)), Request: r,
+			}, nil
+		}
+		resp, err := http.DefaultTransport.RoundTrip(r)
+		put = put || (err == nil && r.Method == "PUT" && resp.StatusCode < 300)
+		return resp, err
+	})}
+	_, err := c.Unshare(s.artifact, "bob@example.com")
+	if err == nil {
+		t.Fatal("Unshare with a failing read-back succeeded")
+	}
+	now, perr := s.ada.Public(s.artifact, true, nil)
+	if perr != nil {
+		t.Fatal(perr)
+	}
+	if !strings.Contains(err.Error(), "reading it back failed") || !strings.Contains(err.Error(), now.Link) {
+		t.Errorf("error %q does not name the new link %s", err, now.Link)
 	}
 }

@@ -346,8 +346,8 @@ func (c *Client) teamNoneNextEpoch(k *UnlockedKeys, artifactID string, va *Verif
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
-		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
+	if err := c.readBack(k, artifactID, change.Link); err != nil {
+		return nil, err
 	}
 	res.EpochChange, res.Epoch = *change, va.Chain.Latest.Epoch+1
 	return res, nil
@@ -440,8 +440,8 @@ func (c *Client) Team(artifactID, team string) (*TeamResult, error) {
 			return nil, fmt.Errorf("the server accepted the new membership record, but pinning %s failed: %w", id, err)
 		}
 	}
-	if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
-		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
+	if err := c.readBack(k, artifactID, ""); err != nil {
+		return nil, err
 	}
 	return res, nil
 }

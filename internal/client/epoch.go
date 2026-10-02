@@ -22,6 +22,8 @@ var (
 	// the ones it lists them under. A next-epoch record lists every member
 	// under their current fingerprint, so the owner decides about them first.
 	ErrMemberKeyChanged = errors.New("a member's keys changed since the record listed them")
+	// ErrUnshareOwner means the owner tried to remove themselves.
+	ErrUnshareOwner = errors.New("the owner cannot be removed from the artifact")
 )
 
 // newAK makes the AK of a new epoch. Tests replace it.
@@ -54,8 +56,7 @@ type nextEpochRecord struct {
 	next e2e.MembershipBody
 	// decided is a member whose pin the caller already decided, or "".
 	decided string
-	// exclude is a user who holds a wrap and is not listed that the caller
-	// removes, or "".
+	// exclude is a user the caller removes, listed or holding a wrap, or "".
 	exclude string
 }
 
@@ -94,7 +95,13 @@ func (c *Client) putNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedAr
 	change := &EpochChange{NewEpoch: true}
 	exclude := map[string]e2e.ExcludedEntry{}
 	exclude1 := func(u DirectoryUser, fp, reason string) {
-		exclude[u.ID] = e2e.ExcludedEntry{User: u.ID, FP: fp, Email: e2e.NormalizeEmail(u.Email)}
+		email := e2e.NormalizeEmail(u.Email)
+		if email == "" {
+			// A deleted account has no email to give. The server takes any
+			// for a user it no longer has; the ID and fingerprint still match.
+			email = u.ID
+		}
+		exclude[u.ID] = e2e.ExcludedEntry{User: u.ID, FP: fp, Email: email}
 		change.Excluded = append(change.Excluded, ExcludedUser{User: u, Reason: reason})
 	}
 	// Removed members, under the fingerprint the previous record lists them.
@@ -104,7 +111,8 @@ func (c *Client) putNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedAr
 		}
 		u, ok := byID[m.User]
 		if !ok {
-			return nil, nil, fmt.Errorf("the directory no longer lists the member %s, so the record cannot exclude them", m.User)
+			exclude1(DirectoryUser{ID: m.User, FP: m.FP}, m.FP, "removed; their account was deleted")
+			continue
 		}
 		exclude1(u, m.FP, "removed")
 	}
@@ -113,14 +121,6 @@ func (c *Client) putNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedAr
 			continue
 		}
 		switch {
-		case p.User.ID == r.exclude:
-			exclude1(p.User, p.User.FP, "removed")
-		case p.State == PendingApproved:
-			reason := "team sharing ended while they held a wrap"
-			if i := slices.IndexFunc(lst.unlisted, func(u UnlistedUser) bool { return u.User.ID == p.User.ID }); i >= 0 {
-				reason = fmt.Sprintf("their approval does not check out: %v", lst.unlisted[i].Err)
-			}
-			exclude1(p.User, p.User.FP, reason)
 		case p.State == PendingKeyChanged:
 			// Not listed, so a wrap they hold was made for a key other than
 			// their current one. The server accepts only a fingerprint it can
@@ -129,7 +129,19 @@ func (c *Client) putNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedAr
 			if !ok || pin.FP == p.User.FP {
 				return nil, nil, fmt.Errorf("%s holds a wrap made for a key that is no longer theirs, and cairn does not know which; share with them again with cairn share --accept-new-key, then unshare them", p.User.Email)
 			}
-			exclude1(p.User, pin.FP, "their keys changed after they were wrapped to")
+			reason := "their keys changed after they were wrapped to"
+			if p.User.ID == r.exclude {
+				reason = "removed"
+			}
+			exclude1(p.User, pin.FP, reason)
+		case p.User.ID == r.exclude:
+			exclude1(p.User, p.User.FP, "removed")
+		case p.State == PendingApproved:
+			reason := "team sharing ended while they held a wrap"
+			if i := slices.IndexFunc(lst.unlisted, func(u UnlistedUser) bool { return u.User.ID == p.User.ID }); i >= 0 {
+				reason = fmt.Sprintf("their approval does not check out: %v", lst.unlisted[i].Err)
+			}
+			exclude1(p.User, p.User.FP, reason)
 		}
 	}
 
@@ -138,7 +150,7 @@ func (c *Client) putNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedAr
 	for _, m := range next.Members {
 		u, ok := byID[m.User]
 		if !ok {
-			return nil, nil, fmt.Errorf("the directory no longer lists the member %s", m.User)
+			return nil, nil, fmt.Errorf("the account of member %s was deleted, so no new key can be wrapped to them; remove them first with cairn unshare %s %s", m.User, artifactID, m.User)
 		}
 		if m.FP != u.FP {
 			return nil, nil, fmt.Errorf("%w: %s (%s); share with them again with cairn share --accept-new-key, or remove them with cairn unshare", ErrMemberKeyChanged, u.Email, u.ID)
@@ -251,6 +263,19 @@ func (c *Client) putNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedAr
 	return change, lst.listed, nil
 }
 
+// readBack verifies the artifact after the server accepted a record. A
+// failure still names link, the new public link, when there is one: the old
+// link already stopped working.
+func (c *Client) readBack(k *UnlockedKeys, artifactID, link string) error {
+	if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
+		if link != "" {
+			return fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w; the new public link is %s", err, link)
+		}
+		return fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
+	}
+	return nil
+}
+
 // UnshareResult is what Unshare did.
 type UnshareResult struct {
 	EpochChange
@@ -283,11 +308,15 @@ func (c *Client) Unshare(artifactID, who string) (*UnshareResult, error) {
 		return nil, err
 	}
 	u, err := FindUser(dir, who)
+	if i := slices.IndexFunc(latest.Members, func(m e2e.Member) bool { return m.User == who }); errors.Is(err, ErrUnknownUser) && i >= 0 {
+		// A listed member whose account was deleted, named by user ID.
+		u, err = DirectoryUser{ID: who, FP: latest.Members[i].FP}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
 	if u.ID == k.UserID {
-		return nil, ErrShareSelf
+		return nil, ErrUnshareOwner
 	}
 	pending, err := c.Pending(artifactID)
 	if err != nil {
@@ -295,21 +324,19 @@ func (c *Client) Unshare(artifactID, who string) (*UnshareResult, error) {
 	}
 	next := latest
 	next.Members = slices.DeleteFunc(slices.Clone(latest.Members), func(m e2e.Member) bool { return m.User == u.ID })
-	holder := ""
-	if len(next.Members) == len(latest.Members) {
-		if !slices.ContainsFunc(pending, func(p PendingUser) bool {
-			return p.User.ID == u.ID && (p.State == PendingApproved || p.State == PendingKeyChanged)
-		}) {
-			return nil, fmt.Errorf("%w: %s", ErrNotMember, u.Email)
-		}
-		holder = u.ID
+	if len(next.Members) == len(latest.Members) && !slices.ContainsFunc(pending, func(p PendingUser) bool {
+		return p.User.ID == u.ID && (p.State == PendingApproved || p.State == PendingKeyChanged)
+	}) {
+		return nil, fmt.Errorf("%w: %s", ErrNotMember, u.Email)
 	}
-	change, listed, err := c.putNextEpoch(k, artifactID, va, dir, pending, nextEpochRecord{next: next, exclude: holder})
+	// Excluded whether listed or not, so a server that still reports a listed
+	// user approved cannot get them listed again by the team.
+	change, listed, err := c.putNextEpoch(k, artifactID, va, dir, pending, nextEpochRecord{next: next, exclude: u.ID})
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
-		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
+	if err := c.readBack(k, artifactID, change.Link); err != nil {
+		return nil, err
 	}
 	return &UnshareResult{EpochChange: *change, User: u, Epoch: latest.Epoch + 1, Listed: listed}, nil
 }

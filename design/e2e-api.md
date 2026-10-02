@@ -414,7 +414,9 @@ owner about the rest. `cairn` cannot ask, so it excludes the rest and prints
 each with the reason; excluding fails closed, and the owner lists one again by
 name with `cairn share`. A team member whose keys changed after they were
 wrapped to is excluded under the fingerprint in the owner's pin, because the
-server accepts only a fingerprint it can account for. Every user a record
+server accepts only a fingerprint it can account for. With no pin for an
+earlier key, the client refuses and tells the owner to share with them by
+name, then remove them. Every user a record
 removes or drops goes into `excluded` under their fingerprint and normalized
 email. The entry stays there until an owner record lists them again. The
 server refuses a record that leaves a removed member or a team member out of
@@ -440,9 +442,14 @@ A next-epoch record lists every member under their current fingerprint, so
 the owner lists a member whose key changed under the new `fp` or removes them.
 The owner's client refuses a next-epoch change while a member it keeps is
 listed under an old fingerprint, or under keys that contradict the owner's
-pin, and names the member. When the artifact stays public across a next
-epoch, the new record carries the hash of the new epoch's link token, and the
-client prints the new link; the old link stops working.
+pin, and names the member. A member whose account was deleted cannot be
+wrapped to, so the client refuses to keep them and names their user ID, which
+`cairn unshare` accepts. Their `excluded` entry carries that ID in place of an
+email, because the server takes any email for a user it no longer has.
+
+When the artifact stays public across a next epoch, the new record carries the
+hash of the new epoch's link token, and the client prints the new link; the
+old link stops working.
 
 The owner holds no wraps. The owner reads every epoch through the estate
 copy.

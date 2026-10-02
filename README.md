@@ -296,8 +296,10 @@ fingerprint. The command prints who it excluded and why. Sharing with an
 excluded user by name lists them again and drops the entry. A new epoch needs
 every member listed under their current key, so it refuses, naming the
 member, when a listed member's keys changed: run `cairn share --accept-new-key`
-for them, or `cairn unshare` them. If the artifact is public, the command also
-prints the new public link, and the old one stops working.
+for them, or `cairn unshare` them. A member whose account was deleted blocks
+every new epoch the same way. The refusal names their user ID, and
+`cairn unshare ARTIFACT USER-ID` removes them. If the artifact is public, the
+command also prints the new public link, and the old one stops working.
 
 `cairn team` shares an artifact with the whole team as `viewer` or `editor`,
 or stops with `none`. A new member gets nothing until the owner or an editor

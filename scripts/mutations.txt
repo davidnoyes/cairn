@@ -341,7 +341,7 @@ internal/client/epoch.go	exclude1(u, m.FP, "removed")	exclude1(u, u.FP, "removed
 internal/client/epoch.go	if _, again := exclude[x.User]; !matched && !again {	if _, again := exclude[x.User]; !matched && !again && false {	go test ./internal/client -run 'TestNextEpochKeepsExistingExclusions'
 internal/client/epoch.go	case p.State == PendingApproved:	case false:	go test ./internal/client -run 'TestTeamNoneStartsANewEpochAndExcludesAHolder|TestUnshareExcludesAnApprovedMemberWhoseApprovalFails'
 internal/client/epoch.go	if next.Public {	if false {	go test ./internal/client -run 'TestUnshareOnAPublicArtifactReturnsANewLink'
-internal/client/epoch.go	holder = u.ID	holder = ""	go test ./internal/client -run 'TestUnshareExcludesAnApprovedUserByName'
+internal/client/epoch.go	nextEpochRecord{next: next, exclude: u.ID}	nextEpochRecord{next: next}	go test ./internal/client -run 'TestUnshareExcludesAnApprovedUserByName|TestUnshareRemovesAListedTeamMember'
 internal/client/share.go	dropped = append(dropped, x)	kept = append(kept, x)	go test ./internal/client -run 'TestShareByNameReadmitsAnExcludedUser'
 internal/client/share.go	demote = members[i].Role == "editor" && role == "viewer"	demote = false	go test ./internal/client -run 'TestShareDemotionStartsANewEpoch'
 internal/client/public.go	next.Public, next.PublicWrites = false, false	next.PublicWrites = false	go test ./internal/client -run 'TestPublicOffStartsANewEpoch'
@@ -352,3 +352,18 @@ internal/client/epoch.go	if m.User == r.decided {	if false {	go test ./internal/
 # Review hint after a new epoch
 cmd/cairn/share_cmds.go	switch list, _ := c.Review(artifact); len(list) {	switch list := []client.ReviewVersion{}; len(list) {	go test ./cmd/cairn -run TestShareDemotionCommand
 cmd/cairn/share_cmds.go	case 0:	case -1:	go test ./cmd/cairn -run TestUnshareCommand
+
+# Next epochs: review fixes (listed team member unshared, deleted accounts)
+internal/client/epoch.go	email = u.ID	email = ""	go test ./internal/client -run TestUnshareRemovesAMemberWhoseAccountWasDeleted
+internal/client/epoch.go	u, err = DirectoryUser{ID: who, FP: latest.Members[i].FP}, nil	_ = i	go test ./internal/client -run TestUnshareRemovesAMemberWhoseAccountWasDeleted
+cmd/cairn/share_cmds.go	return "deleted account " + u.ID	return u.ID	go test ./cmd/cairn -run TestUnshareCommandOnADeletedAccount
+cmd/cairn/share_cmds.go	if res.User.Email == "" {	if false {	go test ./cmd/cairn -run TestUnshareCommandOnADeletedAccount
+
+# Next epochs: QA fixes (key-changed holders, owner unshare, read-back link, public off listing)
+internal/client/epoch.go	case p.State == PendingKeyChanged:	case false:	go test ./internal/client -run 'KeyChangedHolder'
+internal/client/epoch.go	exclude1(p.User, pin.FP, reason)	exclude1(p.User, p.User.FP, reason)	go test ./internal/client -run 'KeyChangedHolderUnderThePinnedKey'
+internal/client/epoch.go	return nil, ErrUnshareOwner	return nil, ErrShareSelf	go test ./internal/client -run TestUnshareTwiceAndUnshareTheOwner
+internal/client/epoch.go	if link != "" {	if false {	go test ./internal/client -run TestUnshareNamesTheNewLinkWhenTheReadBackFails
+internal/client/public.go	Listed: listed}	Listed: listed[:0]}	go test ./cmd/cairn -run TestPublicOffCommandReportsTheTeamMembersItLists
+cmd/cairn/share_cmds.go	printListing(a.ID, "", res.Listed, nil)	_ = res.Listed	go test ./cmd/cairn -run TestPublicOffCommandReportsTheTeamMembersItLists
+cmd/cairn/share_cmds.go	out["listed"], _ = listingJSON(res.Listed, nil)	out["listed"], _ = listingJSON(nil, nil)	go test ./cmd/cairn -run TestPublicOffCommandReportsTheTeamMembersItLists
