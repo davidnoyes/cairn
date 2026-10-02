@@ -1100,7 +1100,7 @@ Every other request goes to the app's routes, as before.
 | `/_cairn/boot` | The boot page, which registers the worker and runs the handshake |
 | `/_cairn/sw.js` | The service worker |
 | `/_cairn/frame.js` | The script the worker adds to every HTML page |
-| `/_cairn/*` | The other static assets those three load, such as `e2e.mjs`, `cairn.js`, and Mermaid |
+| `/_cairn/*` | The other static assets: `e2e.mjs` and what it imports, `cairn.js`, `mermaid.js`, `sql-wasm.js`, and `sql-wasm.wasm` |
 | `/api/...` | The content-origin token's allowlist, for this host's artifact only |
 
 - On a content host, an `/api/` route outside the allowlist answers `404`,
@@ -1244,6 +1244,9 @@ For a request to `/<version>/<path>`, the worker:
 - Looks the path up in the manifest. A navigation to a path with no file
   extension that the manifest does not hold gets `index.html`, as the SPA
   fallback does today. Any other missing path gets `404`.
+- Serves `cairn.js`, `mermaid.js`, `sql-wasm.js`, and `sql-wasm.wasm` at the
+  version's root from `/_cairn/` when the manifest has no file of that name
+  there, so a relative `<script src="./cairn.js">` keeps working.
 - Fetches the blob, checks its SHA-256 against the manifest, opens it with
   the context `content`, the version, and the path, and checks its size.
 - Answers with a media type taken from the extension,
