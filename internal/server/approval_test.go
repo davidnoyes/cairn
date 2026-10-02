@@ -445,6 +445,10 @@ func TestApproveRefusals(t *testing.T) {
 			seedAccountWith(t, w.s, "twin@example.com", "twin-password", false, bundleFor(t, w.team1.keys))
 			return w.owner, approveReq(t, w.o, w.owner, w.team1)
 		}),
+		// No case for another user ID sharing the email: users.email is
+		// UNIQUE COLLATE NOCASE, so CreateAccount refuses a second account
+		// with the same normalized email and the directory cannot hold one.
+		// e2e.ValidateApproval's email check is covered only at that level.
 		post("a fingerprint that is not the user's current one", 409, "current fingerprint", func(t *testing.T, w *approvalWorld) (actor, map[string]any) {
 			req := approveReq(t, w.o, w.owner, w.team1)
 			req["fp"] = w.team2.keys.fp()

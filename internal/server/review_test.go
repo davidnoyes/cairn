@@ -146,6 +146,23 @@ func TestReviewListsAVersionWhosePusherWasDeleted(t *testing.T) {
 	}
 }
 
+// An editor demoted to viewer is still listed, but is no longer an editor of
+// the latest record, so the versions they pushed need review.
+func TestReviewListsAVersionOfADemotedEditor(t *testing.T) {
+	w := newReviewWorld(t)
+	b := w.o.nextEpoch()
+	for i := range b.Members {
+		if b.Members[i].User == w.editor.id {
+			b.Members[i].Role = "viewer"
+		}
+	}
+	w.o.apply(b)
+	got := reviewOf(t, w.owner.testClient, w.o)
+	if len(got) != 2 || got[0].ID != w.byEditor || got[0].PushedBy == nil || *got[0].PushedBy != w.editor.id || got[1].ID != w.byRemoved {
+		t.Fatalf("review = %+v, want the demoted editor's version %s then the removed one's", got, w.byEditor)
+	}
+}
+
 func TestReviewAndVouchRefuseALinkHolder(t *testing.T) {
 	w := newReviewWorld(t)
 	anon := anonWithLink(t, w.base, w.o.makePublic())

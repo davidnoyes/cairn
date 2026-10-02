@@ -3,11 +3,13 @@ package e2e
 import (
 	"crypto/sha256"
 	"encoding/base32"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
+	"testing"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -135,7 +137,40 @@ func Stretch(password []byte, email string, p Params) ([]byte, error) {
 		return nil, err
 	}
 	salt := ArgonSalt(email, p.Salt)
-	return argon2.IDKey(password, salt, p.Time, p.Memory, p.Threads, 32), nil
+	return argon2Key(password, salt, p.Time, p.Memory, p.Threads, 32), nil
+}
+
+// argon2Key is the Argon2id call Stretch makes; UseFastKDFForTests swaps it.
+var argon2Key = argon2.IDKey
+
+// UseFastKDFForTests replaces Argon2id in Stretch with a cheap deterministic
+// stand-in, so test suites that sign up many users do not pay for a
+// floor-parameter run each time: under the race detector one takes over a
+// second. It never weakens the floor check, which Stretch runs before the
+// call. The stand-in depends on every input but is not a password hash, so it
+// panics outside a test binary.
+func UseFastKDFForTests() {
+	if !testing.Testing() {
+		panic("e2e: UseFastKDFForTests called outside a test binary")
+	}
+	argon2Key = fastKDF
+}
+
+// fastKDF is SHA-256 over the length-prefixed inputs, counter-expanded or
+// truncated to keyLen.
+func fastKDF(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
+	var n [4]byte
+	binary.BigEndian.PutUint32(n[:], time)
+	var m [4]byte
+	binary.BigEndian.PutUint32(m[:], memory)
+	var k [4]byte
+	binary.BigEndian.PutUint32(k[:], keyLen)
+	in := Enc(password, salt, n[:], m[:], []byte{threads}, k[:])
+	out := make([]byte, 0, keyLen+sha256.Size)
+	for ctr := byte(0); uint32(len(out)) < keyLen; ctr++ {
+		out = append(out, sha256Sum(append([]byte{ctr}, in...))...)
+	}
+	return out[:keyLen]
 }
 
 // PasswordKeys derives authKey, sent to the server, and kek, which never

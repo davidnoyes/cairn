@@ -310,7 +310,7 @@ test('takeToken strips the fragment even when it holds no token, then refuses', 
 test('verifyFromLink removes the token from the address bar before the request', async () => {
   const page = fakePage('#token=good-token');
   const order = [];
-  const deps = { fetch: async (path, options) => { order.push(...page.events.map((e) => e[0]), 'fetch'); return json(200, { ok: true }); } };
+  const deps = { fetch: async () => { order.push(...page.events.map((e) => e[0]), 'fetch'); return json(200, { ok: true }); } };
   await account.verifyFromLink(deps, page);
   assert.deepEqual(order, ['replaceState', 'fetch']);
 });
@@ -459,6 +459,24 @@ test('signOut leaves the keyring anchor in localStorage', async () => {
   await account.signOut(deps);
   assert.equal(deps.keyStore.cleared, 1);
   assert.equal(localStorage.getItem('cairn.keyringAnchor'), '{"rev":12}');
+});
+
+test('signOut leaves a real-format keyring anchor readable by loadKeyringAnchor', async () => {
+  const store = new Map();
+  const localStorage = {
+    getItem: (k) => store.get(k) ?? null,
+    setItem: (k, v) => store.set(k, v),
+    removeItem: () => assert.fail('sign-out must not remove from localStorage'),
+    clear: () => assert.fail('sign-out must not clear localStorage'),
+  };
+  const fp = 'a'.repeat(64);
+  const anchor = { rev: 12, hash: 'b'.repeat(64) };
+  e2e.saveKeyringAnchor(localStorage, 'u-ada', fp, anchor);
+  assert.deepEqual([...store.keys()], [`cairn.keyringAnchor.u-ada.${fp}`]);
+  const deps = { ...makeDeps(fakeServer()), localStorage };
+  await account.signOut(deps);
+  assert.equal(deps.keyStore.cleared, 1);
+  assert.deepEqual(e2e.loadKeyringAnchor(localStorage, 'u-ada', fp), anchor);
 });
 
 // ------------------------------------------------- raw key bytes are zeroed

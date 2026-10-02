@@ -6,11 +6,16 @@
 #
 # Usage: scripts/mutate.sh [filter]   # filter: only lines containing it
 # MUTATIONS=path overrides the list, to try a new entry on its own.
+# MUTATE_SHARD=i/n (1-based i) runs only every n-th entry, starting at the
+# i-th, so the list can be split across parallel jobs.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LIST="${MUTATIONS:-$ROOT/scripts/mutations.txt}"
 FILTER="${1:-}"
+SHARD="${MUTATE_SHARD:-1/1}"
+SHARD_I="${SHARD%/*}"
+SHARD_N="${SHARD#*/}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 unset CAIRN_HOST CAIRN_API_KEY
@@ -18,16 +23,21 @@ export CAIRN_CONFIG="$WORK/config.json"
 
 survived=0
 total=0
+index=0
 while IFS=$'\t' read -r file search replace cmd; do
   [[ -z "$file" || "$file" == \#* ]] && continue
   if [[ -n "$FILTER" && "$file$search$cmd" != *"$FILTER"* ]]; then
+    continue
+  fi
+  index=$((index + 1))
+  if (( (index - 1) % SHARD_N != SHARD_I - 1 )); then
     continue
   fi
   total=$((total + 1))
   tree="$WORK/tree"
   rm -rf "$tree"
   mkdir -p "$tree"
-  (cd "$ROOT" && git ls-files -z --cached --others --exclude-standard | xargs -0 -I{} rsync -R "{}" "$tree/") 2>/dev/null
+  (cd "$ROOT" && git ls-files -z --cached --others --exclude-standard | rsync -a --from0 --files-from=- "$ROOT/" "$tree/") 2>/dev/null
   if [[ -d "$ROOT/node_modules" ]]; then
     ln -s "$ROOT/node_modules" "$tree/node_modules"
   fi
@@ -56,5 +66,5 @@ PY
   fi
 done <"$LIST"
 
-echo "$((total - survived))/$total mutations killed"
+echo "$((total - survived))/$total mutations killed (shard $SHARD)"
 [[ $survived -eq 0 ]]

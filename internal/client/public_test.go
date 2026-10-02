@@ -240,6 +240,29 @@ func TestOpenLinkRefusals(t *testing.T) {
 	if _, trusted := opened.Editors[bobID]; trusted {
 		t.Error("an editor whose served keys do not hash to the record's fp is a trusted writer")
 	}
+	// A server that serves no keys for the editor leaves that editor out; it
+	// does not fail the link.
+	dropped := rewriting(w.cat, path, func(body []byte) []byte {
+		var m map[string]any
+		if err := json.Unmarshal(body, &m); err != nil {
+			t.Error(err)
+			return body
+		}
+		keys, _ := m["keys"].(map[string]any)
+		if _, ok := keys[bobID]; !ok {
+			t.Errorf("the proxied membership has no keys entry for the editor %s: %v", bobID, keys)
+		}
+		delete(keys, bobID)
+		out, _ := json.Marshal(m)
+		return out
+	})
+	opened, err = dropped.OpenLink(good)
+	if err != nil {
+		t.Fatalf("OpenLink with the editor's keys entry removed: %v", err)
+	}
+	if _, trusted := opened.Editors[bobID]; trusted {
+		t.Error("an editor with no served keys is a trusted writer")
+	}
 	opened, err = w.cat.OpenLink(good)
 	if err != nil {
 		t.Errorf("OpenLink as a signed-in non-member: %v", err)

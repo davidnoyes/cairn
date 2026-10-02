@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"testing"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -19,8 +20,22 @@ import (
 
 // Passwords
 
+// passwordCost is the bcrypt cost HashPassword uses.
+var passwordCost = bcrypt.DefaultCost
+
+// UseMinCostForTests drops the bcrypt cost to its minimum, so test suites
+// that create many users do not pay for a production-cost hash each time:
+// under the race detector one takes over half a second. It panics outside a
+// test binary.
+func UseMinCostForTests() {
+	if !testing.Testing() {
+		panic("auth: UseMinCostForTests called outside a test binary")
+	}
+	passwordCost = bcrypt.MinCost
+}
+
 func HashPassword(password string) (string, error) {
-	b, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	b, err := bcrypt.GenerateFromPassword([]byte(password), passwordCost)
 	return string(b), err
 }
 

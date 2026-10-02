@@ -20,6 +20,11 @@ export default [
     },
   },
   {
+    // The account pages load their scripts with type="module".
+    files: ['internal/server/web/{admin,forgot,login,reset,signup,verify}.js'],
+    languageOptions: { sourceType: 'module' },
+  },
+  {
     files: ['**/*.mjs'],
     languageOptions: {
       ecmaVersion: 2022,

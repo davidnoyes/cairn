@@ -7,7 +7,25 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
+
+func TestUseMinCostForTests(t *testing.T) {
+	prev := passwordCost
+	t.Cleanup(func() { passwordCost = prev })
+	UseMinCostForTests()
+	hash, err := HashPassword("s3cret-pass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !CheckPassword(hash, "s3cret-pass") || CheckPassword(hash, "wrong") {
+		t.Fatal("hash does not verify")
+	}
+	if cost, err := bcrypt.Cost([]byte(hash)); err != nil || cost != bcrypt.MinCost {
+		t.Fatalf("cost %d (%v), want %d", cost, err, bcrypt.MinCost)
+	}
+}
 
 func TestPasswordHashing(t *testing.T) {
 	hash, err := HashPassword("s3cret-pass")

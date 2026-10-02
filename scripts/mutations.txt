@@ -193,7 +193,7 @@ internal/server/sharing.go	if u.ID == latest.Owner || !u.Verified || u.Disabled 
 internal/server/sharing.go	if u.ID == latest.Owner || !u.Verified || u.Disabled ||	if u.ID == latest.Owner || !u.Verified ||	go test ./internal/server -run TestPendingStates
 internal/server/web/e2e.mjs	if (e.user === id || e.fp === fp || normalizeEmail(e.email) === normalized) return e;	if (e.user === id || e.fp === fp || e.email === normalized) return e;	node --test internal/server/web/e2e_test.mjs
 internal/e2e/link.go	Anchor: in.Link.Owner, Linked: RotationLinker(in.Rotations)})	Anchor: in.Link.Owner, Linked: func(string, string, string) bool { return true }})	go test ./internal/e2e -run 'TestVectors/link'
-internal/server/web/e2e.mjs	anchor: link.o,	anchor: link.o, linked: () => true,	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	linked: rotationLinker(input.rotations),	linked: () => true,	node --test internal/server/web/e2e_test.mjs
 internal/e2e/chain.go	hex.EncodeToString(Fingerprint(x, ed)) == fp	hex.EncodeToString(Fingerprint(x, ed)) != ""	go test ./internal/e2e -run 'TestVectors/link'
 internal/server/web/e2e.mjs	if (toHex(await fingerprint(x, ed)) === fp) keys.set(fp, ed);	keys.set(fp, ed);	node --test internal/server/web/e2e_test.mjs
 internal/e2e/link.go	if commit != b.AKCommit {	if commit == "" {	go test ./internal/e2e -run 'TestVectors/link'
@@ -798,3 +798,10 @@ cmd/cairn/share_cmds.go	if !owner && !o.toSelf {	if false {	go test ./cmd/cairn 
 cmd/cairn/share_cmds.go	o.toSelf = r.State == "self"	o.toSelf = false	go test ./cmd/cairn -run 'TestMembersShowsAnOpenOffer'
 cmd/cairn/share_cmds.go	fmt.Println(offer.text(a.ID))	_ = offer.text(a.ID)	go test ./cmd/cairn -run 'TestMembersShowsAnOpenOffer'
 cmd/cairn/share_cmds.go	res["transfer"] = map[string]any{"to": offer.to, "email": offer.email, "by": offer.by, "at": offer.at}	_ = offer	go test ./cmd/cairn -run 'TestMembersShowsAnOpenOffer'
+internal/e2e/keys.go	Enc(password, salt, n[:], m[:]	Enc(password, n[:], m[:]	go test ./internal/e2e -run TestFastKDFDependsOnEveryInput
+internal/e2e/keys.go	[]byte{threads}	[]byte{1}	go test ./internal/e2e -run TestFastKDFDependsOnEveryInput
+internal/e2e/keys.go	binary.BigEndian.PutUint32(k[:], keyLen)	binary.BigEndian.PutUint32(k[:], 32)	go test ./internal/e2e -run TestFastKDFDependsOnEveryInput
+internal/e2e/keys.go	argon2Key = fastKDF	argon2Key = argon2.IDKey	go test ./internal/e2e -run TestStretchUsesFastKDFAndKeepsFloor
+internal/e2e/keys.go	return argon2Key(password, salt, p.Time	return argon2.IDKey(password, salt, p.Time	go test ./internal/e2e -run TestStretchUsesFastKDFAndKeepsFloor
+internal/auth/auth.go	passwordCost = bcrypt.MinCost	passwordCost = bcrypt.DefaultCost	go test ./internal/auth -run TestUseMinCostForTests
+internal/auth/auth.go	GenerateFromPassword([]byte(password), passwordCost)	GenerateFromPassword([]byte(password), bcrypt.DefaultCost)	go test ./internal/auth -run TestUseMinCostForTests
