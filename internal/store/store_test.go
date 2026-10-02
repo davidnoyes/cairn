@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func testStore(t *testing.T) *Store {
@@ -38,11 +40,11 @@ func TestArtifactsAndVersions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v1, err := s.CreateVersion(a.ID, "v1", "initial", "c1", "", 0)
+	v1, err := s.CreateVersion(a.ID, uuid.NewString(), "v1", "initial", "c1", "", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	v2, err := s.CreateVersion(a.ID, "v2", "more", "c2", "", 0)
+	v2, err := s.CreateVersion(a.ID, uuid.NewString(), "v2", "more", "c2", "", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +55,7 @@ func TestArtifactsAndVersions(t *testing.T) {
 	if err != nil || latest.ID != v2.ID {
 		t.Fatalf("LatestVersion: %v %+v", err, latest)
 	}
-	prev, err := s.SwapVersionContent(a.ID, v2.ID, "c3", "v2b", "fixed", "", 0)
+	prev, err := s.SwapVersionContent(a.ID, v2.ID, "c3", "v2b", "fixed", "", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}

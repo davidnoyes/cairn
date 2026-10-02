@@ -556,7 +556,7 @@ func TestApproveStoresWrapsAndLetsTheUserRead(t *testing.T) {
 
 	// An approved team member reads but cannot write, share, or approve.
 	wantStatus(t, w.team1.testClient, "POST", vbase+"/db/batch", map[string]any{"statements": []map[string]any{{"sql": "CREATE TABLE t (x)"}}}, http.StatusForbidden)
-	if r := w.team1.upload("POST", base+"/versions", zipFrom(t, map[string]string{"index.html": "x"}), nil); r.StatusCode != http.StatusForbidden {
+	if r := w.team1.upload("POST", base+"/versions", map[string]string{"index.html": "x"}, nil); r.StatusCode != http.StatusForbidden {
 		t.Errorf("approved team member push: %d", r.StatusCode)
 	}
 	wantStatus(t, w.team1.testClient, "PATCH", base, map[string]any{"name": "x"}, http.StatusForbidden)

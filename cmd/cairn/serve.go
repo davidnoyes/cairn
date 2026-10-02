@@ -43,7 +43,7 @@ func runServe(args []string) error {
 		}
 	}
 	fs.Var(&signupDomains, "signup-domain", "an email domain that may sign up (repeatable)")
-	maxUploadMB := fs.Int64("max-upload-mb", envInt64Or("CAIRN_MAX_UPLOAD_MB", 256), "max decompressed upload size (MiB)")
+	maxUploadMB := fs.Int64("max-upload-mb", envInt64Or("CAIRN_MAX_UPLOAD_MB", 256), "max pushed version size (MiB)")
 	queryTimeout := fs.Duration("query-timeout", envDurationOr("CAIRN_QUERY_TIMEOUT", 10*time.Second), "shared database query timeout")
 	maxQueryRows := fs.Int("max-query-rows", int(envInt64Or("CAIRN_MAX_QUERY_ROWS", 10000)), "max rows returned per query")
 	if err := fs.Parse(args); err != nil {

@@ -134,3 +134,14 @@ func OpenBlob(ak []byte, ctx BlobContext, blob []byte) ([]byte, error) {
 	}
 	return out, nil
 }
+
+// BlobMinSize is the length of the shortest valid blob: the header and one
+// empty chunk, which is a tag alone.
+const BlobMinSize = blobHeaderSize + blobTagSize
+
+// HasBlobHeader reports whether b starts with the blob magic and version
+// byte. It reads no further, so a holder who cannot decrypt can still check a
+// blob's shape.
+func HasBlobHeader(b []byte) bool {
+	return len(b) > len(blobMagic) && string(b[:len(blobMagic)]) == blobMagic && b[len(blobMagic)] == blobVersion
+}

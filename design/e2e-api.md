@@ -784,6 +784,14 @@ other value, and it cannot check a vouch against the version's content.
 Replacing a version's content deletes its vouch, so the owner's vouch never
 covers content they did not review.
 
+Before you vouch, your client checks a manifest's signature under any key
+pair whose fingerprint the verified membership chain lists for the signer:
+the current directory key, or an old or new key from their rotation records,
+so an editor who rotated keys after pushing can still be vouched. A deleted
+account, or one an administrator turned off, is in neither place, so your
+client refuses the vouch and says the signer's keys are no longer
+published. Delete the version, or push its content again yourself.
+
 `GET /api/artifacts/{id}/versions/{vid}` returns `pushedBy` and `vouch`, which
 is the envelope or `null`.
 
@@ -1150,8 +1158,10 @@ An anonymous visitor gets no token. The worker sends the link token alone.
   client chose, because the manifest and every blob's context name it. The
   server refuses an `id` that is not a lowercase UUID, or that any version
   already uses, with `409`. `epoch` must be the artifact's current epoch,
-  or the server refuses the push with `409`.
-  `manifestHash` is `hex(SHA-256)` of the manifest envelope's body.
+  or the server refuses the push with `409`. A push that names no epoch,
+  or one below 1, is malformed and gets `400`.
+  `manifestHash` is `hex(SHA-256)` of the manifest envelope's body. The part
+  is at most 1 MiB; a larger one gets `400`.
 - `manifest`, the version's signed manifest, sealed as a blob with kind
   `manifest`.
 - One `blob` part per file, whose filename is the blob ID: 32 lowercase `hex`
@@ -1160,20 +1170,25 @@ An anonymous visitor gets no token. The worker sends the link token alone.
 The server cannot read any of it, so it checks only the shape:
 
 - the caller may push;
+- the push has at least one blob, because every version has an
+  `index.html`;
 - every blob ID is well formed and appears once;
 - every blob and the manifest start with the blob header and are long
   enough to hold one tagged chunk;
 - the total size is within `--max-upload-mb`.
 
 It stores the parts under a fresh content directory, as `manifest` and
-`blobs/<blob ID>`, and records `epoch`, `manifestHash`, and `pushedBy`.
+`blobs/<blob ID>`, and records `epoch`, `manifestHash`, and `pushedBy`. It
+stores each part's bytes as sent, and ignores any
+`Content-Transfer-Encoding` header on it.
 
 `PUT /api/artifacts/{id}/versions/{vid}` replaces a version's content with
 the same parts. The `id` in `version` must equal `{vid}`, and the
 replacement swaps content directories as before and deletes the vouch.
 
-A request that carries the old `file` zip part is refused with `400`, and
-a message telling the person to update the `cairn` tool.
+A request that carries a part of the old zip push (`name`, `changelog`,
+`archive`, or `file`) is refused with `400`, and a message telling the person
+to update the `cairn` tool, whichever part comes first.
 
 ### Reading a version
 
@@ -1305,7 +1320,9 @@ hidden. There, a `navigate` to `/shared/<uuid>/<uuid>` opens
 ### Commands in milestone 4
 
 `cairn push` checks the tree as the server used to: `index.html` at the root,
-no symlinks, every name a valid path, and the total within the server's
+no symlinks, and every name a valid UTF-8 path. The server enforces the size
+limit, `--max-upload-mb`, and the client cannot learn it, so when the server
+answers `413` the client reports that the upload is larger than the server's
 limit. It then:
 
 1. Chooses the version ID and the blob IDs.

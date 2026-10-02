@@ -35,26 +35,13 @@ func epochReq(t *testing.T, c *testClient, method, path, ctype string, body []by
 
 func str(s string) *string { return &s }
 
-// epochWrites maps each write route that declares an epoch to a function
-// that issues one such write on version vid of artifact aid.
+// epochWrites maps each write route that declares an epoch in X-Cairn-Epoch
+// to a function that issues one such write on version vid of artifact aid. A
+// push or re-upload declares its epoch in its version part instead: see
+// TestPushEpoch in upload_test.go.
 func epochWrites(t *testing.T, c *testClient, aid, vid string) map[string]func(declared *string) (int, string) {
 	vbase := "/api/artifacts/" + aid + "/versions"
-	multipart := func() (string, []byte) {
-		var buf bytes.Buffer
-		buf.WriteString("--b\r\nContent-Disposition: form-data; name=\"archive\"; filename=\"a.zip\"\r\n\r\n")
-		buf.Write(zipFrom(t, map[string]string{"index.html": "x"}))
-		buf.WriteString("\r\n--b--\r\n")
-		return "multipart/form-data; boundary=b", buf.Bytes()
-	}
 	return map[string]func(*string) (int, string){
-		"push": func(d *string) (int, string) {
-			ct, b := multipart()
-			return epochReq(t, c, "POST", vbase, ct, b, d)
-		},
-		"re-upload": func(d *string) (int, string) {
-			ct, b := multipart()
-			return epochReq(t, c, "PUT", vbase+"/"+vid, ct, b, d)
-		},
 		"db exec": func(d *string) (int, string) {
 			return epochReq(t, c, "POST", vbase+"/"+vid+"/db/query", "application/json",
 				[]byte(`{"sql":"CREATE TABLE IF NOT EXISTS t (n INTEGER)"}`), d)
@@ -112,7 +99,7 @@ func TestStaleDeclaredEpochWritesNothing(t *testing.T) {
 	o.apply(o.nextEpoch()) // epoch 2; a writer still at 1 is stale
 	w := epochWrites(t, a.testClient, o.id, vid)
 
-	for _, name := range []string{"push", "re-upload", "file upload", "db exec", "db batch"} {
+	for _, name := range []string{"file upload", "db exec", "db batch"} {
 		if code, _ := w[name](str("1")); code != http.StatusConflict {
 			t.Fatalf("%s: %d, want 409", name, code)
 		}

@@ -59,11 +59,11 @@ func setupArtifact(t *testing.T, ts string, public bool) (admin *testClient, aid
 	} else {
 		aid = createArtifact(t, admin, "site")
 	}
-	resp := admin.upload("POST", "/api/artifacts/"+aid+"/versions", zipFrom(t, map[string]string{
+	resp := admin.upload("POST", "/api/artifacts/"+aid+"/versions", map[string]string{
 		"index.html":     "<h1>hello v1</h1><script src=\"./cairn.js\"></script>",
 		"app.js":         "console.log('app')",
 		"sub/index.html": "<h1>sub page</h1>",
-	}), map[string]string{"name": "v1"})
+	}, map[string]string{"name": "v1"})
 	v := decode[struct {
 		ID string `json:"id"`
 	}](t, resp)
@@ -71,6 +71,7 @@ func setupArtifact(t *testing.T, ts string, public bool) (admin *testClient, aid
 }
 
 func TestMermaidJS(t *testing.T) {
+	t.Skip("the server stores ciphertext, so the app origin has no files to serve; the app-origin file serving and its tests go in the content-origin change")
 	_, ts := testServer(t)
 
 	// Global route
@@ -114,9 +115,9 @@ func TestSharedShell(t *testing.T) {
 	_, ts := testServer(t)
 	admin, aid, vid, link := setupArtifact(t, ts.URL, true)
 	// Second version so the picker has two entries
-	resp := admin.upload("POST", "/api/artifacts/"+aid+"/versions", zipFrom(t, map[string]string{
+	resp := admin.upload("POST", "/api/artifacts/"+aid+"/versions", map[string]string{
 		"index.html": "<h1>v2</h1>",
-	}), map[string]string{"name": "v2", "changelog": "second"})
+	}, map[string]string{"name": "v2", "changelog": "second"})
 	v2 := decode[struct {
 		ID string `json:"id"`
 	}](t, resp)

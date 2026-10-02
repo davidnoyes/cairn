@@ -50,6 +50,8 @@ type contentWorld struct {
 	art     *owned
 	vid     string
 	vbase   string
+	// blob is the ID of a blob the version holds.
+	blob string
 }
 
 func newContentWorld(t *testing.T) *contentWorld {
@@ -70,7 +72,9 @@ func buildContentWorld(t *testing.T, s *Server, base string) *contentWorld {
 	w.art = newArtifact(t, w.owner, "notes")
 	w.art.share("editor", w.editor)
 	w.art.share("viewer", w.viewer)
-	w.vid = pushVersion(t, w.owner.testClient, w.art.id)
+	p := newPush(t, w.art.id, "", 1, map[string]string{"index.html": "<h1>hi</h1>"})
+	w.vid = decode[pushed](t, w.owner.send("POST", "/api/artifacts/"+w.art.id+"/versions", p)).ID
+	w.blob = p.Blobs[0].ID
 	w.vbase = "/api/artifacts/" + w.art.id + "/versions/" + w.vid
 	w.putFile(t)
 	return w
@@ -101,12 +105,12 @@ func wantCode(t *testing.T, c *testClient, method, path string, want int) {
 
 // contentRouteRequest fills pattern's wildcards, with artID for an artifact's
 // {id} and userID for a user's, and gives it a body that succeeds.
-func contentRouteRequest(pattern, artID, vid, userID string) (method, path string, body []byte) {
+func contentRouteRequest(pattern, artID, vid, blob, userID string) (method, path string, body []byte) {
 	method, path, found := strings.Cut(pattern, " ")
 	if !found {
 		method, path = "GET", pattern
 	}
-	path = strings.NewReplacer("{vid}", vid, "{rid}", "r1", "{path...}", "a.txt").Replace(path)
+	path = strings.NewReplacer("{vid}", vid, "{blob}", blob, "{rid}", "r1", "{path...}", "a.txt").Replace(path)
 	if strings.HasPrefix(path, "/api/users/{id}") || strings.HasPrefix(path, "/api/admin/users/{id}") {
 		path = strings.Replace(path, "{id}", userID, 1)
 	}
@@ -154,6 +158,8 @@ func TestContentTokenRouteTable(t *testing.T) {
 		"GET /api/artifacts/{id}/membership":                        true,
 		"GET /api/artifacts/{id}/versions":                          true,
 		"GET /api/artifacts/{id}/versions/{vid}":                    true,
+		"GET /api/artifacts/{id}/versions/{vid}/manifest":           true,
+		"GET /api/artifacts/{id}/versions/{vid}/blobs/{blob}":       true,
 		"POST /api/artifacts/{id}/versions/{vid}/db/query":          true,
 		"POST /api/artifacts/{id}/versions/{vid}/db/batch":          true,
 		"GET /api/artifacts/{id}/versions/{vid}/db/download":        true,
@@ -170,7 +176,7 @@ func TestContentTokenRouteTable(t *testing.T) {
 	tok := w.token(t, w.owner.id)
 	seen := map[string]bool{}
 	for _, pattern := range w.s.patterns {
-		method, path, body := contentRouteRequest(pattern, w.art.id, w.vid, w.editor.id)
+		method, path, body := contentRouteRequest(pattern, w.art.id, w.vid, w.blob, w.editor.id)
 		allowed := contentTokenRoutes[pattern]
 		if allowed {
 			seen[pattern] = true
@@ -241,12 +247,12 @@ func TestContentTokenIsScopedToOneArtifact(t *testing.T) {
 			continue
 		}
 		for _, ref := range []string{b.id, "b-session"} {
-			method, path, body := contentRouteRequest(pattern, ref, bvid, "")
+			method, path, body := contentRouteRequest(pattern, ref, bvid, strings.Repeat("a", 32), "")
 			if code, msg := send(t, tok, method, path, body); code != http.StatusNotFound {
 				t.Errorf("%s on another artifact (%s): %d %s, want 404", pattern, ref, code, msg)
 			}
 		}
-		method, path, body := contentRouteRequest(pattern, w.art.id, w.vid, "")
+		method, path, body := contentRouteRequest(pattern, w.art.id, w.vid, w.blob, "")
 		w.putFile(t)
 		if code, msg := send(t, tok, method, path, body); code != http.StatusOK {
 			t.Errorf("%s on its own artifact: %d %s, want 200", pattern, code, msg)

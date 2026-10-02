@@ -295,17 +295,16 @@ internal/server/epoch.go	return s.store.UnderEpoch(artifactID, declared, write)	
 internal/server/epoch.go	if declared == 0 {	if declared >= 0 {	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
 internal/server/epoch.go	v[0] == '0'	v[0] == 'z'	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
 internal/server/epoch.go	len(vals) == 0	len(vals) == 0 || vals[0] == ""	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
-internal/server/upload.go	v, err := s.store.CreateVersion(a.ID, name, changelog, contentDir, requestUser(r).ID, declared)	v, err := s.store.CreateVersion(a.ID, name, changelog, contentDir, requestUser(r).ID, declared*0)	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
-internal/server/upload.go	changelog, requestUser(r).ID, declared)	changelog, requestUser(r).ID, declared*0)	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
+internal/server/upload.go	p.Changelog, contentDir, requestUser(r).ID, p.ManifestHash, p.Epoch)	p.Changelog, contentDir, requestUser(r).ID, p.ManifestHash, p.Epoch*0)	go test ./internal/server -run TestPushEpoch
+internal/server/upload.go	changelog, requestUser(r).ID, p.ManifestHash, p.Epoch)	changelog, requestUser(r).ID, p.ManifestHash, p.Epoch*0)	go test ./internal/server -run TestPushEpoch
 internal/server/handlers_db.go	var execErr error	var execErr error; declared = 0	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
 internal/server/handlers_db.go	var batchErr error	var batchErr error; declared = 0	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
 internal/server/handlers_files.go	var conflict string	var conflict string; declared = 0	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
 internal/server/handlers_files.go	var removeErr error	var removeErr error; declared = 0	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
-internal/client/client.go	strconv.Itoa(epoch)	strconv.Itoa(epoch + 1)	go test ./internal/client -run 'TestPushDeclaresTheChainEpoch|TestPushNamesAMovedEpoch'
+internal/client/client.go	"epoch": epoch, "manifestHash"	"epoch": epoch + 1, "manifestHash"	go test ./internal/client -run 'TestPushDeclaresTheChainEpoch|TestPushNamesAMovedEpoch'
 internal/client/client.go	return nil, ErrEpochMoved	return nil, err	go test ./internal/client -run 'TestPushDeclaresTheChainEpoch|TestPushNamesAMovedEpoch'
-internal/server/review.go	case body.Manifest != "":	case false:	go test ./internal/server -run 'TestVouchRefusals'
 internal/server/review.go	case body.Artifact != artifact:	case false:	go test ./internal/server -run 'TestVouchRefusals'
-internal/server/review.go	case body.Version != version:	case false:	go test ./internal/server -run 'TestVouchRefusals'
+internal/server/review.go	case body.Version != ver.ID:	case false:	go test ./internal/server -run 'TestVouchRefusals'
 internal/server/review.go	if env.Signer != owner.ID {	if false {	go test ./internal/server -run 'TestVouchRefusals'
 internal/server/review.go	e2e.OpenEnvelope(env, owner.Ed25519Pub, "vouch", &body)	e2e.OpenEnvelope(env, owner.Ed25519Pub, "approval", &body)	go test ./internal/server -run 'TestVouchRefusals|TestVouchIsStored'
 internal/server/routes.go	s.artifactRoute(access.ReviewVersions, s.handleVouch)	s.artifactRoute(access.ReadContent, s.handleVouch)	go test ./internal/server -run 'TestReviewAndVouchAreOwnerOnly'
@@ -931,3 +930,82 @@ internal/access/access.go	m.owner, m.member, m.team = false, false, false	m.owne
 internal/server/csp.go	"://*." + s.contentDomain + s.contentPort	"://*." + s.contentDomain	go test ./internal/server -run 'TestShellCSPFollowsPublicURL|TestContentHostRoutingByConfig'
 internal/server/routes.go	handle("GET /shared/{id}", s.withShellCSP(s.handleShared))	handle("GET /shared/{id}", s.handleShared)	go test ./internal/server -run TestSharedRoutesAndShellCSP
 internal/server/serving.go	http.Redirect(w, r, target, http.StatusFound)	http.Redirect(w, r, target, http.StatusMovedPermanently)	go test ./internal/server -run TestArtifactPagesRedirectToShared
+# m4 encrypted push
+# Each push refusal, blob and manifest ID validation, the epoch checks, the
+# vouch hash check, replace deleting the vouch, and the client's seal contexts
+# and signature.
+internal/server/upload.go	case "name", "changelog", "archive", "file":	case "name-x", "changelog-x", "archive-x", "file-x":	go test ./internal/server -run 'TestPushRefusals|TestPushFromAnOldClient'
+internal/server/upload.go	regexp.MustCompile(`^[0-9a-f]{32}$`)	regexp.MustCompile(`^[0-9a-fA-F]{32}$`)	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	if blobs[id] {	if false {	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	case !manifestHashPattern.MatchString(p.ManifestHash):	case false:	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	case !versionIDPattern.MatchString(p.ID):	case false:	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	case p.Epoch < 1:	case false:	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	if !e2e.HasBlobHeader(head) {	if false {	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	if int(n)+len(head) < e2e.BlobMinSize {	if int(n)+len(head) < 0 {	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	if haveManifest {	if false {	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	os.RemoveAll(dest)	_ = dest	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	r.Body = http.MaxBytesReader(w, r.Body, s.maxUploadBytes())	r.Body = http.MaxBytesReader(w, r.Body, 1<<40)	go test ./internal/server -run TestPushOverTheSizeLimit
+internal/server/upload.go	contentDir = uuid.NewString()	contentDir = uuid.NewString()[:0] + "fixed"	go test ./internal/server -run TestReplaceVersion
+internal/server/upload.go	if errors.Is(err, store.ErrExists) {	if errors.Is(err, store.ErrNotFound) {	go test ./internal/server -run TestPushRefusesAnIDAnyVersionUses
+internal/server/upload.go	if p.ID != v.ID {	if false {	go test ./internal/server -run TestReplaceVersion
+internal/server/upload.go	if !blobIDPattern.MatchString(r.PathValue("blob")) {	if false {	go test ./internal/server -run TestReadStoredBlobs
+internal/server/upload.go	w.Header().Set("Cache-Control", "no-store")	w.Header().Set("Cache-Control", "no-cache")	go test ./internal/server -run TestReadStoredBlobs
+internal/server/upload.go	w.Header().Set("Content-Type", "application/octet-stream")	w.Header().Set("Content-Type", "text/html")	go test ./internal/server -run TestReadStoredBlobs
+internal/server/routes.go	s.artifactRoute(access.ReadContent, s.handleGetManifest)	s.artifactRoute(access.PushVersion, s.handleGetManifest)	go test ./internal/server -run TestReadStoredBlobs
+internal/server/routes.go	s.artifactRoute(access.ReadContent, s.handleGetBlob)	s.artifactRoute(access.PushVersion, s.handleGetBlob)	go test ./internal/server -run TestReadStoredBlobs
+internal/server/routes.go	s.artifactRoute(access.PushVersion, s.handleUploadVersion)	s.artifactRoute(access.ReadContent, s.handleUploadVersion)	go test ./internal/server -run TestViewerAndEditorPowers
+internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/manifest":           true,	"GET /api/artifacts/{id}/versions/{vid}/manifest":           false,	go test ./internal/server -run TestContentTokenRouteTable
+internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/blobs/{blob}":       true,	"GET /api/artifacts/{id}/versions/{vid}/blobs/{blob}":       false,	go test ./internal/server -run TestContentTokenRouteTable
+internal/server/review.go	case body.Manifest != ver.ManifestHash:	case false:	go test ./internal/server -run TestVouchRefusals
+internal/store/artifacts.go	FROM artifacts WHERE id = ? AND (? = 0 OR epoch = ?)	FROM artifacts WHERE id = ? AND (? = 0 OR epoch = epoch)	go test ./internal/server -run TestPushEpoch
+internal/store/artifacts.go	(? = 0 OR (SELECT epoch FROM artifacts WHERE id = ?) = ?)	(? = 0 OR (SELECT epoch FROM artifacts WHERE id = ?) = ? OR 1 = 1)	go test ./internal/server -run TestPushEpoch
+internal/store/artifacts.go	DELETE FROM version_vouches WHERE version_id = ?	DELETE FROM version_vouches WHERE version_id = ? AND 1 = 0	go test ./internal/server -run TestReplacingAVersionDropsItsVouch
+internal/client/client.go	Kind: "content", Name: f.rel	Kind: "content", Name: ""	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
+internal/client/client.go	Kind: "manifest"}, envJSON)	Kind: "content"}, envJSON)	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
+internal/client/client.go	e2e.NewEnvelope(k.Ed25519Seed, k.UserID, "manifest", body)	e2e.NewEnvelope(k.Ed25519Seed, k.UserID, "vouch", body)	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
+internal/client/client.go	e2e.NewEnvelope(k.Ed25519Seed, k.UserID, "manifest", body)	e2e.NewEnvelope(k.Ed25519Seed, "nobody", "manifest", body)	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
+internal/client/client.go	SHA256: e2e.BodyHash(blob)	SHA256: e2e.BodyHash(data)	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
+internal/client/client.go	"manifestHash": e2e.BodyHash(body)	"manifestHash": e2e.BodyHash(sealed)	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
+internal/client/client.go	"epoch": epoch, "manifestHash"	"epoch": epoch + 1, "manifestHash"	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
+internal/client/client.go	Epoch: epoch, Files: make(	Epoch: 0, Files: make(	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
+internal/client/client.go	versionID = uuid.NewString()	versionID = uuid.NewString()[:0] + "not-a-uuid"	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
+internal/client/client.go	slices.SortFunc(files, func(a, b pushFile) int { return strings.Compare(a.rel, b.rel) })	_ = files	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
+internal/client/client.go	if !approverOf(va.Chain.Latest, k) {	if false {	go test ./internal/client -run TestPushNeedsTheOwnerOrAnEditor
+internal/client/client.go	if !d.Type().IsRegular() {	if false {	go test ./internal/client -run TestPushRefusesATreeTheServerWouldRefuse
+internal/client/client.go	if !fs.ValidPath(rel) || strings.Contains(rel, `\`) {	if !fs.ValidPath(rel) {	go test ./internal/client -run TestPushRefusesATreeTheServerWouldRefuse
+internal/client/client.go	if !slices.ContainsFunc(files, func(f pushFile) bool { return f.rel == "index.html" }) {	if false {	go test ./internal/client -run TestPushRefusesATreeTheServerWouldRefuse
+internal/client/review.go	Manifest: versions[i].ManifestHash	Manifest: ""	go test ./internal/client -run TestVouchSignsAndStoresTheOwnersVouch
+cmd/cairn/client_cmds.go	if err := client.CheckTree(dir); err != nil {	if err := error(nil); err != nil {	go test ./cmd/cairn -run TestPushRefusals
+internal/server/upload.go	case "name", "changelog", "archive", "file":	case "archive", "file":	go test ./internal/server -run TestPushFromAnOldClient
+internal/server/upload.go	if haveVersion {	if false {	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	dec.DisallowUnknownFields()	_ = dec	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	case err == io.EOF:	case !dec.More():	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	case err == io.EOF:	case err == io.EOF || err == nil:	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	io.LimitReader(part, 1<<20)	io.LimitReader(part, 1<<40)	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	refuse(http.StatusBadRequest, "unexpected part "+part.FormName())	continue	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	id := rawFilename(part.Header.Get("Content-Disposition"))	id := part.FileName()	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	os.O_CREATE|os.O_EXCL|os.O_WRONLY	os.O_CREATE|os.O_WRONLY	go test ./internal/server -run TestWriteBlobRefusesAnExistingFile
+internal/server/upload.go	if len(blobs) == 0 {	if false {	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	refuse(http.StatusBadRequest, "the push names no epoch")	refuse(http.StatusConflict, "the push names no epoch")	go test ./internal/server -run TestPushRefusals
+internal/server/upload.go	mr.NextRawPart()	mr.NextPart()	go test ./internal/server -run TestPushStoresAPartAsSent
+internal/store/artifacts.go	FROM versions WHERE id = ? AND artifact_id = ?`, versionID, artifactID))	FROM versions WHERE id = ? AND (artifact_id = ? OR 1 = 1)`, versionID, artifactID))	go test ./internal/store -run TestVersionByIDIsScopedToTheArtifact
+internal/client/client.go	apiErr.Status == http.StatusRequestEntityTooLarge	apiErr.Status == http.StatusTeapot	go test ./internal/client -run TestPushReportsTheServersSizeLimit
+internal/client/client.go	if !utf8.ValidString(rel) {	if !utf8.ValidString(rel) && false {	go test ./internal/client -run TestCheckUTF8Path
+internal/client/review.go	if e2e.BodyHash(env.Body) != v.ManifestHash {	if false {	go test ./internal/client -run TestVouchRefusesAManifestTheListedHashDoesNotMatch
+internal/server/upload.go	case isBodyError(err):	case false:	go test ./internal/server -run TestPushWhoseVersionPartHitsTheUploadCap
+internal/server/upload.go	if isBodyError(err) {	if false {	go test ./internal/server -run TestPushWhoseVersionPartHitsTheUploadCap
+internal/server/upload.go	return errors.As(err, &tooBig)	return errors.As(err, &tooBig) && false	go test ./internal/server -run TestPushWhoseVersionPartHitsTheUploadCap
+internal/server/upload.go	case errors.As(err, &tooBig):	case errors.As(err, &tooBig) && false:	go test ./internal/server -run TestPushOverTheSizeLimit
+internal/server/upload.go	return fmt.Errorf("invalid 'version' part: %w", err)	return fmt.Errorf("invalid 'version' part: %v", err)	go test ./internal/server -run TestPushWhoseVersionPartHitsTheUploadCap
+internal/client/client.go	if err := checkRelPaths(rels); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -run TestPushRefusesATreeTheServerWouldRefuse
+internal/client/client.go	if err := checkUTF8Path(rel); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -run TestCheckRelPaths
+internal/client/client.go	return errorFromResponse(method, path, resp)	return &APIError{Status: resp.StatusCode, Message: method + " " + path + " failed"}	go test ./internal/client -run 'TestPushKeepsAnotherConflict|TestPushReportsTheServersSizeLimit'
+internal/client/review.go	if len(listed) == 0 {	if false {	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
+internal/client/review.go	if listed[hex.EncodeToString(e2e.Fingerprint(kp.x25519, kp.ed25519))] {	if true || listed[hex.EncodeToString(e2e.Fingerprint(kp.x25519, kp.ed25519))] {	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
+internal/client/review.go	if body.Artifact != artifactID || body.Version != v.ID || body.Epoch != v.Epoch {	if false {	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
+internal/client/review.go	if ak == nil {	if false {	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
+internal/client/review.go	if !verified {	if !verified && false {	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
+internal/client/review.go	records, err := c.Rotations(signer)	var records []e2e.Envelope; var err error	go test ./internal/client -run 'TestVouchOpensARotatedEditorsManifest|TestVouchOpensTheOwnersManifestAfterTheyRotated'
+internal/client/review.go	if len(data) > maxManifestBytes {	if false {	go test ./internal/client -run TestGetBytesRefusesABodyOverTheCap
+internal/client/review.go	io.LimitReader(resp.Body, maxManifestBytes+1)	io.LimitReader(resp.Body, maxManifestBytes)	go test ./internal/client -run TestGetBytesRefusesABodyOverTheCap
+internal/client/review.go	return nil, errorFromResponse("GET", path, resp)	return nil, &APIError{Status: resp.StatusCode, Message: "GET " + path + " failed"}	go test ./internal/client -run TestGetBytesReportsTheServersMessage

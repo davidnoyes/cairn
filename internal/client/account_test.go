@@ -17,9 +17,13 @@ import (
 
 // newTestServer boots a real server on a temp data dir with a recording
 // mailer, allowing sign-up from "example.com".
-func newTestServer(t *testing.T) (host string, m *mail.Capture) {
+func newTestServer(t *testing.T, opts ...func(*server.Config)) (host string, m *mail.Capture) {
 	t.Helper()
-	return newTestServerWith(t, nil)
+	return newTestServerWith(t, func(c *server.Config) {
+		for _, opt := range opts {
+			opt(c)
+		}
+	})
 }
 
 // newTestServerWith is newTestServer with cfg adjusting the server's Config.

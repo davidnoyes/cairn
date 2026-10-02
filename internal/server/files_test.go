@@ -34,7 +34,7 @@ func TestFilesAPIOverHTTP(t *testing.T) {
 
 	// Public artifact with one version
 	aid, link := createPublicArtifact(t, admin, "demo")
-	resp := admin.upload("POST", "/api/artifacts/"+aid+"/versions", zipFrom(t, map[string]string{"index.html": "x"}), nil)
+	resp := admin.upload("POST", "/api/artifacts/"+aid+"/versions", map[string]string{"index.html": "x"}, nil)
 	v := decode[struct {
 		ID string `json:"id"`
 	}](t, resp)
@@ -136,7 +136,7 @@ func TestFilesAPIOverHTTP(t *testing.T) {
 
 	// Private artifact: anonymous reads find nothing
 	pid := createArtifact(t, admin, "private-demo")
-	resp = admin.upload("POST", "/api/artifacts/"+pid+"/versions", zipFrom(t, map[string]string{"index.html": "x"}), nil)
+	resp = admin.upload("POST", "/api/artifacts/"+pid+"/versions", map[string]string{"index.html": "x"}, nil)
 	pv := decode[struct {
 		ID string `json:"id"`
 	}](t, resp)

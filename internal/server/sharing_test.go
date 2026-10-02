@@ -280,7 +280,7 @@ func (o *owned) makePublic() string {
 // pushVersion uploads a one-file version and returns its ID.
 func pushVersion(t *testing.T, c *testClient, aid string) string {
 	t.Helper()
-	resp := c.upload("POST", "/api/artifacts/"+aid+"/versions", zipFrom(t, map[string]string{"index.html": "<h1>hi</h1>"}), nil)
+	resp := c.pushPlain(aid)
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("push: %d", resp.StatusCode)
 	}
@@ -402,7 +402,7 @@ func TestViewerAndEditorPowers(t *testing.T) {
 	vbase := base + "/versions/" + vid
 	a.mustDo("POST", vbase+"/db/batch", map[string]any{"statements": []map[string]any{{"sql": "CREATE TABLE t (x INTEGER)"}}}, nil, http.StatusOK)
 	batch := map[string]any{"statements": []map[string]any{{"sql": "INSERT INTO t VALUES (1)"}}}
-	zip := zipFrom(t, map[string]string{"index.html": "v2"})
+	files := map[string]string{"index.html": "v2"}
 
 	// A viewer reads but cannot write anything.
 	viewer.mustDo("GET", base, nil, nil, http.StatusOK)
@@ -416,10 +416,10 @@ func TestViewerAndEditorPowers(t *testing.T) {
 		t.Errorf("viewer file put: %d", r.StatusCode)
 	}
 	wantStatus(t, viewer.testClient, "DELETE", vbase+"/files/x.txt", nil, http.StatusForbidden)
-	if r := viewer.upload("POST", base+"/versions", zip, nil); r.StatusCode != http.StatusForbidden {
+	if r := viewer.upload("POST", base+"/versions", files, nil); r.StatusCode != http.StatusForbidden {
 		t.Errorf("viewer push: %d", r.StatusCode)
 	}
-	if r := viewer.upload("PUT", vbase, zip, nil); r.StatusCode != http.StatusForbidden {
+	if r := viewer.upload("PUT", vbase, files, nil); r.StatusCode != http.StatusForbidden {
 		t.Errorf("viewer replace: %d", r.StatusCode)
 	}
 	wantStatus(t, viewer.testClient, "PATCH", base, map[string]any{"name": "x"}, http.StatusForbidden)
@@ -449,7 +449,7 @@ func TestViewerAndEditorPowers(t *testing.T) {
 	if got := put(viewer.testClient, vbase+"/files/v.txt"); got != http.StatusForbidden {
 		t.Errorf("viewer file put: %d", got)
 	}
-	r := editor.upload("POST", base+"/versions", zip, nil)
+	r := editor.upload("POST", base+"/versions", files, nil)
 	if r.StatusCode != http.StatusCreated {
 		t.Fatalf("editor push: %d", r.StatusCode)
 	}
@@ -466,11 +466,11 @@ func TestViewerAndEditorPowers(t *testing.T) {
 	if got.PushedBy != editor.id || got.Epoch != 1 {
 		t.Errorf("pushed version: %+v, want pushedBy %s at epoch 1", got, editor.id)
 	}
-	if r := editor.upload("PUT", base+"/versions/"+pushed.ID, zip, nil); r.StatusCode != http.StatusOK {
+	if r := editor.upload("PUT", base+"/versions/"+pushed.ID, files, nil); r.StatusCode != http.StatusOK {
 		t.Errorf("editor replace: %d", r.StatusCode)
 	}
 	// A replacement records whoever replaced it.
-	r = a.upload("PUT", base+"/versions/"+pushed.ID, zip, nil)
+	r = a.upload("PUT", base+"/versions/"+pushed.ID, files, nil)
 	replaced := decode[struct {
 		PushedBy string `json:"pushedBy"`
 	}](t, r)
@@ -528,7 +528,7 @@ func TestTeamWrapGrantsRead(t *testing.T) {
 		t.Errorf("team member's wraps: %+v", keys.Wraps)
 	}
 	wantStatus(t, withWrap.testClient, "POST", vbase+"/db/batch", map[string]any{"statements": []map[string]any{{"sql": "CREATE TABLE t (x)"}}}, http.StatusForbidden)
-	if r := withWrap.upload("POST", base+"/versions", zipFrom(t, map[string]string{"index.html": "x"}), nil); r.StatusCode != http.StatusForbidden {
+	if r := withWrap.upload("POST", base+"/versions", map[string]string{"index.html": "x"}, nil); r.StatusCode != http.StatusForbidden {
 		t.Errorf("team member push: %d", r.StatusCode)
 	}
 
@@ -577,8 +577,10 @@ func TestPublicLink(t *testing.T) {
 	}
 	// A link holder holds no wraps.
 	wantStatus(t, right, "GET", base+"/keys", nil, http.StatusForbidden)
-	if r := getLink(t, ts.URL+page, link); r.StatusCode != http.StatusOK {
-		t.Errorf("page with link: %d", r.StatusCode)
+	// The page has no plaintext to serve now, so what is left to check is
+	// that the link got it past the sign-in gate.
+	if r := getLink(t, ts.URL+page, link); r.StatusCode == http.StatusFound {
+		t.Errorf("page with link redirected to sign-in: %d", r.StatusCode)
 	}
 	if r := getLink(t, ts.URL+page, ""); r.StatusCode != http.StatusFound {
 		t.Errorf("page without link: %d", r.StatusCode)
@@ -659,7 +661,7 @@ func TestPublicWrites(t *testing.T) {
 	wantStatus(t, b.testClient, "POST", vbase+"/db/batch", batch, http.StatusNotFound)
 	// Public writes do not extend to pushing a version.
 	b.link = link
-	if r := b.upload("POST", "/api/artifacts/"+o.id+"/versions", zipFrom(t, map[string]string{"index.html": "x"}), nil); r.StatusCode != http.StatusForbidden {
+	if r := b.upload("POST", "/api/artifacts/"+o.id+"/versions", map[string]string{"index.html": "x"}, nil); r.StatusCode != http.StatusForbidden {
 		t.Errorf("link holder push: %d", r.StatusCode)
 	}
 }
@@ -690,7 +692,7 @@ func TestChangedKeyReadsButCannotWrite(t *testing.T) {
 	relogged.mustDo("POST", vbase+"/db/query", map[string]any{"sql": "SELECT 1"}, nil, http.StatusOK)
 	wantStatus(t, relogged, "POST", vbase+"/db/batch", batch, http.StatusForbidden)
 	wantStatus(t, relogged, "PATCH", "/api/artifacts/"+o.id, map[string]any{"name": "x"}, http.StatusForbidden)
-	if r := relogged.upload("POST", "/api/artifacts/"+o.id+"/versions", zipFrom(t, map[string]string{"index.html": "x"}), nil); r.StatusCode != http.StatusForbidden {
+	if r := relogged.upload("POST", "/api/artifacts/"+o.id+"/versions", map[string]string{"index.html": "x"}, nil); r.StatusCode != http.StatusForbidden {
 		t.Errorf("changed-key push: %d", r.StatusCode)
 	}
 }
@@ -1060,7 +1062,7 @@ func TestPushRecordsTheEpochItWasPushedUnder(t *testing.T) {
 	a := seedKeyedAccount(t, s, ts.URL, "a@example.com")
 	o := newArtifact(t, a, "epochs")
 	o.apply(o.nextEpoch())
-	zip := zipFrom(t, map[string]string{"index.html": "<h1>hi</h1>"})
+	files := map[string]string{"index.html": "<h1>hi</h1>"}
 	base := "/api/artifacts/" + o.id + "/versions"
 
 	type written struct {
@@ -1068,7 +1070,7 @@ func TestPushRecordsTheEpochItWasPushedUnder(t *testing.T) {
 		PushedBy string `json:"pushedBy"`
 		Epoch    int    `json:"epoch"`
 	}
-	pushed := decode[written](t, a.upload("POST", base, zip, nil))
+	pushed := decode[written](t, a.upload("POST", base, files, nil))
 	if pushed.PushedBy != a.id || pushed.Epoch != 2 {
 		t.Errorf("create answer: %+v, want pushedBy %s at epoch 2", pushed, a.id)
 	}
@@ -1080,7 +1082,7 @@ func TestPushRecordsTheEpochItWasPushedUnder(t *testing.T) {
 
 	// A replacement after another epoch change records the new epoch.
 	o.apply(o.nextEpoch())
-	replaced := decode[written](t, a.upload("PUT", base+"/"+pushed.ID, zip, nil))
+	replaced := decode[written](t, a.upload("PUT", base+"/"+pushed.ID, files, nil))
 	if replaced.PushedBy != a.id || replaced.Epoch != 3 {
 		t.Errorf("replace answer: %+v, want pushedBy %s at epoch 3", replaced, a.id)
 	}

@@ -54,10 +54,21 @@ func mustJSON(t *testing.T, v any) []byte {
 	return raw
 }
 
+// manifestHashOf is the manifestHash the server holds for version vid, or ""
+// when it holds no such version.
+func (o *owned) manifestHashOf(vid string) string {
+	o.t.Helper()
+	var v struct {
+		ManifestHash string `json:"manifestHash"`
+	}
+	o.owner.do("GET", "/api/artifacts/"+o.id+"/versions/"+vid, nil, &v)
+	return v.ManifestHash
+}
+
 // vouchBy is a well-formed vouch for vid, signed by signer.
 func (o *owned) vouchBy(signer actor, vid string) e2e.Envelope {
 	o.t.Helper()
-	return signVouch(o.t, signer.keys.seed, signer.id, e2e.VouchBody{V: 1, Artifact: o.id, Version: vid})
+	return signVouch(o.t, signer.keys.seed, signer.id, e2e.VouchBody{V: 1, Artifact: o.id, Version: vid, Manifest: o.manifestHashOf(vid)})
 }
 
 // removeAndExcludeSorted is removeAndExclude for a second exclusion, which
@@ -185,7 +196,7 @@ func TestVouchRefusals(t *testing.T) {
 	o, vid := w.o, w.byRemoved
 	other := newArtifact(t, w.owner, "other")
 	otherVid := pushVersion(t, w.owner.testClient, other.id)
-	good := e2e.VouchBody{V: 1, Artifact: o.id, Version: vid}
+	good := e2e.VouchBody{V: 1, Artifact: o.id, Version: vid, Manifest: o.manifestHashOf(vid)}
 	with := func(f func(*e2e.VouchBody)) e2e.VouchBody { b := good; f(&b); return b }
 	seed, id := w.owner.keys.seed, w.owner.id
 
@@ -199,8 +210,10 @@ func TestVouchRefusals(t *testing.T) {
 		{"another artifact", signVouch(t, seed, id, with(func(b *e2e.VouchBody) { b.Artifact = other.id }))},
 		{"another version", signVouch(t, seed, id, with(func(b *e2e.VouchBody) { b.Version = w.byEditor }))},
 		{"wrong purpose", signVouchRaw(t, seed, id, "approval", mustJSON(t, good))},
-		{"non-empty manifest", signVouch(t, seed, id, with(func(b *e2e.VouchBody) { b.Manifest = "abc" }))},
-		{"body version 2", signVouchRaw(t, seed, id, "vouch", []byte(`{"v":2,"artifact":"`+o.id+`","version":"`+vid+`","manifest":""}`))},
+		{"an empty manifest", signVouch(t, seed, id, with(func(b *e2e.VouchBody) { b.Manifest = "" }))},
+		{"a manifest the version was not pushed with", signVouch(t, seed, id, with(func(b *e2e.VouchBody) { b.Manifest = "abc" }))},
+		{"another version's manifest", signVouch(t, seed, id, with(func(b *e2e.VouchBody) { b.Manifest = o.manifestHashOf(w.byEditor) }))},
+		{"body version 2", signVouchRaw(t, seed, id, "vouch", []byte(`{"v":2,"artifact":"`+o.id+`","version":"`+vid+`","manifest":"`+good.Manifest+`"}`))},
 	}
 	for _, c := range cases {
 		if got, msg := status(w.owner.testClient, "PUT", o.vouchPath(vid), map[string]any{"vouch": c.env}); got != http.StatusBadRequest {
@@ -240,7 +253,7 @@ func TestVouchIsStoredReplacedAndShownOnTheVersion(t *testing.T) {
 
 	// The same fields in another order sign differently, so a replacement
 	// can be told from the first.
-	raw := []byte(`{"version":"` + w.byRemoved + `","artifact":"` + o.id + `","manifest":"","v":1}`)
+	raw := []byte(`{"version":"` + w.byRemoved + `","artifact":"` + o.id + `","manifest":"` + o.manifestHashOf(w.byRemoved) + `","v":1}`)
 	second := signVouchRaw(t, w.owner.keys.seed, w.owner.id, "vouch", raw)
 	w.owner.mustDo("PUT", o.vouchPath(w.byRemoved), map[string]any{"vouch": second}, nil, http.StatusOK)
 	w.owner.mustDo("GET", base+w.byRemoved, nil, &v, http.StatusOK)
@@ -271,4 +284,27 @@ func TestDeletingAVersionLeavesNoVouch(t *testing.T) {
 	if n := len(vs); n != 0 {
 		t.Errorf("%d vouches remain after deleting the version", n)
 	}
+}
+
+// A re-upload replaces the content the owner reviewed, so its vouch goes. The
+// old vouch names the old manifest, so it cannot be put back.
+func TestReplacingAVersionDropsItsVouch(t *testing.T) {
+	w := newReviewWorld(t)
+	o, vid := w.o, w.byRemoved
+	oldVouch := o.vouchBy(w.owner, vid)
+	w.owner.mustDo("PUT", o.vouchPath(vid), map[string]any{"vouch": oldVouch}, nil, http.StatusOK)
+	if got := reviewOf(t, w.owner.testClient, o); len(got) != 0 {
+		t.Fatalf("review after vouching = %+v, want empty", got)
+	}
+	if r := w.owner.pushFiles("PUT", o.id, vid, map[string]string{"index.html": "changed"}); r.StatusCode != http.StatusOK {
+		t.Fatalf("replace: %d", r.StatusCode)
+	}
+	var v struct {
+		Vouch *e2e.Envelope `json:"vouch"`
+	}
+	w.owner.mustDo("GET", "/api/artifacts/"+o.id+"/versions/"+vid, nil, &v, http.StatusOK)
+	if v.Vouch != nil {
+		t.Error("the vouch survived the replacement")
+	}
+	wantStatus(t, w.owner.testClient, "PUT", o.vouchPath(vid), map[string]any{"vouch": oldVouch}, http.StatusBadRequest)
 }

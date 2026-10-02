@@ -160,6 +160,24 @@ pass "per-version databases isolated; old data readable"
 "$BIN" push "$ROOT/examples/guestbook" --artifact guestbook --overwrite latest --changelog "rewritten" >/dev/null
 pass "re-upload (overwrite latest)"
 
+echo "== encrypted content"
+curl -sf "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID" \
+  | jq -e '.epoch == 1 and (.manifestHash | test("^[0-9a-f]{64}$")) and (.pushedBy | length > 0)' >/dev/null \
+  || fail "version epoch, manifestHash, and pushedBy"
+curl -sf -D "$WORK/manifest.headers" -o "$WORK/manifest.bin" "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/manifest" \
+  || fail "manifest read"
+grep -qi '^content-type: application/octet-stream' "$WORK/manifest.headers" || fail "manifest content type"
+grep -qi '^cache-control: no-store' "$WORK/manifest.headers" || fail "manifest cache control"
+[[ "$(head -c 4 "$WORK/manifest.bin")" == "CRNB" ]] || fail "manifest is not a blob"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/blobs/$(printf 'a%.0s' $(seq 1 32))")
+[[ "$STATUS" == "404" ]] || fail "an unknown blob ($STATUS)"
+if grep -rq "Guestbook" "$WORK/data/content"; then fail "plaintext under the data dir"; fi
+pass "a push stores a blob manifest and ciphertext only"
+echo "not a zip" > "$WORK/old.zip"
+STATUS=$(curl -s -o "$WORK/oldclient.json" -w '%{http_code}' -X POST "${AUTH[@]}" -F "archive=@$WORK/old.zip" "$HOST/api/artifacts/$AID/versions")
+[[ "$STATUS" == "400" ]] && grep -q "update the cairn tool" "$WORK/oldclient.json" || fail "old zip push not refused ($STATUS)"
+pass "a zip push is refused with a pointer to update the cairn tool"
+
 echo "== private gating"
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: text/html' "$HOST/shared/$AID/$VID")
 [[ "$STATUS" == "302" ]] || fail "private page not gated ($STATUS)"
@@ -211,6 +229,7 @@ pass "cairn share adds a viewer and pins their key unverified"
 pass "cairn pin --verified shows in cairn members"
 
 curl -sf "${AUTH2[@]}" "$HOST/shared/$NID/$NVID" | grep "iframe" >/dev/null || fail "the member cannot read the artifact"
+curl -sf "${AUTH2[@]}" "$HOST/api/artifacts/$NID/versions/$NVID/manifest" >/dev/null || fail "the member cannot read the artifact"
 curl -sf "${AUTH2[@]}" "$HOST/api/artifacts/$NID/keys" \
   | python3 -c "import json,sys;k=json.load(sys.stdin);assert [w['epoch'] for w in k['wraps']]==[1] and k['estate']==[], k" \
   || fail "the member holds no wrap of epoch 1"
@@ -337,6 +356,7 @@ CAIRN_CONFIG="$CONFIG2" "$BIN" approve teamdoc team@e2e.test > "$WORK/approve.tx
 grep -q "approved for teamdoc" "$WORK/approve.txt" || fail "approve output: $(cat "$WORK/approve.txt")"
 grep -q "they can read it now" "$WORK/approve.txt" || fail "approve output says nothing of reading: $(cat "$WORK/approve.txt")"
 curl -sf "${AUTH3[@]}" "$HOST/shared/$TID/$TVID" | grep "iframe" >/dev/null || fail "the approved member cannot read"
+curl -sf "${AUTH3[@]}" "$HOST/api/artifacts/$TID/versions/$TVID/manifest" >/dev/null || fail "the approved member cannot read"
 curl -sf "${AUTH3[@]}" "$HOST/api/artifacts/$TID/keys" \
   | python3 -c "import json,sys;k=json.load(sys.stdin);assert [w['epoch'] for w in k['wraps']]==[1], k" \
   || fail "the approved member holds no wrap of epoch 1"
@@ -410,6 +430,8 @@ pass "cairn public on prints a link whose fragment holds the key, the epoch, and
 [[ "$(pub_status GET "/api/artifacts/$PID/membership" "${WRONGH[@]}")" == "404" ]] || fail "a wrong token reads the membership"
 curl -sf "${LINKH[@]}" "$HOST/shared/$PID/$PVID" | grep "iframe" >/dev/null || fail "the right token does not open the shared page"
 [[ "$(pub_status GET "/shared/$PID/$PVID" "${WRONGH[@]}")" != "200" ]] || fail "a wrong token opens the shared page"
+curl -sf "${LINKH[@]}" "$HOST/api/artifacts/$PID/versions/$PVID/manifest" >/dev/null || fail "the right token does not read the content"
+[[ "$(pub_status GET "/api/artifacts/$PID/versions/$PVID/manifest" "${WRONGH[@]}")" != "200" ]] || fail "a wrong token reads the content"
 curl -sf "${LINKH[@]}" "$HOST/api/artifacts/$PID/membership" \
   | jq -e '.records | length == 2' >/dev/null || fail "the link's membership holds the public record"
 pass "an anonymous caller reads with the right token, and gets 404 with none or a wrong one"

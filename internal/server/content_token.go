@@ -18,6 +18,8 @@ var contentTokenRoutes = map[string]bool{
 	"GET /api/artifacts/{id}/membership":                        true,
 	"GET /api/artifacts/{id}/versions":                          true,
 	"GET /api/artifacts/{id}/versions/{vid}":                    true,
+	"GET /api/artifacts/{id}/versions/{vid}/manifest":           true,
+	"GET /api/artifacts/{id}/versions/{vid}/blobs/{blob}":       true,
 	"POST /api/artifacts/{id}/versions/{vid}/db/query":          true,
 	"POST /api/artifacts/{id}/versions/{vid}/db/batch":          true,
 	"GET /api/artifacts/{id}/versions/{vid}/db/download":        true,

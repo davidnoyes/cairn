@@ -4,12 +4,16 @@
 package client
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"slices"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 var (
@@ -75,10 +79,188 @@ func (c *Client) Review(artifactID string) ([]ReviewVersion, error) {
 	return out, nil
 }
 
-// Vouch signs the owner's vouch for versionID, with an empty manifest until
-// milestone 4 adds signed manifests, and stores it. It refuses, before asking
-// the server, a caller who is not the owner the verified chain names under
-// the caller's current fingerprint.
+// ErrVouchManifest means the manifest the server serves for a version is not
+// the one its listed manifestHash names, or does not verify.
+var ErrVouchManifest = errors.New("the version's manifest does not match its manifestHash")
+
+// maxManifestBytes caps the sealed manifest the client reads: it holds one
+// entry per file of a version, so it is small next to the files it lists.
+const maxManifestBytes = 16 << 20
+
+// checkManifest fetches v's manifest, opens it under the owner's AK for v's
+// epoch, and verifies it: the envelope's signature must verify under a key
+// of its signer, who must be a user the verified chain has ever listed (the
+// owner or an editor, possibly since removed, which is why a version needs a
+// vouch). A key counts when its fingerprint is one the chain lists for the
+// signer, whether it is their current key or one an earlier rotation left
+// behind (see manifestSignerKeys). The body must name this artifact,
+// version, and epoch, and hash to v's manifestHash.
+func (c *Client) checkManifest(k *UnlockedKeys, chain *e2e.Chain, artifactID string, v *store.Version) error {
+	aks, err := c.callerAKs(k, artifactID, chain)
+	if err != nil {
+		return err
+	}
+	ak := aks[v.Epoch]
+	if ak == nil {
+		return fmt.Errorf("%w: no key for epoch %d", ErrVouchManifest, v.Epoch)
+	}
+	sealed, err := c.getBytes("/api/artifacts/" + artifactID + "/versions/" + v.ID + "/manifest")
+	if err != nil {
+		return err
+	}
+	envJSON, err := e2e.OpenBlob(ak, e2e.BlobContext{Artifact: artifactID, Version: v.ID, Kind: "manifest"}, sealed)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrVouchManifest, err)
+	}
+	var env e2e.Envelope
+	if err := json.Unmarshal(envJSON, &env); err != nil {
+		return fmt.Errorf("%w: %v", ErrVouchManifest, err)
+	}
+	keys, err := c.manifestSignerKeys(k, chain, env.Signer)
+	if err != nil {
+		return err
+	}
+	var body e2e.ManifestBody
+	verified := false
+	for _, pub := range keys {
+		body = e2e.ManifestBody{}
+		if err := e2e.OpenEnvelope(env, pub, "manifest", &body); err == nil {
+			verified = true
+			break
+		}
+	}
+	if !verified {
+		return fmt.Errorf("%w: the signature does not verify under any key the chain lists for %q", ErrVouchManifest, env.Signer)
+	}
+	if body.Artifact != artifactID || body.Version != v.ID || body.Epoch != v.Epoch {
+		return fmt.Errorf("%w: it names another artifact, version, or epoch", ErrVouchManifest)
+	}
+	if e2e.BodyHash(env.Body) != v.ManifestHash {
+		return ErrVouchManifest
+	}
+	return nil
+}
+
+// signerKeys is a pair of public keys: X25519 for wrapping, Ed25519 for
+// signing.
+type signerKeys struct{ x25519, ed25519 []byte }
+
+// manifestSignerKeys returns the Ed25519 keys of signer, a user some record
+// of the verified chain lists as owner or member, that a manifest may be
+// signed under. A key pair counts when its fingerprint is one the chain
+// lists for them. The fingerprint is a hash of the keys, so the keys may
+// come from anywhere: the caller's own keys for the caller, else the
+// directory's current ones, and the old and new keys of the signer's
+// rotation records, which is how an editor who has rotated since pushing
+// still has their version vouched.
+//
+// A disabled or deleted account is not in the directory, and its rotation
+// records are not served either, so when no key matches for that reason the
+// error says the keys are no longer published.
+func (c *Client) manifestSignerKeys(k *UnlockedKeys, chain *e2e.Chain, signer string) ([][]byte, error) {
+	listed := map[string]bool{}
+	for _, b := range chain.Bodies {
+		if b.Owner == signer {
+			listed[b.OwnerFP] = true
+		}
+		for _, m := range b.Members {
+			if m.User == signer {
+				listed[m.FP] = true
+			}
+		}
+	}
+	if len(listed) == 0 {
+		return nil, fmt.Errorf("%w: the manifest is signed by %q, whom the membership chain never lists", ErrVouchManifest, signer)
+	}
+	var pairs []signerKeys
+	unpublished := false
+	if signer == k.UserID {
+		pairs = append(pairs, signerKeys{k.X25519Pub, k.Ed25519Pub})
+	} else {
+		u, err := c.DirectoryUser(signer)
+		switch {
+		case isNotFound(err):
+			unpublished = true
+		case err != nil:
+			return nil, err
+		default:
+			pairs = append(pairs, signerKeys{u.X25519Pub, u.Ed25519Pub})
+		}
+	}
+	records, err := c.Rotations(signer)
+	switch {
+	case isNotFound(err):
+		unpublished = true
+	case err != nil:
+		return nil, err
+	}
+	for _, env := range records {
+		var b e2e.RotationBody
+		if e2e.DecodeStrict(env.Body, &b) != nil {
+			continue
+		}
+		for _, kp := range []e2e.KeyPair{b.Old, b.New} {
+			x, errX := e2e.UnB64(kp.X25519)
+			ed, errEd := e2e.UnB64(kp.Ed25519)
+			if errX == nil && errEd == nil && len(x) == 32 && len(ed) == 32 {
+				pairs = append(pairs, signerKeys{x, ed})
+			}
+		}
+	}
+	var keys [][]byte
+	for _, kp := range pairs {
+		if listed[hex.EncodeToString(e2e.Fingerprint(kp.x25519, kp.ed25519))] {
+			keys = append(keys, kp.ed25519)
+		}
+	}
+	if len(keys) == 0 {
+		if unpublished {
+			return nil, fmt.Errorf("%w: the keys of %q, who signed this version, are no longer published (the account is disabled or deleted); delete the version, or push its content again yourself", ErrVouchManifest, signer)
+		}
+		return nil, fmt.Errorf("%w: the keys published for %q are not the ones the chain lists", ErrVouchManifest, signer)
+	}
+	return keys, nil
+}
+
+// isNotFound reports whether err is the server's 404.
+func isNotFound(err error) bool {
+	var api *APIError
+	return errors.As(err, &api) && api.Status == http.StatusNotFound
+}
+
+// getBytes reads the body of a GET that answers with raw bytes, up to
+// maxManifestBytes.
+func (c *Client) getBytes(path string) ([]byte, error) {
+	req, err := http.NewRequest("GET", c.Host+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, errorFromResponse("GET", path, resp)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxManifestBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxManifestBytes {
+		return nil, fmt.Errorf("%w: the manifest is larger than %d MiB", ErrVouchManifest, maxManifestBytes>>20)
+	}
+	return data, nil
+}
+
+// Vouch signs the owner's vouch for versionID, naming the manifestHash the
+// version was pushed with, and stores it. It refuses, before asking the
+// server, a caller who is not the owner the verified chain names under the
+// caller's current fingerprint, and a version whose manifest does not
+// verify to the listed manifestHash.
 func (c *Client) Vouch(artifactID, versionID string) error {
 	k, err := c.Unlock()
 	if err != nil {
@@ -94,7 +276,20 @@ func (c *Client) Vouch(artifactID, versionID string) error {
 	if latest := va.Chain.Latest; latest.Owner != k.UserID || latest.OwnerFP != k.FP {
 		return ErrVouchNotOwner
 	}
-	body, err := json.Marshal(e2e.VouchBody{V: 1, Artifact: artifactID, Version: versionID})
+	versions, err := c.ListVersions(artifactID)
+	if err != nil {
+		return err
+	}
+	i := slices.IndexFunc(versions, func(v *store.Version) bool { return v.ID == versionID })
+	if i < 0 {
+		return fmt.Errorf("version %s not found in artifact %s", versionID, artifactID)
+	}
+	// The listed hash is the server's word. Sign it only once the manifest
+	// the server serves, opened and verified here, has that body hash.
+	if err := c.checkManifest(k, va.Chain, artifactID, versions[i]); err != nil {
+		return err
+	}
+	body, err := json.Marshal(e2e.VouchBody{V: 1, Artifact: artifactID, Version: versionID, Manifest: versions[i].ManifestHash})
 	if err != nil {
 		return err
 	}

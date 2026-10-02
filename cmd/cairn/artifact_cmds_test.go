@@ -147,6 +147,9 @@ func TestPushCreatesThroughTheSignedPath(t *testing.T) {
 	if out.Artifact.Name != "site" || out.Version.Seq != 1 {
 		t.Fatalf("push = %+v", out)
 	}
+	if out.Version.Epoch != 1 || len(out.Version.ManifestHash) != 64 || out.Version.Name != "v1" {
+		t.Errorf("pushed version = %+v, want epoch 1, name v1, and a 64-character manifestHash", out.Version)
+	}
 	checkOwnedChain(t, c, out.Artifact.ID)
 
 	// A second push lands on the same artifact.
@@ -219,10 +222,14 @@ func TestArtifactUpdateRefusalsAndText(t *testing.T) {
 }
 
 func TestPushRefusals(t *testing.T) {
-	loggedIn(t)
+	c := loggedIn(t)
 	dir := siteDir(t)
 	empty := t.TempDir()
 	missing := filepath.Join(empty, "nope")
+	linked := siteDir(t)
+	if err := os.Symlink("index.html", filepath.Join(linked, "alias.html")); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		name string
 		args []string
@@ -232,10 +239,16 @@ func TestPushRefusals(t *testing.T) {
 		{"no dir", []string{"--artifact", "x"}, "usage:"},
 		{"not a directory", []string{missing, "--artifact", "x"}, "is not a directory"},
 		{"no index", []string{empty, "--artifact", "x"}, "does not contain an index.html"},
+		{"a symlink", []string{linked, "--artifact", "x"}, "symlinks"},
+		{"a symlink with --create", []string{linked, "--artifact", "x", "--create"}, "symlinks"},
 	} {
 		if err := runPush(tc.args); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: %v, want %q", tc.name, err, tc.want)
 		}
+	}
+	// A refused tree creates nothing, --create or not.
+	if as, _ := c.ListArtifacts(); len(as) != 0 {
+		t.Errorf("%d artifacts after refused pushes, want none", len(as))
 	}
 }
 
@@ -254,10 +267,17 @@ func TestPushOverwrite(t *testing.T) {
 	}
 	first := runJSON[pushed](t, runPush, dir, "--artifact", "site", "--json")
 
-	// latest replaces the newest version in place; its seq does not move.
+	// latest replaces the newest version in place; its seq does not move,
+	// and the new content has a new manifest.
+	if err := os.WriteFile(filepath.Join(dir, "extra.txt"), []byte("more"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	again := runJSON[pushed](t, runPush, dir, "--artifact", "site", "--overwrite", "latest", "--json")
 	if again.Artifact.ID != empty.ID || again.Version.ID != first.Version.ID || again.Version.Seq != 1 {
 		t.Errorf("overwrite latest = %+v, want version %s at seq 1", again, first.Version.ID)
+	}
+	if again.Version.ManifestHash == "" || again.Version.ManifestHash == first.Version.ManifestHash {
+		t.Errorf("manifestHash after the overwrite = %q, want one differing from %q", again.Version.ManifestHash, first.Version.ManifestHash)
 	}
 	// An id the artifact does not have is refused by the server.
 	if err := runPush([]string{dir, "--artifact", "site", "--overwrite", uuid.NewString()}); err == nil {

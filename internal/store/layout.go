@@ -10,7 +10,7 @@ import (
 //	data/
 //	  cairn.db                                metadata database
 //	  secret.key                              JWT signing secret
-//	  content/{artifactID}/{contentDir}/...   extracted version files
+//	  content/{artifactID}/{contentDir}/...   a pushed version: manifest and blobs/{blobID}, all ciphertext
 //	  dbs/{artifactID}/{versionID}.db         per-version shared databases
 //	  files/{artifactID}/{versionID}/...      per-version file storage
 //	  tmp/                                    upload staging (same volume => atomic rename)

@@ -82,6 +82,8 @@ func (s *Server) routes() {
 	handle("POST /api/artifacts/{id}/versions", s.artifactRoute(access.PushVersion, s.handleUploadVersion))
 	handle("GET /api/artifacts/{id}/versions/{vid}", s.artifactRoute(access.ReadContent, s.handleGetVersion))
 	handle("PUT /api/artifacts/{id}/versions/{vid}", s.artifactRoute(access.PushVersion, s.handleReplaceVersion))
+	handle("GET /api/artifacts/{id}/versions/{vid}/manifest", s.artifactRoute(access.ReadContent, s.handleGetManifest))
+	handle("GET /api/artifacts/{id}/versions/{vid}/blobs/{blob}", s.artifactRoute(access.ReadContent, s.handleGetBlob))
 	handle("PATCH /api/artifacts/{id}/versions/{vid}", s.artifactRoute(access.Rename, s.handleUpdateVersionMeta))
 	handle("DELETE /api/artifacts/{id}/versions/{vid}", s.artifactRoute(access.Delete, s.handleDeleteVersion))
 

@@ -220,7 +220,7 @@ func TestContentOriginAPIAllowlist(t *testing.T) {
 		map[string]any{"statements": []map[string]any{{"sql": "CREATE TABLE IF NOT EXISTS t (x)"}}}, nil, http.StatusOK)
 
 	for pattern := range contentTokenRoutes {
-		method, path, body := contentRouteRequest(pattern, w.art.id, w.vid, w.editor.id)
+		method, path, body := contentRouteRequest(pattern, w.art.id, w.vid, w.blob, w.editor.id)
 		w.putFile(t)
 		if resp := w.onContent(t, method, path, bearer(tok), body); resp.StatusCode != http.StatusOK {
 			t.Errorf("%s on its host: %d %s, want 200", pattern, resp.StatusCode, resp.body)
@@ -231,7 +231,7 @@ func TestContentOriginAPIAllowlist(t *testing.T) {
 		// Another artifact's {id}, by ID or by resource value, and this
 		// artifact reached by its own resource value, are all refused.
 		for _, ref := range []string{b.id, "w-session"} {
-			method, path, body := contentRouteRequest(pattern, ref, bvid, "")
+			method, path, body := contentRouteRequest(pattern, ref, bvid, strings.Repeat("a", 32), "")
 			if resp := w.onContent(t, method, path, bearer(tok), body); resp.StatusCode != http.StatusNotFound {
 				t.Errorf("%s with {id} %s: %d %s, want 404", pattern, ref, resp.StatusCode, resp.body)
 			}
@@ -252,7 +252,7 @@ func TestContentOriginAPIAllowlist(t *testing.T) {
 		if contentTokenRoutes[pattern] || !strings.Contains(pattern, "/api/") {
 			continue
 		}
-		method, path, body := contentRouteRequest(pattern, w.art.id, w.vid, w.editor.id)
+		method, path, body := contentRouteRequest(pattern, w.art.id, w.vid, w.blob, w.editor.id)
 		for name, hdr := range creds {
 			resp := w.onContent(t, method, path, hdr, body)
 			if resp.StatusCode != http.StatusNotFound {

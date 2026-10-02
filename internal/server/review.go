@@ -68,8 +68,8 @@ type vouchRequest struct {
 
 // handleVouch stores the owner's vouch for a version. The envelope must be
 // the artifact owner's, under their current signing key, and name this
-// artifact and version. The manifest is empty until milestone 4 adds signed
-// manifests; the server has nothing to compare it with.
+// artifact and version, and its manifest must be the manifestHash the version
+// was pushed with.
 func (s *Server) handleVouch(w http.ResponseWriter, r *http.Request) {
 	a := requestArtifact(r)
 	vid := r.PathValue("vid")
@@ -77,12 +77,13 @@ func (s *Server) handleVouch(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if _, err := s.store.VersionByID(a.ID, vid); err != nil {
+	ver, err := s.store.VersionByID(a.ID, vid)
+	if err != nil {
 		s.writeStoreError(w, err, "version")
 		return
 	}
 	var refused string
-	err := s.store.WithArtifact(a.ID, func(tx *store.ArtifactTx) error {
+	err = s.store.WithArtifact(a.ID, func(tx *store.ArtifactTx) error {
 		cur, err := tx.Artifact()
 		if err != nil {
 			return err
@@ -91,7 +92,7 @@ func (s *Server) handleVouch(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		if refused = checkVouch(req.Vouch, owner, a.ID, vid); refused != "" {
+		if refused = checkVouch(req.Vouch, owner, a.ID, ver); refused != "" {
 			return nil
 		}
 		return tx.PutVouch(vid, store.Envelope{Body: req.Vouch.Body, Sig: req.Vouch.Sig, Signer: req.Vouch.Signer})
@@ -110,7 +111,7 @@ func (s *Server) handleVouch(w http.ResponseWriter, r *http.Request) {
 // checkVouch returns why env is not the owner's vouch for version of
 // artifact, or "" when it is. The signature is checked under the owner's
 // current key, so a vouch signed with an earlier key is refused.
-func checkVouch(env e2e.Envelope, owner *store.KeyedUser, artifact, version string) string {
+func checkVouch(env e2e.Envelope, owner *store.KeyedUser, artifact string, ver *store.Version) string {
 	if env.Signer != owner.ID {
 		return "the vouch is not signed by the owner"
 	}
@@ -124,10 +125,10 @@ func checkVouch(env e2e.Envelope, owner *store.KeyedUser, artifact, version stri
 	switch {
 	case body.Artifact != artifact:
 		return "the vouch is for another artifact"
-	case body.Version != version:
+	case body.Version != ver.ID:
 		return "the vouch is for another version"
-	case body.Manifest != "":
-		return "the manifest must be empty until signed manifests exist"
+	case body.Manifest != ver.ManifestHash:
+		return "the vouch is for another manifest than the one this version was pushed with"
 	}
 	return ""
 }

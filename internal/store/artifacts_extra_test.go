@@ -3,6 +3,8 @@ package store
 import (
 	"errors"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 // TestArtifactLookupsAndListing covers the pre-existing artifacts.go
@@ -13,7 +15,7 @@ func TestArtifactLookupsAndListing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err := s.CreateVersion(a.ID, "v1", "initial", "c1", "", 0)
+	v, err := s.CreateVersion(a.ID, uuid.NewString(), "v1", "initial", "c1", "", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}

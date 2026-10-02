@@ -619,6 +619,9 @@ func runPush(args []string) error {
 	if _, err := os.Stat(dir + "/index.html"); err != nil {
 		return fmt.Errorf("%s does not contain an index.html", dir)
 	}
+	if err := client.CheckTree(dir); err != nil {
+		return err
+	}
 	c, err := apiClient()
 	if err != nil {
 		return err

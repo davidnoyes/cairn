@@ -32,7 +32,7 @@ type Config struct {
 	SignupDomains []string    // email domains allowed to self-signup, besides AdminEmail
 	AdminEmail    string      // may always sign up, and becomes an administrator when it does
 	Mail          mail.Mailer // required: sign-up and reset cannot work without it
-	MaxUploadMB   int64       // decompressed size cap per uploaded version
+	MaxUploadMB   int64       // size cap per pushed version, encrypted bytes
 	QueryTimeout  time.Duration
 	MaxQueryRows  int
 	Logger        *slog.Logger

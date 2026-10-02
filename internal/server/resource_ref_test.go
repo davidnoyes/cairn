@@ -47,7 +47,7 @@ func TestResourceReferenceResolution(t *testing.T) {
 
 	// Upload through the reference lands on the right artifact
 	resp := admin.upload("POST", "/api/artifacts/sess-123/versions",
-		zipFrom(t, map[string]string{"index.html": "v2"}), nil)
+		map[string]string{"index.html": "v2"}, nil)
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("upload via reference: %d", resp.StatusCode)
 	}
