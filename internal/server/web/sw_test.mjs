@@ -200,6 +200,14 @@ test('api: a navigation (a download link) carries the token like any other reque
   assert.equal(calls[0].headers.get('Authorization'), 'Bearer tok');
 });
 
+test('api: a navigation that is not a GET (a form from another site) is refused, and nothing is sent', async () => {
+  calls.length = 0;
+  const res = await dispatch(`${ORIGIN}/api/artifacts/${ARTIFACT}/versions/${VERSION}/db/batch`,
+    { mode: 'navigate', method: 'POST', body: '{"statements":[]}' }, '');
+  assert.equal(res.status, 405);
+  assert.equal(calls.length, 0);
+});
+
 test('a token message replaces the token, and only from this origin', async () => {
   await send({ cairn: 'token', token: 'new', tokenExpires: 5 }, 'http://evil.example');
   await send({ cairn: 'token', token: 'bad' });

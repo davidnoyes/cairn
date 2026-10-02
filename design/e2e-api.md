@@ -1340,7 +1340,10 @@ users an artifact can list to the people who can open it.
 
 A navigation therefore reaches the server with the token behind it. Every
 `/api/` response carries the sandboxed CSP that refuses framing, so a stored
-file served there never runs as a document. The cost is that an artifact
+file served there never runs as a document. Any site can start a navigation,
+so the worker answers one that is not a `GET`, such as a form's `POST`, with
+`405` and sends nothing. Otherwise a form on another site could write as the
+viewer. The cost is that an artifact
 cannot show `cairn.files.url(...)` in an `<iframe>` or `<object>`, such as a
 PDF preview.
 

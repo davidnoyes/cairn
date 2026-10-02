@@ -6,8 +6,6 @@
 // "The handshake".
 import { contentTarget, parseContentPath } from './content.mjs';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
 // appOriginFromMeta reads the app origin the server wrote into the page, or
 // returns null when it is missing or is not an http(s) origin.
 export function appOriginFromMeta(doc) {
@@ -29,12 +27,11 @@ export function readyMessage(pathname) {
 }
 
 // checkKeysTarget refuses a keys message whose version or path could send
-// the page anywhere but into a version, and returns the address to go to. The
-// worker checks the rest.
+// the page anywhere but into a version, and returns the address to go to.
+// contentTarget wants the version a lowercase UUID. The worker checks the rest.
 export function checkKeysTarget(msg) {
-  if (typeof msg.version !== 'string' || !UUID_RE.test(msg.version)) throw new Error('the keys name no valid version');
   const target = contentTarget(msg.version, msg.path);
-  if (!target) throw new Error('the keys name no valid path');
+  if (!target) throw new Error('the keys name no valid version and path');
   return target;
 }
 

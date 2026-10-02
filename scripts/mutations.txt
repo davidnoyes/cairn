@@ -1113,11 +1113,6 @@ internal/server/web/boot.js	event.data.cairn !== 'keys'	false	node --test intern
 internal/server/web/boot.js	win.parent.postMessage(readyMessage(loc.pathname), appOrigin);	win.parent.postMessage(readyMessage(loc.pathname), '*');	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	version: parsed ? parsed.version : null	version: null	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	path: parsed ? '/' + parsed.path : null	path: parsed ? parsed.path : null	node --test internal/server/web/boot_test.mjs
-internal/server/web/boot.js	|| !UUID_RE.test(msg.version)	|| false	node --test internal/server/web/boot_test.mjs
-internal/server/web/boot.js	typeof msg.version !== 'string' ||	false ||	node --test internal/server/web/boot_test.mjs
-internal/server/web/boot.js	/^[0-9a-f]{8}	/[0-9a-f]{8}	node --test internal/server/web/boot_test.mjs
-internal/server/web/boot.js	{12}$/;	{12}/;	node --test internal/server/web/boot_test.mjs
-internal/server/web/boot.js	{12}$/;	{12}$/i;	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	event.source !== worker ||	false ||	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	|| m.version !== keys.version) return;	|| false) return;	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	if (m.cairn === 'keys-ok') resolve();	if (true) resolve();	node --test internal/server/web/boot_test.mjs
@@ -1253,7 +1248,8 @@ internal/server/web/viewer.mjs	(err.status === 401 || err.status === 403);	(err.
 internal/server/web/viewer.mjs	if (!refused && current.tokenExpires	if (current.tokenExpires	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	current.tokenExpires * 1000 - now() > RETRY_MS) timer	true) timer	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	timer = later(renew, RETRY_MS);	timer = later(renew, 1000);	node --test internal/server/web/viewer_test.mjs
-internal/server/web/shell.mjs	err.status === 404 ? new VersionGoneError() : err;	false ? new VersionGoneError() : err;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/viewer.mjs	err.status === 404 ? new VersionGoneError() : err;	false ? new VersionGoneError() : err;	node --test internal/server/web/viewer_test.mjs internal/server/web/shell_page_test.mjs
+internal/server/web/viewer.mjs	throw err instanceof ApiError && err.status === 404 ? new VersionGoneError() : err;	throw err;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/shell.mjs	|| err instanceof VersionGoneError	|| false	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	if (err instanceof ApiError && err.status === 401) return 'Your session has ended. Sign in again.';	void 0;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	showStatus('Your access could not be renewed. Reload the page, or sign in again.')	showStatus('')	node --test internal/server/web/shell_page_test.mjs
@@ -1289,7 +1285,7 @@ internal/server/contentorigin.go	return err == nil && len(q) == 1	_ = err; retur
 internal/server/web/content.mjs	if (!parseContentPath(target)) return null;	void 0;	node --test internal/server/web/content_test.mjs
 internal/server/web/content.mjs	.pathname.startsWith(`/${version}/`) ? target : null;	.pathname ? target : null;	node --test internal/server/web/content_test.mjs
 internal/server/web/content.mjs	if (!contentTarget(msg.version, msg.path)) throw new ContentError('path must stay inside the version');	void 0;	node --test internal/server/web/content_test.mjs
-internal/server/web/boot.js	if (!target) throw new Error('the keys name no valid path');	void 0;	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	if (!target) throw new Error('the keys name no valid version and path');	void 0;	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	const others = (await sw.getRegistrations()).filter((r) => r.scope !== reg.scope);	const others = [];	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	const worker = await activeWorker(reg);	const worker = (await sw.ready).active;	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	if (reg.active) resolve(reg.active);	if (true) resolve(reg.active);	node --test internal/server/web/boot_test.mjs
@@ -1309,3 +1305,6 @@ internal/server/web/shell.mjs	${picker.value}${keep}	${picker.value}	node --test
 internal/server/web/shell.mjs	/full/${artifact}/${chosen}${keep}	/full/${artifact}/${chosen}	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	if (contentTarget(chosen, pagePath)) answer(chosen, pagePath);	answer(chosen, pagePath);	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	} else if (validVersion(msg.version) && contentTarget(msg.version, msg.path)) answer	} else if (validVersion(msg.version)) answer	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/sw.js	if (event.request.mode === 'navigate' && event.request.method !== 'GET') {	if (false) {	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	if (event.request.mode === 'navigate' && event.request.method !== 'GET') {	if (event.request.mode === 'navigate') {	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	const out = apiRequest(event.request, latest);	const out = apiRequest(event.request, { ...latest, token: '' });	node --test internal/server/web/sw_test.mjs

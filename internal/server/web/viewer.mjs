@@ -26,6 +26,14 @@ export class UntrustedVersionError extends Error {
   }
 }
 
+// VersionGoneError is a version the server does not have for this artifact.
+export class VersionGoneError extends Error {
+  constructor() {
+    super('This version could not be found. It may have been deleted.');
+    this.name = 'VersionGoneError';
+  }
+}
+
 // NoAccessError is an artifact the caller can open neither as a member nor
 // with a public link.
 export class NoAccessError extends Error {
@@ -491,9 +499,16 @@ export async function trustVersion(deps, opened, version) {
 }
 
 // prepareVersion reads the version of this artifact the server names, checks
-// it is the one asked for, and decides whether it is trusted.
+// it is the one asked for, and decides whether it is trusted. A version the
+// server does not have is VersionGoneError; a 404 from a later call (a
+// deleted signer, say) stays an ApiError.
 export async function prepareVersion(deps, opened, versionId) {
-  const version = await apiGet(deps, opened, `/api/artifacts/${opened.artifact}/versions/${versionId}`);
+  let version;
+  try {
+    version = await apiGet(deps, opened, `/api/artifacts/${opened.artifact}/versions/${versionId}`);
+  } catch (err) {
+    throw err instanceof ApiError && err.status === 404 ? new VersionGoneError() : err;
+  }
   if (version.id !== versionId) throw new e2e.FormatError('the server answered for another version');
   const { signer } = await trustVersion(deps, opened, version);
   return { version, signer };

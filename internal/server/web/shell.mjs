@@ -9,18 +9,11 @@ import { contentTarget } from './content.mjs';
 import { createKeyStore } from './keystore.mjs';
 import {
   KeyringBusyError, LinkError, NoAccessError, UntrustedVersionError, apiGet, keepToken, keysMessage,
-  listVersions, loadContext, mintToken, navigateTarget, openArtifact, prepareVersion, takeLink,
+  VersionGoneError, listVersions, loadContext, mintToken, navigateTarget, openArtifact, prepareVersion, takeLink,
 } from './viewer.mjs';
 
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-// VersionGoneError is a version the server does not have for this artifact.
-class VersionGoneError extends Error {
-  constructor() {
-    super('This version could not be found. It may have been deleted.');
-  }
-}
 
 // describe is a message a person can act on for a failure.
 function describe(err) {
@@ -68,15 +61,7 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
       linkError = err;
     }
     const opened = await openArtifact(deps, { artifact, link, linkError });
-    // verify is prepareVersion, with a version the server does not have for
-    // this artifact reported as not found.
-    const verify = async (versionId) => {
-      try {
-        return await prepareVersion(deps, opened, versionId);
-      } catch (err) {
-        throw err instanceof ApiError && err.status === 404 ? new VersionGoneError() : err;
-      }
-    };
+    const verify = (versionId) => prepareVersion(deps, opened, versionId);
     const info = await apiGet(deps, opened, `/api/artifacts/${artifact}`);
     const versions = (await listVersions(deps, opened)).filter((v) => UUID_RE.test(v.id));
 

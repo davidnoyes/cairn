@@ -143,8 +143,12 @@ async function clientVersion(clientId) {
 // handleApi sends a page's API request on with the viewer's credentials. A
 // navigation (a download link) is sent the same way: every /api/ response
 // carries a CSP that sandboxes it and refuses framing, so none can run as a
-// document with the token behind it.
+// document with the token behind it. Only a GET navigation is: any page on
+// any site can start one, and a form could otherwise write as the viewer.
 async function handleApi(event) {
+  if (event.request.mode === 'navigate' && event.request.method !== 'GET') {
+    return new Response('method not allowed', { status: 405 });
+  }
   if (!latest) {
     const version = await clientVersion(event.clientId);
     if (!version || !(await requestKeys(version))) return unavailable();

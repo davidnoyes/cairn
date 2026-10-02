@@ -11,7 +11,7 @@ import {
   makeServer, makeUser, makeVersion, readServerKeyring, rotationRecord, seedKeyring, vouchFor,
 } from './viewer_fixture.mjs';
 import {
-  KeyringBusyError, LinkError, NoAccessError, UNTRUSTED_MESSAGE, UntrustedVersionError, keepToken, keysMessage,
+  KeyringBusyError, LinkError, NoAccessError, UNTRUSTED_MESSAGE, UntrustedVersionError, VersionGoneError, keepToken, keysMessage,
   listVersions, loadContext, mintToken, navigateTarget, openArtifact, prepareVersion, takeLink, trustVersion,
 } from './viewer.mjs';
 
@@ -746,6 +746,15 @@ test('prepareVersion refuses an answer for another version', async () => {
   s.server.versions.set(V2, t.v);
   await assert.rejects(() => prepareVersion(s.deps, s.opened, V2), e2e.FormatError);
   assert.equal((await prepareVersion(s.deps, s.opened, V1)).version.id, V1);
+});
+
+test('prepareVersion: only a version the server does not have is not found; a later 404 is not', async () => {
+  const s = await trustScene();
+  await trust(s, { signer: signerOf(U.owner) });
+  await assert.rejects(() => prepareVersion(s.deps, s.opened, V2), VersionGoneError);
+  const fetch = s.deps.fetch;
+  const deps = { ...s.deps, fetch: (url, init) => (/\/manifest$/.test(String(url)) ? Promise.resolve(new Response('{}', { status: 404 })) : fetch(url, init)) };
+  await assert.rejects(() => prepareVersion(deps, s.opened, V1), (err) => err instanceof ApiError && err.status === 404 && !(err instanceof VersionGoneError));
 });
 
 test('listVersions is every version as a member, and the link epoch only through a link', async () => {
