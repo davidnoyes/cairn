@@ -119,13 +119,21 @@ func (s *Server) handleUpdateArtifact(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
-	a := requestArtifact(r)
+	s.deleteArtifact(w, requestArtifact(r), requestUser(r).Email, s.store.DeleteArtifact)
+}
+
+// deleteArtifact removes a's row with del, then its content, databases, and
+// files, and answers the request. by is who asked, for the log.
+func (s *Server) deleteArtifact(w http.ResponseWriter, a *store.Artifact, by string, del func(id string) error) {
 	versions, err := s.store.ListVersions(a.ID)
 	if err != nil {
 		s.writeStoreError(w, err, "versions")
 		return
 	}
-	if err := s.store.DeleteArtifact(a.ID); err != nil {
+	if err := del(a.ID); errors.Is(err, store.ErrOwnerActive) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	} else if err != nil {
 		s.writeStoreError(w, err, "artifact")
 		return
 	}
@@ -135,7 +143,7 @@ func (s *Server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 	os.RemoveAll(s.layout.ArtifactContentRoot(a.ID))
 	os.RemoveAll(s.layout.ArtifactDBRoot(a.ID))
 	os.RemoveAll(s.layout.ArtifactFilesRoot(a.ID))
-	s.log.Info("artifact deleted", "id", a.ID, "by", requestUser(r).Email)
+	s.log.Info("artifact deleted", "id", a.ID, "by", by)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

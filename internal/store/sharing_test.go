@@ -217,6 +217,20 @@ func TestPrivateRecordClearsPublicToken(t *testing.T) {
 	}
 }
 
+func TestSetOwner(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	n := testAccount(t, s, "n@x.y")
+	a := ownedArtifact(t, s, o)
+	if err := s.WithArtifact(a.ID, func(tx *ArtifactTx) error { return tx.SetOwner(n.ID) }); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ArtifactByID(a.ID)
+	if err != nil || got.OwnerID != n.ID {
+		t.Fatalf("owner %q (%v), want %q", got.OwnerID, err, n.ID)
+	}
+}
+
 func TestOwnerChangesWithRecord(t *testing.T) {
 	s := testStore(t)
 	o := testAccount(t, s, "o@x.y")
@@ -1149,5 +1163,32 @@ func TestCreateVersionOnAMissingArtifactIsNotFound(t *testing.T) {
 		if _, err := s.CreateVersion("no-such-artifact", "v1", "", "c1", "", declared); !errors.Is(err, ErrNotFound) {
 			t.Errorf("declared %d: %v, want ErrNotFound", declared, err)
 		}
+	}
+}
+
+// The owner check and the delete are one statement, so an artifact that
+// passes to an active owner between an administrator's look and the delete
+// survives it.
+func TestDeleteArtifactOfDisabledOwner(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	a := ownedArtifact(t, s, o)
+	if err := s.DeleteArtifactOfDisabledOwner(a.ID); !errors.Is(err, ErrOwnerActive) {
+		t.Fatalf("active owner: %v, want ErrOwnerActive", err)
+	}
+	if _, err := s.ArtifactByID(a.ID); err != nil {
+		t.Fatalf("an active owner's artifact was deleted: %v", err)
+	}
+	if err := s.SetUserDisabled(o.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteArtifactOfDisabledOwner(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ArtifactByID(a.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("after delete: %v, want ErrNotFound", err)
+	}
+	if err := s.DeleteArtifactOfDisabledOwner(a.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing artifact: %v, want ErrNotFound", err)
 	}
 }

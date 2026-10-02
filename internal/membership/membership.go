@@ -96,12 +96,21 @@ type EstateIn struct {
 	Sealed []byte
 }
 
-// Change is a membership record and everything sent with it.
+// Acceptance is an open offer the record accepts. NewOwner is the offered
+// user, who signs the record.
+type Acceptance struct {
+	NewOwner  *User
+	OfferHash string // the owner's offer body hash; empty for an administrator's offer
+}
+
+// Change is a membership record and everything sent with it. Accept is set
+// for a record that accepts an ownership offer, and only for one.
 type Change struct {
 	Envelope      e2e.Envelope
 	Wraps         []WrapIn
 	Estate        []EstateIn
 	LinkTokenHash string
+	Accept        *Acceptance
 }
 
 // Current is the artifact a change applies to. Latest is nil before the
@@ -132,6 +141,9 @@ type Result struct {
 	// clear it when empty.
 	PublicTokenHash string
 	PublicEpoch     int
+	// Accepted is true for a record that accepts an ownership offer: Apply
+	// then changes the owner and replaces the estate copies.
+	Accepted bool
 }
 
 // Sizes of a wrap and of an estate copy, from design/e2e-wire-formats.md.
@@ -145,12 +157,47 @@ type wrapKey struct {
 	epoch int
 }
 
+// CheckNewOwner refuses u as the artifact's next owner unless u is an active,
+// verified user whom the latest record lists as an editor under their current
+// key. Check applies it to an acceptance; the server also applies it to an
+// offer.
+func CheckNewOwner(cur Current, u *User) error {
+	var listed *e2e.Member
+	if cur.Latest != nil {
+		for i := range cur.Latest.Members {
+			if cur.Latest.Members[i].User == u.ID {
+				listed = &cur.Latest.Members[i]
+			}
+		}
+	}
+	switch {
+	case listed == nil || listed.Role != access.RoleEditor:
+		return conflict(RuleOwner, "only a listed editor can take ownership")
+	case !u.Active || !u.Verified:
+		return conflict(RuleOwner, "the user is not an active, verified user")
+	case listed.FP != u.FP:
+		return conflict(RuleOwner, "the user's key is not the one the latest record lists")
+	}
+	return nil
+}
+
 // Check decides whether the server accepts ch on cur. A refusal is an
 // *Error; any other error is a directory failure.
+//
+// A record with ch.Accept set is checked under the new owner's key and
+// names them as owner. The previous owner is then a member of the artifact
+// like any other: listed, or removed.
 func Check(cur Current, dir Directory, ch Change) (*Result, error) {
-	owner := cur.Owner
-	if owner == nil {
+	prevOwner := cur.Owner
+	if prevOwner == nil {
 		return nil, errors.New("membership: the artifact has no owner")
+	}
+	owner := prevOwner
+	if ch.Accept != nil {
+		owner = ch.Accept.NewOwner
+		if err := CheckNewOwner(cur, owner); err != nil {
+			return nil, err
+		}
 	}
 
 	// Rules 1 and 2: who signed, under which key, for what.
@@ -188,11 +235,15 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 	}
 
 	// Rule 8.
-	if body.Transfer != "" {
+	switch {
+	case ch.Accept == nil && body.Transfer != "":
 		return nil, refuse(RuleTransfer, "transfer must be empty")
-	}
-	if body.Handover != "" {
+	case ch.Accept == nil && body.Handover != "":
 		return nil, refuse(RuleTransfer, "handover must be empty")
+	case ch.Accept != nil && ch.Accept.OfferHash != "" && (body.Transfer != ch.Accept.OfferHash || body.Handover != ""):
+		return nil, refuse(RuleTransfer, "transfer must be the offer's hash, and handover empty")
+	case ch.Accept != nil && ch.Accept.OfferHash == "" && (body.Handover != "admin" || body.Transfer != ""):
+		return nil, refuse(RuleTransfer, "an administrator's offer needs handover admin, and transfer empty")
 	}
 
 	// Rule 4: shapes.
@@ -279,9 +330,12 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 	var removed []string
 	if prev != nil {
 		for _, m := range prev.Members {
-			if _, ok := listed[m.User]; !ok {
+			if _, ok := listed[m.User]; !ok && m.User != owner.ID {
 				removed = append(removed, m.User)
 			}
+		}
+		if _, ok := listed[prevOwner.ID]; ch.Accept != nil && !ok {
+			removed = append(removed, prevOwner.ID)
 		}
 	}
 	var holders []string
@@ -336,7 +390,7 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 	}
 
 	// Rule 11.
-	if err := checkExcluded(&body, cur, dir, prevMembers, prevExcluded, users); err != nil {
+	if err := checkExcluded(&body, cur, dir, prevMembers, prevExcluded, users, ch.Accept != nil); err != nil {
 		return nil, err
 	}
 
@@ -410,7 +464,23 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 	}
 
 	// Rule 13.
-	if newEpoch {
+	if ch.Accept != nil {
+		if len(ch.Estate) != body.Epoch {
+			return nil, refuse(RuleEstate, "an accepting record needs exactly one estate copy for every epoch, 1 to %d", body.Epoch)
+		}
+		have := map[int]bool{}
+		for _, e := range ch.Estate {
+			switch {
+			case e.Epoch < 1 || e.Epoch > body.Epoch || have[e.Epoch]:
+				return nil, refuse(RuleEstate, "an accepting record needs exactly one estate copy for every epoch, 1 to %d", body.Epoch)
+			case len(e.Sealed) != estateSize:
+				return nil, refuse(RuleEstate, "the estate copy for epoch %d is not %d bytes", e.Epoch, estateSize)
+			}
+			have[e.Epoch] = true
+			res.Estate = append(res.Estate, store.Estate{Epoch: e.Epoch, Sealed: e.Sealed})
+		}
+		res.Accepted = true
+	} else if newEpoch {
 		if len(ch.Estate) != 1 || ch.Estate[0].Epoch != body.Epoch {
 			return nil, refuse(RuleEstate, "a new epoch needs exactly one estate copy, for epoch %d", body.Epoch)
 		}
@@ -438,6 +508,7 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 	res.Record = &store.Record{
 		Seq: body.Seq, Prev: body.Prev, Epoch: body.Epoch, OwnerID: body.Owner, OwnerFp: body.OwnerFP,
 		AKCommit: commit, Team: body.Team, Public: body.Public, PublicWrites: body.PublicWrites,
+		Transfer: body.Transfer, Handover: body.Handover,
 		Envelope: store.Envelope{Body: ch.Envelope.Body, Sig: ch.Envelope.Sig, Signer: ch.Envelope.Signer},
 	}
 	for _, m := range body.Members {
@@ -500,8 +571,10 @@ func matches(x e2e.ExcludedEntry, m e2e.Member, u *User) bool {
 // matches it; one carried over is unchanged; a new one has the user's
 // current email and a fingerprint the server can account for: the one the
 // previous record listed for them, or the one a wrap they hold was made for.
+// When accepting is true the previous owner is accountable under the
+// fingerprint the previous record names as ownerFp.
 func checkExcluded(b *e2e.MembershipBody, cur Current, dir Directory, prevMembers map[string]e2e.Member,
-	prevExcluded map[string]e2e.ExcludedEntry, users map[string]*User) error {
+	prevExcluded map[string]e2e.ExcludedEntry, users map[string]*User, accepting bool) error {
 	if cur.Latest == nil {
 		if len(b.Excluded) > 0 {
 			return refuse(RuleExcludedEntry, "the first record must have an empty excluded")
@@ -550,6 +623,9 @@ func checkExcluded(b *e2e.MembershipBody, cur Current, dir Directory, prevMember
 				fps[w.FP] = true
 			}
 		}
+		if accepting && x.User == cur.Owner.ID {
+			fps[cur.Latest.OwnerFP] = true
+		}
 		if len(fps) == 0 {
 			return refuse(RuleExcludedEntry, "excluded %s was not listed and holds no wrap", x.User)
 		}
@@ -577,6 +653,19 @@ func isHex64(s string) bool {
 func Apply(tx *store.ArtifactTx, res *Result) error {
 	if err := tx.AppendRecord(res.Record); err != nil {
 		return err
+	}
+	if res.Accepted {
+		// The new owner holds estate copies, not wraps, and theirs replace
+		// the previous owner's.
+		if err := tx.SetOwner(res.Body.Owner); err != nil {
+			return err
+		}
+		if err := tx.DeleteEstates(); err != nil {
+			return err
+		}
+		if err := tx.DeleteWraps(res.Body.Owner); err != nil {
+			return err
+		}
 	}
 	if err := tx.SetMembers(res.Members); err != nil {
 		return err
@@ -611,8 +700,13 @@ func Apply(tx *store.ArtifactTx, res *Result) error {
 	if err := tx.SetPublicToken(res.PublicTokenHash, res.PublicEpoch); err != nil {
 		return err
 	}
-	// Any record moves prev, so an open offer can no longer be accepted.
-	if err := tx.SetOfferState("closed"); err != nil && !errors.Is(err, store.ErrNotFound) {
+	// Any record moves prev, so an open offer can no longer be accepted; the
+	// record that accepts it keeps it, for the membership view to serve.
+	state := "closed"
+	if res.Accepted {
+		state = "accepted"
+	}
+	if err := tx.SetOfferState(state); err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
 	return nil

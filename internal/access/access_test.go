@@ -117,6 +117,8 @@ func TestEndpointActionsByLevel(t *testing.T) {
 		{ListPending, [5]Decision{Allow, Allow, Forbidden, Forbidden, Forbidden}},
 		{ReviewVersions, [5]Decision{Allow, Forbidden, Forbidden, Forbidden, Forbidden}},
 		{Transfer, [5]Decision{Allow, Forbidden, Forbidden, Forbidden, Forbidden}},
+		// Only the owner and listed members can be party to an offer.
+		{AnswerTransfer, [5]Decision{Allow, Allow, Allow, Forbidden, Forbidden}},
 		// team is none in these artifacts, so approval is 409 for those who
 		// may approve, and 403 for those who may not.
 		{ApproveMember, [5]Decision{Conflict, Conflict, Forbidden, Forbidden, Forbidden}},
@@ -352,6 +354,7 @@ func TestContentOriginToken(t *testing.T) {
 		{"owner cannot delete", tok(asUser(base(), owner)), Delete, NotFound},
 		{"owner cannot push", tok(asUser(base(), owner)), PushVersion, NotFound},
 		{"owner cannot transfer", tok(asUser(base(), owner)), Transfer, NotFound},
+		{"editor cannot answer a transfer", tok(asUser(base(), editor)), AnswerTransfer, NotFound},
 		{"owner cannot rename", tok(asUser(base(), owner)), Rename, NotFound},
 		{"editor cannot approve", tok(asUser(team(base(), TeamViewer), editor)), ApproveMember, NotFound},
 		{"owner cannot read keys", tok(asUser(base(), owner)), ReadKeys, NotFound},
@@ -471,5 +474,5 @@ func TestChangedFingerprintEditorCannotReviewOrTransfer(t *testing.T) {
 
 var allActions = []Action{
 	ReadContent, WriteData, PushVersion, Share, Delete, Rename, ReadMembership,
-	ReadKeys, ListPending, ApproveMember, ReviewVersions, Transfer,
+	ReadKeys, ListPending, ApproveMember, ReviewVersions, Transfer, AnswerTransfer,
 }

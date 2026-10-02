@@ -785,7 +785,8 @@ is the envelope or `null`.
    the owner signed, with `prev` set to the hash of the latest record's body.
    The user must be a listed editor. While an offer is open, a new one also
    carries `membership`, a same-epoch record that closes the old offer, and
-   its `prev` names that record.
+   its `prev` names that record. With no offer open, a request that carries
+   `membership` is refused with `409`.
 2. An administrator can make an offer with
    `POST /api/admin/artifacts/{id}/transfer` `{"to": "user ID"}`, only while
    the owner's account is deactivated. Otherwise the answer is `409`, because
@@ -874,7 +875,10 @@ cannot sign in to refuse.
 The owner withdraws an offer with `DELETE /api/artifacts/{id}/transfer`
 `{"membership": envelope}`, a same-epoch record. It moves `prev`, so the old
 offer can never be accepted. The offered user declines with the same call and
-no body.
+no body. Either call answers `200 {"ok": true}`. With no offer open it answers
+`409`, and any other listed member gets `403`. Whether or not an offer is
+open, a link holder gets `403` from this call and from accepting, and a caller
+with no access gets `404`.
 
 `GET /api/admin/users/{id}/artifacts` returns
 `[{"id", "editors": [{"id", "name"}]}]`, so an administrator can choose an

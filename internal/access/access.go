@@ -62,6 +62,7 @@ const (
 	ApproveMember  Action = "approve"    // POST keys: approve a team member
 	ReviewVersions Action = "review"     // list and vouch for versions
 	Transfer       Action = "transfer"   // offer ownership
+	AnswerTransfer Action = "answer"     // accept, decline, or withdraw an offer
 )
 
 // Decision is the outcome of a check.
@@ -245,7 +246,7 @@ func allowed(m matches, a Artifact, act Action) bool {
 	if m.owner {
 		switch act {
 		case ReadContent, WriteData, PushVersion, Share, Delete, Rename, ReadMembership,
-			ReadKeys, ListPending, ApproveMember, ReviewVersions, Transfer:
+			ReadKeys, ListPending, ApproveMember, ReviewVersions, Transfer, AnswerTransfer:
 			return true
 		}
 		return false
@@ -255,6 +256,10 @@ func allowed(m matches, a Artifact, act Action) bool {
 		if act == ReadContent || act == ReadMembership {
 			return true
 		}
+	}
+	// An offer is made to a listed member, so only they can answer one.
+	if m.member && act == AnswerTransfer {
+		return true
 	}
 	// Wraps are held by members and team members, not link holders.
 	if (m.member || m.team) && act == ReadKeys {

@@ -52,6 +52,9 @@ func (s *Server) routes() {
 	handle("GET /api/admin/users", s.requireAdmin(s.handleAdminListUsers))
 	handle("PATCH /api/admin/users/{id}", s.requireAdmin(s.handleAdminUpdateUser))
 	handle("DELETE /api/admin/users/{id}", s.requireAdmin(s.handleAdminDeleteUser))
+	handle("GET /api/admin/users/{id}/artifacts", s.requireAdmin(s.handleAdminUserArtifacts))
+	handle("POST /api/admin/artifacts/{id}/transfer", s.requireAdmin(s.handleAdminOfferTransfer))
+	handle("DELETE /api/admin/artifacts/{id}", s.requireAdmin(s.handleAdminDeleteArtifact))
 
 	// Artifacts. Every route under /api/artifacts/{id} resolves the {id}
 	// segment (artifact id, else resource reference) among the artifacts the
@@ -64,6 +67,9 @@ func (s *Server) routes() {
 	handle("DELETE /api/artifacts/{id}", s.artifactRoute(access.Delete, s.handleDeleteArtifact))
 	handle("GET /api/artifacts/{id}/membership", s.artifactRoute(access.ReadMembership, s.handleGetMembership))
 	handle("PUT /api/artifacts/{id}/membership", s.artifactRoute(access.Share, s.handlePutMembership))
+	handle("POST /api/artifacts/{id}/transfer", s.artifactRoute(access.Transfer, s.handleOfferTransfer))
+	handle("DELETE /api/artifacts/{id}/transfer", s.artifactRoute(access.AnswerTransfer, s.handleCloseTransfer))
+	handle("POST /api/artifacts/{id}/transfer/accept", s.artifactRoute(access.AnswerTransfer, s.handleAcceptTransfer))
 	handle("GET /api/artifacts/{id}/keys", s.artifactRoute(access.ReadKeys, s.handleGetKeys))
 	handle("POST /api/artifacts/{id}/keys", s.artifactRoute(access.ApproveMember, s.handleApprove))
 	handle("GET /api/artifacts/{id}/pending", s.artifactRoute(access.ListPending, s.handlePending))

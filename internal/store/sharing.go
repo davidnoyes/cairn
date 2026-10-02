@@ -309,6 +309,12 @@ func (t *ArtifactTx) Artifact() (*Artifact, error) {
 	return scanArtifact(t.tx.QueryRow(`SELECT `+artifactCols+` FROM artifacts WHERE id = ?`, t.id))
 }
 
+// SetOwner makes userID the artifact's owner. Nothing else changes.
+func (t *ArtifactTx) SetOwner(userID string) error {
+	_, err := t.tx.Exec(`UPDATE artifacts SET owner_id = ? WHERE id = ?`, userID, t.id)
+	return err
+}
+
 // Membership records
 
 const recordCols = `seq, prev, body_hash, epoch, owner_id, owner_fp, ak_commit, team, public, public_writes, transfer, handover, body, sig, signer, created_at`

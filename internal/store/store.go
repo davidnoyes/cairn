@@ -146,6 +146,10 @@ var ErrLegacyData = errors.New("this data directory holds accounts or artifacts 
 // their members would lose the owner every record is signed by.
 var ErrOwnsArtifacts = errors.New("user owns artifacts")
 
+// ErrOwnerActive is returned when an administrator deletes an artifact whose
+// owner's account is active: the owner decides.
+var ErrOwnerActive = errors.New("the owner's account is active")
+
 // isUniqueViolation reports whether err is a SQLite uniqueness failure (a
 // duplicate email, or a reused API key id — a client-chosen primary key).
 func isUniqueViolation(err error) bool {

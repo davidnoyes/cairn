@@ -138,6 +138,22 @@ func (s *Store) DeleteArtifact(id string) error {
 	return s.exec1(`DELETE FROM artifacts WHERE id = ?`, id)
 }
 
+// DeleteArtifactOfDisabledOwner deletes an artifact only if its owner's
+// account is disabled, in one statement, so an artifact handed to an active
+// owner after the caller looked is not deleted. It is ErrOwnerActive if the
+// owner is active, and ErrNotFound if there is no such artifact.
+func (s *Store) DeleteArtifactOfDisabledOwner(id string) error {
+	err := s.exec1(`DELETE FROM artifacts WHERE id = ?
+		AND owner_id IN (SELECT id FROM users WHERE disabled)`, id)
+	if !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	if _, err := s.ArtifactByID(id); err != nil {
+		return err
+	}
+	return ErrOwnerActive
+}
+
 func (s *Store) touchArtifact(id string) {
 	s.db.Exec(`UPDATE artifacts SET updated_at = ? WHERE id = ?`, now(), id)
 }
