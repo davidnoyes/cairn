@@ -228,9 +228,6 @@ func TestShareMembersAndPinCommands(t *testing.T) {
 	if promoted["promoted"] != true || promoted["prior"] != e2e.PinVerified {
 		t.Errorf("promotion = %v", promoted)
 	}
-	if _, err := runQuiet(t, runShare, artifact, "bob@example.com", "--role", "viewer"); !errors.Is(err, client.ErrNeedsNextEpoch) {
-		t.Errorf("demotion: %v, want ErrNeedsNextEpoch", err)
-	}
 }
 
 func TestShareCommandRefusals(t *testing.T) {

@@ -410,13 +410,17 @@ to `none` while a team member holds a wrap. It is allowed at any other time.
 A next-epoch record must list or exclude every team member who holds a wrap.
 The owner's client lists, with the role that `team` grants, each one whose
 approval passes the checks in [Team approval](#team-approval), and asks the
-owner about the rest. Every user a record removes or drops goes into
-`excluded`, with their fingerprint and normalized email, and stays there
-until an owner record lists them again. The server refuses a record that
-leaves a removed member or a team member out of both lists, and a record that
-drops a user from `excluded` without listing them. The owner's client lists a
-user who matches an entry only when the owner shares with them by name, which
-drops the entry.
+owner about the rest. `cairn` cannot ask, so it excludes the rest and prints
+each with the reason; excluding fails closed, and the owner lists one again by
+name with `cairn share`. A team member whose keys changed after they were
+wrapped to is excluded under the fingerprint in the owner's pin, because the
+server accepts only a fingerprint it can account for. Every user a record
+removes or drops goes into `excluded` under their fingerprint and normalized
+email. The entry stays there until an owner record lists them again. The
+server refuses a record that leaves a removed member or a team member out of
+both lists, and a record that drops a user from `excluded` without listing
+them. The owner's client lists a user who matches an entry only when the
+owner shares with them by name, which drops the entry.
 
 Each change carries the wraps it needs, and the server refuses a change whose
 wraps do not match exactly:
@@ -434,6 +438,11 @@ keys counts, so updating a rotated member's `fp` needs no new wrap.
 
 A next-epoch record lists every member under their current fingerprint, so
 the owner lists a member whose key changed under the new `fp` or removes them.
+The owner's client refuses a next-epoch change while a member it keeps is
+listed under an old fingerprint, or under keys that contradict the owner's
+pin, and names the member. When the artifact stays public across a next
+epoch, the new record carries the hash of the new epoch's link token, and the
+client prints the new link; the old link stops working.
 
 The owner holds no wraps. The owner reads every epoch through the estate
 copy.

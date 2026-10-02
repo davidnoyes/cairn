@@ -170,7 +170,7 @@ func TestShareAddsAMember(t *testing.T) {
 	}
 }
 
-func TestSharePromotesAndRefusesDemotion(t *testing.T) {
+func TestSharePromotes(t *testing.T) {
 	s := newSharing(t)
 	if _, err := s.ada.Share(s.artifact, "bob@example.com", "viewer", false); err != nil {
 		t.Fatal(err)
@@ -186,12 +186,9 @@ func TestSharePromotesAndRefusesDemotion(t *testing.T) {
 	if r := memberRows(t, s.ada, s.artifact)["bob@example.com"]; r.Role != "editor" {
 		t.Errorf("bob's row = %+v, want editor", r)
 	}
-	if _, err := s.ada.Share(s.artifact, "bob@example.com", "viewer", false); !errors.Is(err, ErrNeedsNextEpoch) {
-		t.Errorf("demoting: %v, want ErrNeedsNextEpoch", err)
-	}
 	m, _ := s.ada.Membership(s.artifact)
 	if len(m.Records) != 3 {
-		t.Errorf("%d records, want 3: the unchanged share and the demotion must write nothing", len(m.Records))
+		t.Errorf("%d records, want 3: the unchanged share must write nothing", len(m.Records))
 	}
 }
 
@@ -256,60 +253,6 @@ func TestShareRefusesAChangedKey(t *testing.T) {
 	}
 	if got := openWraps(t, s.bob, s.artifact); len(got) != 1 || got[0] != 1 {
 		t.Errorf("bob's wraps under his new key = %v, want epoch 1", got)
-	}
-}
-
-// excludeBob writes the next epoch's record by hand: bob removed and
-// excluded, with a fresh AK sealed to ada's estate.
-func excludeBob(t *testing.T, s *sharing) {
-	t.Helper()
-	k := mustUnlock(t, s.ada)
-	va, err := s.ada.VerifyArtifact(k, s.artifact, k.FP)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir, _ := s.ada.Directory()
-	bob, err := FindUser(dir, "bob@example.com")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ak := make([]byte, 32)
-	rand.Read(ak)
-	next := va.Chain.Latest
-	next.Epoch, next.Seq, next.Prev = 2, next.Seq+1, va.Chain.Head
-	next.AKCommit, _ = e2e.AKCommit(ak, s.artifact, 2)
-	next.Members = []e2e.Member{}
-	next.Excluded = []e2e.ExcludedEntry{{User: bob.ID, FP: bob.FP, Email: bob.Email}}
-	body, _ := json.Marshal(next)
-	env, err := e2e.NewEnvelope(k.Ed25519Seed, k.UserID, "membership", body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ekKey, _ := e2e.EKSealKey(k.EK)
-	sealed, err := e2e.Seal(rand.Reader, ekKey, estateFields(s.artifact, 2), ak)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.ada.doJSON("PUT", "/api/artifacts/"+s.artifact+"/membership", map[string]any{
-		"membership": env, "wraps": []any{}, "linkTokenHash": "",
-		"estate": []map[string]any{{"epoch": 2, "sealed": e2e.B64(sealed)}},
-	}, nil); err != nil {
-		t.Fatalf("writing the exclusion: %v", err)
-	}
-}
-
-func TestShareRefusesAnExcludedUser(t *testing.T) {
-	s := newSharing(t)
-	if _, err := s.ada.Share(s.artifact, "bob@example.com", "viewer", false); err != nil {
-		t.Fatal(err)
-	}
-	excludeBob(t, s)
-	if _, err := s.ada.Share(s.artifact, "bob@example.com", "viewer", false); !errors.Is(err, ErrExcluded) {
-		t.Errorf("sharing with an excluded user: %v, want ErrExcluded", err)
-	}
-	m, _ := s.ada.Membership(s.artifact)
-	if len(m.Records) != 3 {
-		t.Errorf("%d records, want 3", len(m.Records))
 	}
 }
 

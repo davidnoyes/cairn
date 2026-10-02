@@ -206,11 +206,30 @@ curl -sf "${AUTH2[@]}" "$HOST/api/artifacts/$NID/keys" \
 CAIRN_CONFIG="$CONFIG2" "$BIN" members "$NID" | grep -E "owner +admin@e2e.test +unverified" >/dev/null || fail "members as the new viewer"
 pass "the new viewer reads the artifact, holds the epoch 1 wrap, and verifies the chain"
 "$BIN" share notes share@e2e.test --role editor | grep "promoted to editor" >/dev/null || fail "promotion"
-if "$BIN" share notes share@e2e.test --role viewer >/dev/null 2>"$WORK/demote.err"; then
-  fail "a same-epoch demotion succeeded"
-fi
-grep -q "needs a new epoch" "$WORK/demote.err" || fail "demotion failed for another reason: $(cat "$WORK/demote.err")"
-pass "promotion succeeds; a demotion is refused until the next epoch"
+pass "promotion succeeds"
+
+# Demoting and unsharing start new epochs. They run on their own artifact, so
+# the state the checks below read is left as it is.
+"$BIN" artifact create epochdoc --json > "$WORK/epochdoc.json"
+EID=$(jq -r .id "$WORK/epochdoc.json")
+"$BIN" share epochdoc share@e2e.test --role editor >/dev/null || fail "sharing epochdoc with the editor"
+"$BIN" share epochdoc share@e2e.test --role viewer > "$WORK/demote.txt" || fail "demotion: $(cat "$WORK/demote.txt")"
+grep -q "demoted to viewer of epochdoc" "$WORK/demote.txt" || fail "demotion output: $(cat "$WORK/demote.txt")"
+grep -q "started epoch 2" "$WORK/demote.txt" || fail "demotion did not start epoch 2: $(cat "$WORK/demote.txt")"
+curl -sf "${AUTH2[@]}" "$HOST/api/artifacts/$EID/keys" \
+  | python3 -c "import json,sys;k=json.load(sys.stdin);assert [w['epoch'] for w in k['wraps']]==[1,2], k" \
+  || fail "the demoted viewer does not hold the wraps of epochs 1 and 2"
+pass "demoting an editor starts epoch 2, and the viewer holds both wraps"
+
+"$BIN" unshare epochdoc share@e2e.test --json > "$WORK/unshare.json" || fail "unshare: $(cat "$WORK/unshare.json")"
+jq -e '.artifact == "'"$EID"'" and .epoch == 3 and .newEpoch == true and .link == ""
+  and (.excluded | length == 1) and .excluded[0].email == "share@e2e.test" and .excluded[0].reason == "removed"' \
+  "$WORK/unshare.json" >/dev/null || fail "unshare --json fields: $(cat "$WORK/unshare.json")"
+[[ "$(curl -s -o /dev/null -w '%{http_code}' "${AUTH2[@]}" "$HOST/api/artifacts/$EID/keys")" != "200" ]] || fail "the removed member still reads their keys"
+"$BIN" members epochdoc | grep "share@e2e.test" >/dev/null && fail "the removed member is still listed"
+pass "cairn unshare starts epoch 3, excludes the member, and ends their access"
+"$BIN" share epochdoc share@e2e.test | grep "dropped the exclusion of share@e2e.test" >/dev/null || fail "sharing by name did not drop the exclusion"
+pass "sharing by name lists an excluded user again"
 
 CAIRN_CONFIG="$CONFIG2" "$BIN" logout >/dev/null
 python3 -c "import json;c=json.load(open('$CONFIG2'));assert c['apiKey']=='' and len(c['anchors'])==1, c" \
@@ -322,17 +341,16 @@ if CAIRN_CONFIG="$CONFIG2" "$BIN" approve teamdoc --json | jq -e '.pending[] | s
 fi
 pass "an approved member shows to the owner only"
 
-if "$BIN" team teamdoc none >/dev/null 2>"$WORK/teamnone.err"; then
-  fail "team none succeeded while a team member holds a wrap"
-fi
-grep -q "new epoch" "$WORK/teamnone.err" || fail "team none failed for another reason: $(cat "$WORK/teamnone.err")"
-pass "team none is refused while a team member holds a wrap: it needs a new epoch"
-
 "$BIN" team teamdoc editor > "$WORK/team-editor.txt" || fail "team editor: $(cat "$WORK/team-editor.txt")"
 grep -q "listed approved team member team@e2e.test" "$WORK/team-editor.txt" || fail "team editor did not list the member: $(cat "$WORK/team-editor.txt")"
 "$BIN" members teamdoc | grep -E "editor +team@e2e.test" >/dev/null || fail "members after the owner listed the team member"
 [[ "$(team_batch)" == "200" ]] || fail "a listed member cannot write"
 pass "the owner's next record lists the approved member, who can then write"
+
+"$BIN" unshare teamdoc team@e2e.test > "$WORK/team-unshare.txt" || fail "unshare of the team member: $(cat "$WORK/team-unshare.txt")"
+grep -q "started epoch 2" "$WORK/team-unshare.txt" || fail "unshare did not start epoch 2: $(cat "$WORK/team-unshare.txt")"
+[[ "$(team_batch)" != "200" ]] || fail "an unshared team member still writes"
+pass "unshare on a team artifact removes the member in a new epoch"
 
 echo "== public link"
 # A new artifact, private until cairn public turns the link on. team@e2e.test
@@ -401,12 +419,14 @@ jq -e '.public == true and .publicWrites == true and .unchanged == false and .li
 pass "cairn public --writes on lets a signed-in link holder write, with the same link"
 
 "$BIN" public pubdoc on | grep "already public; nothing changed" >/dev/null || fail "a second public on wrote a record"
-if "$BIN" public pubdoc off >/dev/null 2>"$WORK/publicoff.err"; then
-  fail "public off succeeded on a public artifact"
-fi
-grep -q "new epoch" "$WORK/publicoff.err" || fail "public off failed for another reason: $(cat "$WORK/publicoff.err")"
-[[ "$(pub_status GET "/api/artifacts/$PID/membership" "${LINKH[@]}")" == "200" ]] || fail "the link stopped after a refused off"
-pass "public off is refused until the next epoch"
+"$BIN" public pubdoc off --json > "$WORK/pub-off.json" || fail "cairn public off: $(cat "$WORK/pub-off.json")"
+jq -e '.public == false and .newEpoch == true and .epoch == 2 and .link == "" and .unchanged == false' \
+  "$WORK/pub-off.json" >/dev/null || fail "public off --json fields: $(cat "$WORK/pub-off.json")"
+[[ "$(pub_status GET "/api/artifacts/$PID/membership" "${LINKH[@]}")" == "404" ]] || fail "the old link works after public off"
+"$BIN" public pubdoc on --json > "$WORK/pub-again.json" || fail "cairn public on after off"
+jq -e '.epoch == 2 and .link != "'"$LINK"'"' "$WORK/pub-again.json" >/dev/null || fail "public on after off kept the old link: $(cat "$WORK/pub-again.json")"
+[[ "$(pub_status GET "/api/artifacts/$PID/membership" "${LINKH[@]}")" == "404" ]] || fail "the old link works under the new link"
+pass "public off starts epoch 2; turned on again, the artifact has a new link and the old one stays dead"
 
 echo "== backup"
 "$BIN" backup --data-dir "$WORK/data" --out "$WORK/backup" >/dev/null

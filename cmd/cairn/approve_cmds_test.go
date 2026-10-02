@@ -115,22 +115,6 @@ func TestTeamCommandRefusals(t *testing.T) {
 	}
 }
 
-func TestTeamNoneNeedsANewEpochWhileAMemberHoldsAWrap(t *testing.T) {
-	w := newTeamWorld(t)
-	w.as(t, "bob")
-	if _, err := runQuiet(t, runApprove, w.artifact, "cat@example.com"); err != nil {
-		t.Fatal(err)
-	}
-	w.as(t, "ada")
-	_, err := runQuiet(t, runTeam, w.artifact, "none")
-	if !errors.Is(err, client.ErrTeamNeedsNextEpoch) || !strings.Contains(err.Error(), "new epoch") {
-		t.Errorf("team none with cat holding a wrap: %v, want ErrTeamNeedsNextEpoch naming a new epoch", err)
-	}
-	if got := runJSON[map[string]any](t, runTeam, w.artifact, "viewer", "--json"); got["team"] != "viewer" {
-		t.Errorf("a refused change must leave the team as it was: %v", got)
-	}
-}
-
 func TestApproveCommandListsAndApproves(t *testing.T) {
 	w := newTeamWorld(t)
 	w.as(t, "bob")

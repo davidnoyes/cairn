@@ -192,24 +192,6 @@ func TestTeamRefusals(t *testing.T) {
 	}
 }
 
-func TestTeamNoneNeedsANextEpochWhileAMemberHoldsAWrap(t *testing.T) {
-	w := newTeam(t)
-	w.setup(t, "viewer")
-	if err := approve(t, w.bob, w.artifact, "cat@example.com"); err != nil {
-		t.Fatal(err)
-	}
-	_, err := w.ada.Team(w.artifact, "none")
-	if !errors.Is(err, ErrTeamNeedsNextEpoch) {
-		t.Fatalf("Team none with cat holding a wrap: %v, want ErrTeamNeedsNextEpoch", err)
-	}
-	if !strings.Contains(err.Error(), "new epoch") {
-		t.Errorf("message %q does not say it needs a new epoch", err)
-	}
-	if m, _ := w.ada.Membership(w.artifact); len(m.Records) != 3 {
-		t.Errorf("a refused change wrote a record: %d records, want 3", len(m.Records))
-	}
-}
-
 func approve(t *testing.T, c *Client, artifact, who string) error {
 	t.Helper()
 	_, err := c.Approve(artifact, who, false)

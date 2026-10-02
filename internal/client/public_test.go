@@ -122,17 +122,6 @@ func TestPublicOff(t *testing.T) {
 	if _, err := s.ada.Public(s.artifact, false, boolp(true)); !errors.Is(err, ErrPublicWritesWithOff) {
 		t.Errorf("Public off --writes on = %v, want ErrPublicWritesWithOff", err)
 	}
-	// Public: off needs the next epoch.
-	if _, err := s.ada.Public(s.artifact, true, nil); err != nil {
-		t.Fatal(err)
-	}
-	seq := publicChain(t, s.ada, s.artifact).Latest.Seq
-	if _, err := s.ada.Public(s.artifact, false, nil); !errors.Is(err, ErrPublicOffNeedsNextEpoch) {
-		t.Errorf("Public off on a public artifact = %v, want ErrPublicOffNeedsNextEpoch", err)
-	}
-	if got := publicChain(t, s.ada, s.artifact); got.Latest.Seq != seq || !got.Latest.Public {
-		t.Errorf("a refused off changed the chain: seq %d, public %v", got.Latest.Seq, got.Latest.Public)
-	}
 }
 
 func TestPublicIsForTheOwner(t *testing.T) {

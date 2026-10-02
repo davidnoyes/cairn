@@ -139,11 +139,17 @@ func runShare(args []string) error {
 	}
 	if *jsonOut {
 		listed, unlisted := listingJSON(res.Listed, res.Unlisted)
-		return printJSON(map[string]any{
+		dropped := []string{}
+		for _, x := range res.Dropped {
+			dropped = append(dropped, x.Email)
+		}
+		out := map[string]any{
 			"artifact": a.ID, "user": res.User.ID, "email": res.User.Email, "fp": res.User.FP,
-			"prior": res.Prior, "role": res.Role, "promoted": res.Promoted, "unchanged": res.Unchanged, "epoch": res.Epoch,
-			"listed": listed, "unlisted": unlisted,
-		})
+			"prior": res.Prior, "role": res.Role, "promoted": res.Promoted, "demoted": res.Demoted,
+			"unchanged": res.Unchanged, "epoch": res.Epoch, "listed": listed, "unlisted": unlisted, "dropped": dropped,
+		}
+		epochChangeJSON(out, res.EpochChange)
+		return printJSON(out)
 	}
 	fmt.Printf("%s (%s)\nfingerprint %s (%s)\n", res.User.Email, res.User.ID, showFP(res.User.FP), shareState(res.Prior))
 	switch {
@@ -151,12 +157,93 @@ func runShare(args []string) error {
 		fmt.Printf("already a %s of %s; nothing changed\n", res.Role, a.Name)
 	case res.Promoted:
 		fmt.Printf("promoted to %s of %s\n", res.Role, a.Name)
+	case res.Demoted:
+		fmt.Printf("demoted to %s of %s\n", res.Role, a.Name)
 	default:
 		fmt.Printf("added as %s of %s\n", res.Role, a.Name)
 	}
+	for _, x := range res.Dropped {
+		fmt.Printf("dropped the exclusion of %s: they are listed again\n", x.Email)
+	}
+	printEpochChange(c, a.ID, res.Epoch, res.EpochChange)
 	printListing(a.ID, res.TeamRole, res.Listed, res.Unlisted)
 	if res.Prior != e2e.PinVerified {
 		fmt.Printf("compare the fingerprint with them, then run: cairn pin %s --verified\n", res.User.Email)
+	}
+	return nil
+}
+
+// epochChangeJSON adds to out what a command that may have started a new
+// epoch reports: whether it did, who it excluded and why, and the new public
+// link, empty when the artifact is private.
+func epochChangeJSON(out map[string]any, ch client.EpochChange) {
+	excluded := []map[string]string{}
+	for _, x := range ch.Excluded {
+		excluded = append(excluded, map[string]string{"user": x.User.ID, "name": x.User.Name, "email": x.User.Email, "fp": x.User.FP, "reason": x.Reason})
+	}
+	out["newEpoch"], out["excluded"], out["link"] = ch.NewEpoch, excluded, ch.Link
+}
+
+// printEpochChange says that a new epoch started, who it excluded and why,
+// the new public link if there is one, and how many versions now need review
+// because their pusher is no longer an editor. It prints nothing when ch did
+// not start a new epoch.
+func printEpochChange(c *client.Client, artifact string, epoch int, ch client.EpochChange) {
+	if !ch.NewEpoch {
+		return
+	}
+	fmt.Printf("started epoch %d: the old key no longer opens the artifact\n", epoch)
+	for _, x := range ch.Excluded {
+		fmt.Printf("excluded %s (%s), fingerprint %s: %s\n", x.User.Email, x.User.Name, showFP(x.User.FP), x.Reason)
+	}
+	if len(ch.Excluded) > 0 {
+		fmt.Printf("to let an excluded user back in, compare their fingerprint with them, then run: cairn share %s USER\n", artifact)
+	}
+	if ch.Link != "" {
+		fmt.Printf("\nthe public link changed, and the old link no longer works. The new link is:\n\n%s\n\n", ch.Link)
+	}
+	// Only a hint: the record is already in, so a failed lookup is not an error.
+	switch list, _ := c.Review(artifact); len(list) {
+	case 0:
+	case 1:
+		fmt.Printf("1 version needs review: its pusher is no longer an editor. To see it, run: cairn review %s\n", artifact)
+	default:
+		fmt.Printf("%d versions need review: their pushers are no longer editors. To see them, run: cairn review %s\n", len(list), artifact)
+	}
+}
+
+func runUnshare(args []string) error {
+	const usage = "cairn unshare ARTIFACT USER [--json]"
+	fs := flag.NewFlagSet("unshare", flag.ExitOnError)
+	jsonOut := fs.Bool("json", false, "JSON output")
+	pos, err := parsePositional(fs, args, 2, usage)
+	if err != nil {
+		return err
+	}
+	c, err := apiClient()
+	if err != nil {
+		return err
+	}
+	a, err := c.ResolveArtifact(pos[0])
+	if err != nil {
+		return err
+	}
+	res, err := c.Unshare(a.ID, pos[1])
+	if err != nil {
+		return explainRefusal(c, err)
+	}
+	if *jsonOut {
+		listed, _ := listingJSON(res.Listed, nil)
+		out := map[string]any{
+			"artifact": a.ID, "user": res.User.ID, "email": res.User.Email, "epoch": res.Epoch, "listed": listed,
+		}
+		epochChangeJSON(out, res.EpochChange)
+		return printJSON(out)
+	}
+	fmt.Printf("removed %s (%s) from %s\n", res.User.Email, res.User.ID, a.Name)
+	printEpochChange(c, a.ID, res.Epoch, res.EpochChange)
+	for _, d := range res.Listed {
+		fmt.Printf("listed approved team member %s (%s), fingerprint %s\n", d.Email, d.Name, showFP(d.FP))
 	}
 	return nil
 }
@@ -403,16 +490,19 @@ func runTeam(args []string) error {
 	}
 	if *jsonOut {
 		listed, unlisted := listingJSON(res.Listed, res.Unlisted)
-		return printJSON(map[string]any{
+		out := map[string]any{
 			"artifact": a.ID, "team": res.Team, "epoch": res.Epoch, "unchanged": res.Unchanged,
 			"listed": listed, "unlisted": unlisted,
-		})
+		}
+		epochChangeJSON(out, res.EpochChange)
+		return printJSON(out)
 	}
 	if res.Unchanged {
 		fmt.Printf("team is already %s; nothing changed\n", res.Team)
 	} else {
 		fmt.Printf("team set to %s for %s\n", res.Team, a.Name)
 	}
+	printEpochChange(c, a.ID, res.Epoch, res.EpochChange)
 	printListing(a.ID, res.Team, res.Listed, res.Unlisted)
 	return nil
 }
@@ -473,13 +563,20 @@ func runPublic(args []string) error {
 		return explainRefusal(c, err)
 	}
 	if *jsonOut {
-		return printJSON(map[string]any{
+		out := map[string]any{
 			"artifact": a.ID, "public": res.Public, "publicWrites": res.PublicWrites, "epoch": res.Epoch,
 			"link": res.Link, "unchanged": res.Unchanged,
-		})
+		}
+		epochChangeJSON(out, client.EpochChange{NewEpoch: res.NewEpoch, Excluded: res.Excluded, Link: res.Link})
+		return printJSON(out)
 	}
 	if !res.Public {
-		fmt.Printf("%s is already private; nothing changed\n", a.Name)
+		if res.NewEpoch {
+			fmt.Printf("%s is private\n", a.Name)
+			printEpochChange(c, a.ID, res.Epoch, client.EpochChange{NewEpoch: true, Excluded: res.Excluded})
+		} else {
+			fmt.Printf("%s is already private; nothing changed\n", a.Name)
+		}
 		return nil
 	}
 	if res.Unchanged {

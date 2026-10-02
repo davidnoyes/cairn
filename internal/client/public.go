@@ -10,10 +10,6 @@ import (
 )
 
 var (
-	// ErrPublicOffNeedsNextEpoch means making a public artifact private needs
-	// a new epoch, because anyone holding the link already has the epoch's
-	// key.
-	ErrPublicOffNeedsNextEpoch = errors.New("making a public artifact private needs a new epoch, which this version of cairn cannot create yet")
 	// ErrPublicWritesWithOff means --writes was given with off, which has no
 	// switch to set.
 	ErrPublicWritesWithOff = errors.New("--writes sets who can write through a public link, so it goes with on, not off")
@@ -27,14 +23,19 @@ type PublicResult struct {
 	Epoch        int
 	Link         string
 	Unchanged    bool // the artifact already had this setting, so no record was written
+	// NewEpoch is set when making the artifact private started a new epoch,
+	// because anyone holding the link already has the old epoch's key.
+	// Excluded are the team members who held a wrap, and are excluded.
+	NewEpoch bool
+	Excluded []ExcludedUser
 }
 
 // Public makes the artifact public, or sets whether a signed-in link holder
 // may write, in a same-epoch record that carries the link token hash the
 // server needs. writes is nil to leave the switch as it is, which for an
 // artifact going public is off. The caller must be the owner. Off on a
-// public artifact is ErrPublicOffNeedsNextEpoch, and off on a private one
-// writes nothing. The link is built from the epoch's AK, opened from the
+// public artifact starts a new epoch, so the old link stops working, and off
+// on a private one writes nothing. The link is built from the epoch's AK, opened from the
 // owner's estate copy, before any record is written, so a host the link
 // format refuses is an error with the artifact unchanged.
 func (c *Client) Public(artifactID string, on bool, writes *bool) (*PublicResult, error) {
@@ -55,7 +56,7 @@ func (c *Client) Public(artifactID string, on bool, writes *bool) (*PublicResult
 	}
 	if !on {
 		if latest.Public {
-			return nil, ErrPublicOffNeedsNextEpoch
+			return c.publicOffNextEpoch(k, artifactID, va)
 		}
 		return &PublicResult{Epoch: latest.Epoch, Unchanged: true}, nil
 	}
@@ -77,12 +78,34 @@ func (c *Client) Public(artifactID string, on bool, writes *bool) (*PublicResult
 	}
 	if latest.Public && next.PublicWrites == latest.PublicWrites {
 		res.Unchanged = true
-	} else if err := c.putRecord(k, artifactID, va, next, nil); err != nil {
+	} else if err := c.putRecord(k, artifactID, va, next, nil, nil, ""); err != nil {
 		return nil, err
 	} else if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
 		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
 	}
 	return res, nil
+}
+
+// publicOffNextEpoch makes a public artifact private in a next-epoch record.
+func (c *Client) publicOffNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedArtifact) (*PublicResult, error) {
+	dir, err := c.Directory()
+	if err != nil {
+		return nil, err
+	}
+	pending, err := c.Pending(artifactID)
+	if err != nil {
+		return nil, err
+	}
+	next := va.Chain.Latest
+	next.Public, next.PublicWrites = false, false
+	change, _, err := c.putNextEpoch(k, artifactID, va, dir, pending, nextEpochRecord{next: next})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
+		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
+	}
+	return &PublicResult{Epoch: va.Chain.Latest.Epoch + 1, NewEpoch: true, Excluded: change.Excluded}, nil
 }
 
 // linkTokenHashFor is the hash of the epoch's link token the server stores

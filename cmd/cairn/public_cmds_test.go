@@ -46,7 +46,7 @@ func TestPublicCommand(t *testing.T) {
 	}
 	res := runJSON[map[string]any](t, runPublic, w.artifact, "on", "--writes", "off", "--json")
 	if res["artifact"] != w.artifact || res["public"] != true || res["publicWrites"] != false || res["epoch"] != float64(1) ||
-		res["link"] != link || res["unchanged"] != false || len(res) != 6 {
+		res["link"] != link || res["unchanged"] != false || res["newEpoch"] != false || len(res) != 8 {
 		t.Errorf("cairn public --json = %v", res)
 	}
 	res = runJSON[map[string]any](t, runPublic, w.artifact, "on", "--json")
@@ -66,13 +66,6 @@ func TestPublicOffCommand(t *testing.T) {
 	res := runJSON[map[string]any](t, runPublic, w.artifact, "off", "--json")
 	if res["public"] != false || res["link"] != "" || res["unchanged"] != true {
 		t.Errorf("cairn public off --json = %v", res)
-	}
-	if _, err := runQuiet(t, runPublic, w.artifact, "on"); err != nil {
-		t.Fatal(err)
-	}
-	_, err = runQuiet(t, runPublic, w.artifact, "off")
-	if !errors.Is(err, client.ErrPublicOffNeedsNextEpoch) || !strings.Contains(err.Error(), "new epoch") {
-		t.Errorf("cairn public off on a public artifact = %v, want ErrPublicOffNeedsNextEpoch", err)
 	}
 }
 

@@ -1,0 +1,315 @@
+// Next-epoch records: the owner's client starts a new epoch when a change
+// removes a member, demotes an editor, makes a public artifact private, or
+// ends a team share while a team member holds a wrap. As elsewhere in this
+// package, every byte of cryptography is built with internal/e2e.
+package client
+
+import (
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/aloisdeniel/cairn/internal/e2e"
+)
+
+var (
+	// ErrNotMember means the user is neither listed nor holding a wrap, so
+	// there is nothing to remove.
+	ErrNotMember = errors.New("the user is not a member of the artifact")
+	// ErrMemberKeyChanged means a member the record lists has keys other than
+	// the ones it lists them under. A next-epoch record lists every member
+	// under their current fingerprint, so the owner decides about them first.
+	ErrMemberKeyChanged = errors.New("a member's keys changed since the record listed them")
+)
+
+// newAK makes the AK of a new epoch. Tests replace it.
+var newAK = func() ([]byte, error) {
+	ak := make([]byte, 32)
+	_, err := rand.Read(ak)
+	return ak, err
+}
+
+// ExcludedUser is a user a next-epoch record excluded, and why.
+type ExcludedUser struct {
+	User   DirectoryUser
+	Reason string
+}
+
+// EpochChange is what a command that started a new epoch reports. Link is
+// the artifact's new public link when it stays public: the old one stops
+// working.
+type EpochChange struct {
+	NewEpoch bool
+	Excluded []ExcludedUser
+	Link     string
+}
+
+// nextEpochRecord is what putNextEpoch needs to know about the change.
+type nextEpochRecord struct {
+	// next is the record to write, with the members, team, and public
+	// switches the change wants. putNextEpoch fills in the epoch, akCommit,
+	// excluded, and the team members it lists.
+	next e2e.MembershipBody
+	// decided is a member whose pin the caller already decided, or "".
+	decided string
+	// exclude is a user who holds a wrap and is not listed that the caller
+	// removes, or "".
+	exclude string
+}
+
+// putNextEpoch signs and PUTs a next-epoch record built from r. It makes the
+// new AK, wraps it to every listed member, seals the estate copy, and
+// excludes every user the record removes or drops, and every team member who
+// holds a wrap and cannot be listed. The server refuses a record that leaves
+// any of them out of both lists, and the CLI is not interactive, so a team
+// member whose approval fails a check is excluded: the owner lists them again
+// by name with Share.
+func (c *Client) putNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, dir []DirectoryUser, pending []PendingUser, r nextEpochRecord) (*EpochChange, []DirectoryUser, error) {
+	latest := va.Chain.Latest
+	epoch := latest.Epoch + 1
+	// Defense in depth behind VerifyChain's epoch pin, which already refuses a
+	// stale epoch.
+	if err := e2e.CheckEncryptEpoch(va.Keyring.EpochPin(artifactID), epoch); err != nil {
+		return nil, nil, err
+	}
+	next := r.next
+	byID := map[string]DirectoryUser{}
+	for _, u := range dir {
+		byID[u.ID] = u
+	}
+	inMembers := func(id string) bool {
+		return slices.ContainsFunc(next.Members, func(m e2e.Member) bool { return m.User == id })
+	}
+
+	// Team members who hold a wrap are listed or excluded.
+	var lst approvedListing
+	if next.Team != "none" {
+		lst = c.listApproved(k, va, dir, pending, next.Team, func(id string) bool { return inMembers(id) || id == r.exclude })
+	}
+	next.Members = append(slices.Clone(next.Members), lst.members...)
+	slices.SortFunc(next.Members, func(a, b e2e.Member) int { return strings.Compare(a.User, b.User) })
+
+	change := &EpochChange{NewEpoch: true}
+	exclude := map[string]e2e.ExcludedEntry{}
+	exclude1 := func(u DirectoryUser, fp, reason string) {
+		exclude[u.ID] = e2e.ExcludedEntry{User: u.ID, FP: fp, Email: e2e.NormalizeEmail(u.Email)}
+		change.Excluded = append(change.Excluded, ExcludedUser{User: u, Reason: reason})
+	}
+	// Removed members, under the fingerprint the previous record lists them.
+	for _, m := range latest.Members {
+		if inMembers(m.User) {
+			continue
+		}
+		u, ok := byID[m.User]
+		if !ok {
+			return nil, nil, fmt.Errorf("the directory no longer lists the member %s, so the record cannot exclude them", m.User)
+		}
+		exclude1(u, m.FP, "removed")
+	}
+	for _, p := range pending {
+		if exclude[p.User.ID].User != "" || inMembers(p.User.ID) {
+			continue
+		}
+		switch {
+		case p.User.ID == r.exclude:
+			exclude1(p.User, p.User.FP, "removed")
+		case p.State == PendingApproved:
+			reason := "team sharing ended while they held a wrap"
+			if i := slices.IndexFunc(lst.unlisted, func(u UnlistedUser) bool { return u.User.ID == p.User.ID }); i >= 0 {
+				reason = fmt.Sprintf("their approval does not check out: %v", lst.unlisted[i].Err)
+			}
+			exclude1(p.User, p.User.FP, reason)
+		case p.State == PendingKeyChanged:
+			// Not listed, so a wrap they hold was made for a key other than
+			// their current one. The server accepts only a fingerprint it can
+			// account for, which the owner's client knows from its pin.
+			pin, ok := va.Keyring.Pins[p.User.ID]
+			if !ok || pin.FP == p.User.FP {
+				return nil, nil, fmt.Errorf("%s holds a wrap made for a key that is no longer theirs, and cairn does not know which; share with them again with cairn share --accept-new-key, then unshare them", p.User.Email)
+			}
+			exclude1(p.User, pin.FP, "their keys changed after they were wrapped to")
+		}
+	}
+
+	// Every member is listed under their current keys, and a pinned key that
+	// differs from them is the owner's to decide about.
+	for _, m := range next.Members {
+		u, ok := byID[m.User]
+		if !ok {
+			return nil, nil, fmt.Errorf("the directory no longer lists the member %s", m.User)
+		}
+		if m.FP != u.FP {
+			return nil, nil, fmt.Errorf("%w: %s (%s); share with them again with cairn share --accept-new-key, or remove them with cairn unshare", ErrMemberKeyChanged, u.Email, u.ID)
+		}
+		if m.User == r.decided {
+			continue
+		}
+		if _, _, err := checkPin(va.Keyring, u, false); err != nil {
+			return nil, nil, fmt.Errorf("member %s: %w", u.Email, err)
+		}
+	}
+
+	// An entry stays until a listed member matches it. A user listed again by
+	// name drops theirs.
+	for _, x := range latest.Excluded {
+		matched := slices.ContainsFunc(next.Members, func(m e2e.Member) bool {
+			return x.User == m.User || x.FP == m.FP || e2e.NormalizeEmail(x.Email) == e2e.NormalizeEmail(byID[m.User].Email)
+		})
+		if _, again := exclude[x.User]; !matched && !again {
+			exclude[x.User] = x
+		}
+	}
+	next.Excluded = make([]e2e.ExcludedEntry, 0, len(exclude))
+	for _, x := range exclude {
+		next.Excluded = append(next.Excluded, x)
+	}
+	slices.SortFunc(next.Excluded, func(a, b e2e.ExcludedEntry) int { return strings.Compare(a.User, b.User) })
+
+	// The new epoch's key, which no earlier epoch used.
+	aks, err := c.epochAKs(k, artifactID, va.Chain)
+	if err != nil {
+		return nil, nil, err
+	}
+	ak, err := newAK()
+	if err != nil {
+		return nil, nil, err
+	}
+	var earlier [][]byte
+	for _, old := range aks {
+		earlier = append(earlier, old)
+	}
+	if err := e2e.CheckNewAK(ak, earlier); err != nil {
+		return nil, nil, err
+	}
+	commit, err := e2e.AKCommit(ak, artifactID, uint64(epoch))
+	if err != nil {
+		return nil, nil, err
+	}
+	next.Epoch, next.AKCommit = epoch, commit
+	aks[epoch] = ak
+
+	// The new epoch for every listed member, and every earlier epoch for one
+	// the record adds: not listed under this fingerprint before, and holding
+	// no wrap through an approval.
+	var wraps []map[string]any
+	for _, m := range next.Members {
+		u := byID[m.User]
+		epochs := []int{epoch}
+		held := slices.ContainsFunc(latest.Members, func(l e2e.Member) bool { return l.User == m.User && l.FP == m.FP }) ||
+			slices.ContainsFunc(pending, func(p PendingUser) bool {
+				return p.User.ID == m.User && p.State == PendingApproved && p.User.FP == m.FP
+			})
+		if !held {
+			epochs = nil
+			for e := 1; e <= epoch; e++ {
+				epochs = append(epochs, e)
+			}
+		}
+		for _, e := range epochs {
+			w, err := e2e.Wrap(rand.Reader, e2e.WrapContext{
+				Purpose: "ak", Artifact: artifactID, Epoch: uint64(e), RecipientID: u.ID, RecipientPub: u.X25519Pub,
+			}, aks[e])
+			if err != nil {
+				return nil, nil, err
+			}
+			wraps = append(wraps, map[string]any{"user": u.ID, "epoch": e, "wrapped": e2e.B64(w)})
+		}
+	}
+	ekKey, err := e2e.EKSealKey(k.EK)
+	if err != nil {
+		return nil, nil, err
+	}
+	sealed, err := e2e.Seal(rand.Reader, ekKey, estateFields(artifactID, epoch), ak)
+	if err != nil {
+		return nil, nil, err
+	}
+	estate := []map[string]any{{"epoch": epoch, "sealed": e2e.B64(sealed)}}
+
+	// Build the link first: a host the link format refuses must fail before
+	// any record is written.
+	var linkHash string
+	if next.Public {
+		if change.Link, err = e2e.PublicLink(c.Host, artifactID, ak, epoch, va.Chain.Bodies[0].OwnerFP); err != nil {
+			return nil, nil, fmt.Errorf("cannot make a link for host %s: %w", c.Host, err)
+		}
+		token, err := e2e.LinkToken(ak, artifactID, uint64(epoch))
+		if err != nil {
+			return nil, nil, err
+		}
+		linkHash = e2e.LinkTokenHash(token)
+	}
+	if err := c.putRecord(k, artifactID, va, next, wraps, estate, linkHash); err != nil {
+		return nil, nil, err
+	}
+	for id, d := range lst.pins {
+		if err := c.storePin(k, id, d.pin, d.basedOn); err != nil {
+			return nil, nil, fmt.Errorf("the server accepted the new membership record, but pinning %s failed: %w", id, err)
+		}
+	}
+	return change, lst.listed, nil
+}
+
+// UnshareResult is what Unshare did.
+type UnshareResult struct {
+	EpochChange
+	User  DirectoryUser
+	Epoch int
+	// Listed are approved team members the new record lists, with the role
+	// the team grants.
+	Listed []DirectoryUser
+}
+
+// Unshare removes who from an artifact in a next-epoch record: the new epoch's
+// AK is wrapped to every member who stays, and who is excluded is listed in
+// the result. who is a member, or a team member who holds a wrap and is not
+// listed. The caller must be the owner.
+func (c *Client) Unshare(artifactID, who string) (*UnshareResult, error) {
+	k, err := c.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	va, err := c.VerifyArtifact(k, artifactID, "")
+	if err != nil {
+		return nil, err
+	}
+	latest := va.Chain.Latest
+	if latest.Owner != k.UserID || latest.OwnerFP != k.FP {
+		return nil, ErrNotOwner
+	}
+	dir, err := c.Directory()
+	if err != nil {
+		return nil, err
+	}
+	u, err := FindUser(dir, who)
+	if err != nil {
+		return nil, err
+	}
+	if u.ID == k.UserID {
+		return nil, ErrShareSelf
+	}
+	pending, err := c.Pending(artifactID)
+	if err != nil {
+		return nil, err
+	}
+	next := latest
+	next.Members = slices.DeleteFunc(slices.Clone(latest.Members), func(m e2e.Member) bool { return m.User == u.ID })
+	holder := ""
+	if len(next.Members) == len(latest.Members) {
+		if !slices.ContainsFunc(pending, func(p PendingUser) bool {
+			return p.User.ID == u.ID && (p.State == PendingApproved || p.State == PendingKeyChanged)
+		}) {
+			return nil, fmt.Errorf("%w: %s", ErrNotMember, u.Email)
+		}
+		holder = u.ID
+	}
+	change, listed, err := c.putNextEpoch(k, artifactID, va, dir, pending, nextEpochRecord{next: next, exclude: holder})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
+		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
+	}
+	return &UnshareResult{EpochChange: *change, User: u, Epoch: latest.Epoch + 1, Listed: listed}, nil
+}

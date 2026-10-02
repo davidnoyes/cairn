@@ -37,15 +37,11 @@ var (
 	ErrNotWaiting = errors.New("the user is not waiting for approval on this artifact")
 	// ErrApprovalUnverified means the owner's client does not list a user the
 	// server reports as approved, because the approval does not check out.
-	// Only a new epoch repairs it, which this version of cairn cannot create
-	// yet.
-	ErrApprovalUnverified = errors.New("the approval does not check out, so cairn will not share with the user; fixing it needs a new epoch, which a later release of cairn will create")
+	// Only a new epoch repairs it: cairn unshare starts one and excludes them.
+	ErrApprovalUnverified = errors.New("the approval does not check out, so cairn will not share with the user; cairn unshare starts a new epoch that excludes them")
 	// ErrPendingKeysDiffer means the server serves a user's keys one way in
 	// the directory and another in the pending list.
 	ErrPendingKeysDiffer = errors.New("the server serves different keys for the user in the directory and in the pending list")
-	// ErrTeamNeedsNextEpoch means setting the team to none drops a team
-	// member who holds a wrap, which only a new epoch can do.
-	ErrTeamNeedsNextEpoch = errors.New("setting the team to none while a team member holds a wrap needs a new epoch, which this version of cairn cannot create yet")
 )
 
 // States of a pending entry, as GET /pending names them.
@@ -337,6 +333,26 @@ func (c *Client) listApproved(k *UnlockedKeys, va *VerifiedArtifact, dir []Direc
 	return out
 }
 
+// teamNoneNextEpoch is Team none while a team member holds a wrap: a next-epoch
+// record that excludes each of them.
+func (c *Client) teamNoneNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, pending []PendingUser, res *TeamResult) (*TeamResult, error) {
+	dir, err := c.Directory()
+	if err != nil {
+		return nil, err
+	}
+	next := va.Chain.Latest
+	next.Team = "none"
+	change, _, err := c.putNextEpoch(k, artifactID, va, dir, pending, nextEpochRecord{next: next})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
+		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
+	}
+	res.EpochChange, res.Epoch = *change, va.Chain.Latest.Epoch+1
+	return res, nil
+}
+
 // Team
 
 // TeamResult is what Team did.
@@ -348,6 +364,7 @@ type TeamResult struct {
 	// team grants; Unlisted are those whose approval failed a check.
 	Listed   []DirectoryUser
 	Unlisted []UnlistedUser
+	EpochChange
 }
 
 // CheckTeam refuses a team value other than none, viewer, or editor, so a
@@ -362,8 +379,8 @@ func CheckTeam(team string) error {
 // Team sets whom the artifact is shared with as a team (none, viewer, or
 // editor) in a same-epoch record, and lists each approved team member whose
 // approval passes the four checks, under the role the team grants. Setting
-// none while a team member holds a wrap needs a new epoch, which is
-// ErrTeamNeedsNextEpoch.
+// none while a team member holds a wrap starts a new epoch, which excludes
+// every such member.
 func (c *Client) Team(artifactID, team string) (*TeamResult, error) {
 	if err := CheckTeam(team); err != nil {
 		return nil, err
@@ -391,10 +408,10 @@ func (c *Client) Team(artifactID, team string) (*TeamResult, error) {
 	if team == "none" {
 		// A team member holds a wrap while they are approved, or while a
 		// wrap they hold is for keys that are no longer theirs.
-		for _, p := range pending {
-			if p.State == PendingApproved || p.State == PendingKeyChanged && !listed(p.User.ID) {
-				return nil, fmt.Errorf("%w: %s holds a wrap", ErrTeamNeedsNextEpoch, p.User.Email)
-			}
+		if slices.ContainsFunc(pending, func(p PendingUser) bool {
+			return p.State == PendingApproved || p.State == PendingKeyChanged && !listed(p.User.ID)
+		}) {
+			return c.teamNoneNextEpoch(k, artifactID, va, pending, res)
 		}
 	}
 	var lst approvedListing
@@ -415,7 +432,7 @@ func (c *Client) Team(artifactID, team string) (*TeamResult, error) {
 	next.Team = team
 	next.Members = append(slices.Clone(latest.Members), lst.members...)
 	slices.SortFunc(next.Members, func(a, b e2e.Member) int { return strings.Compare(a.User, b.User) })
-	if err := c.putRecord(k, artifactID, va, next, nil); err != nil {
+	if err := c.putRecord(k, artifactID, va, next, nil, nil, ""); err != nil {
 		return nil, err
 	}
 	for id, d := range lst.pins {

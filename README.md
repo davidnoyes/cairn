@@ -261,13 +261,17 @@ cairn db query --artifact <claude-session-id> "SELECT ..."
 
 ### Sharing
 
-Only the owner shares, and only within the artifact's current epoch: adding
-a member and promoting a viewer to editor work now; removing or demoting a
-member needs a new epoch, which a later release adds.
+Only the owner shares. Adding a member and promoting a viewer to editor stay
+within the artifact's current epoch. Removing a member, demoting an editor,
+making a public artifact private, and ending a team share while an approved
+member holds a key each start a new epoch, with a new key that nobody removed
+ever held.
 
 ```sh
 cairn share my-app bob@example.com                 # add as viewer
 cairn share my-app bob@example.com --role editor   # or promote
+cairn share my-app bob@example.com --role viewer   # or demote: a new epoch
+cairn unshare my-app bob@example.com               # remove: a new epoch
 cairn members my-app                               # roles, fingerprints, pin states
 cairn team my-app viewer                           # share with the whole team
 cairn approve my-app                               # team members waiting
@@ -282,9 +286,18 @@ first time it sees them. Compare the fingerprint with them over another
 channel, then run `cairn pin --verified`. If their keys change after they
 were pinned, for example after an account reset without the recovery code,
 `share` and `pin` refuse. They print both fingerprints and the reset time;
-pass `--accept-new-key` once you have confirmed the new one. `share` also
-refuses anyone the owner excluded from the artifact, and refuses outright
-when the directory lists two accounts with the same email or fingerprint.
+pass `--accept-new-key` once you have confirmed the new one. `share` refuses
+outright when the directory lists two accounts with the same email or
+fingerprint.
+
+`cairn unshare ARTIFACT USER` removes a member and starts a new epoch. Every
+user a new epoch removes goes into the artifact's excluded list, with their
+fingerprint. The command prints who it excluded and why. Sharing with an
+excluded user by name lists them again and drops the entry. A new epoch needs
+every member listed under their current key, so it refuses, naming the
+member, when a listed member's keys changed: run `cairn share --accept-new-key`
+for them, or `cairn unshare` them. If the artifact is public, the command also
+prints the new public link, and the old one stops working.
 
 `cairn team` shares an artifact with the whole team as `viewer` or `editor`,
 or stops with `none`. A new member gets nothing until the owner or an editor
@@ -298,7 +311,10 @@ checks out, and otherwise prints their name and fingerprint. `approve` refuses
 anyone the owner excluded. It refuses a user whose pinned key changed unless
 you pass `--accept-new-key`. If a user's key changed after you approved or
 listed them, the owner runs `cairn share` again. Setting `none` while an
-approved member holds a key needs a new epoch, which a later release adds.
+approved member holds a key starts a new epoch that excludes them. A new
+epoch on a team artifact lists each approved member whose approval checks
+out, and excludes every one it cannot list, because `cairn` never asks
+questions. The owner lists an excluded member again with `cairn share`.
 
 `cairn public ARTIFACT on` makes the artifact readable by anyone who holds
 its link, and prints the link. The key is in the part after the `#`, which a
@@ -306,8 +322,8 @@ browser never sends to the server, so share the link only with people who
 should read the artifact. A visitor's client checks the artifact's
 membership against the link before it trusts it. Public writes are off at
 first. Run `cairn public ARTIFACT on --writes on` to let a signed-in link
-holder write to the database and files. Turning a public link off needs a
-new epoch, which a later release adds.
+holder write to the database and files. `cairn public ARTIFACT off` starts a
+new epoch, so the old link stops working.
 
 A link holder has no pinned state, so a server can show you an older part of
 the artifact's membership chain. For example, it can hide a later record

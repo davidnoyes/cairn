@@ -22,9 +22,6 @@ var (
 	ErrDirectoryDuplicate = errors.New("the directory lists two users with the same email or fingerprint")
 	// ErrExcluded means the user matches an entry the owner excluded.
 	ErrExcluded = errors.New("the user was removed from this artifact and is excluded from it")
-	// ErrNeedsNextEpoch means the change removes or demotes someone, which
-	// only a new epoch can do.
-	ErrNeedsNextEpoch = errors.New("demoting a member needs a new epoch, which this version of cairn cannot create yet")
 	// ErrNotOwner means only the artifact's owner can make the change.
 	ErrNotOwner = errors.New("only the artifact's owner can change its members")
 	// ErrShareSelf means the owner tried to share with themselves.
@@ -315,9 +312,14 @@ type ShareResult struct {
 	Prior     string // the pin state before
 	Role      string
 	Promoted  bool // an existing viewer became an editor
+	Demoted   bool // an existing editor became a viewer, in a new epoch
 	Unchanged bool // the user already held this role under these keys
 	Epoch     int
 	TeamRole  string // the latest record's team: none, viewer, or editor
+	// Dropped are the excluded entries the share removed, because the user
+	// is listed again by name.
+	Dropped []e2e.ExcludedEntry
+	EpochChange
 	// Listed are approved team members the record also lists, with the role
 	// the team grants; Unlisted are those whose approval failed a check, who
 	// the owner is asked about.
@@ -326,10 +328,11 @@ type ShareResult struct {
 }
 
 // Share adds who to an artifact at its current epoch, or promotes a viewer
-// to editor. It refuses a demotion, which needs a new epoch; a user an
-// owner excluded; a directory with duplicate emails or fingerprints; and a
-// user whose keys changed since they were pinned, unless acceptNewKey. A
-// user seen for the first time is pinned unverified. The new member gets a
+// to editor. Demoting an editor starts a new epoch. Sharing by name with a
+// user the owner excluded lists them again, and drops the entries they match.
+// It refuses a directory with duplicate emails or fingerprints, and a user
+// whose keys changed since they were pinned, unless acceptNewKey. A user
+// seen for the first time is pinned unverified. The new member gets a
 // wrap of every epoch's AK, opened from the owner's estate copies and
 // checked against the chain's akCommit. A user an editor approved already
 // holds those wraps, so they get none. The record also lists each approved
@@ -361,9 +364,6 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	if u.ID == k.UserID {
 		return nil, ErrShareSelf
 	}
-	if e := ExcludedMatch(latest.Excluded, u); e != nil {
-		return nil, fmt.Errorf("%w: %s matches the excluded entry for %s (%s)", ErrExcluded, u.Email, e.Email, e.User)
-	}
 	prior, pin, err := checkPin(va.Keyring, u, acceptNewKey)
 	if err != nil {
 		return nil, err
@@ -386,19 +386,23 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	members := slices.Clone(latest.Members)
 	i := slices.IndexFunc(members, func(m e2e.Member) bool { return m.User == u.ID })
 	needsWraps := true
+	demote := false
 	switch {
 	case i < 0:
 		members = append(members, e2e.Member{User: u.ID, Role: role, FP: u.FP})
 		needsWraps = !approved
-	case members[i].Role == "editor" && role == "viewer":
-		return nil, ErrNeedsNextEpoch
 	default:
-		res.Promoted = members[i].Role != role
+		demote = members[i].Role == "editor" && role == "viewer"
+		res.Promoted = members[i].Role != role && !demote
+		res.Demoted = demote
 		needsWraps = members[i].FP != u.FP
-		res.Unchanged = !res.Promoted && !needsWraps
+		res.Unchanged = !res.Promoted && !demote && !needsWraps
 		members[i] = e2e.Member{User: u.ID, Role: role, FP: u.FP}
 	}
 	basedOn := va.Keyring.Pins[u.ID].FP
+	if demote {
+		return c.shareNextEpoch(k, artifactID, va, dir, pending, members, u, pin, basedOn, res)
+	}
 	if res.Unchanged {
 		if pin != nil {
 			if err := c.storePin(k, u.ID, *pin, basedOn); err != nil {
@@ -442,7 +446,8 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 
 	next := latest
 	next.Members = members
-	if err := c.putRecord(k, artifactID, va, next, wraps); err != nil {
+	next.Excluded, res.Dropped = dropExcluded(latest.Excluded, members, dir)
+	if err := c.putRecord(k, artifactID, va, next, wraps, nil, ""); err != nil {
 		return nil, err
 	}
 	for id, d := range lst.pins {
@@ -461,10 +466,54 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	return res, nil
 }
 
-// putRecord signs next as the record after the verified chain's latest, at
-// the same epoch, and PUTs it with wraps. A public record carries the hash of
-// the epoch's link token, which the server requires of every public record.
-func (c *Client) putRecord(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, next e2e.MembershipBody, wraps []map[string]any) error {
+// shareNextEpoch is Share when the change demotes an editor: the demoted
+// user stays listed as a viewer and the record starts a new epoch.
+func (c *Client) shareNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, dir []DirectoryUser,
+	pending []PendingUser, members []e2e.Member, u DirectoryUser, pin *e2e.Pin, basedOn string, res *ShareResult) (*ShareResult, error) {
+	next := va.Chain.Latest
+	next.Members = members
+	change, listed, err := c.putNextEpoch(k, artifactID, va, dir, pending, nextEpochRecord{next: next, decided: u.ID})
+	if err != nil {
+		return nil, err
+	}
+	res.EpochChange, res.Listed, res.Unlisted, res.Epoch = *change, listed, nil, va.Chain.Latest.Epoch+1
+	if pin != nil {
+		if err := c.storePin(k, u.ID, *pin, basedOn); err != nil {
+			return nil, fmt.Errorf("the server accepted the new membership record, but pinning %s failed: %w", u.Email, err)
+		}
+	}
+	if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
+		return nil, fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w", err)
+	}
+	return res, nil
+}
+
+// dropExcluded returns the entries no listed member matches, by user ID,
+// fingerprint, or normalized email, and those a member matches, which a record
+// that lists the member must drop.
+func dropExcluded(excluded []e2e.ExcludedEntry, members []e2e.Member, dir []DirectoryUser) (kept, dropped []e2e.ExcludedEntry) {
+	email := map[string]string{}
+	for _, d := range dir {
+		email[d.ID] = e2e.NormalizeEmail(d.Email)
+	}
+	for _, x := range excluded {
+		if slices.ContainsFunc(members, func(m e2e.Member) bool {
+			return x.User == m.User || x.FP == m.FP || e2e.NormalizeEmail(x.Email) == email[m.User]
+		}) {
+			dropped = append(dropped, x)
+		} else {
+			kept = append(kept, x)
+		}
+	}
+	return kept, dropped
+}
+
+// putRecord signs next as the record after the verified chain's latest and
+// PUTs it with wraps and, for a next epoch, the estate copy of its AK. A
+// public record carries the hash of the epoch's link token, which the server
+// requires of every public record: linkHash for a next epoch, whose estate
+// copy the server does not hold yet, or empty to take it from the epoch's own.
+func (c *Client) putRecord(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, next e2e.MembershipBody, wraps, estate []map[string]any, linkHash string) error {
 	next.Seq, next.Prev, next.Transfer, next.Handover = va.Chain.Latest.Seq+1, va.Chain.Head, "", ""
 	if next.Excluded == nil {
 		next.Excluded = []e2e.ExcludedEntry{}
@@ -480,14 +529,16 @@ func (c *Client) putRecord(k *UnlockedKeys, artifactID string, va *VerifiedArtif
 	if wraps == nil {
 		wraps = []map[string]any{}
 	}
-	var linkHash string
-	if next.Public {
+	if estate == nil {
+		estate = []map[string]any{}
+	}
+	if next.Public && linkHash == "" {
 		if linkHash, err = c.linkTokenHashFor(k, artifactID, va.Chain, next.Epoch); err != nil {
 			return err
 		}
 	}
 	return c.doJSON("PUT", "/api/artifacts/"+artifactID+"/membership", map[string]any{
-		"membership": env, "wraps": wraps, "estate": []any{}, "linkTokenHash": linkHash,
+		"membership": env, "wraps": wraps, "estate": estate, "linkTokenHash": linkHash,
 	}, nil)
 }
 

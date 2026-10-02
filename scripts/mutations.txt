@@ -57,9 +57,7 @@ internal/client/keyring.go	if kr.Epochs[artifactID] == want && pin == nil {	if k
 internal/client/keyring.go	if !ok || cur.Seq < chain.Latest.Seq {	if true {	go test ./internal/client -run 'TestRecordChainKeepsTheLaterEntry'
 internal/client/keyring.go	if _, ok := kr.Pins[creator]; pin != nil && !ok {	if _, ok := kr.Pins[creator]; pin != nil || !ok {	go test ./internal/client -run 'TestRecordChainKeepsAPinStoredMeanwhile'
 internal/client/share.go	if !acceptNewKey {	if false {	go test ./internal/client -run 'TestShareRefusesAChangedKey'
-internal/client/share.go	if e := ExcludedMatch(latest.Excluded, u); e != nil {	if e := ExcludedMatch(latest.Excluded, u); false && e != nil {	go test ./internal/client -run 'TestShareRefusesAnExcludedUser'
 internal/client/share.go	if err := CheckDirectory(dir); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -run 'TestShareRefusesADuplicateDirectory'
-internal/client/share.go	case members[i].Role == "editor" && role == "viewer":	case false:	go test ./internal/client -run 'TestSharePromotesAndRefusesDemotion'
 internal/client/share.go	if want, ok := commits[e.Epoch]; !ok || commit != want {	if want, ok := commits[e.Epoch]; !ok && commit != want {	go test ./internal/client -run 'TestShareRefusesAnEstateCopyThatMissesTheCommit'
 cmd/cairn/config.go	f.cliConfig = cfg	*f = configFile{cliConfig: cfg}	go test ./cmd/cairn -run TestKeyringAnchorSurvivesLogoutAndLogin
 internal/e2e/approval.go	if e.User == id || e.FP == fp || NormalizeEmail(e.Email) == email {	if e.User == id || e.FP == fp || e.Email == email {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
@@ -73,7 +71,7 @@ internal/server/web/e2e.mjs	return `cairn.keyringAnchor.${userId}.${fp}`;	return
 # Pin and chain races, the CLI anchor store, and the recovery guidance (milestone 3 step 4 fixes).
 internal/client/share.go	case cur.FP == pin.FP && cur.State == e2e.PinVerified:	case false:	go test ./internal/client -run TestStorePinHoldsAgainstAConcurrentPin
 internal/client/share.go	case cur.FP != pin.FP && cur.FP != basedOn:	case false:	go test ./internal/client -run TestStorePinHoldsAgainstAConcurrentPin
-internal/client/share.go	if err := c.putRecord(k, artifactID, va, next, wraps); err != nil {	if err := c.putRecord(k, artifactID, va, next, wraps); err != nil && false {	go test ./internal/client -run TestShareLeavesNoPinWhenTheMembershipWriteFails
+internal/client/share.go	if err := c.putRecord(k, artifactID, va, next, wraps, nil, ""); err != nil {	if err := c.putRecord(k, artifactID, va, next, wraps, nil, ""); err != nil && false {	go test ./internal/client -run TestShareLeavesNoPinWhenTheMembershipWriteFails
 internal/client/keyring.go	if p, ok := kr.Pins[creator]; ok && anchorFP != "" && p.FP != anchorFP {	if p, ok := kr.Pins[creator]; ok && anchorFP != "" && p.FP != anchorFP && false {	go test ./internal/client -run TestRecordChainRefusesAMismatchedCreatorPin
 internal/client/keyring.go	anchorFP = pin.FP	anchorFP = ""	go test ./internal/client -run TestRecordChainRefusesAMismatchedCreatorPin
 internal/client/keyring.go	anchorFP = kr.Pins[creator].FP	anchorFP = ""	go test ./internal/client -run TestRecordChainRefusesAMismatchedCreatorPin
@@ -163,8 +161,8 @@ internal/client/approve.go	if chain.Latest.Owner == k.UserID {	if false {	go tes
 internal/client/approve.go	if want, ok := commits[w.Epoch]; !ok || commit != want {	if want, ok := commits[w.Epoch]; !ok && false || commit != want && false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/approve.go	if p.State != PendingApproved || skip(p.User.ID) {	if skip(p.User.ID) {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/approve.go	_, pin, err = checkPin(va.Keyring, p.User, false)	_, pin, err = checkPin(va.Keyring, p.User, true)	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
-internal/client/approve.go	if p.State == PendingApproved || p.State == PendingKeyChanged && !listed(p.User.ID) {	if p.State == PendingKeyChanged && !listed(p.User.ID) {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
-internal/client/approve.go	if p.State == PendingApproved || p.State == PendingKeyChanged && !listed(p.User.ID) {	if p.State == PendingApproved || p.State == PendingKeyChanged {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	return p.State == PendingApproved || p.State == PendingKeyChanged && !listed(p.User.ID)	return p.State == PendingKeyChanged && !listed(p.User.ID)	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/approve.go	return p.State == PendingApproved || p.State == PendingKeyChanged && !listed(p.User.ID)	return p.State == PendingApproved || p.State == PendingKeyChanged	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/approve.go	if latest.Team == team && len(lst.members) == 0 {	if false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/approve.go	if team != "none" && team != "viewer" && team != "editor" {	if false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/share.go	needsWraps = !approved	needsWraps = true || approved	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
@@ -335,3 +333,22 @@ internal/server/handlers_db.go	declared = 0	_ = 0	go test ./internal/server -run
 internal/server/epoch.go	len(vals) > 1 || err != nil	err != nil	go test ./internal/server -run TestDeclaredEpochTwiceIs400
 cmd/cairn/share_cmds.go	dir, _ := c.Directory()	dir, err := c.Directory(); if err != nil { return err }	go test ./cmd/cairn -run TestReviewCommandOneEntryWithoutTheDirectory
 cmd/cairn/share_cmds.go	if len(list) == 1 {	if false {	go test ./cmd/cairn -run TestReviewCommandOneEntryWithoutTheDirectory
+# Next-epoch records: unshare, demotion, team none, public off
+internal/client/epoch.go	if err := e2e.CheckNewAK(ak, earlier); err != nil {	if err := e2e.CheckNewAK(ak, nil); err != nil {	go test ./internal/client -run 'TestNextEpochRefusesAReusedAK'
+internal/client/epoch.go	if m.FP != u.FP {	if false {	go test ./internal/client -run 'TestNextEpochRefusesAMemberWhoseKeyChanged'
+internal/client/epoch.go	if _, _, err := checkPin(va.Keyring, u, false); err != nil {	if _, _, err := checkPin(va.Keyring, u, true); err != nil {	go test ./internal/client -run 'TestNextEpochRefusesAPinnedMemberWhoseKeyChanged'
+internal/client/epoch.go	exclude1(u, m.FP, "removed")	exclude1(u, u.FP, "removed")	go test ./internal/client -run 'TestNextEpochRefusesAMemberWhoseKeyChanged'
+internal/client/epoch.go	if _, again := exclude[x.User]; !matched && !again {	if _, again := exclude[x.User]; !matched && !again && false {	go test ./internal/client -run 'TestNextEpochKeepsExistingExclusions'
+internal/client/epoch.go	case p.State == PendingApproved:	case false:	go test ./internal/client -run 'TestTeamNoneStartsANewEpochAndExcludesAHolder|TestUnshareExcludesAnApprovedMemberWhoseApprovalFails'
+internal/client/epoch.go	if next.Public {	if false {	go test ./internal/client -run 'TestUnshareOnAPublicArtifactReturnsANewLink'
+internal/client/epoch.go	holder = u.ID	holder = ""	go test ./internal/client -run 'TestUnshareExcludesAnApprovedUserByName'
+internal/client/share.go	dropped = append(dropped, x)	kept = append(kept, x)	go test ./internal/client -run 'TestShareByNameReadmitsAnExcludedUser'
+internal/client/share.go	demote = members[i].Role == "editor" && role == "viewer"	demote = false	go test ./internal/client -run 'TestShareDemotionStartsANewEpoch'
+internal/client/public.go	next.Public, next.PublicWrites = false, false	next.PublicWrites = false	go test ./internal/client -run 'TestPublicOffStartsANewEpoch'
+cmd/cairn/share_cmds.go	if ch.Link != "" {	if false {	go test ./cmd/cairn -run 'TestUnsharePrintsTheNewLinkOfAPublicArtifact'
+internal/client/epoch.go	if !held {	if !held && false {	go test ./internal/client -run 'TestShareDemotionAcceptingANewKeyWrapsEveryEpoch'
+internal/client/epoch.go	if m.User == r.decided {	if false {	go test ./internal/client -run 'TestShareDemotionAcceptingANewKeyWrapsEveryEpoch'
+
+# Review hint after a new epoch
+cmd/cairn/share_cmds.go	switch list, _ := c.Review(artifact); len(list) {	switch list := []client.ReviewVersion{}; len(list) {	go test ./cmd/cairn -run TestShareDemotionCommand
+cmd/cairn/share_cmds.go	case 0:	case -1:	go test ./cmd/cairn -run TestUnshareCommand
