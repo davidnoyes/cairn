@@ -31,15 +31,12 @@ func buildMermaidJS() []byte {
 	return out
 }
 
-//go:embed shell.js
-var ShellJS []byte
-
 // Assets holds the files the account pages load: styles, the page scripts
 // and the modules they import, the argon2 worker, and the vendored strength
 // estimator. The server serves each at the path listed in appAssets.
 //
-//go:embed app.css admin.css icon.svg
-//go:embed e2e.mjs account.mjs keystore.mjs argon2-client.mjs ui.mjs content.mjs sw.js
+//go:embed app.css admin.css shell.css icon.svg
+//go:embed e2e.mjs account.mjs keystore.mjs argon2-client.mjs ui.mjs content.mjs sw.js shell.mjs viewer.mjs
 //go:embed signup.js verify.js login.js forgot.js reset.js admin.js admin-init.mjs argon2-worker.js
 //go:embed vendor/zxcvbn.js
 var Assets embed.FS

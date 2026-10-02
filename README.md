@@ -11,7 +11,7 @@ be driven by AI agents.
 ```
 ┌───────────────┐   cairn push    ┌──────────────────────────────┐
 │  agent / dev  │ ──────────────▶ │  cairn serve                 │
-└───────────────┘                 │  ├─ /artifacts/{id}/{vid}/   │  full screen
+└───────────────┘                 │  ├─ /full/{id}/{vid}         │  full screen
         ▲                         │  ├─ /shared/{id}             │  framed + metadata
         │ cairn db query          │  ├─ /admin                   │  admin UI
         └──────────────────────── │  └─ /api/...                 │  JSON APIs
@@ -109,15 +109,16 @@ image yourself instead: `docker build -t cairn .`
 
 | URL | Meaning |
 |---|---|
-| `/artifacts/{id}` | redirects to the latest version |
-| `/artifacts/{id}/{versionId}/` | a version, full screen (canonical) |
 | `/shared/{id}` / `/shared/{id}/{versionId}` | version embedded in a shell frame with metadata and a version picker |
+| `/full/{id}` / `/full/{id}/{versionId}` | the same frame full screen, with no header |
+| `/artifacts/{id}…` | redirects to the same path under `/shared/`, for old links |
 | `/admin` | admin UI |
 | `/login`, `/logout` | session pages |
 | `/signup`, `/verify`, `/forgot`, `/reset` | account pages; the emailed links open `/verify` and `/reset` |
 
-Private artifacts redirect anonymous visitors to `/login?next=…`. Because a
-version is always served under its own directory URL, relative paths inside
+The shell pages (`/shared/…` and `/full/…`) carry no artifact data and check
+no access: the page's script reads the artifact through the API, which does.
+Because a version is always served under its own directory URL, relative paths inside
 the SPA (`./app.js`, `fetch('data.json')`) just work; extension-less paths
 fall back to `index.html` for client-side routing, missing assets 404.
 
@@ -172,7 +173,7 @@ next to `index.html`. See `examples/guestbook`.
 (`<pre class="mermaid"><code>...</code></pre>`) or a Markdown renderer using a
 `language-mermaid` code class renders as a diagram automatically — no script
 tag needed in the shell view (`/shared/{id}`), which injects `/mermaid.js` for
-you; full-screen artifacts (`/artifacts/{id}/{vid}/`) that want the same
+you; full-screen artifacts (`/full/{id}/{vid}`) that want the same
 outside the shell can add `<script src="./mermaid.js"></script>` themselves.
 Mermaid is vendored into the binary, so this works fully offline. Each
 diagram picks Mermaid's dark or light theme from the background it sits on —
@@ -373,6 +374,27 @@ there.
   `--base-url https://…` behind TLS so cookies are marked Secure.
 - **Password reset** — an admin resets the account; the user picks a new
   password at next sign-in. Tokens are invalidated instantly on reset/disable.
+
+### Content domain and public URL
+
+Cairn serves each artifact on its own host name, `<artifact ID>.<content
+domain>`, so that an artifact cannot reach the app or another artifact.
+
+- `--public-url` (or `CAIRN_PUBLIC_URL`) is the address people use for the app
+  and for every emailed link, such as `https://cairn.example.com`.
+- `--content-domain` (or `CAIRN_CONTENT_DOMAIN`) is the domain the artifacts
+  use, such as `cairn-content.net`. With a localhost public URL it defaults to
+  `localhost`. Otherwise you must set it.
+
+The two must be separate sites: Cairn refuses a content domain that is the
+public URL's host, a parent or child of it, or shares a registrable domain
+with it. `cairn.example.com` and `content.example.com` fail that test, so
+register a second domain.
+
+The content domain needs wildcard DNS, so that `*.cairn-content.net` points at
+the server, and a wildcard TLS certificate for `*.cairn-content.net`. Your
+reverse proxy must send both the public URL's host and every host under the
+content domain to Cairn.
 
 ## Cairn vs. Claude Artifacts
 

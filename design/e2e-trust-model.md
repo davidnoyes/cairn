@@ -199,11 +199,13 @@ The server never sees the password or anything it could derive `kek` from.
    unknown accounts too, so timing does not reveal them either. Sign-in is
    rate limited per account and per IP address.
 4. The client unwraps `MK`, then stores the private keys, `EK`, and `indexKey`
-   in IndexedDB as non-extractable `CryptoKey` objects. `MK` itself is not
-   kept. Actions that need it, such as creating an API key, ask for the
-   password again, and only on a full-page app screen, never over an
-   artifact. An artifact that draws a password prompt is therefore always a
-   fake.
+   in IndexedDB as non-extractable `CryptoKey` objects. The X25519 key is
+   stored wrapped under a non-extractable AES-GCM key, because WebKit cannot
+   store an X25519 `CryptoKey`, and is unwrapped without its bytes reaching
+   script. `MK` itself is not kept. Actions that need it, such as creating an
+   API key, ask for the password again, and only on a full-page app screen,
+   never over an artifact. An artifact that draws a password prompt is
+   therefore always a fake.
 5. Signing out clears IndexedDB. It keeps the keyring anchor, a revision
    number and a hash that hold nothing secret, in `localStorage`, so the next
    sign-in on that browser still refuses an older keyring. `cairn logout`

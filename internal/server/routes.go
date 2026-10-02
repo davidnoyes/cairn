@@ -111,7 +111,6 @@ func (s *Server) routes() {
 	handle("GET /mermaid.js", s.serveMermaidJS)
 	handle("GET /sql-wasm.js", s.serveSqlJS)
 	handle("GET /sql-wasm.wasm", s.serveSqlJS)
-	handle("GET /shell.js", s.serveShellJS)
 	for path, file := range appAssets {
 		handle("GET "+path, serveAppAsset(file))
 	}
@@ -120,7 +119,10 @@ func (s *Server) routes() {
 	handle("GET /artifacts/{id}", s.handleArtifactRedirect)
 	handle("GET /artifacts/{id}/{vid}", s.handleArtifactRedirect)
 	handle("GET /artifacts/{id}/{vid}/{path...}", s.handleArtifactRedirect)
-	handle("GET /shared/{id}", s.withShellCSP(s.handleShared))
-	handle("GET /shared/{id}/{vid}", s.withShellCSP(s.handleShared))
-	handle("GET /shared/{id}/{vid}/{path...}", s.withShellCSP(s.handleShared))
+	for _, mode := range []string{"shared", "full"} {
+		page := s.withShellCSP(s.handleShell(mode))
+		handle("GET /"+mode+"/{id}", page)
+		handle("GET /"+mode+"/{id}/{vid}", page)
+		handle("GET /"+mode+"/{id}/{vid}/{path...}", page)
+	}
 }

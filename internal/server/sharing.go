@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
-	"net/url"
 	"strconv"
 
 	"github.com/aloisdeniel/cairn/internal/access"
@@ -208,43 +207,6 @@ func (s *Server) artifactRoute(act access.Action, next http.HandlerFunc) http.Ha
 		}
 		next(w, r)
 	}
-}
-
-// pageArtifact is artifactRoute for the artifact pages, with plain-text
-// errors. A caller without access who is not signed in goes to the login
-// page; a signed-in one gets 404. It returns nil when it has answered.
-func (s *Server) pageArtifact(w http.ResponseWriter, r *http.Request) *store.Artifact {
-	toLogin := func() {
-		http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
-	}
-	c, _, _, err := s.callerOf(r)
-	if errors.Is(err, errBadCredentials) {
-		toLogin()
-		return nil
-	}
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return nil
-	}
-	a, req, err := s.resolveReadable(c, r.PathValue("id"), linkToken(r))
-	if err == nil && access.Check(req, access.ReadContent) != access.Allow {
-		err = store.ErrNotFound
-	}
-	if err != nil {
-		var ambiguous errAmbiguousResource
-		switch {
-		case errors.As(err, &ambiguous):
-			http.Error(w, ambiguous.Error(), http.StatusConflict)
-		case !errors.Is(err, store.ErrNotFound):
-			http.Error(w, "internal error", http.StatusInternalServerError)
-		case c.Kind == access.Anonymous:
-			toLogin()
-		default:
-			http.NotFound(w, r)
-		}
-		return nil
-	}
-	return a
 }
 
 // Artifact JSON

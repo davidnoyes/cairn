@@ -658,12 +658,12 @@ func runPush(args []string) error {
 		return printArtifactJSON(a.ID, map[string]any{
 			"artifact": a,
 			"version":  v,
-			"url":      fmt.Sprintf("%s/artifacts/%s/%s/", c.Host, a.ID, v.ID),
+			"url":      fmt.Sprintf("%s/full/%s/%s", c.Host, a.ID, v.ID),
 		})
 	}
 	fmt.Printf("pushed %s as version #%d (%s)\n", dir, v.Seq, v.ID)
-	fmt.Printf("  full screen: %s/artifacts/%s/%s/\n", c.Host, a.ID, v.ID)
-	fmt.Printf("  shared:      %s/shared/%s\n", c.Host, a.ID)
+	fmt.Printf("  full screen: %s/full/%s/%s\n", c.Host, a.ID, v.ID)
+	fmt.Printf("  shared:      %s/shared/%s/%s\n", c.Host, a.ID, v.ID)
 	return nil
 }
 
@@ -911,14 +911,15 @@ func filesDelete(args []string) error {
 func runOpen(args []string) error {
 	fs := flag.NewFlagSet("open", flag.ExitOnError)
 	version := fs.String("version", "", "specific version id")
-	shared := fs.Bool("shared", false, "print the shared (framed) URL")
+	full := fs.Bool("full", false, "print the full-screen URL instead of the shared one")
+	fs.Bool("shared", false, "accepted for old scripts and does nothing: the shared URL is the default")
 	lead, rest := splitLeadingArg(args)
 	if err := fs.Parse(rest); err != nil {
 		return err
 	}
 	target := leadOrArg(lead, fs)
 	if target == "" {
-		return fmt.Errorf("usage: cairn open <id|name> [--version <vid>] [--shared]")
+		return fmt.Errorf("usage: cairn open <id|name> [--version <vid>] [--full]")
 	}
 	c, err := apiClient()
 	if err != nil {
@@ -929,16 +930,13 @@ func runOpen(args []string) error {
 		return err
 	}
 	url := c.Host
-	base := "/artifacts/"
-	if *shared {
-		base = "/shared/"
+	base := "/shared/"
+	if *full {
+		base = "/full/"
 	}
 	url += base + a.ID
 	if *version != "" {
 		url += "/" + *version
-	}
-	if !*shared && *version != "" {
-		url += "/"
 	}
 	fmt.Println(url)
 	return nil

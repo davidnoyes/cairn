@@ -571,7 +571,10 @@ func TestSharedRoutesAndShellCSP(t *testing.T) {
 	w := newHostWorld(t)
 	id, vid := w.art.id, w.vid
 	frameSrc := "frame-src http://*.localhost:" + w.port
-	for _, p := range []string{"/shared/" + id, "/shared/" + id + "/" + vid, "/shared/" + id + "/" + vid + "/some/path"} {
+	for _, p := range []string{
+		"/shared/" + id, "/shared/" + id + "/" + vid, "/shared/" + id + "/" + vid + "/some/path",
+		"/full/" + id, "/full/" + id + "/" + vid, "/full/" + id + "/" + vid + "/some/path",
+	} {
 		resp := get(t, w.base+p, w.owner.token, "text/html")
 		body(t, resp)
 		if resp.StatusCode != http.StatusOK {

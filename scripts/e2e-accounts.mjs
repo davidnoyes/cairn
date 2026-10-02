@@ -100,11 +100,11 @@ pass('verification link followed; token stripped from the address bar');
 await account.signIn(deps, { email: EMAIL, password: FIRST_PASSWORD });
 assert.equal(deps.keyStore.saved.length, 1);
 const before = deps.keyStore.saved[0];
-for (const key of [before.mk, before.mkSeal, before.ek, before.x25519.privateKey, before.ed25519]) {
+for (const key of [before.mk, before.mkSeal, before.ek, before.x25519Wrapped.wrapKey, before.ed25519]) {
   assert.equal(key.extractable, false);
 }
 const bundleBefore = loginBundles.at(-1);
-assert.deepEqual(before.x25519.publicKey, e2e.unb64(bundleBefore.x25519Pub));
+assert.deepEqual(before.x25519Wrapped.publicKey, e2e.unb64(bundleBefore.x25519Pub));
 const probe = new TextEncoder().encode('probe');
 assert.ok(await e2e.verify(e2e.unb64(bundleBefore.ed25519Pub), 'probe', probe, await e2e.sign(before.ed25519, 'probe', probe)));
 pass('browser sign-in opened the bundle and stored non-extractable keys');
@@ -128,7 +128,7 @@ const bundleAfter = loginBundles.at(-1);
 assert.equal(bundleAfter.x25519Pub, bundleBefore.x25519Pub);
 assert.equal(bundleAfter.ed25519Pub, bundleBefore.ed25519Pub);
 assert.notEqual(bundleAfter.kdf.salt, bundleBefore.kdf.salt);
-assert.deepEqual(after.x25519.publicKey, before.x25519.publicKey);
+assert.deepEqual(after.x25519Wrapped.publicKey, before.x25519Wrapped.publicKey);
 assert.ok(await e2e.verify(e2e.unb64(bundleBefore.ed25519Pub), 'probe', probe, await e2e.sign(after.ed25519, 'probe', probe)));
 pass('after the reset the public keys are the same, and the new keys sign for them');
 

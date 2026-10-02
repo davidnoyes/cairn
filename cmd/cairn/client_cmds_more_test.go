@@ -120,10 +120,18 @@ func TestPushRecordsNameChangelogAndURL(t *testing.T) {
 		t.Errorf("version = %+v", v)
 	}
 	url := runJSON[struct {
-		URL string `json:"url"`
+		URL     string        `json:"url"`
+		Version store.Version `json:"version"`
 	}](t, runPush, siteDir(t), "--artifact", a.ID, "--json")
-	if !strings.HasPrefix(url.URL, c.Host+"/artifacts/"+a.ID+"/") || !strings.HasSuffix(url.URL, "/") {
-		t.Errorf("push url = %q", url.URL)
+	if want := c.Host + "/full/" + a.ID + "/" + url.Version.ID; url.URL != want {
+		t.Errorf("push url = %q, want %q", url.URL, want)
+	}
+	out, err := runQuiet(t, runPush, siteDir(t), "--artifact", a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "full screen: "+c.Host+"/full/"+a.ID+"/") || !strings.Contains(out, "shared:      "+c.Host+"/shared/"+a.ID+"/") || strings.Contains(out, "/artifacts/") {
+		t.Errorf("push output:\n%s", out)
 	}
 }
 
@@ -252,10 +260,12 @@ func TestOpenPrintsTheURL(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"site"}, c.Host + "/artifacts/" + a.ID},
-		{[]string{"site", "--version", v.ID}, c.Host + "/artifacts/" + a.ID + "/" + v.ID + "/"},
+		{[]string{"site"}, c.Host + "/shared/" + a.ID},
+		{[]string{"site", "--version", v.ID}, c.Host + "/shared/" + a.ID + "/" + v.ID},
 		{[]string{a.ID, "--shared"}, c.Host + "/shared/" + a.ID},
 		{[]string{"site", "--shared", "--version", v.ID}, c.Host + "/shared/" + a.ID + "/" + v.ID},
+		{[]string{"site", "--full"}, c.Host + "/full/" + a.ID},
+		{[]string{"site", "--full", "--version", v.ID}, c.Host + "/full/" + a.ID + "/" + v.ID},
 	} {
 		out, err := runQuiet(t, runOpen, tc.args...)
 		if err != nil || out != tc.want+"\n" {

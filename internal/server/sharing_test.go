@@ -577,13 +577,11 @@ func TestPublicLink(t *testing.T) {
 	}
 	// A link holder holds no wraps.
 	wantStatus(t, right, "GET", base+"/keys", nil, http.StatusForbidden)
-	// The page has no plaintext to serve now, so what is left to check is
-	// that the link got it past the sign-in gate.
-	if r := getLink(t, ts.URL+page, link); r.StatusCode == http.StatusFound {
-		t.Errorf("page with link redirected to sign-in: %d", r.StatusCode)
-	}
-	if r := getLink(t, ts.URL+page, ""); r.StatusCode != http.StatusFound {
-		t.Errorf("page without link: %d", r.StatusCode)
+	// The shell page checks no access, so the link makes no difference to it.
+	for _, l := range []string{link, ""} {
+		if r := getLink(t, ts.URL+page, l); r.StatusCode != http.StatusOK {
+			t.Errorf("page with link %q: %d, want 200", l, r.StatusCode)
+		}
 	}
 	// A signed-in non-member with the token reads at link level.
 	b.link = link
@@ -1016,11 +1014,10 @@ func TestAdminWithoutAccessGets404(t *testing.T) {
 	if _, ok := listIDs(t, admin)[o.id]; ok {
 		t.Error("the admin lists an artifact they have no access to")
 	}
-	if r := get(t, ts.URL+"/shared/"+o.id+"/"+vid, admin.token, ""); r.StatusCode != http.StatusNotFound {
+	// The shell page carries no artifact data and checks no access, so it is
+	// the same page the admin would get for any ID.
+	if r := get(t, ts.URL+"/shared/"+o.id+"/"+vid, admin.token, ""); r.StatusCode != http.StatusOK {
 		t.Errorf("admin page: %d", r.StatusCode)
-	}
-	if r := get(t, ts.URL+"/shared/"+o.id, admin.token, ""); r.StatusCode != http.StatusNotFound {
-		t.Errorf("admin shell: %d", r.StatusCode)
 	}
 }
 

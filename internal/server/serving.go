@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"html/template"
 	"net/http"
 	"path"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/aloisdeniel/cairn/internal/server/web"
 	"github.com/aloisdeniel/cairn/internal/store"
+	"github.com/google/uuid"
 )
 
 // handleArtifactRedirect sends /artifacts/{id} and every path under it to the
@@ -31,59 +33,87 @@ func acceptsHTML(r *http.Request) bool {
 	return strings.Contains(r.Header.Get("Accept"), "text/html")
 }
 
-// Shared shell: /shared/{id}[/{vid}] wraps the fullscreen page in a frame
-// with artifact metadata and a version picker.
-
-type shellVersion struct {
-	*store.Version
-	Current bool
-}
+// The shell page: /shared/{id}[/{vid}[/{path...}]] and the same under /full/.
+// It carries no artifact data and checks no access: its script reads the
+// artifact through the API, and the content origin serves only ciphertext. It
+// names the artifact and where to frame it, nothing more.
 
 type shellData struct {
-	Artifact *store.Artifact
-	Version  *store.Version
-	Versions []shellVersion
-	User     *store.User
+	ID, Version, Path, Mode, ContentOrigin string
+	User                                   *store.User
 }
 
-func (s *Server) handleShared(w http.ResponseWriter, r *http.Request) {
-	a := s.pageArtifact(w, r)
-	if a == nil {
-		return
+// isLowerUUID reports whether s is a canonical lowercase UUID.
+func isLowerUUID(s string) bool {
+	if _, err := uuid.Parse(s); err != nil {
+		return false
 	}
-	versions, err := s.store.ListVersions(a.ID)
-	if err != nil || len(versions) == 0 {
-		http.Error(w, "this artifact has no versions yet", http.StatusNotFound)
-		return
-	}
-	current := versions[0]
-	if vid := r.PathValue("vid"); vid != "" {
-		found := false
-		for _, v := range versions {
-			if v.ID == vid {
-				current, found = v, true
-				break
-			}
+	return len(s) == 36 && s == strings.ToLower(s)
+}
+
+// handleShell serves the shell page in mode "shared" (with the header) or
+// "full" (the frame alone). An {id} that is no UUID is a resource reference:
+// it resolves with the caller's access to a redirect that names the UUID.
+func (s *Server) handleShell(mode string) http.HandlerFunc {
+	prefix := "/" + mode + "/"
+	return func(w http.ResponseWriter, r *http.Request) {
+		// The segments as requested, still escaped: id, version, path.
+		tail := strings.TrimPrefix(r.URL.EscapedPath(), prefix)
+		parts := strings.SplitN(tail, "/", 3)
+		id, vid, subpath := parts[0], "", "/"
+		if len(parts) > 1 {
+			vid = parts[1]
 		}
-		if !found {
+		if len(parts) > 2 {
+			subpath += parts[2]
+		}
+		if !isLowerUUID(id) {
+			s.redirectShellReference(w, r, prefix, r.PathValue("id"), strings.TrimPrefix(tail, id))
+			return
+		}
+		if vid != "" && !isLowerUUID(vid) {
 			http.NotFound(w, r)
 			return
 		}
+		data := shellData{ID: id, Version: vid, Path: subpath, Mode: mode, ContentOrigin: s.contentOrigin(id)}
+		if u, err := s.currentUser(r); err == nil {
+			data.User = u
+		}
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if err := s.templates().ExecuteTemplate(w, "shell.html", data); err != nil {
+			s.log.Error("render shell", "err", err)
+		}
 	}
-	if rs, err := s.store.ListResources(a.ID); err == nil {
-		a.Resources = rs
+}
+
+// redirectShellReference resolves ref among the artifacts the caller can read
+// and redirects to the same page under the artifact's ID, keeping the rest of
+// the path and the query. Anything it cannot resolve is a 404, never a
+// sign-in redirect: the page itself needs no sign-in.
+func (s *Server) redirectShellReference(w http.ResponseWriter, r *http.Request, prefix, ref, rest string) {
+	c, _, _, err := s.callerOf(r)
+	if err != nil && !errors.Is(err, errBadCredentials) {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
 	}
-	data := shellData{Artifact: a, Version: current}
-	for _, v := range versions {
-		data.Versions = append(data.Versions, shellVersion{Version: v, Current: v.ID == current.ID})
+	var a *store.Artifact
+	if err == nil {
+		a, _, err = s.resolveReadable(c, ref, linkToken(r))
 	}
-	if u, err := s.currentUser(r); err == nil {
-		data.User = u
+	var ambiguous errAmbiguousResource
+	switch {
+	case errors.As(err, &ambiguous):
+		http.Error(w, ambiguous.Error(), http.StatusConflict)
+		return
+	case err != nil:
+		http.NotFound(w, r)
+		return
 	}
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if err := s.templates().ExecuteTemplate(w, "shell.html", data); err != nil {
-		s.log.Error("render shell", "err", err)
+	dest := prefix + a.ID + rest
+	if r.URL.RawQuery != "" {
+		dest += "?" + r.URL.RawQuery
 	}
+	http.Redirect(w, r, dest, http.StatusFound)
 }
 
 // Login / logout pages
@@ -163,13 +193,6 @@ func (s *Server) serveMermaidJS(w http.ResponseWriter, r *http.Request) {
 	w.Write(web.MermaidJS)
 }
 
-// serveShellJS serves the shared shell's link-handling and Mermaid-loading script.
-func (s *Server) serveShellJS(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Write(web.ShellJS)
-}
-
 // serveSqlJS serves the vendored sql.js loader or its WebAssembly module,
 // chosen by the last path segment. Like mermaid.js it ships with the binary.
 func (s *Server) serveSqlJS(w http.ResponseWriter, r *http.Request) {
@@ -190,6 +213,10 @@ var appAssets = map[string]string{
 	"/app.css":           "app.css",
 	"/admin.css":         "admin.css",
 	"/icon.svg":          "icon.svg",
+	"/shell.css":         "shell.css",
+	"/shell.mjs":         "shell.mjs",
+	"/viewer.mjs":        "viewer.mjs",
+	"/content.mjs":       "content.mjs",
 	"/e2e.mjs":           "e2e.mjs",
 	"/account.mjs":       "account.mjs",
 	"/keystore.mjs":      "keystore.mjs",

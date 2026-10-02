@@ -928,7 +928,6 @@ internal/server/middleware.go	LinkOnly: claims.Artifact != "" && claims.Link	Lin
 internal/access/access.go	m.owner, m.member, m.team = false, false, false	m.owner, m.member = false, false	go test ./internal/access -run TestLinkOnlyContentToken
 internal/access/access.go	m.owner, m.member, m.team = false, false, false	m.owner, m.team = false, false	go test ./internal/access -run TestLinkOnlyContentToken
 internal/server/csp.go	"://*." + s.contentDomain + s.contentPort	"://*." + s.contentDomain	go test ./internal/server -run 'TestShellCSPFollowsPublicURL|TestContentHostRoutingByConfig'
-internal/server/routes.go	handle("GET /shared/{id}", s.withShellCSP(s.handleShared))	handle("GET /shared/{id}", s.handleShared)	go test ./internal/server -run TestSharedRoutesAndShellCSP
 internal/server/serving.go	http.Redirect(w, r, target, http.StatusFound)	http.Redirect(w, r, target, http.StatusMovedPermanently)	go test ./internal/server -run TestArtifactPagesRedirectToShared
 # m4 encrypted push
 # Each push refusal, blob and manifest ID validation, the epoch checks, the
@@ -1025,3 +1024,225 @@ internal/server/upload.go	left: e2e.MaxManifestBytes}	left: 1 << 40}	go test ./i
 internal/server/upload.go	left: e2e.MaxManifestBytes}	left: 1 << 40}	go test ./internal/server -run TestManifestPartCap/replace
 internal/server/upload.go	case errors.Is(err, errManifestTooBig):	case false:	go test ./internal/server -run TestManifestPartCap
 internal/server/upload.go	refuse(http.StatusRequestEntityTooLarge, fmt.Sprintf("the manifest	refuse(http.StatusBadRequest, fmt.Sprintf("the manifest	go test ./internal/server -run TestManifestPartCap
+
+# M4 stage C part A
+# The shell page's ID validation, mode, content origin, and routes, the open and
+# push URLs, and the link scope of a content token.
+internal/server/serving.go	return len(s) == 36 && s == strings.ToLower(s)	return len(s) == 36	go test ./internal/server -run TestShellPageValidatesIDs
+internal/server/serving.go	return len(s) == 36 && s == strings.ToLower(s)	return s == strings.ToLower(s)	go test ./internal/server -run TestShellPageValidatesIDs
+internal/server/serving.go	if _, err := uuid.Parse(s); err != nil {	if _, err := uuid.Parse(s); false && err != nil {	go test ./internal/server -run TestShellPageValidatesIDs
+internal/server/serving.go	if vid != "" && !isLowerUUID(vid) {	if vid != "" && !isLowerUUID(id) {	go test ./internal/server -run TestShellPageValidatesIDs
+internal/server/serving.go	if !isLowerUUID(id) {	if !isLowerUUID(id) && false {	go test ./internal/server -run TestShellPageResolvesReferences
+internal/server/serving.go	Mode: mode, ContentOrigin	Mode: "shared", ContentOrigin	go test ./internal/server -run 'TestShellPageBody|TestSharedRoutesAndShellCSP'
+internal/server/serving.go	subpath += parts[2]	subpath += ""	go test ./internal/server -run TestShellPageBody
+internal/server/serving.go	dest := prefix + a.ID + rest	dest := prefix + a.ID	go test ./internal/server -run TestShellPageResolvesReferences
+internal/server/serving.go	ContentOrigin: s.contentOrigin(id)}	ContentOrigin: s.contentOrigin(vid)}	go test ./internal/server -run TestShellPageBody
+internal/server/serving.go	"/shell.css":         "shell.css",	"/shell.cssx":        "shell.css",	go test ./internal/server -run TestShellAssets
+internal/server/csp.go	return s.contentScheme() + "://" + artifactID + "." + s.contentDomain + s.contentPort	return s.contentScheme() + "://" + artifactID + "." + s.contentDomain	go test ./internal/server -run 'TestContentOriginFollowsPublicURL|TestShellPageBody'
+internal/server/csp.go	return s.contentScheme() + "://" + artifactID + "." + s.contentDomain + s.contentPort	return s.contentScheme() + "://" + s.contentDomain + s.contentPort	go test ./internal/server -run 'TestContentOriginFollowsPublicURL|TestShellPageBody'
+internal/server/csp.go	if s.secure {	if !s.secure {	go test ./internal/server -run 'TestContentOriginFollowsPublicURL|TestShellCSPFollowsPublicURL'
+internal/server/routes.go	for _, mode := range []string{"shared", "full"} {	for _, mode := range []string{"shared"} {	go test ./internal/server -run 'TestShellPageBody|TestSharedRoutesAndShellCSP'
+internal/server/routes.go	handle("GET /"+mode+"/{id}", page)	handle("GET /"+mode+"/{id}", s.handleRoot)	go test ./internal/server -run 'TestShellPageBody|TestSharedRoutesAndShellCSP'
+internal/server/routes.go	handle("GET /"+mode+"/{id}/{vid}", page)	handle("GET /"+mode+"/{id}/{vid}", s.handleRoot)	go test ./internal/server -run 'TestShellPageBody|TestSharedRoutesAndShellCSP'
+internal/server/routes.go	handle("GET /"+mode+"/{id}/{vid}/{path...}", page)	handle("GET /"+mode+"/{id}/{vid}/{path...}", s.handleRoot)	go test ./internal/server -run 'TestShellPageBody|TestSharedRoutesAndShellCSP'
+internal/server/routes.go	page := s.withShellCSP(s.handleShell(mode))	page := s.handleShell(mode)	go test ./internal/server -run TestSharedRoutesAndShellCSP
+internal/server/web/shell.html	data-path="{{.Path}}"	data-path="/"	go test ./internal/server -run TestShellPageBody
+internal/server/web/shell.html	<a id="account" href="/">	<a id="account" href="/admin">	go test ./internal/server -run TestShellPageElements
+internal/server/web/shell.html	<p id="status" role="status" hidden></p>	<p id="status" role="status"></p>	go test ./internal/server -run TestShellPageElements
+cmd/cairn/client_cmds.go	if *full {	if !*full {	go test ./cmd/cairn -run TestOpenPrintsTheURL
+cmd/cairn/client_cmds.go	base := "/shared/"	base := "/full/"	go test ./cmd/cairn -run TestOpenPrintsTheURL
+cmd/cairn/client_cmds.go	"url":      fmt.Sprintf("%s/full/%s/%s", c.Host, a.ID, v.ID),	"url":      fmt.Sprintf("%s/shared/%s/%s", c.Host, a.ID, v.ID),	go test ./cmd/cairn -run TestPushRecordsNameChangelogAndURL
+cmd/cairn/client_cmds.go	fmt.Printf("  full screen: %s/full/%s/%s\n", c.Host, a.ID, v.ID)	fmt.Printf("  full screen: %s/artifacts/%s/%s/\n", c.Host, a.ID, v.ID)	go test ./cmd/cairn -run TestPushRecordsNameChangelogAndURL
+internal/server/content_token.go	Link:         access.LevelOf(withoutLink) == access.LevelNone,	Link:         access.LevelOf(withoutLink) != access.LevelNone,	go test ./internal/server -run TestContentTokenLinkScope
+internal/server/content_token.go	withoutLink.LinkToken = false	withoutLink.LinkToken = true	go test ./internal/server -run TestContentTokenLinkScope
+# M4 stage C part B
+# Boot page and frame script: the origin and source checks on each message
+# listener, the target origin of each postMessage, the version and path
+# checks in boot.js, the link classification, and keys-ok matching the version.
+internal/server/web/frame.js	if (appOrigin && SHELL_PATH.test(url.pathname))	if (SHELL_PATH.test(url.pathname))	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	if (url.origin === contentOrigin) {	if (url.hostname === new URL(contentOrigin).hostname) {	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	if (appOrigin && url.origin === appOrigin)	if (appOrigin && url.origin.startsWith(appOrigin))	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;	if (false) return null;	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}	[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}	.+	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	'^/shared/'	'/shared/'	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	')?/?$');	')?/?');	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	u.protocol === 'http:' ||	true ||	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	? u.origin : null	? u.href : null	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	event.button !== 0 ||	false ||	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	event.metaKey ||	false ||	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	event.ctrlKey ||	false ||	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	event.shiftKey ||	false ||	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	event.altKey)	false)	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	|| anchor.hasAttribute('download')	|| false	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	if (target && target !== '_self') return;	if (false) return;	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	target !== '_self') return;	target !== '_blank') return;	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	|| (base && base.getAttribute('target')) ||	|| '' ||	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	}, true);	}, false);	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	win.open(action.open, '_blank', 'noopener,noreferrer')	win.open(action.open, '_blank')	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	if (action.open) win.open	if (!action.open) win.open	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	href: action.navigate }, appOrigin())	href: action.navigate }, '*')	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	doc.baseURI, win.location.origin, appOrigin()	doc.baseURI, win.location.origin, null	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	event.source !== win.parent ||	false ||	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	event.origin !== origin) return;	false) return;	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	if (!data || (data.cairn !== 'keys' && data.cairn !== 'token')) return;	if (!data) return;	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	data.cairn !== 'keys' &&	false &&	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	&& data.cairn !== 'token')	&& false)	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	sw.controller.postMessage(data);	sw.controller.postMessage({ cairn: data.cairn });	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	if (!origin || event.source !== sw.controller) return;	if (!origin) return;	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	data.cairn !== 'need-keys' ||	false ||	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	typeof data.version !== 'string'	false	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	win.parent.postMessage({ cairn: 'need-keys', version: data.version }, origin);	win.parent.postMessage({ cairn: 'need-keys', version: data.version }, '*');	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	win.parent.postMessage({ cairn: 'need-keys', version: data.version }, origin);	win.parent.postMessage(data, origin);	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	if (win.mermaid ||	if (false ||	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	doc.querySelector('script[src$="mermaid.js"]')) return;	false) return;	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	if (!doc.querySelector('pre.mermaid, code.language-mermaid, code.mermaid')) return;	if (false) return;	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	script.src = '/_cairn/mermaid.js';	script.src = '/mermaid.js';	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	doc.readyState === 'loading'	false	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	{ once: true }	{ once: false }	node --test internal/server/web/frame_test.mjs
+internal/server/web/boot.js	u.protocol === 'http:' ||	true ||	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	? u.origin : null	? u.href : null	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	if (!appOrigin) throw	if (false) throw	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	updateViaCache: 'none'	updateViaCache: 'all'	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	type: 'module', 	type: 'classic', 	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	scope: '/'	scope: '/x'	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	encodeURIComponent(appOrigin)	appOrigin	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	const worker = (await sw.ready).active;	const worker = sw.controller;	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	event.source !== win.parent ||	false ||	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	event.origin !== appOrigin) return;	false) return;	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	event.data.cairn !== 'keys'	false	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	win.parent.postMessage(readyMessage(loc.pathname), appOrigin);	win.parent.postMessage(readyMessage(loc.pathname), '*');	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	version: parsed ? parsed.version : null	version: null	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	path: parsed ? '/' + parsed.path : null	path: parsed ? parsed.path : null	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	|| !UUID_RE.test(msg.version)	|| false	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	typeof msg.version !== 'string' ||	false ||	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	!msg.path.startsWith('/')	false	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	/^[0-9a-f]{8}	/[0-9a-f]{8}	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	{12}$/;	{12}/;	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	{12}$/;	{12}$/i;	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	event.source !== worker ||	false ||	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	|| m.version !== keys.version) return;	|| false) return;	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	if (m.cairn === 'keys-ok') resolve();	if (true) resolve();	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	worker.postMessage(keys);	worker.postMessage({ cairn: 'keys' });	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	loc.replace('/' + keys.version + keys.path);	loc.replace(keys.path);	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	await confirmed;	await 0;	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	p.textContent = 	p.innerHTML = 	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	'Cairn error: '	'Cairn: '	node --test internal/server/web/boot_test.mjs
+
+# M4 stage C part C
+# The shell: the keyring anchor and write, the chain's anchor choices, the
+# akCommit checks, who is signed in and which mode opens, the link checks,
+# every trust condition and the vouch's fields, the token renewal, the
+# navigation rules, and the shell page's message source, origin, and targets.
+# Not mutated, as equivalent: the host and artifact checks inside takeLink
+# (parseLink builds the host and artifact from the same inputs), the stored
+# anchor read in readKeyring (saveKeyringAnchor refuses the same rollback and
+# fork), and the epoch, seq, and head terms of recordChain's skip (the head
+# implies the others once verifyChain has checked the pin).
+internal/server/web/viewer.mjs	if (!hash) return null;	if (false) return null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	history.replaceState(null, '', location.pathname + location.search);	void history;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	location.pathname + location.search);	location.pathname);	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	e2e.saveKeyringAnchor(deps.storage, caller.record.userId, caller.fp, next);	void next;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (err instanceof ApiError && err.status === 409) continue;	if (false) continue;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	const KEYRING_RETRIES = 5;	const KEYRING_RETRIES = 6;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	e2e.saveKeyringAnchor(deps.storage, caller.record.userId, caller.fp, await e2e.keyringAnchorOf(next.rev, sealed));	void sealed;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	next.rev = cur.rev + 1;	next.rev = cur.rev;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (notFound(err)) {	if (true) {	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	let anchor = caller.fp;	let anchor = '';	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (creator !== caller.record.userId) {	if (true) {	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (Object.hasOwn(kr.pins, creator)) {	if (false) {	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	anchor = kr.pins[creator].fp;	anchor = caller.fp;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	state: e2e.PIN_UNVERIFIED,	state: e2e.PIN_VERIFIED,	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	anchor = (await e2e.pinState(null, keys.x25519, keys.ed25519)).fp;	anchor = caller.fp;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	pin: epoch && { epoch: epoch.epoch, seq: epoch.seq, head: epoch.head },	pin: null,	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	linked: e2e.rotationLinker(membership.rotations),	linked: undefined,	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (prior && pin === null &&	if (prior && true &&	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (pin) anchorFP = pin.fp;	if (false) anchorFP = pin.fp;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	k.pins[creator].fp !== anchorFP) throw new PinConflictError(creator);	false) throw new PinConflictError(creator);	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	cur.head !== chain.head) {	false) {	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (cur && cur.seq === latest.seq &&	if (cur && true &&	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!cur || cur.seq < latest.seq) {	if (!cur) {	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	ack: cur ? cur.ack : 0 }	ack: 0 }	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (pin && !Object.hasOwn(k.pins, creator)) k.pins[creator] = pin;	if (false) k.pins[creator] = pin;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (chain.latest.owner === caller.record.userId) {	if (false) {	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!commits.has(epoch) || (await e2e.akCommit(ak, artifact, epoch)) !== commits.get(epoch)) {	if (false) {	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!aks.has(epoch)) throw	if (false) throw	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	!(record.ed25519Pub instanceof Uint8Array)	false	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (me.id !== record.userId) return null;	if (false) return null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (err instanceof ApiError && err.status === 401) return null;	if (false) return null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!record ||	if (false ||	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	return latest.owner === userId || latest.members.some((m) => m.user === userId);	return true;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	(err.status === 403 || err.status === 404)) return null;	(err.status === 403)) return null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	(err.status === 403 || err.status === 404)) return null;	(err.status === 404)) return null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (link.host !== deps.origin) throw	if (false) throw	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	    rotations: membership.rotations,	    rotations: undefined,	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (opened.record && user === opened.record.userId) {	if (false) {	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	} else if (opened.mode === 'member') {	} else if (true) {	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	pairs.push(...Object.values(opened.membership.owners ?? {}));	void pairs;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	pairs.push(b.old, b.new);	pairs.push(b.new);	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	pairs.push(b.old, b.new);	pairs.push(b.old);	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (env.signer === latest.owner) {	if (false) {	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	listedFp = latest.ownerFp;	listedFp = '';	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	x.user === env.signer && x.role === 'editor'	x.role === 'editor'	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	x.user === env.signer && x.role === 'editor'	x.user === env.signer	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!(await linked(env.signer, listedFp, fp))) continue;	if (false) continue;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!(await linked(env.signer, listedFp, fp))) continue;	if (fp !== listedFp) continue;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (await e2e.verifyEnvelope(ed25519, 'manifest', env))	if (true)	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!vouch || vouch.signer !== opened.latest.owner) return false;	if (!vouch) return false;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if ((await fingerprintOf(kp)) !== opened.latest.ownerFp) continue;	void 0;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	e2e.unb64(kp.ed25519), 'vouch');	e2e.unb64(kp.ed25519), 'manifest');	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	return body.artifact === opened.artifact &&	return true &&	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	body.version === version.id &&	true &&	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	body.manifest === version.manifestHash;	true;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!signer && !(await vouched(deps, opened, version))) throw	if (!signer && false) throw	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!signer && !(await vouched(deps, opened, version))) throw	if (false) throw	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	await openManifest(	void (	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (blob.length > MAX_MANIFEST_BYTES)	if (blob.length >= MAX_MANIFEST_BYTES)	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (blob.length > MAX_MANIFEST_BYTES)	if (false)	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (version.id !== versionId) throw	if (false) throw	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	return opened.mode === 'link' ? versions.filter	return false ? versions.filter	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	v.epoch === opened.link.epoch	true	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!opened.caller) return { token: null, tokenExpires: null };	void 0;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	call(deps, opened.linkToken, 'POST'	call(deps, null, 'POST'	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!opened.caller) return { artifact, users: [] };	void 0;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	    linkToken: opened.linkToken,	    linkToken: null,	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	    epoch: version.epoch,	    epoch: 1,	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	- 60000 - now()	- 0 - now()	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	Math.max(0, current.tokenExpires * 1000 - 60000 - now())	current.tokenExpires * 1000 - 60000 - now()	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	current.tokenExpires === null) return;	false) return;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	      if (stopped) return;	      void stopped;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (timer !== null) cancel(timer);	void timer;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	url = new URL(href, origin);	url = new URL(href);	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (url.origin !== origin) return null;	if (false) return null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	`^/shared/(${UUID})(?:/(${UUID}))?/?$`	`/shared/(${UUID})(?:/(${UUID}))?/?$`	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	(?:/(${UUID}))?/?$`	(?:/(${UUID}))?/?`	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	(?:/(${UUID}))?/?$`	(?:/(${UUID}))?$`	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	const UUID = '[0-9a-f]{8}-	const UUID = '[0-9a-fA-F]{8}-	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	mode === 'full' ? 'full' : 'shared'	'shared'	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	${m[2] ? `/${m[2]}` : ''}	${''}	node --test internal/server/web/viewer_test.mjs
+internal/server/web/shell.mjs	if (event.source !== frame.contentWindow || event.origin !== contentOrigin) return;	if (event.origin !== contentOrigin) return;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (event.source !== frame.contentWindow || event.origin !== contentOrigin) return;	if (event.source !== frame.contentWindow) return;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	frame.contentWindow.postMessage(msg, contentOrigin)	frame.contentWindow.postMessage(msg, '*')	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	await prepareVersion(deps, opened, chosen);	void chosen;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (msg.version === null) answer	if (true) answer	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	typeof v === 'string' && UUID_RE.test(v)	true	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	typeof msg.path === 'string' && msg.path.startsWith('/')	true	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	typeof msg.href === 'string' ?	true ?	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (err instanceof ApiError && err.status === 404) return;	if (false) return;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	.filter((v) => UUID_RE.test(v.id))	.filter(() => true)	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	pageMode === 'full' ? 'full' : 'shared'	'shared'	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	allow-downloads';	allow-downloads allow-top-navigation';	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	origin: window.location.origin, mode })	origin: window.location.origin, mode: 'shared' })	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (validVersion(msg.version)) answer(msg.version, '/');	answer(msg.version, '/');	node --test internal/server/web/shell_page_test.mjs
+
+# M4 stage C browser fixes: WebKit drops a record holding an X25519
+# CryptoKey, so the key is stored wrapped and save reads the record back;
+# Firefox leaves a repeat boot page uncontrolled, so boot talks to the
+# active worker; the shell's module graph and icon load on the app origin.
+internal/server/web/keystore.mjs	if ((await get()) === undefined) throw	if (false) throw	node --test internal/server/web/keystore_test.mjs
+internal/server/web/keystore.mjs	if (!record?.x25519Wrapped) return record;	if (true) return record;	node --test internal/server/web/keystore_test.mjs
+internal/server/web/keystore.mjs	{ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'unwrapKey']	{ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'unwrapKey']	node --test internal/server/web/keystore_test.mjs
+internal/server/web/keystore.mjs	return { ...rest, x25519:	return { ...record, x25519:	node --test internal/server/web/keystore_test.mjs
+internal/server/web/account.mjs	x25519Wrapped: await wrapX25519(x25519Raw),	x25519: await e2e.importX25519PrivateKey(x25519Raw),	node --test internal/server/web/account_test.mjs
+internal/server/serving.go	"/content.mjs":       "content.mjs",	"/content-x.mjs":       "content.mjs",	go test ./internal/server -run TestShellModuleGraphIsServed
+internal/server/web/shell.html	href="/icon.svg"	href="data:,"	go test ./internal/server -run TestShellPageLoadsNothingCSPBlocks

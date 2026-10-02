@@ -89,8 +89,16 @@ pass "/artifacts/... redirects to /shared/..."
 # grep without -q reads the whole body. With -q it exits at the first match,
 # curl then fails writing to the closed pipe (exit 23), and pipefail reports
 # the pipeline as failed, which is how "cairn.js injected" flaked.
-curl -sf "${AUTH[@]}" "$HOST/shared/$AID" | grep "iframe" >/dev/null || fail "shared shell"
-pass "shared shell renders"
+curl -sf -D "$WORK/shell.headers" "${AUTH[@]}" "$HOST/shared/$AID" > "$WORK/shell.html" || fail "shared shell"
+grep "data-content-origin=\"http://$AID.localhost:$PORT\"" "$WORK/shell.html" >/dev/null || fail "shared shell content origin: $(cat "$WORK/shell.html")"
+grep -i "^content-security-policy:.*frame-src http://\*.localhost:$PORT" "$WORK/shell.headers" >/dev/null || fail "shell frame-src: $(cat "$WORK/shell.headers")"
+pass "the shared shell names the content origin and its CSP frames only content hosts"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "$HOST/full/$AID")
+[[ "$STATUS" == "200" ]] || fail "full-screen page ($STATUS)"
+pass "the full-screen page renders"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "$HOST/shared/not-a-uuid")
+[[ "$STATUS" == "404" ]] || fail "/shared/not-a-uuid ($STATUS)"
+pass "a shell page for an ID that is no artifact is not found"
 # The artifact's content origin is <id>.localhost on the public URL's port.
 CONTENT_HOST="$AID.localhost:$PORT"
 curl -s -D "$WORK/boot.headers" -o "$WORK/boot.html" --resolve "$CONTENT_HOST:127.0.0.1" \
@@ -179,9 +187,12 @@ STATUS=$(curl -s -o "$WORK/oldclient.json" -w '%{http_code}' -X POST "${AUTH[@]}
 pass "a zip push is refused with a pointer to update the cairn tool"
 
 echo "== private gating"
+# The shell page carries no artifact data and checks no access; the API does.
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: text/html' "$HOST/shared/$AID/$VID")
-[[ "$STATUS" == "302" ]] || fail "private page not gated ($STATUS)"
-pass "private artifact redirects to login"
+[[ "$STATUS" == "200" ]] || fail "shell page of a private artifact ($STATUS)"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/artifacts/$AID/versions/$VID/manifest")
+[[ "$STATUS" == "404" ]] || fail "private manifest not gated ($STATUS)"
+pass "private artifact: the page is open and carries nothing, the manifest is not found"
 
 echo "== artifact create"
 "$BIN" artifact create notes --description "e2e notes" --json > "$WORK/notes.json"
@@ -215,7 +226,7 @@ BEARER2=$(python3 -c "import json;print('_'.join(json.load(open('$CONFIG2'))['ap
 AUTH2=(-H "Authorization: Bearer $BEARER2")
 "$BIN" push "$ROOT/examples/guestbook" --artifact notes --name v1 --json > "$WORK/notes-push.json"
 NVID=$(python3 -c "import json;print(json.load(open('$WORK/notes-push.json'))['version']['id'])")
-STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH2[@]}" "$HOST/shared/$NID/$NVID")
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH2[@]}" "$HOST/api/artifacts/$NID/versions/$NVID/manifest")
 [[ "$STATUS" == "404" ]] || fail "a stranger reads the artifact before the share ($STATUS)"
 pass "the second account cannot read the artifact before the share"
 
@@ -228,7 +239,7 @@ pass "cairn share adds a viewer and pins their key unverified"
 "$BIN" members notes | grep -E "viewer +share@e2e.test +verified" >/dev/null || fail "members after pin --verified"
 pass "cairn pin --verified shows in cairn members"
 
-curl -sf "${AUTH2[@]}" "$HOST/shared/$NID/$NVID" | grep "iframe" >/dev/null || fail "the member cannot read the artifact"
+curl -sf "${AUTH2[@]}" "$HOST/shared/$NID/$NVID" | grep "data-artifact=\"$NID\"" >/dev/null || fail "the member cannot open the shell page"
 curl -sf "${AUTH2[@]}" "$HOST/api/artifacts/$NID/versions/$NVID/manifest" >/dev/null || fail "the member cannot read the artifact"
 curl -sf "${AUTH2[@]}" "$HOST/api/artifacts/$NID/keys" \
   | python3 -c "import json,sys;k=json.load(sys.stdin);assert [w['epoch'] for w in k['wraps']]==[1] and k['estate']==[], k" \
@@ -340,7 +351,7 @@ team_batch() {
 }
 
 "$BIN" team teamdoc viewer | grep "team set to viewer for teamdoc" >/dev/null || fail "cairn team viewer"
-STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH3[@]}" "$HOST/shared/$TID/$TVID")
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH3[@]}" "$HOST/api/artifacts/$TID/versions/$TVID/manifest")
 [[ "$STATUS" == "404" ]] || fail "a team member reads before an approval ($STATUS)"
 pass "a team share gives a new member nothing until they are approved"
 
@@ -355,7 +366,7 @@ pass "cairn approve lists the new member, to the owner and to an editor"
 CAIRN_CONFIG="$CONFIG2" "$BIN" approve teamdoc team@e2e.test > "$WORK/approve.txt" || fail "approve: $(cat "$WORK/approve.txt")"
 grep -q "approved for teamdoc" "$WORK/approve.txt" || fail "approve output: $(cat "$WORK/approve.txt")"
 grep -q "they can read it now" "$WORK/approve.txt" || fail "approve output says nothing of reading: $(cat "$WORK/approve.txt")"
-curl -sf "${AUTH3[@]}" "$HOST/shared/$TID/$TVID" | grep "iframe" >/dev/null || fail "the approved member cannot read"
+curl -sf "${AUTH3[@]}" "$HOST/shared/$TID/$TVID" | grep "data-artifact=\"$TID\"" >/dev/null || fail "the approved member cannot open the shell page"
 curl -sf "${AUTH3[@]}" "$HOST/api/artifacts/$TID/versions/$TVID/manifest" >/dev/null || fail "the approved member cannot read"
 curl -sf "${AUTH3[@]}" "$HOST/api/artifacts/$TID/keys" \
   | python3 -c "import json,sys;k=json.load(sys.stdin);assert [w['epoch'] for w in k['wraps']]==[1], k" \
@@ -428,8 +439,7 @@ pass "cairn public on prints a link whose fragment holds the key, the epoch, and
 [[ "$(pub_status GET "/api/artifacts/$PID/membership" "${LINKH[@]}")" == "200" ]] || fail "the right token does not read the membership"
 [[ "$(pub_status GET "/api/artifacts/$PID/membership")" == "404" ]] || fail "no token reads the membership"
 [[ "$(pub_status GET "/api/artifacts/$PID/membership" "${WRONGH[@]}")" == "404" ]] || fail "a wrong token reads the membership"
-curl -sf "${LINKH[@]}" "$HOST/shared/$PID/$PVID" | grep "iframe" >/dev/null || fail "the right token does not open the shared page"
-[[ "$(pub_status GET "/shared/$PID/$PVID" "${WRONGH[@]}")" != "200" ]] || fail "a wrong token opens the shared page"
+curl -sf "${LINKH[@]}" "$HOST/shared/$PID/$PVID" | grep "data-artifact=\"$PID\"" >/dev/null || fail "the shell page does not open"
 curl -sf "${LINKH[@]}" "$HOST/api/artifacts/$PID/versions/$PVID/manifest" >/dev/null || fail "the right token does not read the content"
 [[ "$(pub_status GET "/api/artifacts/$PID/versions/$PVID/manifest" "${WRONGH[@]}")" != "200" ]] || fail "a wrong token reads the content"
 curl -sf "${LINKH[@]}" "$HOST/api/artifacts/$PID/membership" \

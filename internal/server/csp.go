@@ -12,11 +12,20 @@ const appCSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object
 // subdomains of the content domain on the public URL's scheme and port (the
 // port omitted when it is the default). The full-screen page reuses it.
 func (s *Server) shellCSP() string {
-	scheme := "http"
+	return appCSP + "; frame-src " + s.contentScheme() + "://*." + s.contentDomain + s.contentPort
+}
+
+func (s *Server) contentScheme() string {
 	if s.secure {
-		scheme = "https"
+		return "https"
 	}
-	return appCSP + "; frame-src " + scheme + "://*." + s.contentDomain + s.contentPort
+	return "http"
+}
+
+// contentOrigin is the origin of an artifact's content host, which the
+// shell page names so its script can frame it.
+func (s *Server) contentOrigin(artifactID string) string {
+	return s.contentScheme() + "://" + artifactID + "." + s.contentDomain + s.contentPort
 }
 
 // withShellCSP sets the shell Content Security Policy on h's response.

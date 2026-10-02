@@ -3,114 +3,30 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Artifact.Name}} · Cairn</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230B0E13'/%3E%3Crect x='11' y='7' width='10' height='4' rx='2' fill='%23C6F135'/%3E%3Crect x='8' y='14' width='16' height='4' rx='2' fill='%23C6F135' opacity='.7'/%3E%3Crect x='5' y='21' width='22' height='4' rx='2' fill='%23C6F135' opacity='.45'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:ital,wght@0,400..700;1,400..600&family=Fragment+Mono:ital@0;1&display=swap" rel="stylesheet">
-<style>
-  :root{
-    --bg:#0B0E13;
-    --bg-raise:#10141C;
-    --bg-panel:#0E1219;
-    --line:rgba(148,163,184,.13);
-    --line-soft:rgba(148,163,184,.07);
-    --text:#E4E9F2;
-    --muted:#8C96A8;
-    --faint:#5A6476;
-    --accent:#C6F135;
-    --accent-dim:rgba(198,241,53,.55);
-    --accent-tint:rgba(198,241,53,.08);
-    /* generic fallbacks matter: this page is served by a self-hosted binary
-       that may run with no internet access to Google Fonts */
-    --sans:"Familjen Grotesk",-apple-system,"Segoe UI","Helvetica Neue",Arial,sans-serif;
-    --mono:"Fragment Mono",ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
-  }
-  *{box-sizing:border-box; margin:0; padding:0}
-  html,body{overflow-x:clip}
-  body{
-    height:100svh; display:grid; grid-template-rows:auto auto 1fr;
-    background:var(--bg); color:var(--text); font-family:var(--sans);
-    -webkit-font-smoothing:antialiased;
-  }
-  ::selection{background:var(--accent); color:#0B0E13}
-
-  /* quiet chrome: the artifact below is the star */
-  header{
-    display:flex; align-items:center; gap:.4rem .9rem; flex-wrap:wrap;
-    padding:.5rem clamp(12px,3vw,20px);
-    background:var(--bg); border-bottom:1px solid var(--line);
-  }
-  .mark svg{width:20px; height:20px; display:block}
-  .name{font-size:15px; font-weight:600; letter-spacing:.01em; min-width:0}
-  .name a{color:inherit; text-decoration:none}
-  .name a:hover{color:var(--accent)}
-  .desc{
-    color:var(--faint); font-size:12.5px; min-width:0;
-    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:32ch;
-  }
-  .spacer{flex:1}
-  .chip{
-    font-family:var(--mono); font-size:11px; color:var(--faint); white-space:nowrap;
-    overflow:hidden; text-overflow:ellipsis; max-width:22ch;
-  }
-  select{
-    font-family:var(--mono); font-size:12px; padding:4px 8px; max-width:52vw;
-    background:var(--bg-raise); color:var(--text);
-    border:1px solid var(--line); border-radius:6px; outline:none;
-    transition:border-color .15s ease;
-  }
-  select:focus{border-color:var(--accent-dim)}
-  .btn{
-    font-family:var(--mono); font-size:11px;
-    color:var(--muted); border:1px solid var(--line); border-radius:6px;
-    padding:4px 10px; text-decoration:none; white-space:nowrap;
-    transition:color .15s ease, border-color .15s ease;
-  }
-  .btn:hover, .btn:focus-visible{color:var(--accent); border-color:var(--accent-dim)}
-  .meta{
-    display:flex; gap:.2rem 1.25rem; align-items:baseline; flex-wrap:wrap;
-    padding:.3rem clamp(12px,3vw,20px);
-    font-family:var(--mono); font-size:11px;
-    color:var(--faint); background:var(--bg-panel); border-bottom:1px solid var(--line-soft);
-    min-width:0;
-  }
-  .meta span{overflow-wrap:anywhere}
-  .meta b{color:var(--muted); font-weight:400}
-  iframe{border:0; width:100%; height:100%; background:#fff}
-</style>
+<title>Cairn</title>
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="stylesheet" href="/shell.css">
 </head>
-<body>
+<body data-artifact="{{.ID}}" data-version="{{.Version}}" data-path="{{.Path}}" data-mode="{{.Mode}}" data-content-origin="{{.ContentOrigin}}">
   <header>
-    {{if .User}}<a class="mark" href="/" title="home" aria-label="Cairn home">
-    {{else}}<a class="mark" href="/login?next=/shared/{{.Artifact.ID}}/{{.Version.ID}}" title="sign in" aria-label="Sign in to Cairn">{{end}}
+    <a class="mark" href="/" title="home" aria-label="Cairn home">
       <svg viewBox="0 0 32 32" aria-hidden="true">
         <rect x="11" y="7"  width="10" height="4" rx="2" fill="#C6F135"/>
         <rect x="8"  y="14" width="16" height="4" rx="2" fill="#C6F135" opacity=".7"/>
         <rect x="5"  y="21" width="22" height="4" rx="2" fill="#C6F135" opacity=".45"/>
       </svg>
     </a>
-    <h1 class="name"><a href="/shared/{{.Artifact.ID}}" title="latest version">{{.Artifact.Name}}</a></h1>
-    {{if .Artifact.Description}}<p class="desc" title="{{.Artifact.Description}}">{{.Artifact.Description}}</p>{{end}}
+    <h1 id="name" class="name"></h1>
+    <p id="desc" class="desc"></p>
     <span class="spacer"></span>
     <label class="chip" for="version">version</label>
-    <select id="version" onchange="location.href='/shared/{{.Artifact.ID}}/'+this.value">
-      {{range .Versions}}
-      <option value="{{.ID}}" {{if .Current}}selected{{end}}>
-        #{{.Seq}}{{if .Name}} · {{.Name}}{{end}} · {{printf "%.10s" .CreatedAt}}
-      </option>
-      {{end}}
-    </select>
-    <a class="btn" href="/artifacts/{{.Artifact.ID}}/{{.Version.ID}}/">full screen</a>
-    {{if .User}}<span class="chip" title="{{.User.Email}}">{{if .User.Name}}{{.User.Name}}{{else}}{{.User.Email}}{{end}}</span>
-    {{else}}<a class="btn" href="/login?next=/shared/{{.Artifact.ID}}/{{.Version.ID}}">sign in</a>{{end}}
+    <select id="version"></select>
+    <a id="fullscreen" class="btn">full screen</a>
+    {{if .User}}<a id="account" href="/">{{if .User.Name}}{{.User.Name}}{{else}}{{.User.Email}}{{end}}</a>
+    {{else}}<a id="account" href="/login?next=/shared/{{.ID}}">sign in</a>{{end}}
   </header>
-  <div class="meta">
-    {{if .Version.Changelog}}<span><b>changelog</b> {{.Version.Changelog}}</span>{{end}}
-    {{range .Artifact.Resources}}<span><b>{{.Type}}</b> {{.Value}}</span>{{end}}
-    <span><b>id</b> {{.Version.ID}}</span>
-  </div>
-  <iframe src="/artifacts/{{.Artifact.ID}}/{{.Version.ID}}/" title="{{.Artifact.Name}}"></iframe>
-  <script src="/shell.js" defer></script>
+  <p id="status" role="status" hidden></p>
+  <div id="frame-host"></div>
+  <script type="module" src="/shell.mjs"></script>
 </body>
 </html>

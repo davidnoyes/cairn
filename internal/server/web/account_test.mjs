@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as e2e from './e2e.mjs';
 import * as account from './account.mjs';
+import { openX25519 } from './keystore.mjs';
 
 const enc = new TextEncoder();
 const STRONG = 'correct horse battery staple';
@@ -218,11 +219,22 @@ test('signIn runs prelogin, then login with client "web", then stores non-extrac
   const b = server.accounts.get('ada@example.com').bundle;
   assert.equal(rec.userId, 'u-ada@example.com');
   assert.equal(rec.email, 'ada@example.com');
-  for (const [name, key] of [['mk', rec.mk], ['mkSeal', rec.mkSeal], ['ek', rec.ek], ['x25519', rec.x25519.privateKey], ['ed25519', rec.ed25519]]) {
+  for (const [name, key] of [['mk', rec.mk], ['mkSeal', rec.mkSeal], ['ek', rec.ek], ['x25519 wrapping key', rec.x25519Wrapped.wrapKey], ['ed25519', rec.ed25519]]) {
     assert.ok(key instanceof CryptoKey, name);
     assert.equal(key.extractable, false, `${name} must not be extractable`);
   }
-  assert.deepEqual(rec.x25519.publicKey, e2e.unb64(b.x25519Pub));
+  // WebKit silently drops a record holding an X25519 CryptoKey, so the
+  // private key is stored wrapped, and opened by keyStore.load.
+  assert.equal(rec.x25519, undefined, 'no X25519 CryptoKey in the saved record');
+  assert.deepEqual(rec.x25519Wrapped.publicKey, e2e.unb64(b.x25519Pub));
+  const x = await openX25519(rec.x25519Wrapped);
+  const info = { purpose: 'ak', artifact: 'a1', epoch: 1, recipientId: rec.userId, recipientPub: x.publicKey };
+  const secret = crypto.getRandomValues(new Uint8Array(32));
+  assert.deepEqual(await e2e.unwrap(x, info, await e2e.wrap(info, secret)), secret, 'the wrapped key is the account key');
+  // The record carries the Ed25519 public key too, derived from the seed, as
+  // bytes, so the shell can compute the caller's own fingerprint.
+  assert.ok(rec.ed25519Pub instanceof Uint8Array);
+  assert.deepEqual(rec.ed25519Pub, e2e.unb64(b.ed25519Pub));
   // The stored signing key is the account's: a signature verifies under the bundle's public key.
   const sig = await e2e.sign(rec.ed25519, 'probe', enc.encode('y'));
   assert.equal(await e2e.verify(e2e.unb64(b.ed25519Pub), 'probe', enc.encode('y'), sig), true);
@@ -373,7 +385,7 @@ test('reset with the recovery code keeps the keys: same public keys, new passwor
   const signIn = makeDeps(server);
   await assert.rejects(account.signIn(signIn, { email: 'ada@example.com', password: STRONG }), /invalid email or password/);
   await account.signIn(signIn, { email: 'ada@example.com', password: NEW_STRONG });
-  assert.deepEqual(signIn.keyStore.saved[0].x25519.publicKey, e2e.unb64(before.x25519Pub));
+  assert.deepEqual(signIn.keyStore.saved[0].x25519Wrapped.publicKey, e2e.unb64(before.x25519Pub));
 });
 
 test('reset with a wrong recovery code sends no complete request', async () => {

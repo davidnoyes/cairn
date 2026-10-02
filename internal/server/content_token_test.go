@@ -431,3 +431,47 @@ func TestContentTokenBackstops(t *testing.T) {
 		t.Errorf("mux, artifact list: %+v, want only %s", list, w.art.id)
 	}
 }
+
+// A signed-in user who is not listed on a public artifact, and holds the link,
+// gets a link-scope token: it opens what the link opens and nothing more. A
+// listed member's token is not link-scoped.
+func TestContentTokenLinkScope(t *testing.T) {
+	w := newContentWorld(t)
+	link := w.art.makePublic()
+	mintFor := func(c *testClient) (string, *auth.Claims) {
+		t.Helper()
+		var out struct {
+			Token string `json:"token"`
+		}
+		c.mustDo("POST", "/api/artifacts/"+w.art.id+"/content-token", struct{}{}, &out, http.StatusOK)
+		claims, err := auth.VerifyJWT(w.s.secret, out.Token)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out.Token, claims
+	}
+
+	_, listed := mintFor(w.viewer.testClient)
+	if listed.Link || listed.Artifact != w.art.id {
+		t.Errorf("a listed member's claims: %+v, want an artifact token with Link false", listed)
+	}
+
+	withLink := &testClient{t: t, base: w.base, token: w.outside.token, link: link}
+	tok, claims := mintFor(withLink)
+	if !claims.Link || claims.Artifact != w.art.id {
+		t.Fatalf("an unlisted user's claims: %+v, want an artifact token with Link true", claims)
+	}
+	c := &testClient{t: t, base: w.base, token: tok, link: link}
+	abase := "/api/artifacts/" + w.art.id
+	for _, path := range []string{abase + "/membership", abase + "/versions", w.vbase + "/files/a.txt"} {
+		if code, msg := send(t, c, "GET", path, nil); code != http.StatusOK {
+			t.Errorf("link-scope token GET %s: %d %s, want 200", path, code, msg)
+		}
+	}
+	if code, msg := send(t, c, "PUT", w.vbase+"/files/new.txt", []byte("x")); code != http.StatusForbidden {
+		t.Errorf("link-scope token PUT a file: %d %s, want 403", code, msg)
+	}
+	if code, msg := send(t, c, "GET", abase+"/keys", nil); code != http.StatusNotFound || msg != gateRefusal {
+		t.Errorf("link-scope token GET keys: %d %s, want the gate's 404", code, msg)
+	}
+}

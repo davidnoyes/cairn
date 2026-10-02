@@ -277,7 +277,11 @@ form-action 'self'; require-trusted-types-for 'script'
 
 Milestone 4 adds `frame-src` for the content domain. The pages do password
 stretching in a worker, keep unwrapped keys in IndexedDB as non-extractable
-`CryptoKey` objects, and clear IndexedDB at sign-out. Sign-out keeps the
+`CryptoKey` objects, and clear IndexedDB at sign-out. WebKit silently drops a
+record that holds an X25519 `CryptoKey`, so the X25519 private key is stored
+encrypted under a non-extractable AES-GCM key instead, and unwrapped straight
+into a non-extractable key when the record is loaded. Sign-in reads the record
+back, and fails if the browser did not store it. Sign-out keeps the
 [keyring anchor](e2e-wire-formats.md#the-keyring) in `localStorage`, because
 it holds nothing secret and the next sign-in needs it. The sign-up and reset
 pages refuse a password that the vendored strength estimator scores below 3.
@@ -1251,8 +1255,11 @@ is an object with a `cairn` field naming its type:
   where `users` lists the latest record's owner and members, or is empty for
   an anonymous visitor.
 
-The boot page passes `keys` to the worker, waits for it to confirm, then
-replaces its own location with `/<version><path>`.
+The boot page passes `keys` to the registration's active worker, waits for
+it to confirm, then replaces its own location with `/<version><path>`. The
+worker need not control the boot page. Firefox leaves the boot page
+uncontrolled on a repeat visit, and the worker serves the navigation to the
+version either way.
 
 ### The service worker
 
@@ -1317,6 +1324,13 @@ hidden. There, a `navigate` to `/shared/<uuid>/<uuid>` opens
 - `/artifacts/{id}` and every path under it redirect to the same path under
   `/shared/`, so existing links keep working. The server no longer serves an
   artifact's files from the app origin.
+- The shell page carries no artifact data and checks no access. It names the
+  artifact's ID, the version and path asked for, and the content origin, and
+  nothing else: the shell's script reads the name, description, and versions
+  through the API, which enforces access. A `{id}` that is not a lowercase
+  UUID is a resource reference, which resolves with the caller's access to a
+  redirect to the same path under the artifact's UUID, or `404` when it does
+  not resolve. A `{vid}` that is not a lowercase UUID is `404`.
 
 ### Commands in milestone 4
 
@@ -1330,4 +1344,6 @@ limit. It then:
 2. Seals each file under the current epoch's `AK`.
 3. Signs the manifest, then seals it under the same key.
 4. Uploads the lot.
-`cairn open` prints the `/shared/` address.
+
+`cairn open` prints the `/shared/` address, or the `/full/` address with
+`--full`. `--shared` is still accepted and does nothing.

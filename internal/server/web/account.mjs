@@ -11,6 +11,7 @@
 //   strength(password, userInputs)     -> {score, feedback}, like zxcvbn
 //   keyStore                           {save(record), clear()}, see keystore.mjs
 import * as e2e from './e2e.mjs';
+import { wrapX25519 } from './keystore.mjs';
 
 // MIN_SCORE is the lowest zxcvbn score a new password may have. Sign-in does
 // not apply it: it authenticates a password that already exists.
@@ -160,10 +161,24 @@ export async function signIn(deps, { email, password }) {
   return user;
 }
 
+const ED25519_PKCS8_PREFIX = e2e.fromHex('302e020100300506032b657004220420');
+
+// ed25519PublicOf derives the public key for a seed, as generateEd25519 does:
+// a transient extractable import, from which only the JWK's "x" is read.
+async function ed25519PublicOf(seed) {
+  const pkcs8 = new Uint8Array(ED25519_PKCS8_PREFIX.length + seed.length);
+  pkcs8.set(ED25519_PKCS8_PREFIX);
+  pkcs8.set(seed, ED25519_PKCS8_PREFIX.length);
+  const key = await crypto.subtle.importKey('pkcs8', pkcs8, 'Ed25519', true, ['sign']);
+  return e2e.unb64((await crypto.subtle.exportKey('jwk', key)).x);
+}
+
 // openBundle opens MK with kek, then every sealed key under mkSealKey. MK and
 // EK are opened straight into non-extractable HKDF keys. WebCrypto cannot
 // unwrap a raw X25519 or Ed25519 private key, so each is decrypted to bytes
 // and imported at once as non-extractable; the bytes are zeroed afterwards.
+// The Ed25519 public key is derived from the seed while the bytes exist. The
+// X25519 key is stored wrapped instead (see keystore.mjs).
 async function openBundle(user, bundle, kek) {
   const mk = await e2e.openKey(kek, ['mk'], e2e.unb64(bundle.mkPassword));
   const mkSeal = await e2e.mkSealCryptoKey(mk);
@@ -177,8 +192,9 @@ async function openBundle(user, bundle, kek) {
       mk,
       mkSeal,
       ek: await e2e.openKey(mkSeal, ['ek'], e2e.unb64(bundle.ek)),
-      x25519: await e2e.importX25519PrivateKey(x25519Raw),
+      x25519Wrapped: await wrapX25519(x25519Raw),
       ed25519: await e2e.importEd25519SigningKey(ed25519Raw),
+      ed25519Pub: await ed25519PublicOf(ed25519Raw),
     };
   } finally {
     x25519Raw?.fill(0);
