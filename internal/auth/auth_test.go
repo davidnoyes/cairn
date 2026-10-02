@@ -1,7 +1,10 @@
 package auth
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -56,6 +59,36 @@ func TestJWTRoundTrip(t *testing.T) {
 	}
 	if _, err := VerifyJWT(secret, token+"x"); err == nil {
 		t.Error("tampered token verified")
+	}
+}
+
+// payload decodes a token's claims without verifying it, to see the wire names.
+func payload(t *testing.T, token string) map[string]any {
+	t.Helper()
+	raw, err := base64.RawURLEncoding.DecodeString(strings.Split(token, ".")[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestJWTArtifactClaim(t *testing.T) {
+	secret := []byte("0123456789abcdef0123456789abcdef")
+	exp := time.Now().Add(time.Hour).Unix()
+	scoped, _ := SignJWT(secret, Claims{UserID: "u1", Artifact: "a1", ExpiresAt: exp})
+	if got := payload(t, scoped)["art"]; got != "a1" {
+		t.Errorf("art claim = %v, want a1", got)
+	}
+	if c, err := VerifyJWT(secret, scoped); err != nil || c.Artifact != "a1" {
+		t.Errorf("verified claims: %+v, %v", c, err)
+	}
+	login, _ := SignJWT(secret, Claims{UserID: "u1", ExpiresAt: exp})
+	if _, ok := payload(t, login)["art"]; ok {
+		t.Error("a sign-in token carries an art claim")
 	}
 }
 

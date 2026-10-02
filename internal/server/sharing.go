@@ -32,13 +32,17 @@ func requestAccess(r *http.Request) access.Request {
 
 // callerFor describes a resolved user, or an anonymous caller when u is nil.
 // key is the API key that authenticated the request, nil for a session.
-func (s *Server) callerFor(u *store.User, key *store.APIKey) (access.Caller, error) {
+// tokenArtifact is the artifact of a content-origin token, empty otherwise.
+func (s *Server) callerFor(u *store.User, key *store.APIKey, tokenArtifact string) (access.Caller, error) {
 	if u == nil {
 		return access.Caller{Kind: access.Anonymous}, nil
 	}
 	c := access.Caller{UserID: u.ID, Kind: access.Session, IsAdmin: u.IsAdmin}
 	if key != nil {
 		c.Kind = access.APIKey
+	}
+	if tokenArtifact != "" {
+		c.Kind, c.TokenArtifactID = access.ContentToken, tokenArtifact
 	}
 	b, err := s.store.BundleFor(u.ID)
 	if err != nil {
@@ -51,11 +55,11 @@ func (s *Server) callerFor(u *store.User, key *store.APIKey) (access.Caller, err
 // callerOf resolves the request's credentials. Invalid credentials are
 // errBadCredentials.
 func (s *Server) callerOf(r *http.Request) (access.Caller, *store.User, *store.APIKey, error) {
-	u, key, err := s.resolveAny(r)
+	u, key, tokenArtifact, err := s.resolveAny(r)
 	if err != nil {
 		return access.Caller{}, nil, nil, errBadCredentials
 	}
-	c, err := s.callerFor(u, key)
+	c, err := s.callerFor(u, key, tokenArtifact)
 	return c, u, key, err
 }
 

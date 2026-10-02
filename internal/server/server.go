@@ -79,7 +79,8 @@ type Server struct {
 	preloginSecret []byte
 	dbs            *versiondb.Manager
 	mux            *http.ServeMux
-	secure         bool // serve behind https (from PublicURL)
+	patterns       []string // every pattern routes registered, in order; read only by tests
+	secure         bool     // serve behind https (from PublicURL)
 	clk            clock.Clock
 	mail           mail.Mailer
 
@@ -138,7 +139,7 @@ func New(cfg Config) (*Server, error) {
 // that doesn't carry an Authorization header is checked against the server's
 // own public origin (see protectMutations).
 func (s *Server) Handler() http.Handler {
-	return protectMutations(originOf(s.cfg.PublicURL), s.mux)
+	return protectMutations(originOf(s.cfg.PublicURL), s.contentTokenGate(s.mux))
 }
 
 // Run serves until ctx is cancelled, then shuts down gracefully.

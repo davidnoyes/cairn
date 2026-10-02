@@ -352,14 +352,16 @@ on top of it:
 
 Share, unshare, make public, transfer, delete, and push need a session or an
 API key. Milestone 4 adds a content-origin token, scoped to one artifact. It
-works on an allowlist, and every other route under `/api/` refuses it with
-`404`:
+is a sign-in JWT with an `art` claim that names its artifact. It works on an
+allowlist, and every other route, API or page, refuses it with `404`:
 
 - Reads of its own artifact's versions, database, and files.
 - Writes to its own artifact's database and files, where the role allows
   them.
 - `GET /api/artifacts/{id}/membership` for its own artifact, and
-  `GET /api/users/{id}` for each user its latest record lists.
+  `GET /api/users/{id}` for each user its latest record lists. A
+  `GET /api/users/{id}` request for anyone other than the latest record's
+  owner and members answers `404`.
 - `GET /api/me`.
 
 Milestone 3 builds the allowlist check, and tests it with a token the test

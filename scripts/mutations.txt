@@ -226,12 +226,12 @@ internal/server/web/e2e.mjs	return importEd25519Priv(seed, false, ['sign']);	ret
 internal/server/web/e2e.mjs	importX25519Priv(raw, false, ['deriveBits']);	importX25519Priv(raw, true, ['deriveBits']);	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	await deps.keyStore.clear();	void 0;	node --test internal/server/web/account_test.mjs
 internal/server/web/keystore.mjs	clear: () => run('readwrite', (store) => store.clear()),	clear: () => run('readwrite', () => ({})),	node --test internal/server/web/keystore_test.mjs
-internal/server/routes.go	mux.HandleFunc("GET /login", withAppCSP(s.handleLoginPage))	mux.HandleFunc("GET /login", s.handleLoginPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
-internal/server/routes.go	mux.HandleFunc("GET /admin", withAppCSP(s.handleAdminPage))	mux.HandleFunc("GET /admin", s.handleAdminPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
-internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "signup" { mux.HandleFunc("GET /"+page, s.handleStaticPage(page+".html")) } else { mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
-internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "verify" { mux.HandleFunc("GET /"+page, s.handleStaticPage(page+".html")) } else { mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
-internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "forgot" { mux.HandleFunc("GET /"+page, s.handleStaticPage(page+".html")) } else { mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
-internal/server/routes.go	mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "reset" { mux.HandleFunc("GET /"+page, s.handleStaticPage(page+".html")) } else { mux.HandleFunc("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	handle("GET /login", withAppCSP(s.handleLoginPage))	handle("GET /login", s.handleLoginPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	handle("GET /admin", withAppCSP(s.handleAdminPage))	handle("GET /admin", s.handleAdminPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "signup" { handle("GET /"+page, s.handleStaticPage(page+".html")) } else { handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "verify" { handle("GET /"+page, s.handleStaticPage(page+".html")) } else { handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "forgot" { handle("GET /"+page, s.handleStaticPage(page+".html")) } else { handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "reset" { handle("GET /"+page, s.handleStaticPage(page+".html")) } else { handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
 internal/server/serving.go	contentType := "text/javascript; charset=utf-8"	contentType := "text/plain; charset=utf-8"	go test ./internal/server -run TestAccountPageAssetsAreServed
 
 # Browser account pages: review fixes (worker lifetime, zeroed secrets, admin
@@ -623,3 +623,37 @@ cmd/cairn/share_cmds.go	if p.RotationsErr == nil {	if true {	go test ./cmd/cairn
 cmd/cairn/share_cmds.go	for _, p := range unreadable {	for _, p := range []client.PendingUser(nil) {	go test ./cmd/cairn -run 'TestApproveCommandListsAnEntryWhoseRotationRecordsCannotBeReadAsUnreadable'
 cmd/cairn/share_cmds.go	if p.RotationsErr != nil {	if p.RotationsErr != nil && false {	go test ./cmd/cairn -run 'TestApproveCommandListsAnEntryWhoseRotationRecordsCannotBeReadAsUnreadable'
 cmd/cairn/share_cmds.go	entry["rotationsUnreadable"] = "true"	_ = entry	go test ./cmd/cairn -run 'TestApproveCommandListsAnEntryWhoseRotationRecordsCannotBeReadAsUnreadable'
+
+# M3 step 8: content-origin token allowlist
+internal/server/content_token.go	!contentTokenRoutes[pattern]	contentTokenRoutes[pattern]	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	if s.carriesContentToken(r) {	if false && s.carriesContentToken(r) {	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	err == nil && claims.Artifact != ""	err == nil && claims.Artifact == ""	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	"GET /api/me":	"GET /bogus":	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	"GET /api/users/{id}":	"GET /bogus":	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	"POST /api/artifacts/{id}/versions/{vid}/db/batch":	"GET /bogus":	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	"PUT /api/artifacts/{id}/versions/{vid}/files/{path...}":	"GET /bogus":	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	"DELETE /api/artifacts/{id}/versions/{vid}/files/{path...}":	"GET /bogus":	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	st.Artifact.OwnerID != userID && st.Member == nil	st.Member == nil	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
+internal/server/content_token.go	st.Artifact.OwnerID != userID && st.Member == nil	st.Artifact.OwnerID != userID	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
+internal/server/content_token.go	"GET /api/artifacts/{id}/membership":                        true,	"GET /api/artifacts/{id}/membership":                        false,	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	"GET /api/artifacts/{id}/versions":                          true,	"GET /api/artifacts/{id}/versions":                          false,	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}":                    true,	"GET /api/artifacts/{id}/versions/{vid}":                    false,	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	"POST /api/artifacts/{id}/versions/{vid}/db/query":          true,	"POST /api/artifacts/{id}/versions/{vid}/db/query":          false,	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/db/download":        true,	"GET /api/artifacts/{id}/versions/{vid}/db/download":        false,	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/files":              true,	"GET /api/artifacts/{id}/versions/{vid}/files":              false,	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/files/{path...}":    true,	"GET /api/artifacts/{id}/versions/{vid}/files/{path...}":    false,	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	"GET /api/me":	"GET /api/users": true, "GET /api/me":	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	writeError(w, http.StatusNotFound, "not found")	writeError(w, http.StatusNotFound, "no route")	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/server/content_token.go	if st.Artifact.OwnerID != userID && st.Member == nil {	if st.Artifact.OwnerID != userID && st.Member == nil && false {	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
+internal/server/content_token.go	access.Check(req, access.ReadMembership) != access.Allow	access.Check(req, access.ReadMembership) != access.Allow && false	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
+internal/server/handlers_users.go	art := requestTokenArtifact(r); art != ""	art := requestTokenArtifact(r); art == "x"	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
+internal/server/sharing.go	c.Kind, c.TokenArtifactID = access.ContentToken, tokenArtifact	_ = tokenArtifact	go test ./internal/server -run 'TestContentTokenBackstops'
+internal/server/sharing.go	s.callerFor(u, key, tokenArtifact)	s.callerFor(u, key, tokenArtifact[:0])	go test ./internal/server -run 'TestContentTokenBackstops'
+internal/server/handlers_artifacts.go	requestAPIKey(r), requestTokenArtifact(r))	requestAPIKey(r), "")	go test ./internal/server -run 'TestContentTokenBackstops'
+internal/server/middleware.go	u, tokenArtifact, err := s.userFromJWT(cred)	u, tokenArtifact, err := s.userFromJWT(cred); tokenArtifact = ""	go test ./internal/server -run 'TestContentTokenBackstops'
+internal/server/middleware.go	if err == nil && tokenArtifact != "" {	if err == nil && tokenArtifact == "x" {	go test ./internal/server -run 'TestContentTokenBackstops'
+internal/server/middleware.go	r = withTokenArtifact(r, tokenArtifact)	_ = tokenArtifact	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
+internal/server/server.go	s.contentTokenGate(s.mux)	s.mux	go test ./internal/server -run 'TestContentTokenRouteTable'
+internal/auth/auth.go	`json:"art,omitempty"`	`json:"art"`	go test ./internal/auth -run 'TestJWTArtifactClaim'
+internal/auth/auth.go	`json:"art,omitempty"`	`json:"artifact,omitempty"`	go test ./internal/auth -run 'TestJWTArtifactClaim'
+internal/access/access.go	c.Kind == ContentToken && c.TokenArtifactID != a.ID	c.Kind == ContentToken && false	go test ./internal/server -run 'TestContentTokenIsScopedToOneArtifact'

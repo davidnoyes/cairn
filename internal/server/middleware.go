@@ -38,6 +38,7 @@ type ctxKey int
 const (
 	userCtxKey ctxKey = iota
 	apiKeyCtxKey
+	tokenArtifactCtxKey
 	artifactCtxKey
 	accessCtxKey
 )
@@ -102,46 +103,54 @@ func extractCredential(r *http.Request, cookieName string) (cred string, isAPIKe
 // currentUser resolves the request identity under the "Any" rule: the
 // Authorization bearer credential (sign-in JWT or API key), or the session
 // cookie. It returns (nil, nil) for anonymous requests and an error only for
-// credentials that are present but invalid.
+// credentials that are present but invalid. A content-origin token is not a
+// page credential, so it is invalid here.
 func (s *Server) currentUser(r *http.Request) (*store.User, error) {
 	if u, ok := r.Context().Value(userCtxKey).(*store.User); ok {
 		return u, nil
 	}
-	u, _, err := s.resolveAny(r)
+	u, _, tokenArtifact, err := s.resolveAny(r)
+	if err == nil && tokenArtifact != "" {
+		return nil, errBadCredentials
+	}
 	return u, err
 }
 
 // resolveAny is currentUser's underlying resolution, also returning the
 // matched API key (nil for a cookie or JWT credential) so callers that need
-// it, such as GET /api/me/bundle, can tell the two apart.
-func (s *Server) resolveAny(r *http.Request) (*store.User, *store.APIKey, error) {
+// it, such as GET /api/me/bundle, can tell the two apart. tokenArtifact is the
+// artifact a content-origin token is scoped to, empty for any other credential.
+func (s *Server) resolveAny(r *http.Request) (u *store.User, key *store.APIKey, tokenArtifact string, err error) {
 	cred, isKey, err := extractCredential(r, s.sessionCookieName())
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	if cred == "" {
-		return nil, nil, nil
+		return nil, nil, "", nil
 	}
 	if isKey {
-		return s.userFromAPIKey(cred)
+		u, key, err = s.userFromAPIKey(cred)
+		return u, key, "", err
 	}
-	u, err := s.userFromJWT(cred)
-	return u, nil, err
+	u, tokenArtifact, err = s.userFromJWT(cred)
+	return u, nil, tokenArtifact, err
 }
 
-func (s *Server) userFromJWT(token string) (*store.User, error) {
+// userFromJWT verifies a sign-in JWT and returns its user, with the artifact
+// of a content-origin token (empty for a sign-in token).
+func (s *Server) userFromJWT(token string) (*store.User, string, error) {
 	claims, err := auth.VerifyJWT(s.secret, token)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	u, err := s.store.UserByID(claims.UserID)
 	if err != nil {
-		return nil, auth.ErrInvalidToken
+		return nil, "", auth.ErrInvalidToken
 	}
 	if u.Disabled || u.TokenVersion != claims.TokenVersion {
-		return nil, auth.ErrInvalidToken
+		return nil, "", auth.ErrInvalidToken
 	}
-	return u, nil
+	return u, claims.Artifact, nil
 }
 
 // userFromAPIKey looks the key up by id and compares the SHA-256 of the
@@ -199,11 +208,23 @@ func requestAPIKey(r *http.Request) *store.APIKey {
 	return k
 }
 
+// withTokenArtifact stores the artifact a content-origin token is scoped to.
+func withTokenArtifact(r *http.Request, artifactID string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), tokenArtifactCtxKey, artifactID))
+}
+
+// requestTokenArtifact returns the artifact attached by requireAuth, or "" when
+// the request is not carrying a content-origin token.
+func requestTokenArtifact(r *http.Request) string {
+	id, _ := r.Context().Value(tokenArtifactCtxKey).(string)
+	return id
+}
+
 // requireAuth implements the "Any" auth rule: a session cookie, a sign-in
 // JWT, or an API key.
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u, key, err := s.resolveAny(r)
+		u, key, tokenArtifact, err := s.resolveAny(r)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "invalid credentials")
 			return
@@ -216,12 +237,15 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		if key != nil {
 			r = withAPIKey(r, key)
 		}
+		if tokenArtifact != "" {
+			r = withTokenArtifact(r, tokenArtifact)
+		}
 		next(w, r)
 	}
 }
 
 // requireSession implements the "Session" auth rule: a session cookie or a
-// sign-in JWT, but never an API key.
+// sign-in JWT, but never an API key or a content-origin token.
 func (s *Server) requireSession(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cred, isKey, err := extractCredential(r, s.sessionCookieName())
@@ -233,9 +257,13 @@ func (s *Server) requireSession(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "authentication required")
 			return
 		}
-		u, err := s.userFromJWT(cred)
+		u, tokenArtifact, err := s.userFromJWT(cred)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "invalid credentials")
+			return
+		}
+		if tokenArtifact != "" {
+			writeError(w, http.StatusNotFound, "not found")
 			return
 		}
 		next(w, withUser(r, u))

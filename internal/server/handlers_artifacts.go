@@ -39,7 +39,7 @@ func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "artifacts")
 		return
 	}
-	c, err := s.callerFor(requestUser(r), requestAPIKey(r))
+	c, err := s.callerFor(requestUser(r), requestAPIKey(r), requestTokenArtifact(r))
 	if err != nil {
 		s.writeStoreError(w, err, "user")
 		return

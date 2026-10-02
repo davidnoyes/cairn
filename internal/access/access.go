@@ -210,7 +210,7 @@ func LevelOf(r Request) Level {
 // contentTokenAllows is the allowlist of a content-origin token for actions
 // on its own artifact. Every other action is answered as if the route did
 // not exist. GET /api/me and GET /api/users/{id} are not artifact actions;
-// the router allows them for a content token in step 8.
+// the router's allowlist (contentTokenRoutes in internal/server) adds them.
 func contentTokenAllows(act Action) bool {
 	switch act {
 	case ReadContent, WriteData, ReadMembership:

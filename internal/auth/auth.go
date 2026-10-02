@@ -64,6 +64,9 @@ type Claims struct {
 	TokenVersion int    `json:"tkv"`
 	IssuedAt     int64  `json:"iat"`
 	ExpiresAt    int64  `json:"exp"`
+	// Artifact, when non-empty, makes the JWT a content-origin token scoped
+	// to that artifact. Login never sets it.
+	Artifact string `json:"art,omitempty"`
 }
 
 var b64 = base64.RawURLEncoding

@@ -387,6 +387,17 @@ Steps, each test first:
    existing tests moved across.
 7. Full screen as an app-origin page.
 
+Two calls in today's `cairn.js` fall outside the content-origin token's
+allowlist, which milestone 3 fixed:
+
+- `cairn.users()` reads `GET /api/users`.
+- `cairn.artifact()` reads `GET /api/artifacts/{id}`.
+
+Under the token both get `404`. Before the worker serves an artifact with a
+token, move them onto the allowlist's routes, or change the allowlist in
+`e2e-api.md` first. `files.download` and `<img>` file URLs send no
+`Authorization` header, so they rely on the worker adding the token.
+
 Security regressions added: everything in the hostile-artifact list (H1, H3,
 H6); `frame-ancestors 'none'` on app pages (H1); worker update headers (M4);
 no plaintext in content-origin storage (L1); key removed from the address

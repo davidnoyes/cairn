@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aloisdeniel/cairn/internal/access"
 	"github.com/aloisdeniel/cairn/internal/auth"
 	"github.com/aloisdeniel/cairn/internal/e2e"
 	"github.com/aloisdeniel/cairn/internal/store"
@@ -1182,4 +1183,33 @@ func TestLinkTokenIsOnlyForTheStoredEpoch(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantStatus(t, anonWithLink(t, ts.URL, o.linkToken()), "GET", base, nil, http.StatusNotFound)
+}
+
+// A wrap under a fingerprint that is no longer the user's marks their key
+// changed, even when the record already lists them, or approved them, under
+// the new one. The API keeps wraps and approvals in step, so only a direct
+// call reaches these.
+func TestPendingStateStaleWrap(t *testing.T) {
+	latest := &e2e.MembershipBody{Epoch: 2, Team: access.TeamViewer}
+	u := &store.KeyedUser{ID: "u", FP: "new"}
+	stale := []store.Wrap{{UserID: "u", Epoch: 2, FP: "old"}}
+	listed := map[string]e2e.Member{"u": {User: "u", FP: "new"}}
+	never := func(string) bool { return false }
+	always := func(string) bool { return true }
+	cases := []struct {
+		name     string
+		listed   map[string]e2e.Member
+		approval *store.Approval
+		explain  func(string) bool
+		want     string
+	}{
+		{"listed under the new key", listed, nil, never, pendingKeyChanged},
+		{"listed under the new key, rotation explained", listed, nil, always, pendingRotated},
+		{"approved under the new key", nil, &store.Approval{UserID: "u", FP: "new", Epoch: 2}, never, pendingKeyChanged},
+	}
+	for _, c := range cases {
+		if got := pendingState(latest, u, c.listed, stale, c.approval, c.explain); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
 }
