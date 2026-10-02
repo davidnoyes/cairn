@@ -222,7 +222,7 @@ internal/server/web/account.mjs	export const MIN_SCORE = 3;	export const MIN_SCO
 internal/server/web/account.mjs	e2e.checkFloor(kdf);	void 0;	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	history.replaceState(null, '', location.pathname + location.search);	void 0;	node --test internal/server/web/account_test.mjs
 internal/server/web/e2e.mjs	return importEd25519Priv(seed, false, ['sign']);	return importEd25519Priv(seed, true, ['sign']);	node --test internal/server/web/account_test.mjs
-internal/server/web/e2e.mjs	importX25519Priv(raw, false, ['deriveBits']);	importX25519Priv(raw, true, ['deriveBits']);	node --test internal/server/web/account_test.mjs
+internal/server/web/e2e.mjs	importX25519Priv(raw, false, ['deriveBits']);	importX25519Priv(raw, true, ['deriveBits']);	node --test internal/server/web/e2e_test.mjs
 internal/server/web/account.mjs	await deps.keyStore.clear();	void 0;	node --test internal/server/web/account_test.mjs
 internal/server/web/keystore.mjs	const clear = () => run('readwrite', (store) => store.clear());	const clear = () => run('readwrite', () => ({}));	node --test internal/server/web/keystore_test.mjs
 internal/server/routes.go	handle("GET /login", withAppCSP(s.handleLoginPage))	handle("GET /login", s.handleLoginPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
