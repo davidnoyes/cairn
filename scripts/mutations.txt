@@ -1009,3 +1009,19 @@ internal/client/review.go	records, err := c.Rotations(signer)	var records []e2e.
 internal/client/review.go	if len(data) > maxManifestBytes {	if false {	go test ./internal/client -run TestGetBytesRefusesABodyOverTheCap
 internal/client/review.go	io.LimitReader(resp.Body, maxManifestBytes+1)	io.LimitReader(resp.Body, maxManifestBytes)	go test ./internal/client -run TestGetBytesRefusesABodyOverTheCap
 internal/client/review.go	return nil, errorFromResponse("GET", path, resp)	return nil, &APIError{Status: resp.StatusCode, Message: "GET " + path + " failed"}	go test ./internal/client -run TestGetBytesReportsTheServersMessage
+
+# M4 A2 fix round 3
+# The signer-gone condition and sentinel, the cause kept in the verify error,
+# the email in the message, and the server cap on the manifest part.
+internal/client/review.go	case isNotFound(err):	case false:	go test ./internal/client -run 'TestVouchRefusesAVersionWhoseSignerIsGone|TestVouchRefusesAVersionWhoseSignerWasDisabled'
+internal/client/review.go	if err != nil && !isNotFound(err) {	if isNotFound(err) { unpublished = true } else if err != nil {	go test ./internal/client -run TestVouchDoesNotCallASignerGoneOnARotationsNotFoundAlone
+internal/client/review.go	if unpublished {	if true || unpublished {	go test ./internal/client -run TestVouchDoesNotCallASignerGoneOnARotationsNotFoundAlone
+internal/client/review.go	fmt.Errorf("%w; the signer is %s", ErrVouchSignerGone, signerLabel(chain, signer))	fmt.Errorf("%w; the signer is %s", ErrVouchManifest, signerLabel(chain, signer))	go test ./internal/client -run 'TestVouchRefusesAVersionWhoseSignerIsGone|TestVouchRefusesAVersionWhoseSignerWasDisabled'
+internal/client/review.go	%q: %v", ErrVouchManifest, env.Signer, openErr)	%q", ErrVouchManifest, env.Signer)	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
+internal/client/review.go	return e.Email	return signer	go test ./internal/client -run TestVouchRefusesAVersionWhoseSignerWasDisabled
+internal/server/upload.go	if c.left < 0 {	if c.left < -1 {	go test ./internal/server -run TestManifestPartCap
+internal/server/upload.go	if c.left < 0 {	if c.left < 1 {	go test ./internal/server -run TestManifestPartCap
+internal/server/upload.go	left: e2e.MaxManifestBytes}	left: 1 << 40}	go test ./internal/server -run TestManifestPartCap/push
+internal/server/upload.go	left: e2e.MaxManifestBytes}	left: 1 << 40}	go test ./internal/server -run TestManifestPartCap/replace
+internal/server/upload.go	case errors.Is(err, errManifestTooBig):	case false:	go test ./internal/server -run TestManifestPartCap
+internal/server/upload.go	refuse(http.StatusRequestEntityTooLarge, fmt.Sprintf("the manifest	refuse(http.StatusBadRequest, fmt.Sprintf("the manifest	go test ./internal/server -run TestManifestPartCap

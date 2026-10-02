@@ -145,3 +145,8 @@ const BlobMinSize = blobHeaderSize + blobTagSize
 func HasBlobHeader(b []byte) bool {
 	return len(b) > len(blobMagic) && string(b[:len(blobMagic)]) == blobMagic && b[len(blobMagic)] == blobVersion
 }
+
+// MaxManifestBytes caps a sealed manifest: it holds one entry per file of a
+// version, so it is small next to the files it lists. The client refuses a
+// larger one and the server refuses to store it.
+const MaxManifestBytes = 16 << 20

@@ -83,9 +83,14 @@ func (c *Client) Review(artifactID string) ([]ReviewVersion, error) {
 // the one its listed manifestHash names, or does not verify.
 var ErrVouchManifest = errors.New("the version's manifest does not match its manifestHash")
 
-// maxManifestBytes caps the sealed manifest the client reads: it holds one
-// entry per file of a version, so it is small next to the files it lists.
-const maxManifestBytes = 16 << 20
+// ErrVouchSignerGone means the version's manifest was signed by an account
+// that is disabled or deleted, so the directory no longer publishes its keys
+// and the signature cannot be checked.
+var ErrVouchSignerGone = errors.New("the account that pushed this version is disabled or deleted, so its keys can no longer be checked: an admin can re-enable the account, or you can delete the version (in the admin page, or with DELETE /api/artifacts/{id}/versions/{vid})")
+
+// maxManifestBytes caps the sealed manifest the client reads; the server
+// refuses to store a larger one.
+const maxManifestBytes = e2e.MaxManifestBytes
 
 // checkManifest fetches v's manifest, opens it under the owner's AK for v's
 // epoch, and verifies it: the envelope's signature must verify under a key
@@ -122,15 +127,16 @@ func (c *Client) checkManifest(k *UnlockedKeys, chain *e2e.Chain, artifactID str
 	}
 	var body e2e.ManifestBody
 	verified := false
+	var openErr error
 	for _, pub := range keys {
 		body = e2e.ManifestBody{}
-		if err := e2e.OpenEnvelope(env, pub, "manifest", &body); err == nil {
+		if openErr = e2e.OpenEnvelope(env, pub, "manifest", &body); openErr == nil {
 			verified = true
 			break
 		}
 	}
 	if !verified {
-		return fmt.Errorf("%w: the signature does not verify under any key the chain lists for %q", ErrVouchManifest, env.Signer)
+		return fmt.Errorf("%w: the signature does not verify under any key the chain lists for %q: %v", ErrVouchManifest, env.Signer, openErr)
 	}
 	if body.Artifact != artifactID || body.Version != v.ID || body.Epoch != v.Epoch {
 		return fmt.Errorf("%w: it names another artifact, version, or epoch", ErrVouchManifest)
@@ -155,8 +161,9 @@ type signerKeys struct{ x25519, ed25519 []byte }
 // still has their version vouched.
 //
 // A disabled or deleted account is not in the directory, and its rotation
-// records are not served either, so when no key matches for that reason the
-// error says the keys are no longer published.
+// records are not served either, so when no key matches and the directory
+// answered 404 for the signer, the error is ErrVouchSignerGone. A 404 from
+// the rotations route alone is not that: the account is published.
 func (c *Client) manifestSignerKeys(k *UnlockedKeys, chain *e2e.Chain, signer string) ([][]byte, error) {
 	listed := map[string]bool{}
 	for _, b := range chain.Bodies {
@@ -188,14 +195,13 @@ func (c *Client) manifestSignerKeys(k *UnlockedKeys, chain *e2e.Chain, signer st
 		}
 	}
 	records, err := c.Rotations(signer)
-	switch {
-	case isNotFound(err):
-		unpublished = true
-	case err != nil:
+	if err != nil && !isNotFound(err) {
 		return nil, err
 	}
 	for _, env := range records {
 		var b e2e.RotationBody
+		// A record that fails to decode, or a malformed key, is skipped on
+		// purpose: skipping can only shrink the candidate set.
 		if e2e.DecodeStrict(env.Body, &b) != nil {
 			continue
 		}
@@ -215,11 +221,24 @@ func (c *Client) manifestSignerKeys(k *UnlockedKeys, chain *e2e.Chain, signer st
 	}
 	if len(keys) == 0 {
 		if unpublished {
-			return nil, fmt.Errorf("%w: the keys of %q, who signed this version, are no longer published (the account is disabled or deleted); delete the version, or push its content again yourself", ErrVouchManifest, signer)
+			return nil, fmt.Errorf("%w; the signer is %s", ErrVouchSignerGone, signerLabel(chain, signer))
 		}
 		return nil, fmt.Errorf("%w: the keys published for %q are not the ones the chain lists", ErrVouchManifest, signer)
 	}
 	return keys, nil
+}
+
+// signerLabel names a signer by email when the chain gives one, which it does
+// for a user the owner removed (the excluded entries), else by user ID.
+func signerLabel(chain *e2e.Chain, signer string) string {
+	for _, b := range chain.Bodies {
+		for _, e := range b.Excluded {
+			if e.User == signer && e.Email != "" {
+				return e.Email
+			}
+		}
+	}
+	return signer
 }
 
 // isNotFound reports whether err is the server's 404.

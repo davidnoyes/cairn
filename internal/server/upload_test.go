@@ -762,3 +762,54 @@ func TestDBAPIOverHTTP(t *testing.T) {
 		t.Errorf("download not a sqlite file: %q", head)
 	}
 }
+
+// A manifest part is capped at e2e.MaxManifestBytes, the most the client
+// reads, whatever the upload cap is: one byte over is 413 naming the limit
+// and leaves the stored version as it was, and the cap itself is accepted.
+func TestManifestPartCap(t *testing.T) {
+	s, ts := testServer(t)
+	admin := login(t, ts.URL, "admin@example.com", "admin-password")
+	aid := createArtifact(t, admin, "demo")
+	base := "/api/artifacts/" + aid + "/versions"
+	padded := func(p *pushParts, n int) *pushParts {
+		p.Manifest = append(bytes.Clone(p.Manifest), make([]byte, n-len(p.Manifest))...)
+		return p
+	}
+	first := newPush(t, aid, "", 1, map[string]string{"index.html": "one"})
+	v := decode[pushed](t, admin.send("POST", base, first))
+
+	over := func(method, path string, p *pushParts) {
+		t.Helper()
+		resp := admin.send(method, path, padded(p, e2e.MaxManifestBytes+1))
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusRequestEntityTooLarge || !strings.Contains(string(body), "manifest") || !strings.Contains(string(body), "16 MiB") {
+			t.Errorf("%s with a manifest one byte over the cap: %d %s, want 413 naming the 16 MiB limit", method, resp.StatusCode, body)
+		}
+	}
+	t.Run("push", func(t *testing.T) {
+		over("POST", base, newPush(t, aid, "", 1, map[string]string{"index.html": "two"}))
+		if dirs := contentDirs(t, s, aid); len(dirs) != 1 {
+			t.Errorf("content dirs after a refused push: %v, want just the first version's", dirs)
+		}
+		if got := decode[[]pushed](t, admin.doRaw("GET", base, nil)); len(got) != 1 || got[0].ManifestHash != first.ManifestHash {
+			t.Errorf("versions after a refused push: %+v, want the first alone and unchanged", got)
+		}
+		if resp := admin.send("POST", base, padded(newPush(t, aid, "", 1, map[string]string{"index.html": "four"}), e2e.MaxManifestBytes)); resp.StatusCode != http.StatusCreated {
+			t.Errorf("POST with a manifest at the cap: %d, want 201", resp.StatusCode)
+		}
+	})
+	t.Run("replace", func(t *testing.T) {
+		dirs := contentDirs(t, s, aid)
+		over("PUT", base+"/"+v.ID, newPush(t, aid, v.ID, 1, map[string]string{"index.html": "three"}))
+		if b := storedBytes(t, s, aid, v.ID, "manifest"); !bytes.Equal(b, first.Manifest) {
+			t.Error("a refused replace changed the stored manifest")
+		}
+		if after := contentDirs(t, s, aid); len(after) != len(dirs) {
+			t.Errorf("content dirs after a refused replace: %v, want %v", after, dirs)
+		}
+		if resp := admin.send("PUT", base+"/"+v.ID, padded(newPush(t, aid, v.ID, 1, map[string]string{"index.html": "five"}), e2e.MaxManifestBytes)); resp.StatusCode != http.StatusOK {
+			t.Errorf("PUT with a manifest at the cap: %d, want 200", resp.StatusCode)
+		}
+	})
+}

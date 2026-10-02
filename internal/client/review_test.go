@@ -350,6 +350,8 @@ func TestVouchRefusesAManifestThatDoesNotBelong(t *testing.T) {
 	t.Run("a bad signature", func(t *testing.T) {
 		c := tampering(w.ada, forgedManifest(t, w.ada, w.artifact, vid, bobID, attacker, same))
 		vouchRefused(t, c, w.artifact, vid, "signature does not verify")
+		// The error carries why the last key failed.
+		vouchRefused(t, c, w.artifact, vid, "does not verify under any key the chain lists for \""+bobID+"\": "+e2e.ErrDecrypt.Error())
 	})
 	for name, edit := range map[string]func(*e2e.ManifestBody){
 		"another artifact": func(b *e2e.ManifestBody) { b.Artifact = "other-artifact" },
@@ -423,13 +425,80 @@ func TestVouchRefusesAVersionWhoseSignerIsGone(t *testing.T) {
 	}
 	vid := pushOne(t, w.bob, w.artifact)
 	bobID := w.userID(t, w.bob)
-	c := tampering(w.ada, nil, "/api/users/"+bobID, "/api/users/"+bobID+"/rotations")
+	dir, rot := "/api/users/"+bobID, "/api/users/"+bobID+"/rotations"
+	for name, down := range map[string][]string{
+		"directory and rotations both 404": {dir, rot},
+		"directory 404, rotations 200":     {dir},
+	} {
+		c := tampering(w.ada, nil, down...)
+		puts := countingVouchPuts(c)
+		err := c.Vouch(w.artifact, vid)
+		var api *APIError
+		if !errors.Is(err, ErrVouchSignerGone) || errors.Is(err, ErrVouchManifest) || errors.As(err, &api) ||
+			!strings.Contains(err.Error(), "disabled or deleted") || !strings.Contains(err.Error(), "DELETE /api/artifacts/") ||
+			!strings.Contains(err.Error(), bobID) {
+			t.Errorf("%s: Vouch for a version of a gone signer = %v, want ErrVouchSignerGone naming %s and the remedy", name, err, bobID)
+		}
+		if len(*puts) != 0 {
+			t.Errorf("%s: a refused vouch sent %v", name, *puts)
+		}
+	}
+}
+
+// A 404 from the rotations route alone does not make a signer gone: the
+// directory answered, so the account is published, and the keys it lists are
+// not the ones the chain lists for the signer (bob reset his account after
+// he pushed).
+func TestVouchDoesNotCallASignerGoneOnARotationsNotFoundAlone(t *testing.T) {
+	w := newSharing(t)
+	if _, err := w.ada.Share(w.artifact, "bob@example.com", "editor", false); err != nil {
+		t.Fatal(err)
+	}
+	vid := pushOne(t, w.bob, w.artifact)
+	bobID := w.userID(t, w.bob)
+	w.resetBob(t)
+	c := tampering(w.ada, nil, "/api/users/"+bobID+"/rotations")
 	puts := countingVouchPuts(c)
 	err := c.Vouch(w.artifact, vid)
-	var api *APIError
-	if !errors.Is(err, ErrVouchManifest) || errors.As(err, &api) || !strings.Contains(err.Error(), "no longer published") ||
-		!strings.Contains(err.Error(), "delete the version") {
-		t.Errorf("Vouch for a version of a gone signer = %v, want ErrVouchManifest saying the keys are no longer published", err)
+	if !errors.Is(err, ErrVouchManifest) || errors.Is(err, ErrVouchSignerGone) || !strings.Contains(err.Error(), "are not the ones the chain lists") {
+		t.Errorf("Vouch with only rotations 404 = %v, want ErrVouchManifest saying the keys are not the ones the chain lists", err)
+	}
+	if len(*puts) != 0 {
+		t.Errorf("a refused vouch sent %v", *puts)
+	}
+}
+
+// The whole path against a real server: the owner removes the editor, an
+// admin disables the editor's account, and the editor's version cannot be
+// vouched. The removal puts the editor's email in the chain, so the error
+// names it.
+func TestVouchRefusesAVersionWhoseSignerWasDisabled(t *testing.T) {
+	w := newSharing(t)
+	if _, err := w.ada.Share(w.artifact, "bob@example.com", "editor", false); err != nil {
+		t.Fatal(err)
+	}
+	vid := pushOne(t, w.bob, w.artifact)
+	bobID := w.userID(t, w.bob)
+	if _, err := w.ada.Unshare(w.artifact, "bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	signupVerify(t, w.host, w.m, "admin@example.com", testPassword)
+	admin := New(w.host, "")
+	if _, err := admin.Login("admin@example.com", testPassword); err != nil {
+		t.Fatal(err)
+	}
+	if err := admin.doJSON("PATCH", "/api/admin/users/"+bobID, map[string]any{"disabled": true}, nil); err != nil {
+		t.Fatal(err)
+	}
+	puts := countingVouchPuts(w.ada)
+	err := w.ada.Vouch(w.artifact, vid)
+	if !errors.Is(err, ErrVouchSignerGone) || errors.Is(err, ErrVouchManifest) {
+		t.Fatalf("Vouch for a disabled signer's version = %v, want ErrVouchSignerGone", err)
+	}
+	for _, want := range []string{"bob@example.com", "disabled or deleted", "re-enable", "DELETE /api/artifacts/{id}/versions/{vid}"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error %q does not contain %q", err, want)
+		}
 	}
 	if len(*puts) != 0 {
 		t.Errorf("a refused vouch sent %v", *puts)

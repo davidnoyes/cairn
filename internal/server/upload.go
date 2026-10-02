@@ -114,6 +114,28 @@ func (s *Server) handleReplaceVersion(w http.ResponseWriter, r *http.Request) {
 // short to hold one tagged chunk.
 var errBlobShape = errors.New("is not a Cairn blob")
 
+// errManifestTooBig means the manifest part is over e2e.MaxManifestBytes.
+var errManifestTooBig = errors.New("the manifest is over the maximum size")
+
+// cappedReader reads at most left bytes of r, then fails with
+// errManifestTooBig when there is one more.
+type cappedReader struct {
+	r    io.Reader
+	left int64
+}
+
+func (c *cappedReader) Read(p []byte) (int, error) {
+	if int64(len(p)) > c.left+1 {
+		p = p[:c.left+1]
+	}
+	n, err := c.r.Read(p)
+	c.left -= int64(n)
+	if c.left < 0 {
+		return n, errManifestTooBig
+	}
+	return n, err
+}
+
 // receivePush reads the multipart request into a fresh content dir and
 // returns its version part and the dir's name. It reports every refusal to
 // the client itself, and leaves no dir behind when it refuses.
@@ -130,6 +152,8 @@ func (s *Server) receivePush(w http.ResponseWriter, r *http.Request, artifactID 
 		switch {
 		case errors.As(err, &tooBig):
 			refuse(http.StatusRequestEntityTooLarge, fmt.Sprintf("the push exceeds the maximum size of %d MiB", s.cfg.MaxUploadMB))
+		case errors.Is(err, errManifestTooBig):
+			refuse(http.StatusRequestEntityTooLarge, fmt.Sprintf("the manifest exceeds the maximum size of %d MiB", e2e.MaxManifestBytes>>20))
 		case errors.Is(err, errBlobShape):
 			refuse(http.StatusBadRequest, err.Error())
 		default:
@@ -194,7 +218,7 @@ func (s *Server) receivePush(w http.ResponseWriter, r *http.Request, artifactID 
 				return
 			}
 			haveManifest = true
-			if err := writeBlob(filepath.Join(dest, manifestFile), part); err != nil {
+			if err := writeBlob(filepath.Join(dest, manifestFile), &cappedReader{r: part, left: e2e.MaxManifestBytes}); err != nil {
 				if errors.Is(err, errBlobShape) {
 					err = fmt.Errorf("the manifest %w", err)
 				}

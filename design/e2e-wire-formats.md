@@ -259,6 +259,9 @@ Blob contexts:
 | `file-meta` | Version ID | Path | A stored file's metadata record |
 | `meta` | Version ID, or empty for the artifact | Field name | One metadata record |
 
+A sealed `manifest` blob is at most 16 MiB (`e2e.MaxManifestBytes`). The
+server refuses a larger one with `413`, and a client refuses to read one.
+
 ## Key wrapping
 
 An `AK`, or a user's `EK` for their successor, is wrapped to a user's X25519

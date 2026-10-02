@@ -1175,6 +1175,7 @@ The server cannot read any of it, so it checks only the shape:
 - every blob ID is well formed and appears once;
 - every blob and the manifest start with the blob header and are long
   enough to hold one tagged chunk;
+- the manifest part is at most 16 MiB, or the server answers `413`;
 - the total size is within `--max-upload-mb`.
 
 It stores the parts under a fresh content directory, as `manifest` and
