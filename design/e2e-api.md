@@ -1106,6 +1106,9 @@ Every other request goes to the app's routes, as before.
 - On a content host, an `/api/` route outside the allowlist answers `404`,
   whatever credentials the request carries, and so does an allowlisted route
   whose `{id}` does not resolve to the host's artifact.
+- On a content host, the server ignores the `Cookie` header. An
+  `Authorization` header must carry a content-origin token whose `art` claim
+  names the host's artifact, or the request gets `401`.
 - Any other `GET` that asks for HTML gets the boot page, which takes over
   once the worker runs. Anything else gets `404`.
 - Every response sends `X-Content-Type-Options: nosniff`, and every HTML
