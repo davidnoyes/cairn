@@ -232,17 +232,30 @@ test('ready and need-keys for a version that is not a lowercase UUID are ignored
   assert.equal(p.status().hidden, true);
 });
 
-test('ready with a path that does not start with a slash is ignored', async () => {
+test('ready with a path that does not start with a slash, or leaves the version, is ignored', async () => {
   const p = await page({ who: 'viewer' });
-  for (const path of ['x', '', null, 7]) await p.post({ cairn: 'ready', version: V1, path });
+  for (const path of ['x', '', null, 7, '/%2e%2e/api/x', '/.\t./api/x']) await p.post({ cairn: 'ready', version: V1, path });
   assert.deepEqual(p.posted(), []);
 });
 
-test('a version that is not this artifact\'s is ignored without a message', async () => {
+test('a page path that leaves the version gets no keys', async () => {
+  const p = await page({ who: 'viewer', version: V1, path: `/%2e%2e/api/artifacts/${ARTIFACT}/versions/${V1}/files/x.html` });
+  await p.post({ cairn: 'ready', version: null, path: null });
+  assert.deepEqual(p.posted(), []);
+});
+
+test('a version the frame names that is not this artifact\'s gets no keys, and shows nothing', async () => {
   const p = await page({ who: 'viewer' });
   await p.post({ cairn: 'need-keys', version: '66666666-6666-4666-8666-666666666667' });
+  await p.post({ cairn: 'ready', version: '66666666-6666-4666-8666-666666666667', path: '/' });
   assert.deepEqual(p.posted(), []);
-  assert.equal(p.status().hidden, true);
+  assert.equal(p.status().hidden, true, p.status().textContent);
+});
+
+test('a page version the server does not have is not framed, and says it was not found', async () => {
+  const p = await page({ who: 'viewer', version: '66666666-6666-4666-8666-666666666667' });
+  assert.equal(p.frame(), undefined);
+  assert.equal(p.status().textContent, 'This version could not be found. It may have been deleted.');
 });
 
 test('a version that is not trusted gets no keys, and the person is told', async () => {
@@ -309,6 +322,17 @@ test('nothing is framed after a failure, and each failure is shown', async () =>
   });
   assert.equal(ended.frame(), undefined);
   assert.equal(ended.status().hidden, false);
+  assert.match(ended.status().textContent, /^This artifact could not be verified, so it is not shown\. /);
+
+  const signedOut = await page({
+    who: 'viewer',
+    build: ({ server }) => {
+      const base = server.fetch;
+      server.fetch = async (path, init) => (path === `/api/artifacts/${ARTIFACT}` ? new Response('{}', { status: 401 }) : base(path, init));
+    },
+  });
+  assert.equal(signedOut.frame(), undefined);
+  assert.equal(signedOut.status().textContent, 'Your session has ended. Sign in again.');
 });
 
 test('an artifact with no versions says so and is not framed', async () => {
@@ -331,11 +355,49 @@ test('a visitor with a public link opens it, and the link leaves the address bar
   assert.equal(msg.linkToken, e2e.b64(await e2e.linkToken(p.world.aks[1], ARTIFACT, 1)));
 });
 
+test('a visitor with a public link keeps it when changing version or going full screen', async () => {
+  const p = await page({ isPublic: true, members: [], noRun: true });
+  const hash = `#k=${e2e.b64(p.world.aks[1])}&e=1&o=${U.owner.fp}`;
+  p.window.location.hash = hash;
+  await p.start();
+  assert.equal(p.dom.els.fullscreen.href, `/full/${ARTIFACT}/${V2}${hash}`);
+  p.dom.els.version.value = V1;
+  p.dom.els.version.listeners.change();
+  assert.deepEqual(p.assigned, [`/shared/${ARTIFACT}/${V1}${hash}`]);
+});
+
+test('a member who follows a public link opens as a member, and the key is not carried on', async () => {
+  const p = await page({ who: 'viewer', isPublic: true, noRun: true });
+  p.window.location.hash = `#k=${e2e.b64(p.world.aks[1])}&e=1&o=${U.owner.fp}`;
+  await p.start();
+  assert.ok(p.frame());
+  assert.equal(p.dom.els.fullscreen.href, `/full/${ARTIFACT}/${V2}`);
+  p.dom.els.version.value = V1;
+  p.dom.els.version.listeners.change();
+  assert.deepEqual(p.assigned, [`/shared/${ARTIFACT}/${V1}`]);
+});
+
+test('a member\'s page anchor is not carried to another version', async () => {
+  const p = await page({ who: 'viewer', hash: '#section' });
+  assert.equal(p.dom.els.fullscreen.href, `/full/${ARTIFACT}/${V2}`);
+  p.dom.els.version.value = V1;
+  p.dom.els.version.listeners.change();
+  assert.deepEqual(p.assigned, [`/shared/${ARTIFACT}/${V1}`]);
+});
+
 test('a malformed fragment is removed, and the error is shown', async () => {
   const p = await page({ isPublic: true, hash: '#k=nonsense' });
   assert.deepEqual(p.replaced, [[null, '', `/shared/${ARTIFACT}`]]);
   assert.equal(p.frame(), undefined);
   assert.equal(p.status().hidden, false);
+  assert.match(p.status().textContent, /^This link is incomplete or damaged\./);
+});
+
+test('a member who opens a page with a fragment that is not a link sees the artifact', async () => {
+  const p = await page({ who: 'viewer', hash: '#section' });
+  assert.deepEqual(p.replaced, [[null, '', `/shared/${ARTIFACT}`]]);
+  assert.ok(p.frame());
+  assert.equal(p.status().hidden, true, p.status().textContent);
 });
 
 test('navigate goes to a shared page of one or two ids, and to full in full mode', async () => {
@@ -380,6 +442,7 @@ test('a failed renewal is shown', async () => {
   p.timers[0].fn();
   await settle();
   assert.equal(p.status().hidden, false);
+  assert.equal(p.status().textContent, 'Your access could not be renewed. Reload the page, or sign in again.');
 });
 
 test('the shell never assigns innerHTML or writes the document', async () => {

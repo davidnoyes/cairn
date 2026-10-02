@@ -105,6 +105,21 @@ test('links: internal links replace the page, external links open a tab, Mermaid
 
 test('full screen: links and diagrams work at /full/<id>', async ({ ownerPage }) => {
   await linkChecks(ownerPage, 'full');
+  await expect(ownerPage.locator('header'), 'no chrome while the artifact shows').toBeHidden();
+});
+
+test('full screen: a signed-out visitor told to sign in gets the sign-in link', async ({ browser }) => {
+  const s = loadState();
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await page.goto(`${s.appOrigin}/full/${s.artifacts['plain-doc'].id}`);
+    await expect(page.locator('#status')).toContainText('Sign in');
+    await expect(page.locator('#account')).toBeVisible();
+    await expect(page.locator('#account')).toHaveAttribute('href', `/login?next=/shared/${s.artifacts['plain-doc'].id}`);
+  } finally {
+    await context.close();
+  }
 });
 
 test.describe('worker restart', () => {
@@ -122,6 +137,38 @@ test.describe('worker restart', () => {
     await frame.locator('#next').click();
     const next = await contentFrame(ownerPage);
     await expect(next.locator('#marker')).toHaveText(PAGE2_MARKER);
+  });
+});
+
+test.describe('downloads', () => {
+  // Only Firefox sends a download link through the worker: WebKit sends it
+  // straight to the network, and Chromium cancels it. See design/e2e-api.md
+  // "The service worker".
+  test.skip(({ browserName }) => browserName !== 'firefox', 'only Firefox sends a download link through the service worker');
+
+  test('a download link to the database or a stored file carries the viewer\'s access', async ({ ownerPage }) => {
+    const s = loadState();
+    const frame = await openShared(ownerPage, s.artifacts['plain-doc'].id);
+    await expect(frame.locator('#marker')).toHaveText(MARKER);
+    const urls = await frame.evaluate(async () => {
+      const { cairn } = window;
+      await cairn.ready();
+      await cairn.db.query('CREATE TABLE IF NOT EXISTS t (x)');
+      await cairn.files.upload('note.txt', 'DOWNLOAD-MARKER');
+      return { db: cairn.db.downloadURL, file: cairn.files.url('note.txt') };
+    });
+    for (const [href, starts] of [[urls.db, 'SQLite format 3'], [urls.file, 'DOWNLOAD-MARKER']]) {
+      const downloading = ownerPage.waitForEvent('download');
+      await frame.evaluate((h) => {
+        const a = Object.assign(document.createElement('a'), { href: h, download: '' });
+        document.body.append(a);
+        a.click();
+        a.remove();
+      }, href);
+      const download = await downloading;
+      expect(await download.failure(), `download of ${href}`).toBeNull();
+      expect(readFileSync(await download.path()).toString('latin1'), `download of ${href}`).toMatch(new RegExp(`^${starts}`));
+    }
   });
 });
 

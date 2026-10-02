@@ -21,6 +21,7 @@ let netHook = null; // (request) => promise of a Response, or of nothing to use 
 
 globalThis.self = {
   location: new URL(`${ORIGIN}/_cairn/sw.js?app=${encodeURIComponent(APP)}`),
+  registration: { scope: `${ORIGIN}/` },
   addEventListener: (type, fn) => {
     listeners[type] = fn;
   },
@@ -192,6 +193,13 @@ test('api: answers two reads itself, and adds the token to the rest', async () =
   assert.equal(calls[0].headers.get('Authorization'), 'Bearer tok');
 });
 
+test('api: a navigation (a download link) carries the token like any other request', async () => {
+  calls.length = 0;
+  await dispatch(`${ORIGIN}/api/artifacts/${ARTIFACT}/db/download`, { mode: 'navigate' });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].headers.get('Authorization'), 'Bearer tok');
+});
+
 test('a token message replaces the token, and only from this origin', async () => {
   await send({ cairn: 'token', token: 'new', tokenExpires: 5 }, 'http://evil.example');
   await send({ cairn: 'token', token: 'bad' });
@@ -204,8 +212,9 @@ test('a token message replaces the token, and only from this origin', async () =
 // The tests below each start a fresh worker, so they do not depend on the
 // keys an earlier test left behind.
 let loads = 0;
-async function fresh(search = `?app=${encodeURIComponent(APP)}`) {
+async function fresh(search = `?app=${encodeURIComponent(APP)}`, scope = `${ORIGIN}/`) {
   self.location = new URL(`${ORIGIN}/_cairn/sw.js${search}`);
+  self.registration = { scope };
   table = { ...baseTable, [`${ORIGIN}/_cairn/boot`]: enc.encode('boot') };
   matchGate = null;
   getGate = null;
@@ -217,6 +226,16 @@ async function fresh(search = `?app=${encodeURIComponent(APP)}`) {
 }
 
 const tick = () => new Promise((r) => setImmediate(r));
+
+// Artifact code shares the origin and could register this script at a
+// narrower scope, such as /_cairn/, where it would control the boot page.
+// The worker refuses to start anywhere but the origin root.
+test('a worker registered at any scope but the origin root refuses to start', async () => {
+  for (const scope of [`${ORIGIN}/_cairn/`, `${ORIGIN}/${VERSION}/`, 'https://other.example/']) {
+    await assert.rejects(fresh(undefined, scope), /scope/, scope);
+  }
+  await fresh();
+});
 
 function gate() {
   let open;

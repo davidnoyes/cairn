@@ -178,7 +178,8 @@ async function ed25519PublicOf(seed) {
 // unwrap a raw X25519 or Ed25519 private key, so each is decrypted to bytes
 // and imported at once as non-extractable; the bytes are zeroed afterwards.
 // The Ed25519 public key is derived from the seed while the bytes exist. The
-// X25519 key is stored wrapped instead (see keystore.mjs).
+// X25519 key is also wrapped, for a browser that will not store it as a
+// CryptoKey (see keystore.mjs).
 async function openBundle(user, bundle, kek) {
   const mk = await e2e.openKey(kek, ['mk'], e2e.unb64(bundle.mkPassword));
   const mkSeal = await e2e.mkSealCryptoKey(mk);
@@ -192,6 +193,7 @@ async function openBundle(user, bundle, kek) {
       mk,
       mkSeal,
       ek: await e2e.openKey(mkSeal, ['ek'], e2e.unb64(bundle.ek)),
+      x25519: await e2e.importX25519PrivateKey(x25519Raw),
       x25519Wrapped: await wrapX25519(x25519Raw),
       ed25519: await e2e.importEd25519SigningKey(ed25519Raw),
       ed25519Pub: await ed25519PublicOf(ed25519Raw),

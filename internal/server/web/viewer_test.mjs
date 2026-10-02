@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as e2e from './e2e.mjs';
+import { ApiError } from './account.mjs';
 import { ContentError, checkKeysMessage } from './content.mjs';
 import {
   ARTIFACT, OTHER_ARTIFACT, ORIGIN, V1, V2, buildWorld, fakeKeyStore, fakeStorage, keyStoreRecord,
@@ -305,7 +306,7 @@ test('a member who also has the link opens as a member', async () => {
   assert.equal((await open(s, linkFor(s.world))).mode, 'member');
 });
 
-test('a key-store record without the Ed25519 public key reads as signed out', async () => {
+test('a key-store record without the Ed25519 public key reads as signed out, and says to sign in again', async () => {
   const { ed25519Pub, ...old } = records.editor;
   assert.ok(ed25519Pub);
   const s = await scene({ who: 'editor', isPublic: true, record: old });
@@ -313,7 +314,9 @@ test('a key-store record without the Ed25519 public key reads as signed out', as
   assert.equal(opened.mode, 'link');
   assert.equal(opened.caller, null);
   assert.equal(s.server.calls.some((c) => c.path.startsWith('/api/me')), false);
-  await assert.rejects(() => open(s), NoAccessError);
+  await assert.rejects(() => open(s), { name: 'NoAccessError', message: /Sign out, then sign in again/ });
+  const fresh = await scene({ isPublic: true });
+  await assert.rejects(() => open(fresh), (err) => err instanceof NoAccessError && !/Sign out/.test(err.message));
 });
 
 test('a key-store record for another user than the session reads as signed out', async () => {
@@ -485,12 +488,20 @@ test('takeLink removes the fragment, then returns the link', () => {
   assert.deepEqual(link, { host: ORIGIN, artifact: ARTIFACT, ak, epoch: 3, o: U.owner.fp });
 });
 
-test('takeLink removes a malformed fragment before it throws', () => {
+test('takeLink removes a malformed fragment before it throws a LinkError a person can act on', () => {
   for (const hash of ['#k=zz', '#nonsense', `#k=${e2e.b64(new Uint8Array(32))}&e=1`]) {
     const p = fakePage(hash);
-    assert.throws(() => takeLink(p.location, p.history, ARTIFACT), e2e.FormatError, hash);
+    assert.throws(() => takeLink(p.location, p.history, ARTIFACT), { name: 'LinkError', message: /incomplete or damaged/ }, hash);
     assert.deepEqual(p.calls, [[null, '', `/shared/${ARTIFACT}?x=1`]], hash);
   }
+});
+
+test('a fragment that is not a link does not stop a member, and is reported to anyone else', async () => {
+  const linkError = new LinkError('bad link');
+  const m = await scene({ who: 'editor' });
+  assert.equal((await openArtifact(m.deps, { artifact: ARTIFACT, link: null, linkError })).mode, 'member');
+  const v = await scene({ isPublic: true });
+  await assert.rejects(() => openArtifact(v.deps, { artifact: ARTIFACT, link: null, linkError }), (err) => err === linkError);
 });
 
 // ---- trust ----
@@ -861,17 +872,49 @@ test('a visitor has no token to renew', async () => {
   assert.equal(c.timers.length, 0);
 });
 
-test('a failed renewal is reported and not retried', async () => {
-  let n = 0;
+test('a renewal the server refuses is reported and not retried', async () => {
+  for (const status of [401, 403]) {
+    let n = 0;
+    const c = clock(1_000_000, async () => {
+      if (n++ > 0) throw new ApiError('no', status);
+      return { token: 't', tokenExpires: 1600 };
+    });
+    await c.keeper.start();
+    await c.timers[0].fn();
+    assert.equal(c.errors.length, 1, status);
+    assert.equal(c.got.length, 0, status);
+    assert.equal(c.timers.length, 1, status);
+  }
+});
+
+test('a renewal that fails otherwise is retried every 10 seconds, and reported once the token is about to expire', async () => {
+  let fail = true;
   const c = clock(1_000_000, async () => {
-    if (n++ > 0) throw new Error('session ended');
-    return { token: 't', tokenExpires: 1600 };
+    if (c.minted++ > 0 && fail) throw new Error('network');
+    return { token: `t${c.minted}`, tokenExpires: Math.floor(c.now / 1000) + 600 };
   });
   await c.keeper.start();
+  c.now += 540_000;
   await c.timers[0].fn();
-  assert.equal(c.errors.length, 1);
-  assert.equal(c.got.length, 0);
-  assert.equal(c.timers.length, 1);
+  assert.equal(c.errors.length, 0, 'not reported while the token has time left');
+  assert.equal(c.timers.length, 2);
+  assert.equal(c.timers[1].ms, 10_000);
+  fail = false;
+  c.now += 10_000;
+  await c.timers[1].fn();
+  assert.equal(c.got.length, 1, 'the retry renews');
+  assert.equal(c.timers[2].ms, 540_000, 'and the next renewal is scheduled as usual');
+
+  fail = true;
+  c.now += 540_000;
+  await c.timers[2].fn();
+  for (let i = 3; c.timers.length > i; i++) {
+    c.now += c.timers[i].ms;
+    await c.timers[i].fn();
+  }
+  assert.equal(c.errors.length, 1, 'reported once the token has less than 10 seconds left');
+  assert.ok(c.timers.length > 4, 'after several retries');
+  assert.ok(c.timers.length < 10);
 });
 
 test('stopping cancels the renewal, and a timer that still fires does nothing', async () => {

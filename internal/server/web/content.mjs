@@ -67,6 +67,17 @@ export function parseContentPath(pathname) {
   return { version, path: decoded.join('/') };
 }
 
+// contentTarget returns the address /<version><path>, or null when a browser
+// navigating there could land outside the version. Both checks are needed:
+// parseContentPath refuses encoded dot segments, and the URL parser drops tabs
+// and newlines, which can make a dot segment parseContentPath never saw.
+export function contentTarget(version, path) {
+  if (typeof version !== 'string' || typeof path !== 'string') return null;
+  const target = '/' + version + path;
+  if (!parseContentPath(target)) return null;
+  return new URL(target, 'https://content.invalid').pathname.startsWith(`/${version}/`) ? target : null;
+}
+
 // classifyRequest says which handler a same-origin pathname belongs to.
 export function classifyRequest(pathname) {
   if (pathname === '/_cairn' || pathname.startsWith('/_cairn/')) return { kind: 'cairn' };
@@ -312,7 +323,7 @@ export function checkKeysMessage(msg) {
     checkString(u.email, 'context user email');
   }
   checkString(msg.path, 'path');
-  if (!msg.path.startsWith('/')) throw new ContentError('path must start with a slash');
+  if (!contentTarget(msg.version, msg.path)) throw new ContentError('path must stay inside the version');
   return msg;
 }
 

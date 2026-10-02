@@ -4,7 +4,7 @@
 // replaces its own location with the version's page, which the worker now
 // serves. Any failure is shown on the page as text. See design/e2e-api.md,
 // "The handshake".
-import { parseContentPath } from './content.mjs';
+import { contentTarget, parseContentPath } from './content.mjs';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -29,16 +29,33 @@ export function readyMessage(pathname) {
 }
 
 // checkKeysTarget refuses a keys message whose version or path could send
-// the page anywhere but into a version. The worker checks the rest.
+// the page anywhere but into a version, and returns the address to go to. The
+// worker checks the rest.
 export function checkKeysTarget(msg) {
   if (typeof msg.version !== 'string' || !UUID_RE.test(msg.version)) throw new Error('the keys name no valid version');
-  if (typeof msg.path !== 'string' || !msg.path.startsWith('/')) throw new Error('the keys name no valid path');
+  const target = contentTarget(msg.version, msg.path);
+  if (!target) throw new Error('the keys name no valid path');
+  return target;
 }
 
 function showError(doc, message) {
   const p = doc.createElement('p');
   p.textContent = 'Cairn error: ' + message;
   doc.body.appendChild(p);
+}
+
+// activeWorker resolves to the registration's active worker, waiting for an
+// installing one to activate, and rejects if it fails to install.
+function activeWorker(reg) {
+  if (reg.active) return Promise.resolve(reg.active);
+  const pending = reg.installing || reg.waiting;
+  if (!pending) return Promise.reject(new Error('the service worker failed to install'));
+  return new Promise((resolve, reject) => {
+    pending.addEventListener('statechange', () => {
+      if (reg.active) resolve(reg.active);
+      else if (pending.state === 'redundant') reject(new Error('the service worker failed to install'));
+    });
+  });
 }
 
 // run does the handshake. It resolves when the page has moved on or shown an
@@ -49,11 +66,16 @@ export async function run({ doc, win, loc, nav }) {
     if (!appOrigin) throw new Error('the page has no valid app origin');
     const sw = nav.serviceWorker;
 
-    await sw.register(`/_cairn/sw.js?app=${encodeURIComponent(appOrigin)}`, { type: 'module', scope: '/', updateViaCache: 'none' });
+    const reg = await sw.register(`/_cairn/sw.js?app=${encodeURIComponent(appOrigin)}`, { type: 'module', scope: '/', updateViaCache: 'none' });
+    // Only the registration made here, never sw.ready: artifact code shares
+    // this origin and can register at a narrower scope, which sw.ready would
+    // resolve to. Every other registration is removed.
+    const others = (await sw.getRegistrations()).filter((r) => r.scope !== reg.scope);
+    await Promise.all(others.map((r) => r.unregister()));
     // The active worker, not the controller: Firefox leaves this page
     // uncontrolled on a repeat visit, and the worker serves the navigation to
     // the version whether or not it controls this page.
-    const worker = (await sw.ready).active;
+    const worker = await activeWorker(reg);
 
     // Listen before saying ready, so the answer cannot be missed.
     const answer = new Promise((resolve) => {
@@ -66,7 +88,7 @@ export async function run({ doc, win, loc, nav }) {
     win.parent.postMessage(readyMessage(loc.pathname), appOrigin);
 
     const keys = await answer;
-    checkKeysTarget(keys);
+    const target = checkKeysTarget(keys);
     const confirmed = new Promise((resolve, reject) => {
       sw.addEventListener('message', (event) => {
         const m = event.data;
@@ -77,7 +99,7 @@ export async function run({ doc, win, loc, nav }) {
     });
     worker.postMessage(keys);
     await confirmed;
-    loc.replace('/' + keys.version + keys.path);
+    loc.replace(target);
   } catch (err) {
     showError(doc, err.message);
   }

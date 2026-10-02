@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -167,7 +168,7 @@ func TestContentOriginAssets(t *testing.T) {
 	for path, want := range map[string]string{
 		"/_cairn/boot.js":       "javascript",
 		"/_cairn/frame.js":      "javascript",
-		"/_cairn/sw.js":         "javascript",
+		swPath(w):               "javascript",
 		"/_cairn/e2e.mjs":       "javascript",
 		"/_cairn/content.mjs":   "javascript",
 		"/_cairn/cairn.js":      "javascript",
@@ -190,7 +191,7 @@ func TestContentOriginAssets(t *testing.T) {
 			t.Errorf("%s: a script carries an HTML policy", path)
 		}
 	}
-	sw := w.onContent(t, "GET", "/_cairn/sw.js", nil, nil)
+	sw := w.onContent(t, "GET", swPath(w), nil, nil)
 	if sw.Header.Get("Service-Worker-Allowed") != "/" || sw.Header.Get("Cache-Control") != "no-cache" {
 		t.Errorf("sw.js headers: Service-Worker-Allowed %q, Cache-Control %q", sw.Header.Get("Service-Worker-Allowed"), sw.Header.Get("Cache-Control"))
 	}
@@ -206,6 +207,40 @@ func TestContentOriginAssets(t *testing.T) {
 	// The app origin does not serve /_cairn/ at all.
 	if resp := w.viaHost(t, "127.0.0.1:"+w.port, "GET", "/_cairn/boot.js", nil, nil); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("app origin /_cairn/boot.js: %d, want 404", resp.StatusCode)
+	}
+}
+
+// swPath is the address the boot page registers the worker at.
+func swPath(w *hostWorld) string { return "/_cairn/sw.js?app=" + url.QueryEscape(w.appOrigin()) }
+
+// Artifact code shares the content origin, so it could register the worker
+// itself, naming another app origin that the worker would then let frame its
+// pages. The server serves the worker only for its own app origin.
+func TestContentOriginServesTheWorkerOnlyForItsAppOrigin(t *testing.T) {
+	w := newHostWorld(t)
+	app := url.QueryEscape(w.appOrigin())
+	if resp := w.onContent(t, "GET", swPath(w), nil, nil); resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s: %d, want 200", swPath(w), resp.StatusCode)
+	}
+	for _, q := range []string{
+		"",
+		"?",
+		"?app=",
+		"?app=" + url.QueryEscape("https://evil.example"),
+		"?app=" + url.QueryEscape(w.appOrigin()+"/"),
+		"?app=" + app + "&app=" + app,
+		"?app=" + app + "&x=1",
+		"?x=1&app=" + app,
+		"?app=" + app + "&a=1;b=2", // ParseQuery keeps app but reports the semicolon
+		"?APP=" + app,
+	} {
+		if resp := w.onContent(t, "GET", "/_cairn/sw.js"+q, nil, nil); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET /_cairn/sw.js%s: %d, want 404", q, resp.StatusCode)
+		}
+	}
+	// Only the worker checks its query; other assets ignore one.
+	if resp := w.onContent(t, "GET", "/_cairn/boot.js?app=x", nil, nil); resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /_cairn/boot.js?app=x: %d, want 200", resp.StatusCode)
 	}
 }
 
@@ -273,6 +308,41 @@ func TestContentOriginAPIAllowlist(t *testing.T) {
 	// The content token did not change anything on the other artifact.
 	if resp := w.owner.doRaw("GET", "/api/artifacts/"+b.id+"/versions/"+bvid+"/files", nil); resp.StatusCode != http.StatusOK {
 		t.Errorf("other artifact's file list: %d", resp.StatusCode)
+	}
+}
+
+// TestAPIResponsesCannotBecomeDocuments: a stored file is served from the API
+// on both hosts, so every API response forbids framing and running script, or
+// a link to an uploaded HTML file would run it with the origin's authority.
+func TestAPIResponsesCannotBecomeDocuments(t *testing.T) {
+	w := newHostWorld(t)
+	tok := mintContentToken(t, w.s, w.owner.id, w.art.id)
+	if r := w.owner.doRaw("PUT", w.vbase+"/files/x.html", []byte("<script>alert(1)</script>")); r.StatusCode != http.StatusOK {
+		t.Fatalf("seed file: %d", r.StatusCode)
+	}
+	check := func(where string, status int, h http.Header) {
+		t.Helper()
+		if got := h.Get("Content-Security-Policy"); got != apiCSP {
+			t.Errorf("%s (%d): Content-Security-Policy %q, want %q", where, status, got, apiCSP)
+		}
+	}
+	for _, p := range []string{w.vbase + "/files/x.html", "/api/me", "/api/nothing"} {
+		resp := w.onContent(t, "GET", p, bearer(tok), nil)
+		check("content host GET "+p, resp.StatusCode, resp.Header)
+	}
+	if resp := w.onContent(t, "GET", w.vbase+"/files/x.html", bearer(tok), nil); resp.StatusCode != http.StatusOK {
+		t.Errorf("content host file: %d, want 200", resp.StatusCode)
+	}
+	for _, p := range []string{w.vbase + "/files/x.html", "/api/me", "/api/nothing"} {
+		resp := w.owner.doRaw("GET", p, nil)
+		resp.Body.Close()
+		check("app GET "+p, resp.StatusCode, resp.Header)
+	}
+	// An app page is not an API response, and keeps its own policy.
+	resp := get(t, w.base+"/login", "", "text/html")
+	resp.Body.Close()
+	if got := resp.Header.Get("Content-Security-Policy"); got == apiCSP {
+		t.Errorf("/login took the API policy")
 	}
 }
 

@@ -224,7 +224,7 @@ internal/server/web/account.mjs	history.replaceState(null, '', location.pathname
 internal/server/web/e2e.mjs	return importEd25519Priv(seed, false, ['sign']);	return importEd25519Priv(seed, true, ['sign']);	node --test internal/server/web/account_test.mjs
 internal/server/web/e2e.mjs	importX25519Priv(raw, false, ['deriveBits']);	importX25519Priv(raw, true, ['deriveBits']);	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	await deps.keyStore.clear();	void 0;	node --test internal/server/web/account_test.mjs
-internal/server/web/keystore.mjs	clear: () => run('readwrite', (store) => store.clear()),	clear: () => run('readwrite', () => ({})),	node --test internal/server/web/keystore_test.mjs
+internal/server/web/keystore.mjs	const clear = () => run('readwrite', (store) => store.clear());	const clear = () => run('readwrite', () => ({}));	node --test internal/server/web/keystore_test.mjs
 internal/server/routes.go	handle("GET /login", withAppCSP(s.handleLoginPage))	handle("GET /login", s.handleLoginPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
 internal/server/routes.go	handle("GET /admin", withAppCSP(s.handleAdminPage))	handle("GET /admin", s.handleAdminPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
 internal/server/routes.go	handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "signup" { handle("GET /"+page, s.handleStaticPage(page+".html")) } else { handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
@@ -836,7 +836,6 @@ internal/server/web/content.mjs	const enc = path.split('/').map(encodeURICompone
 internal/server/web/content.mjs	if (msg.cairn !== 'keys') throw	if (false) throw	node --test internal/server/web/content_test.mjs
 internal/server/web/content.mjs	if (keys.length !== fields.length ||	if (false ||	node --test internal/server/web/content_test.mjs
 internal/server/web/content.mjs	if (msg.context.artifact.id !== msg.artifact)	if (false)	node --test internal/server/web/content_test.mjs
-internal/server/web/content.mjs	if (!msg.path.startsWith('/'))	if (false)	node --test internal/server/web/content_test.mjs
 internal/server/web/content.mjs	checkB64(msg.ak, 32, 'ak');	checkB64(msg.ak, undefined, 'ak');	node --test internal/server/web/content_test.mjs
 internal/server/web/content.mjs	headers.delete('Authorization');	headers.delete('X-Unused');	node --test internal/server/web/content_test.mjs
 internal/server/web/content.mjs	headers.delete('X-Cairn-Link-Token');	headers.delete('X-Unused');	node --test internal/server/web/content_test.mjs
@@ -1031,7 +1030,7 @@ internal/server/upload.go	refuse(http.StatusRequestEntityTooLarge, fmt.Sprintf("
 internal/server/serving.go	return len(s) == 36 && s == strings.ToLower(s)	return len(s) == 36	go test ./internal/server -run TestShellPageValidatesIDs
 internal/server/serving.go	return len(s) == 36 && s == strings.ToLower(s)	return s == strings.ToLower(s)	go test ./internal/server -run TestShellPageValidatesIDs
 internal/server/serving.go	if _, err := uuid.Parse(s); err != nil {	if _, err := uuid.Parse(s); false && err != nil {	go test ./internal/server -run TestShellPageValidatesIDs
-internal/server/serving.go	if vid != "" && !isLowerUUID(vid) {	if vid != "" && !isLowerUUID(id) {	go test ./internal/server -run TestShellPageValidatesIDs
+internal/server/serving.go	if (vid != "" && !isLowerUUID(vid)) ||	if (vid != "" && !isLowerUUID(id)) ||	go test ./internal/server -run TestShellPageValidatesIDs
 internal/server/serving.go	if !isLowerUUID(id) {	if !isLowerUUID(id) && false {	go test ./internal/server -run TestShellPageResolvesReferences
 internal/server/serving.go	Mode: mode, ContentOrigin	Mode: "shared", ContentOrigin	go test ./internal/server -run 'TestShellPageBody|TestSharedRoutesAndShellCSP'
 internal/server/serving.go	subpath += parts[2]	subpath += ""	go test ./internal/server -run TestShellPageBody
@@ -1107,7 +1106,7 @@ internal/server/web/boot.js	updateViaCache: 'none'	updateViaCache: 'all'	node --
 internal/server/web/boot.js	type: 'module', 	type: 'classic', 	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	scope: '/'	scope: '/x'	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	encodeURIComponent(appOrigin)	appOrigin	node --test internal/server/web/boot_test.mjs
-internal/server/web/boot.js	const worker = (await sw.ready).active;	const worker = sw.controller;	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	const worker = await activeWorker(reg);	const worker = sw.controller;	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	event.source !== win.parent ||	false ||	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	event.origin !== appOrigin) return;	false) return;	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	event.data.cairn !== 'keys'	false	node --test internal/server/web/boot_test.mjs
@@ -1116,7 +1115,6 @@ internal/server/web/boot.js	version: parsed ? parsed.version : null	version: nul
 internal/server/web/boot.js	path: parsed ? '/' + parsed.path : null	path: parsed ? parsed.path : null	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	|| !UUID_RE.test(msg.version)	|| false	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	typeof msg.version !== 'string' ||	false ||	node --test internal/server/web/boot_test.mjs
-internal/server/web/boot.js	!msg.path.startsWith('/')	false	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	/^[0-9a-f]{8}	/[0-9a-f]{8}	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	{12}$/;	{12}/;	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	{12}$/;	{12}$/i;	node --test internal/server/web/boot_test.mjs
@@ -1124,7 +1122,7 @@ internal/server/web/boot.js	event.source !== worker ||	false ||	node --test inte
 internal/server/web/boot.js	|| m.version !== keys.version) return;	|| false) return;	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	if (m.cairn === 'keys-ok') resolve();	if (true) resolve();	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	worker.postMessage(keys);	worker.postMessage({ cairn: 'keys' });	node --test internal/server/web/boot_test.mjs
-internal/server/web/boot.js	loc.replace('/' + keys.version + keys.path);	loc.replace(keys.path);	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	loc.replace(target);	loc.replace(keys.path);	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	await confirmed;	await 0;	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	p.textContent = 	p.innerHTML = 	node --test internal/server/web/boot_test.mjs
 internal/server/web/boot.js	'Cairn error: '	'Cairn: '	node --test internal/server/web/boot_test.mjs
@@ -1134,11 +1132,10 @@ internal/server/web/boot.js	'Cairn error: '	'Cairn: '	node --test internal/serve
 # akCommit checks, who is signed in and which mode opens, the link checks,
 # every trust condition and the vouch's fields, the token renewal, the
 # navigation rules, and the shell page's message source, origin, and targets.
-# Not mutated, as equivalent: the host and artifact checks inside takeLink
-# (parseLink builds the host and artifact from the same inputs), the stored
-# anchor read in readKeyring (saveKeyringAnchor refuses the same rollback and
-# fork), and the epoch, seq, and head terms of recordChain's skip (the head
-# implies the others once verifyChain has checked the pin).
+# Not mutated, as equivalent: the stored anchor read in readKeyring
+# (saveKeyringAnchor refuses the same rollback and fork), and the epoch, seq,
+# and head terms of recordChain's skip (the head implies the others once
+# verifyChain has checked the pin).
 internal/server/web/viewer.mjs	if (!hash) return null;	if (false) return null;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	history.replaceState(null, '', location.pathname + location.search);	void history;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	location.pathname + location.search);	location.pathname);	node --test internal/server/web/viewer_test.mjs
@@ -1170,7 +1167,7 @@ internal/server/web/viewer.mjs	if (!aks.has(epoch)) throw	if (false) throw	node 
 internal/server/web/viewer.mjs	!(record.ed25519Pub instanceof Uint8Array)	false	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (me.id !== record.userId) return null;	if (false) return null;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (err instanceof ApiError && err.status === 401) return null;	if (false) return null;	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	if (!record ||	if (false ||	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!record) return null;	if (false) return null;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	return latest.owner === userId || latest.members.some((m) => m.user === userId);	return true;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	(err.status === 403 || err.status === 404)) return null;	(err.status === 403)) return null;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	(err.status === 403 || err.status === 404)) return null;	(err.status === 404)) return null;	node --test internal/server/web/viewer_test.mjs
@@ -1210,7 +1207,7 @@ internal/server/web/viewer.mjs	    epoch: version.epoch,	    epoch: 1,	node --te
 internal/server/web/viewer.mjs	- 60000 - now()	- 0 - now()	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	Math.max(0, current.tokenExpires * 1000 - 60000 - now())	current.tokenExpires * 1000 - 60000 - now()	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	current.tokenExpires === null) return;	false) return;	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	      if (stopped) return;	      void stopped;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	    if (stopped) return;	    void stopped;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (timer !== null) cancel(timer);	void timer;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	url = new URL(href, origin);	url = new URL(href);	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (url.origin !== origin) return null;	if (false) return null;	node --test internal/server/web/viewer_test.mjs
@@ -1223,12 +1220,10 @@ internal/server/web/viewer.mjs	${m[2] ? `/${m[2]}` : ''}	${''}	node --test inter
 internal/server/web/shell.mjs	if (event.source !== frame.contentWindow || event.origin !== contentOrigin) return;	if (event.origin !== contentOrigin) return;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	if (event.source !== frame.contentWindow || event.origin !== contentOrigin) return;	if (event.source !== frame.contentWindow) return;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	frame.contentWindow.postMessage(msg, contentOrigin)	frame.contentWindow.postMessage(msg, '*')	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	await prepareVersion(deps, opened, chosen);	void chosen;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	if (msg.version === null) answer	if (true) answer	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	await verify(chosen);	void chosen;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (msg.version === null) {	if (true) {	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	typeof v === 'string' && UUID_RE.test(v)	true	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	typeof msg.path === 'string' && msg.path.startsWith('/')	true	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	typeof msg.href === 'string' ?	true ?	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	if (err instanceof ApiError && err.status === 404) return;	if (false) return;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	.filter((v) => UUID_RE.test(v.id))	.filter(() => true)	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	pageMode === 'full' ? 'full' : 'shared'	'shared'	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	allow-downloads';	allow-downloads allow-top-navigation';	node --test internal/server/web/shell_page_test.mjs
@@ -1239,10 +1234,78 @@ internal/server/web/shell.mjs	if (validVersion(msg.version)) answer(msg.version,
 # CryptoKey, so the key is stored wrapped and save reads the record back;
 # Firefox leaves a repeat boot page uncontrolled, so boot talks to the
 # active worker; the shell's module graph and icon load on the app origin.
-internal/server/web/keystore.mjs	if ((await get()) === undefined) throw	if (false) throw	node --test internal/server/web/keystore_test.mjs
+internal/server/web/keystore.mjs	return (await get()) != null;	return true;	node --test internal/server/web/keystore_test.mjs
 internal/server/web/keystore.mjs	if (!record?.x25519Wrapped) return record;	if (true) return record;	node --test internal/server/web/keystore_test.mjs
 internal/server/web/keystore.mjs	{ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'unwrapKey']	{ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'unwrapKey']	node --test internal/server/web/keystore_test.mjs
 internal/server/web/keystore.mjs	return { ...rest, x25519:	return { ...record, x25519:	node --test internal/server/web/keystore_test.mjs
 internal/server/web/account.mjs	x25519Wrapped: await wrapX25519(x25519Raw),	x25519: await e2e.importX25519PrivateKey(x25519Raw),	node --test internal/server/web/account_test.mjs
 internal/server/serving.go	"/content.mjs":       "content.mjs",	"/content-x.mjs":       "content.mjs",	go test ./internal/server -run TestShellModuleGraphIsServed
 internal/server/web/shell.html	href="/icon.svg"	href="data:,"	go test ./internal/server -run TestShellPageLoadsNothingCSPBlocks
+
+# M4 review fixes: a damaged link fragment, a stale key record, renewal
+# retries, a missing version, and the direct X25519 key kept where stored.
+internal/server/web/viewer.mjs	throw new LinkError('This link is incomplete or damaged.	throw new Error('This link is incomplete or damaged.	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (linkError) throw linkError;	void linkError;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	found?.stale ? STALE_KEYS_MESSAGE : undefined	undefined	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	const caller = found?.stale ? null : found;	const caller = found;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	(err.status === 401 || err.status === 403);	(err.status === 401);	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	(err.status === 401 || err.status === 403);	(err.status === 403);	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!refused && current.tokenExpires	if (current.tokenExpires	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	current.tokenExpires * 1000 - now() > RETRY_MS) timer	true) timer	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	timer = later(renew, RETRY_MS);	timer = later(renew, 1000);	node --test internal/server/web/viewer_test.mjs
+internal/server/web/shell.mjs	err.status === 404 ? new VersionGoneError() : err;	false ? new VersionGoneError() : err;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	|| err instanceof VersionGoneError	|| false	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (err instanceof ApiError && err.status === 401) return 'Your session has ended. Sign in again.';	void 0;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	showStatus('Your access could not be renewed. Reload the page, or sign in again.')	showStatus('')	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	const { version, signer } = await verify(versionId);	const { version, signer } = await prepareVersion(deps, opened, versionId);	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/keystore.mjs	await clear(); // first	void 0; // first	node --test internal/server/web/keystore_test.mjs
+internal/server/web/keystore.mjs	if (await put(direct)) return;	if (await put(record)) return;	node --test internal/server/web/keystore_test.mjs
+internal/server/web/keystore.mjs	if (x25519Wrapped && (await put(wrapped))) return;	if (x25519Wrapped && (await put(record))) return;	node --test internal/server/web/keystore_test.mjs
+internal/server/web/keystore.mjs	return (await get()) != null;	return (await get()) !== undefined;	node --test internal/server/web/keystore_test.mjs
+internal/server/web/keystore.mjs	await clear(); // so load() finds nothing	void 0; // so load() finds nothing	node --test internal/server/web/keystore_test.mjs
+internal/server/web/account.mjs	x25519: await e2e.importX25519PrivateKey(x25519Raw),	x25519: undefined,	node --test internal/server/web/account_test.mjs
+
+# M4 security review fixes: a path that leaves the version (server, shell,
+# boot, worker), API responses that could become pages, the worker's own
+# registration and scope, and a link holder's fragment. The PathUnescape
+# error is not mutated, as equivalent: on an error it returns "", which the
+# empty-segment check refuses.
+internal/server/serving.go	if raw == "" && i == len(segs)-1 {	if raw == "" && i >= 0 {	go test ./internal/server -run 'TestShellPage|TestValidSubpath'
+internal/server/serving.go	seg, err := url.PathUnescape(raw)	seg, err := raw, error(nil); _ = url.PathUnescape	go test ./internal/server -run 'TestShellPage|TestValidSubpath'
+internal/server/serving.go	seg == "" || seg == "." || seg == ".." ||	seg == "." || seg == ".." ||	go test ./internal/server -run 'TestShellPage|TestValidSubpath'
+internal/server/serving.go	seg == "" || seg == "." || seg == ".." ||	seg == "" || seg == ".." ||	go test ./internal/server -run 'TestShellPage|TestValidSubpath'
+internal/server/serving.go	seg == "" || seg == "." || seg == ".." ||	seg == "" || seg == "." ||	go test ./internal/server -run 'TestShellPage|TestValidSubpath'
+internal/server/serving.go	strings.ContainsAny(seg, "/\\\x00")	strings.ContainsAny(seg, "\\\x00")	go test ./internal/server -run 'TestShellPage|TestValidSubpath'
+internal/server/serving.go	strings.ContainsAny(seg, "/\\\x00")	strings.ContainsAny(seg, "/\x00")	go test ./internal/server -run 'TestShellPage|TestValidSubpath'
+internal/server/serving.go	strings.ContainsAny(seg, "/\\\x00")	strings.ContainsAny(seg, "/\\")	go test ./internal/server -run 'TestShellPage|TestValidSubpath'
+internal/server/serving.go	!isLowerUUID(vid)) || !validSubpath(subpath) {	!isLowerUUID(vid)) {	go test ./internal/server -run 'TestShellPage|TestValidSubpath'
+internal/server/csp.go	if strings.HasPrefix(r.URL.Path, "/api/") {	if strings.HasPrefix(r.URL.Path, "/nothing/") {	go test ./internal/server -run TestAPIResponsesCannotBecomeDocuments
+internal/server/contentorigin.go	w.Header().Set("Content-Security-Policy", apiCSP)	_ = apiCSP	go test ./internal/server -run TestAPIResponsesCannotBecomeDocuments
+internal/server/contentorigin.go	err == nil && len(q) == 1 && len(q["app"]) == 1	err == nil && len(q["app"]) == 1	go test ./internal/server -run TestContentOriginServesTheWorkerOnlyForItsAppOrigin
+internal/server/contentorigin.go	len(q["app"]) == 1 && s.appOrigin	len(q["app"]) >= 1 && s.appOrigin	go test ./internal/server -run TestContentOriginServesTheWorkerOnlyForItsAppOrigin
+internal/server/contentorigin.go	q["app"][0] == s.appOrigin	q["app"][0] != ""	go test ./internal/server -run TestContentOriginServesTheWorkerOnlyForItsAppOrigin
+internal/server/contentorigin.go	case r.URL.Path == "/_cairn/sw.js" && !s.isOwnWorkerQuery(r.URL.RawQuery):	case false:	go test ./internal/server -run TestContentOriginServesTheWorkerOnlyForItsAppOrigin
+internal/server/contentorigin.go	return err == nil && len(q) == 1	_ = err; return len(q) == 1	go test ./internal/server -run TestContentOriginServesTheWorkerOnlyForItsAppOrigin
+internal/server/web/content.mjs	if (!parseContentPath(target)) return null;	void 0;	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	.pathname.startsWith(`/${version}/`) ? target : null;	.pathname ? target : null;	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (!contentTarget(msg.version, msg.path)) throw new ContentError('path must stay inside the version');	void 0;	node --test internal/server/web/content_test.mjs
+internal/server/web/boot.js	if (!target) throw new Error('the keys name no valid path');	void 0;	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	const others = (await sw.getRegistrations()).filter((r) => r.scope !== reg.scope);	const others = [];	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	const worker = await activeWorker(reg);	const worker = (await sw.ready).active;	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	if (reg.active) resolve(reg.active);	if (true) resolve(reg.active);	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	else if (pending.state === 'redundant') reject(	else if (false) reject(	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	const pending = reg.installing || reg.waiting;	const pending = reg.waiting;	node --test internal/server/web/boot_test.mjs
+internal/server/web/boot.js	if (!pending) return Promise.reject(	if (false) return Promise.reject(	node --test internal/server/web/boot_test.mjs
+internal/server/web/cairn.js	var content = host && new RegExp(	var content = new RegExp(	node --test internal/server/web/cairn_files_test.mjs
+internal/server/web/cairn.js	'^(' + UUID + ')\\.'	'^(' + UUID + ')'	node --test internal/server/web/cairn_files_test.mjs
+internal/server/web/cairn.js	'^/(' + UUID + ')/'	'^/(' + UUID + ')'	node --test internal/server/web/cairn_files_test.mjs
+internal/server/web/cairn.js	[null, host[1], content[1]]	[null, content[1], host[1]]	node --test internal/server/web/cairn_files_test.mjs
+internal/server/web/sw.js	if (self.registration.scope !== origin + '/') throw	if (false) throw	node --test internal/server/web/sw_test.mjs
+internal/server/web/shell.mjs	const keep = opened.mode === 'link' ? hash : '';	const keep = link ? hash : '';	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	const keep = opened.mode === 'link' ? hash : '';	const keep = hash;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (err instanceof VersionGoneError && versionId !== chosen) return;	if (false) return;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (err instanceof VersionGoneError && versionId !== chosen) return;	if (versionId !== chosen) return;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	${picker.value}${keep}	${picker.value}	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	/full/${artifact}/${chosen}${keep}	/full/${artifact}/${chosen}	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (contentTarget(chosen, pagePath)) answer(chosen, pagePath);	answer(chosen, pagePath);	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	} else if (validVersion(msg.version) && contentTarget(msg.version, msg.path)) answer	} else if (validVersion(msg.version)) answer	node --test internal/server/web/shell_page_test.mjs

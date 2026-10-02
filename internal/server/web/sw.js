@@ -19,6 +19,10 @@ import {
 const KEYS_WAIT_MS = 10000;
 
 const origin = self.location.origin;
+// Artifact code shares this origin and could register this script at a
+// narrower scope, such as /_cairn/, where it would control the boot page.
+// Throwing here fails that registration.
+if (self.registration.scope !== origin + '/') throw new Error('sw.js must be registered at the origin root, not at scope ' + self.registration.scope);
 // Every artifact has its own host, <artifact ID>.<content domain>.
 const artifact = self.location.hostname.split('.')[0];
 
@@ -89,9 +93,13 @@ function onToken(msg) {
 }
 
 // Messages come from any same-origin window client: the artifact frame is
-// same-origin by design. A page can at most replace or clear its own token,
-// and cannot install keys, for it lacks the AK; the manifest check is what
-// protects content.
+// same-origin by design, and every route to the worker passes through such a
+// window, so artifact code can send whatever the boot page can. It holds the
+// AKs the shell hands over, so it can replace the token, or install keys
+// with no signer for any version whose manifest opens under one of them, such
+// as a version the shell refused as untrusted, and this worker then serves it
+// until it stops. That code already runs on this origin, so it gains no new
+// reach; design/e2e-trust-model.md lists this as a limit.
 self.addEventListener('message', (event) => {
   if (!event.source || event.origin !== origin) return;
   const msg = event.data;
@@ -132,6 +140,10 @@ async function clientVersion(clientId) {
   return client ? (parseContentPath(new URL(client.url).pathname)?.version ?? null) : null;
 }
 
+// handleApi sends a page's API request on with the viewer's credentials. A
+// navigation (a download link) is sent the same way: every /api/ response
+// carries a CSP that sandboxes it and refuses framing, so none can run as a
+// document with the token behind it.
 async function handleApi(event) {
   if (!latest) {
     const version = await clientVersion(event.clientId);

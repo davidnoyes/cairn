@@ -40,6 +40,41 @@ describe('parseContentPath', () => {
   });
 });
 
+describe('contentTarget', () => {
+  test('returns the address of a path inside the version', () => {
+    assert.equal(c.contentTarget(VERSION, '/'), `/${VERSION}/`);
+    assert.equal(c.contentTarget(VERSION, '/a/b.html'), `/${VERSION}/a/b.html`);
+    assert.equal(c.contentTarget(VERSION, '/app/x%20y'), `/${VERSION}/app/x%20y`);
+    assert.equal(c.contentTarget(VERSION, '/a b.html'), `/${VERSION}/a b.html`);
+  });
+  test('refuses a path a browser would resolve outside the version', () => {
+    for (const path of [
+      '/%2e%2e/api/x',
+      '/.%2e/api/x',
+      '/%2E%2e/api/x',
+      '/../api/x',
+      '/a/../../api/x',
+      '/./x',
+      '/.\t./api/x',
+      '/.\n./api/x',
+      '/\\..\\api/x',
+      '/a//b',
+      '//evil.example/x',
+      'index.html',
+      '',
+      7,
+      null,
+    ]) {
+      assert.equal(c.contentTarget(VERSION, path), null, JSON.stringify(path));
+    }
+  });
+  test('refuses a version that is not a lowercase UUID', () => {
+    for (const version of ['x', 'ABCDEF01-ABCD-4BCD-8BCD-ABCDEF012345', `${VERSION}/..`, 5, null]) {
+      assert.equal(c.contentTarget(version, '/'), null, String(version));
+    }
+  });
+});
+
 describe('classifyRequest', () => {
   test('dispatches by prefix', () => {
     assert.equal(c.classifyRequest('/_cairn/boot').kind, 'cairn');
@@ -297,6 +332,8 @@ describe('checkKeysMessage', () => {
     bad({ tokenExpires: {} }, 'expires type');
     bad({ linkToken: '+++' }, 'link token');
     bad({ path: 'index.html' }, 'path');
+    bad({ path: '/%2e%2e/api/x' }, 'path climbing out of the version');
+    bad({ path: '/.\t./api/x' }, 'path a browser resolves out of the version');
     bad({ context: null }, 'context');
     bad({ context: { artifact: { id: OTHER, name: 'n', description: 'd' }, users: [] } }, 'context artifact id');
     bad({ context: { artifact: { id: ARTIFACT, name: 1, description: 'd' }, users: [] } }, 'context name');

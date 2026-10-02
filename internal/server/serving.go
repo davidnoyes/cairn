@@ -7,6 +7,7 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"time"
@@ -51,6 +52,24 @@ func isLowerUUID(s string) bool {
 	return len(s) == 36 && s == strings.ToLower(s)
 }
 
+// validSubpath reports whether an escaped shell subpath stays inside the
+// version once a browser resolves it, as parseContentPath in content.mjs
+// requires: every segment decodes and is not empty, "." or "..", and holds no
+// slash, backslash, or NUL. Only the last segment may be empty (a directory).
+func validSubpath(escaped string) bool {
+	segs := strings.Split(strings.TrimPrefix(escaped, "/"), "/")
+	for i, raw := range segs {
+		if raw == "" && i == len(segs)-1 {
+			continue
+		}
+		seg, err := url.PathUnescape(raw)
+		if err != nil || seg == "" || seg == "." || seg == ".." || strings.ContainsAny(seg, "/\\\x00") {
+			return false
+		}
+	}
+	return true
+}
+
 // handleShell serves the shell page in mode "shared" (with the header) or
 // "full" (the frame alone). An {id} that is no UUID is a resource reference:
 // it resolves with the caller's access to a redirect that names the UUID.
@@ -71,7 +90,7 @@ func (s *Server) handleShell(mode string) http.HandlerFunc {
 			s.redirectShellReference(w, r, prefix, r.PathValue("id"), strings.TrimPrefix(tail, id))
 			return
 		}
-		if vid != "" && !isLowerUUID(vid) {
+		if (vid != "" && !isLowerUUID(vid)) || !validSubpath(subpath) {
 			http.NotFound(w, r)
 			return
 		}

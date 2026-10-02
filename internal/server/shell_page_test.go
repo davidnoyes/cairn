@@ -43,6 +43,8 @@ func TestShellPageBody(t *testing.T) {
 		{"/full/" + id, `data-artifact="` + id + `" data-version="" data-path="/" data-mode="full"`},
 		{"/full/" + id + "/" + vid, `data-artifact="` + id + `" data-version="` + vid + `" data-path="/" data-mode="full"`},
 		{"/full/" + id + "/" + vid + "/sub/x", `data-artifact="` + id + `" data-version="` + vid + `" data-path="/sub/x" data-mode="full"`},
+		{"/full/" + id + "/" + vid + "/sub/", `data-artifact="` + id + `" data-version="` + vid + `" data-path="/sub/" data-mode="full"`},
+		{"/shared/" + id + "/" + vid + "/a..b/.x", `data-artifact="` + id + `" data-version="` + vid + `" data-path="/a..b/.x" data-mode="shared"`},
 	} {
 		resp := get(t, w.base+tc.path, "", "text/html")
 		html := body(t, resp)
@@ -100,11 +102,44 @@ func TestShellPageValidatesIDs(t *testing.T) {
 		"/shared/" + strings.ToUpper(id),                          // a reference, and no resource has this value
 		"/shared/" + id + "/" + strings.ToUpper(vid),
 		"/full/" + id + "/" + strings.ToUpper(vid),
+		// A subpath the browser would resolve out of the version.
+		"/shared/" + id + "/" + vid + "/%2e%2e/api/artifacts/" + id + "/versions/" + vid + "/files/x.html",
+		"/shared/" + id + "/" + vid + "/.%2e/api/x",
+		"/full/" + id + "/" + vid + "/a/%2E%2E/%2e%2e/api/x",
+		"/shared/" + id + "/" + vid + "/%2e/x",
+		"/shared/" + id + "/" + vid + "/a%2fb",
+		"/shared/" + id + "/" + vid + "/a%5Cb",
+		"/shared/" + id + "/" + vid + "/a%00b",
 	} {
 		resp := get(t, w.base+p, w.owner.token, "text/html")
 		body(t, resp)
 		if resp.StatusCode != http.StatusNotFound {
 			t.Errorf("GET %s: %d, want 404", p, resp.StatusCode)
+		}
+	}
+}
+
+// validSubpath judges the escaped path the browser would resolve; the mux
+// cleans some of these cases away before a handler sees them, so test it
+// directly as well.
+func TestValidSubpath(t *testing.T) {
+	for p, want := range map[string]bool{
+		"/":         true,
+		"/a/b.html": true,
+		"/a/":       true,
+		"/a%20b":    true,
+		"/a//b":     false,
+		"//":        false,
+		"/%2e%2e/x": false,
+		"/a/.":      false,
+		"/a/..":     false,
+		"/a%2fb":    false,
+		"/a%5cb":    false,
+		"/a%00b":    false,
+		"/%zz":      false,
+	} {
+		if got := validSubpath(p); got != want {
+			t.Errorf("validSubpath(%q) = %v, want %v", p, got, want)
 		}
 	}
 }

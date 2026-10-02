@@ -31,7 +31,13 @@
 (function (global) {
   'use strict';
 
-  var match = location.pathname.match(/^\/(?:artifacts|shared)\/([^/]+)\/([^/]+)\/?/);
+  // On a content origin (<artifact>.<domain>/<version>/...) the artifact is
+  // the host's first label; on the app origin both are in the path.
+  var UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+  var host = new RegExp('^(' + UUID + ')\\.').exec(location.hostname || '');
+  var content = host && new RegExp('^/(' + UUID + ')/').exec(location.pathname);
+  var match = content ? [null, host[1], content[1]]
+    : location.pathname.match(/^\/(?:artifacts|shared)\/([^/]+)\/([^/]+)\/?/);
   var isRemote = location.protocol !== 'file:' && !!match;
   var artifactId = isRemote ? match[1] : 'debug-artifact';
   var versionId = isRemote ? match[2] : 'debug-version';

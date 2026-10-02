@@ -93,7 +93,21 @@ a web app:
   still public at the link's epoch. Turning a link off needs a new epoch.
 - **Artifact code can read its own artifact's key.** Every page of an artifact
   shares one origin, so code in the artifact can obtain the key it is
-  decrypted with. That gives it nothing beyond what it can already read.
+  decrypted with. It can also ask the shell for every other version's key
+  the viewer holds. That gives it nothing beyond what it can already read.
+- **Every version of an artifact shares one origin and its storage.** Data
+  that an older or untrusted version's code writes to local storage,
+  IndexedDB, or Cache Storage is still there for a later, trusted version.
+- **Artifact code can make the worker serve a refused version.** Every route
+  to the service worker passes through a window on the content origin, so
+  artifact code can send the worker anything the boot page can. With a key it
+  holds, it can make the worker serve a version whose manifest opens under
+  that key, such as one the shell refused as untrusted, until the browser
+  stops the worker. That code already runs on the origin, so it gains no new
+  reach.
+- **The browser's history may keep a public link's key.** The shell removes
+  the fragment from the address bar, but the browser's own history database
+  may already have recorded the full address.
 - **The successor's waiting period is enforced by the server.** A successor
   who holds a copy of the database or a backup can skip it, because the
   wrapped estate key is already in that copy. The user chose that one person,
@@ -199,13 +213,14 @@ The server never sees the password or anything it could derive `kek` from.
    unknown accounts too, so timing does not reveal them either. Sign-in is
    rate limited per account and per IP address.
 4. The client unwraps `MK`, then stores the private keys, `EK`, and `indexKey`
-   in IndexedDB as non-extractable `CryptoKey` objects. The X25519 key is
-   stored wrapped under a non-extractable AES-GCM key, because WebKit cannot
-   store an X25519 `CryptoKey`, and is unwrapped without its bytes reaching
-   script. `MK` itself is not kept. Actions that need it, such as creating an
-   API key, ask for the password again, and only on a full-page app screen,
-   never over an artifact. An artifact that draws a password prompt is
-   therefore always a fake.
+   in IndexedDB as non-extractable `CryptoKey` objects. WebKit cannot store
+   an X25519 `CryptoKey`, so in a browser that drops it, the X25519 key is
+   stored wrapped under a non-extractable AES-GCM key instead. That copy is
+   weaker: script running on the app origin could unwrap it as extractable
+   and export the private key. `MK` itself is not kept. Actions that need
+   it, such as creating an API key, ask for the password again, and only on a
+   full-page app screen, never over an artifact. An artifact that draws a
+   password prompt is therefore always a fake.
 5. Signing out clears IndexedDB. It keeps the keyring anchor, a revision
    number and a hash that hold nothing secret, in `localStorage`, so the next
    sign-in on that browser still refuses an older keyring. `cairn logout`

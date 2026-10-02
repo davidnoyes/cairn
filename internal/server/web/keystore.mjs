@@ -5,10 +5,13 @@
 // so it survives it.
 //
 // WebKit silently drops a record that holds an X25519 CryptoKey: the put's
-// transaction completes and nothing is stored. So the X25519 private key is
-// stored as x25519Wrapped, encrypted under a non-extractable AES-GCM key, and
-// load() unwraps it straight into a non-extractable CryptoKey, so its bytes
-// never return to JS memory.
+// transaction completes and nothing is stored. So account.mjs hands save()
+// the X25519 key twice: as x25519, a non-extractable CryptoKey, and as
+// x25519Wrapped, encrypted under a non-extractable AES-GCM key. save() stores
+// x25519 where the browser keeps it, and x25519Wrapped only where it does
+// not. The wrapped form is weaker: script on the app origin can unwrap it as
+// extractable and export the private key, which it cannot do with x25519.
+// load() unwraps it into a non-extractable CryptoKey.
 import { importX25519PrivateKey } from './e2e.mjs';
 
 const DB_NAME = 'cairn-keys';
@@ -70,13 +73,26 @@ export function createKeyStore(indexedDB) {
   };
 
   const get = () => run('readonly', (store) => store.get(RECORD));
+  const clear = () => run('readwrite', (store) => store.clear());
+  // put stores record in place of whatever was there, and reports whether
+  // the browser kept it. WebKit reads a dropped record back as null.
+  const put = async (record) => {
+    await clear(); // first, so a dropped put cannot leave the old record
+    await run('readwrite', (store) => store.put(record, RECORD));
+    return (await get()) != null;
+  };
 
   return {
     // save reads the record back, so a browser that drops it fails sign-in
     // instead of leaving it half done.
     save: async (record) => {
-      await run('readwrite', (store) => store.put(record, RECORD));
-      if ((await get()) === undefined) throw new Error('This browser did not store your keys.');
+      const { x25519Wrapped, ...direct } = record;
+      if (await put(direct)) return;
+      const wrapped = { ...record };
+      delete wrapped.x25519;
+      if (x25519Wrapped && (await put(wrapped))) return;
+      await clear(); // so load() finds nothing, not a null record
+      throw new Error('This browser did not store your keys.');
     },
     load: async () => {
       const record = await get();
@@ -84,6 +100,6 @@ export function createKeyStore(indexedDB) {
       const { x25519Wrapped, ...rest } = record;
       return { ...rest, x25519: await openX25519(x25519Wrapped) };
     },
-    clear: () => run('readwrite', (store) => store.clear()),
+    clear,
   };
 }

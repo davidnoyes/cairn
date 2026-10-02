@@ -29,11 +29,13 @@ export class UntrustedVersionError extends Error {
 // NoAccessError is an artifact the caller can open neither as a member nor
 // with a public link.
 export class NoAccessError extends Error {
-  constructor() {
-    super("You can't open this artifact. Sign in with an account that has access, or use the artifact's full public link.");
+  constructor(message = "You can't open this artifact. Sign in with an account that has access, or use the artifact's full public link.") {
+    super(message);
     this.name = 'NoAccessError';
   }
 }
+
+const STALE_KEYS_MESSAGE = 'The keys this browser holds for you were saved by an older version of Cairn. Sign out, then sign in again.';
 
 export class LinkError extends Error {
   constructor(message) {
@@ -104,16 +106,19 @@ async function fingerprintOf(kp) {
 // takeLink removes the fragment from the address bar, then reads the public
 // link from it, so the key is out of the address bar and the history entry
 // before anything else runs, even when the fragment is malformed. It returns
-// null when there is no fragment. The link must be for this host and this
-// artifact. Mirrors the public-link rules of ParseLink and OpenLink.
+// null when there is no fragment, and throws LinkError when the fragment is
+// not a link; openArtifact reports that only to someone who is not a member,
+// so a member's page anchor does not lock them out. The link is read as one
+// for this host and this artifact. Mirrors the public-link rules of ParseLink.
 export function takeLink(location, history, artifact) {
   const hash = location.hash;
   if (!hash) return null;
   history.replaceState(null, '', location.pathname + location.search);
-  const link = e2e.parseLink(location.origin + '/shared/' + artifact + hash);
-  if (link.host !== location.origin) throw new LinkError('This link is for another server.');
-  if (link.artifact !== artifact) throw new LinkError('This link is for another artifact.');
-  return link;
+  try {
+    return e2e.parseLink(location.origin + '/shared/' + artifact + hash);
+  } catch {
+    throw new LinkError('This link is incomplete or damaged. Copy the whole link and open it again.');
+  }
 }
 
 // readKeyring fetches the keyring, opens it against the stored anchor, and
@@ -278,11 +283,13 @@ async function callerAKs(deps, caller, artifact, chain) {
 }
 
 // signedInCaller is the signed-in user: a key-store record with the Ed25519
-// public key (one written before it was added reads as signed out), whose
-// user is the one the server's session names. It returns null for a visitor.
+// public key, whose user is the one the server's session names. It returns
+// null for a visitor, and {stale: true} for a record written before the
+// Ed25519 public key was added to it, which reads as signed out.
 async function signedInCaller(deps) {
   const record = await deps.keyStore.load();
-  if (!record || !(record.ed25519Pub instanceof Uint8Array)) return null;
+  if (!record) return null;
+  if (!(record.ed25519Pub instanceof Uint8Array)) return { stale: true };
   let me;
   try {
     me = await call(deps, null, 'GET', '/api/me');
@@ -362,18 +369,21 @@ async function openAsLink(deps, caller, artifact, link) {
 
 // openArtifact decides the mode and verifies. Signed in and listed in the
 // latest record: member mode. Otherwise, with a public link: link mode.
-// Otherwise it throws NoAccessError. link is takeLink's result, or null.
-// Returns what the later steps need: the mode, the chain and its latest
-// record, the AKs by epoch, the membership answer, the caller (or null), the
-// link token (or null), and the link.
-export async function openArtifact(deps, { artifact, link }) {
-  const caller = await signedInCaller(deps);
+// Otherwise it throws linkError, the LinkError takeLink threw, if any, and
+// else NoAccessError. link is takeLink's result, or null. Returns what the
+// later steps need: the mode, the chain and its latest record, the AKs by
+// epoch, the membership answer, the caller (or null), the link token (or
+// null), and the link.
+export async function openArtifact(deps, { artifact, link, linkError = null }) {
+  const found = await signedInCaller(deps);
+  const caller = found?.stale ? null : found;
   if (caller) {
     const opened = await openAsMember(deps, caller, artifact);
     if (opened) return opened;
   }
   if (link) return openAsLink(deps, caller, artifact, link);
-  throw new NoAccessError();
+  if (linkError) throw linkError;
+  throw new NoAccessError(found?.stale ? STALE_KEYS_MESSAGE : undefined);
 }
 
 // candidatePairs are the public key pairs the server or the caller's own keys
@@ -545,9 +555,13 @@ export async function mintToken(deps, opened) {
   return { token: resp.token, tokenExpires: resp.expiresAt };
 }
 
+const RETRY_MS = 10000;
+
 // keepToken mints the first token and renews it a minute before it expires,
-// handing each renewal to onToken. A renewal that fails goes to onError, and
-// is not retried. now, setTimeout, and clearTimeout are injected for a test.
+// handing each renewal to onToken. A renewal the server refuses (401 or 403)
+// goes to onError at once. Any other failure is retried every RETRY_MS, and
+// goes to onError once the token has less than RETRY_MS left. now,
+// setTimeout, and clearTimeout are injected for a test.
 export function keepToken({ mint, onToken, onError, now = () => Date.now(), setTimeout: later = setTimeout, clearTimeout: cancel = clearTimeout }) {
   let current = { token: null, tokenExpires: null };
   let timer = null;
@@ -555,17 +569,20 @@ export function keepToken({ mint, onToken, onError, now = () => Date.now(), setT
   const schedule = () => {
     if (stopped || current.tokenExpires === null) return;
     const wait = Math.max(0, current.tokenExpires * 1000 - 60000 - now());
-    timer = later(async () => {
-      if (stopped) return;
-      try {
-        current = await mint();
-      } catch (err) {
-        onError(err);
-        return;
-      }
-      onToken(current);
-      schedule();
-    }, wait);
+    timer = later(renew, wait);
+  };
+  const renew = async () => {
+    if (stopped) return;
+    try {
+      current = await mint();
+    } catch (err) {
+      const refused = err instanceof ApiError && (err.status === 401 || err.status === 403);
+      if (!refused && current.tokenExpires * 1000 - now() > RETRY_MS) timer = later(renew, RETRY_MS);
+      else onError(err);
+      return;
+    }
+    onToken(current);
+    schedule();
   };
   return {
     current: () => current,

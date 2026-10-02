@@ -219,18 +219,24 @@ test('signIn runs prelogin, then login with client "web", then stores non-extrac
   const b = server.accounts.get('ada@example.com').bundle;
   assert.equal(rec.userId, 'u-ada@example.com');
   assert.equal(rec.email, 'ada@example.com');
-  for (const [name, key] of [['mk', rec.mk], ['mkSeal', rec.mkSeal], ['ek', rec.ek], ['x25519 wrapping key', rec.x25519Wrapped.wrapKey], ['ed25519', rec.ed25519]]) {
+  const keys = [
+    ['mk', rec.mk], ['mkSeal', rec.mkSeal], ['ek', rec.ek], ['x25519', rec.x25519.privateKey],
+    ['x25519 wrapping key', rec.x25519Wrapped.wrapKey], ['ed25519', rec.ed25519],
+  ];
+  for (const [name, key] of keys) {
     assert.ok(key instanceof CryptoKey, name);
     assert.equal(key.extractable, false, `${name} must not be extractable`);
   }
-  // WebKit silently drops a record holding an X25519 CryptoKey, so the
-  // private key is stored wrapped, and opened by keyStore.load.
-  assert.equal(rec.x25519, undefined, 'no X25519 CryptoKey in the saved record');
+  // The X25519 key comes both as a CryptoKey and wrapped, for a browser that
+  // drops a record holding an X25519 CryptoKey (see keystore.mjs). Both are
+  // the account key.
+  assert.deepEqual(rec.x25519.publicKey, e2e.unb64(b.x25519Pub));
   assert.deepEqual(rec.x25519Wrapped.publicKey, e2e.unb64(b.x25519Pub));
-  const x = await openX25519(rec.x25519Wrapped);
-  const info = { purpose: 'ak', artifact: 'a1', epoch: 1, recipientId: rec.userId, recipientPub: x.publicKey };
-  const secret = crypto.getRandomValues(new Uint8Array(32));
-  assert.deepEqual(await e2e.unwrap(x, info, await e2e.wrap(info, secret)), secret, 'the wrapped key is the account key');
+  for (const [name, x] of [['x25519', rec.x25519], ['x25519Wrapped', await openX25519(rec.x25519Wrapped)]]) {
+    const info = { purpose: 'ak', artifact: 'a1', epoch: 1, recipientId: rec.userId, recipientPub: x.publicKey };
+    const secret = crypto.getRandomValues(new Uint8Array(32));
+    assert.deepEqual(await e2e.unwrap(x, info, await e2e.wrap(info, secret)), secret, `${name} is the account key`);
+  }
   // The record carries the Ed25519 public key too, derived from the seed, as
   // bytes, so the shell can compute the caller's own fingerprint.
   assert.ok(rec.ed25519Pub instanceof Uint8Array);

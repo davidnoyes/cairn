@@ -51,6 +51,10 @@ test('checkKeysTarget wants a lowercase UUID version and a path starting with a 
     { version: VID, path: 'a' },
     { version: VID, path: '' },
     { version: VID, path: 7 },
+    { version: VID, path: '/%2e%2e/api/x' },
+    { version: VID, path: '/.%2e/api/x' },
+    { version: VID, path: '/.\t./api/x' },
+    { version: VID, path: '//evil.example/x' },
     { version: VID },
     { path: '/' },
   ]) {
@@ -60,18 +64,27 @@ test('checkKeysTarget wants a lowercase UUID version and a path starting with a 
 
 // --- run ---
 
-// setup builds the fakes. registered holds the register call; the worker is
-// active, and controls the page unless controlled is false.
-function setup({ metaContent = APP, controlled = true, pathname = '/_cairn/boot', register = null } = {}) {
+// setup builds the fakes. registered holds the register call, which returns
+// reg, whose worker is active unless reg says otherwise; the worker controls
+// the page unless controlled is false. sw.ready resolves to a rogue
+// registration at /_cairn/, as artifact code could leave behind, and
+// getRegistrations lists it with reg and others.
+function setup({ metaContent = APP, controlled = true, pathname = '/_cairn/boot', register = null, reg = null, others = [] } = {}) {
   const container = new EventTarget();
   const worker = { posted: [], postMessage(m) { this.posted.push(m); } };
+  const rogue = { posted: [], postMessage(m) { this.posted.push(m); } };
+  const unregistered = [];
+  const registration = (scope, fields) => ({ scope, ...fields, unregister: async () => (unregistered.push(scope), true) });
+  const own = registration(`${CONTENT}/`, reg ?? { active: worker });
+  const rogueReg = registration(`${CONTENT}/_cairn/`, { active: rogue });
   container.controller = controlled ? worker : null;
   container.registered = [];
   container.register = register || (async (url, opts) => {
     container.registered.push([url, opts]);
-    return {};
+    return own;
   });
-  container.ready = Promise.resolve({ active: worker });
+  container.ready = Promise.resolve(rogueReg);
+  container.getRegistrations = async () => [own, rogueReg, ...others.map((scope) => registration(scope, {}))];
   const win = new EventTarget();
   win.parent = { posted: [], postMessage(m, o) { this.posted.push([m, o]); } };
   const shown = [];
@@ -83,7 +96,7 @@ function setup({ metaContent = APP, controlled = true, pathname = '/_cairn/boot'
   const replaced = [];
   const loc = { pathname, replace: (u) => replaced.push(u) };
   const done = run({ doc, win, loc, nav: { serviceWorker: container } });
-  return { container, worker, win, doc, shown, replaced, done };
+  return { container, worker, rogue, own, unregistered, win, doc, shown, replaced, done };
 }
 
 const tick = () => new Promise((r) => setImmediate(r));
@@ -140,6 +153,56 @@ test('the keys go to the active worker, not an older one still controlling the p
   s.container.dispatchEvent(msg({ cairn: 'keys-ok', version: VID }, old, undefined));
   await tick();
   assert.deepEqual(s.replaced, [], 'only the active worker confirms');
+});
+
+// Artifact code can register this worker script at a narrower scope, which
+// sw.ready would then resolve to. Boot uses the registration it made, and
+// removes every other one.
+test('the keys go to the registration boot made, never another, and the others are removed', async () => {
+  const s = setup({ others: [`${CONTENT}/x/`] });
+  await tick();
+  s.win.dispatchEvent(msg(keys(), s.win.parent, APP));
+  await tick();
+  assert.deepEqual(s.worker.posted, [keys()]);
+  assert.deepEqual(s.rogue.posted, []);
+  assert.deepEqual(s.unregistered.sort(), [`${CONTENT}/_cairn/`, `${CONTENT}/x/`]);
+});
+
+test('a registration still installing is waited for, until its worker activates', async () => {
+  const installing = Object.assign(new EventTarget(), { state: 'installing', posted: [], postMessage(m) { this.posted.push(m); } });
+  const s = setup({ reg: { active: null, installing } });
+  await tick();
+  assert.deepEqual(s.win.parent.posted, [], 'not ready before the worker is active');
+  installing.state = 'installed';
+  installing.dispatchEvent(new Event('statechange'));
+  await tick();
+  assert.deepEqual(s.win.parent.posted, [], 'not ready while the worker is only installed');
+  assert.deepEqual(s.shown, []);
+  s.own.active = installing;
+  installing.state = 'activating';
+  installing.dispatchEvent(new Event('statechange'));
+  await tick();
+  s.win.dispatchEvent(msg(keys(), s.win.parent, APP));
+  await tick();
+  assert.deepEqual(installing.posted, [keys()]);
+});
+
+test('a worker that fails to install is shown as an error', async () => {
+  const installing = Object.assign(new EventTarget(), { state: 'installing' });
+  const s = setup({ reg: { active: null, installing } });
+  await tick();
+  installing.state = 'redundant';
+  installing.dispatchEvent(new Event('statechange'));
+  await s.done;
+  assert.match(text(s.shown), /^Cairn error: /);
+  assert.deepEqual(s.win.parent.posted, []);
+});
+
+test('a registration with no worker at all is shown as an error', async () => {
+  const s = setup({ reg: { active: null, installing: null, waiting: null } });
+  await s.done;
+  assert.match(text(s.shown), /^Cairn error: the service worker failed to install/);
+  assert.deepEqual(s.win.parent.posted, []);
 });
 
 test('a registration failure is shown as an error, as text', async () => {

@@ -278,10 +278,12 @@ form-action 'self'; require-trusted-types-for 'script'
 Milestone 4 adds `frame-src` for the content domain. The pages do password
 stretching in a worker, keep unwrapped keys in IndexedDB as non-extractable
 `CryptoKey` objects, and clear IndexedDB at sign-out. WebKit silently drops a
-record that holds an X25519 `CryptoKey`, so the X25519 private key is stored
-encrypted under a non-extractable AES-GCM key instead, and unwrapped straight
-into a non-extractable key when the record is loaded. Sign-in reads the record
-back, and fails if the browser did not store it. Sign-out keeps the
+record that holds an X25519 `CryptoKey`. Sign-in therefore reads the record
+back, and where it is missing, stores the X25519 private key encrypted under
+a non-extractable AES-GCM key instead, to be unwrapped into a non-extractable
+key when the record is loaded. Script on the app origin could unwrap that
+copy as extractable, so it is used only where the browser leaves no choice.
+Sign-in fails if the browser stores neither record. Sign-out keeps the
 [keyring anchor](e2e-wire-formats.md#the-keyring) in `localStorage`, because
 it holds nothing secret and the next sign-in needs it. The sign-up and reset
 pages refuse a password that the vendored strength estimator scores below 3.
@@ -1137,7 +1139,15 @@ routes, as before.
   response sends
   `Content-Security-Policy: frame-ancestors <app origin>`.
 - `/_cairn/sw.js` sends `Cache-Control: no-cache` and
-  `Service-Worker-Allowed: /`.
+  `Service-Worker-Allowed: /`. It is served only when the query is exactly
+  `app=<app origin>`, naming this server's app origin once, and anything else
+  gets `404`. Artifact code shares the content origin, so it could otherwise
+  register the worker naming an app origin of its choosing, which the worker
+  would then let frame its pages.
+- Every `/api/` response, on a content host and on the app origin, sends
+  `Content-Security-Policy: sandbox; default-src 'none'; frame-ancestors 'none'`.
+  A stored file opened directly by its address therefore never runs as a page
+  on either origin.
 
 Session cookies are host-only on the app origin, so no request to a content
 host carries one.
@@ -1149,7 +1159,9 @@ read access to the artifact. It answers `{"token", "expiresAt"}`: a sign-in JWT
 whose `art` claim names the artifact, valid for 10 minutes. A caller whose only
 access is a public link also sends `X-Cairn-Link-Token`, and gets a token with
 link-scope access and nothing more. The shell asks for a new token a minute
-before the old one expires and passes it to the worker.
+before the old one expires and passes it to the worker. It retries a failed
+renewal every 10 seconds while the old token lasts, except a 401 or 403,
+which it reports at once.
 
 An anonymous visitor gets no token. The worker sends the link token alone.
 
@@ -1225,8 +1237,13 @@ It verifies the membership chain and the version as the command-line client
 does, and gets `AK` for the version's epoch:
 
 - from the caller's wrap, when they are signed in and listed;
-- from the link's `#k`, for a public link. The shell then removes the
-  fragment from the address bar with `history.replaceState`.
+- from the link's `#k`, for a public link. The shell first removes the
+  fragment from the address bar with `history.replaceState`. A fragment that
+  is not a link is reported only when the caller is not a member, so a
+  member's bookmark with a page anchor still opens. The shell keeps a link's
+  fragment in memory and adds it back to the version picker's address and the
+  full screen link, so a link holder can change version. A member's page
+  anchor is not carried.
 
 It frames `<content origin>/_cairn/boot`, sandboxed as the
 [trust model](e2e-trust-model.md#artifact-isolation) describes. Every message
@@ -1246,7 +1263,11 @@ is an object with a `cairn` field naming its type:
 - The boot page sends to the app origin, which the server writes into the
   page, and acts only on messages from `parent` with that origin.
 - `ready` and `need-keys` name a version. The shell answers only for a
-  version of the same artifact, and verifies that version first.
+  version of the same artifact, and verifies that version first. For the
+  page's own version, when the server does not have it, the shell shows that
+  the version was not found. A version the frame names that the server does
+  not have gets no answer and shows nothing, since the artifact's code could
+  name any version.
 - In `keys`, `ak` and `linkToken` are `b64`, and `token`, `tokenExpires`, and
   `linkToken` may be `null`. `signer` is `{"user", "ed25519"}`, the key the
   manifest must verify under, or `null` when the version is trusted through a
@@ -1255,11 +1276,24 @@ is an object with a `cairn` field naming its type:
   where `users` lists the latest record's owner and members, or is empty for
   an anonymous visitor.
 
-The boot page passes `keys` to the registration's active worker, waits for
-it to confirm, then replaces its own location with `/<version><path>`. The
-worker need not control the boot page. Firefox leaves the boot page
-uncontrolled on a repeat visit, and the worker serves the navigation to the
-version either way.
+The boot page passes `keys` to the active worker of the registration its
+own `register` call returned, waits for it to confirm, then replaces its own
+location with `/<version><path>`:
+
+- It never uses `navigator.serviceWorker.ready`. Artifact code shares the
+  origin and can register at a narrower scope, which `ready` would then
+  resolve to. The boot page unregisters every registration whose scope is not
+  the origin root, and the worker refuses to start at any other scope.
+- It waits for an installing worker to activate, and shows an error if the
+  worker fails to install.
+- The worker need not control the boot page. Firefox leaves the boot page
+  uncontrolled on a repeat visit, and the worker serves the navigation to the
+  version either way.
+
+The shell, the boot page, and the worker each refuse a `version` and `path`
+whose address, once the browser resolves dot segments, including
+percent-encoded ones, would leave `/<version>/`. A path that would take the
+frame to `/api/` or `/_cairn/` therefore gets no keys.
 
 ### The service worker
 
@@ -1274,6 +1308,8 @@ version before serving any of it:
 4. It checks that the body's `artifact`, `version`, and `epoch` match.
 
 Any failure shows an error page, and nothing from the version is served.
+The error page holds no script, and it and the worker's plain-text `404` and
+`503` answers send no `frame-ancestors`.
 
 For a request to `/<version>/<path>`, the worker:
 
@@ -1282,7 +1318,10 @@ For a request to `/<version>/<path>`, the worker:
   fallback does today. Any other missing path gets `404`.
 - Serves `cairn.js`, `mermaid.js`, `sql-wasm.js`, and `sql-wasm.wasm` at the
   version's root from `/_cairn/` when the manifest has no file of that name
-  there, so a relative `<script src="./cairn.js">` keeps working.
+  there, so a relative `<script src="./cairn.js">` keeps working. On a
+  content origin, `cairn.js` takes the artifact ID from the host's first
+  label and the version ID from the first path segment, and calls the API
+  through the worker.
 - Fetches the blob, checks its SHA-256 against the manifest, opens it with
   the context `content`, the version, and the path, and checks its size.
 - Answers with a media type taken from the extension,
@@ -1291,12 +1330,32 @@ For a request to `/<version>/<path>`, the worker:
   `<script src="/_cairn/frame.js"></script>` at the start of every HTML
   document.
 
-For a request to `/api/`, the worker adds `Authorization: Bearer <token>`
+For a request to `/api/`, including a navigation such as a link to
+`cairn.db.downloadURL`, the worker adds `Authorization: Bearer <token>`
 when it has a token, and `X-Cairn-Link-Token` when it has a link token. It
 answers two reads itself, from `context`, so they never reach the server:
 `GET /api/artifacts/{id}` and `GET /api/users`. That keeps `cairn.artifact()`
 and `cairn.users()` working without widening the allowlist, and limits the
 users an artifact can list to the people who can open it.
+
+A navigation therefore reaches the server with the token behind it. Every
+`/api/` response carries the sandboxed CSP that refuses framing, so a stored
+file served there never runs as a document. The cost is that an artifact
+cannot show `cairn.files.url(...)` in an `<iframe>` or `<object>`, such as a
+PDF preview.
+
+A download link to an `/api/` URL works only where the browser sends it
+through the worker. Measured with Playwright in 2026-10:
+
+| Engine | `<a download href="/api/...">` |
+| --- | --- |
+| Firefox | Goes through the worker, and downloads |
+| Chromium | Canceled |
+| WebKit | Skips the worker, so it reaches the server with no token, and gets `404` |
+
+A blob URL from `cairn.files.download` downloaded in Chromium. Playwright saw
+no download from one in Firefox or WebKit. Downloads therefore remain open
+for milestone 5, which replaces file and database storage.
 
 It never intercepts `/_cairn/`.
 
@@ -1313,7 +1372,8 @@ for a link to another Cairn page, under the rules in the
 Mermaid when the page has a diagram.
 
 Full screen is `/full/{id}` and `/full/{id}/{vid}`: the shell with its chrome
-hidden. There, a `navigate` to `/shared/<uuid>/<uuid>` opens
+hidden, until there is a status to show, such as a prompt to sign in. There,
+a `navigate` to `/shared/<uuid>/<uuid>` opens
 `/full/<uuid>/<uuid>`.
 
 ### App pages in milestone 4
@@ -1330,7 +1390,9 @@ hidden. There, a `navigate` to `/shared/<uuid>/<uuid>` opens
   through the API, which enforces access. A `{id}` that is not a lowercase
   UUID is a resource reference, which resolves with the caller's access to a
   redirect to the same path under the artifact's UUID, or `404` when it does
-  not resolve. A `{vid}` that is not a lowercase UUID is `404`.
+  not resolve. A `{vid}` that is not a lowercase UUID is `404`, and so is a
+  path after it with a segment that, once percent-decoded, is empty, `.`, or
+  `..`, or holds `/`, `\`, or a NUL byte. Only the last segment may be empty.
 
 ### Commands in milestone 4
 

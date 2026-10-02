@@ -27,7 +27,10 @@ header{
   padding:.5rem clamp(12px,3vw,20px);
   background:var(--bg); border-bottom:1px solid var(--line);
 }
+/* full screen hides the chrome, until there is a status to act on (it may
+   say to sign in) */
 body[data-mode="full"] header{display:none}
+body[data-mode="full"]:has(#status:not([hidden])) header{display:flex}
 .mark svg{width:20px; height:20px; display:block}
 .name{font-size:15px; font-weight:600; letter-spacing:.01em; min-width:0}
 .desc{

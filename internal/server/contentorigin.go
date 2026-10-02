@@ -146,6 +146,8 @@ func (s *Server) serveContentOrigin(w http.ResponseWriter, r *http.Request, arti
 	switch {
 	case strings.HasPrefix(r.URL.Path, "/api/"):
 		s.serveContentAPI(w, r, artifactID)
+	case r.URL.Path == "/_cairn/sw.js" && !s.isOwnWorkerQuery(r.URL.RawQuery):
+		http.NotFound(w, r)
 	case read && contentAssets[r.URL.Path].data != nil:
 		a := contentAssets[r.URL.Path]
 		w.Header().Set("Content-Type", a.contentType)
@@ -164,12 +166,23 @@ func (s *Server) serveContentOrigin(w http.ResponseWriter, r *http.Request, arti
 	}
 }
 
+// isOwnWorkerQuery reports whether a query for /_cairn/sw.js is exactly the
+// one the boot page registers with: app set once, to this server's app
+// origin. Artifact code shares the content origin and could otherwise
+// register the worker naming another app origin, which the worker would then
+// let frame its pages.
+func (s *Server) isOwnWorkerQuery(rawQuery string) bool {
+	q, err := url.ParseQuery(rawQuery)
+	return err == nil && len(q) == 1 && len(q["app"]) == 1 && s.appOrigin != "" && q["app"][0] == s.appOrigin
+}
+
 // serveContentAPI dispatches an /api/ request on a content host to the app's
 // handlers, but only for the routes in contentTokenRoutes. The request carries
 // no cookie. An Authorization header must be a content-origin token for this
 // host's artifact. Artifact routes then resolve their {id} to that artifact
 // alone (see artifactRoute).
 func (s *Server) serveContentAPI(w http.ResponseWriter, r *http.Request, artifactID string) {
+	w.Header().Set("Content-Security-Policy", apiCSP)
 	if _, pattern := s.mux.Handler(r); !contentTokenRoutes[pattern] {
 		writeError(w, http.StatusNotFound, "not found")
 		return

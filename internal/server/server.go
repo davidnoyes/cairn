@@ -152,7 +152,7 @@ func New(cfg Config) (*Server, error) {
 // content host never reaches it: routeByHost sends that to the content
 // origin's routes.
 func (s *Server) Handler() http.Handler {
-	app := protectMutations(originOf(s.cfg.PublicURL), s.contentTokenGate(s.mux))
+	app := withAPICSP(protectMutations(originOf(s.cfg.PublicURL), s.contentTokenGate(s.mux)))
 	return s.routeByHost(app)
 }
 
