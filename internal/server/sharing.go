@@ -440,8 +440,9 @@ type membershipView struct {
 	Records []e2e.Envelope          `json:"records"`
 	Offers  map[string]e2e.Envelope `json:"offers"`
 	Owners  map[string]e2e.KeyPair  `json:"owners"`
-	// Rotations and Successors stay empty until step 7 adds key rotation
-	// and successors.
+	// Rotations holds the rotation records of every owner the chain names
+	// and every member of the latest record who has any. Successors stays
+	// empty until successors are built.
 	Rotations  map[string][]e2e.Envelope `json:"rotations"`
 	Successors map[string]e2e.Envelope   `json:"successors"`
 	// Keys is set for link scope only: every listed editor's keys.
@@ -450,6 +451,25 @@ type membershipView struct {
 
 func keyPairOf(u *store.KeyedUser) e2e.KeyPair {
 	return e2e.KeyPair{X25519: e2e.B64(u.X25519Pub), Ed25519: e2e.B64(u.Ed25519Pub)}
+}
+
+// keysInRotations returns the key pair, among those the rotation records
+// name as old or new, whose fingerprint is fp.
+func keysInRotations(rows []store.Rotation, fp string) (e2e.KeyPair, bool) {
+	for _, row := range rows {
+		var body e2e.RotationBody
+		if e2e.DecodeStrict(row.Body, &body) != nil {
+			continue
+		}
+		for _, kp := range []e2e.KeyPair{body.Old, body.New} {
+			x, errX := e2e.UnB64(kp.X25519)
+			ed, errEd := e2e.UnB64(kp.Ed25519)
+			if errX == nil && errEd == nil && hex.EncodeToString(e2e.Fingerprint(x, ed)) == fp {
+				return kp, true
+			}
+		}
+	}
+	return e2e.KeyPair{}, false
 }
 
 func envelopeOf(e store.Envelope) e2e.Envelope {
@@ -472,17 +492,41 @@ func (s *Server) handleGetMembership(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
+		members, err := tx.Members()
+		if err != nil {
+			return err
+		}
+		rotations := map[string][]store.Rotation{}
+		rotationsOf := func(id string) ([]store.Rotation, error) {
+			if rows, ok := rotations[id]; ok {
+				return rows, nil
+			}
+			rows, err := tx.Rotations(id)
+			rotations[id] = rows
+			return rows, err
+		}
+		// The users whose rotation records the client needs: the owner of
+		// each record, and each member of the latest.
+		var rotated []string
+		seenUser := map[string]bool{}
+		note := func(id string) {
+			if !seenUser[id] {
+				seenUser[id] = true
+				rotated = append(rotated, id)
+			}
+		}
 		for _, rec := range records {
 			v.Records = append(v.Records, envelopeOf(rec.Envelope))
 			if o := accepted[rec.Transfer]; rec.Transfer != "" && o != nil && o.Envelope != nil {
 				v.Offers[rec.Transfer] = envelopeOf(*o.Envelope)
 			}
+			note(rec.OwnerID)
 			if _, done := v.Owners[rec.OwnerFp]; done {
 				continue
 			}
-			// Only the owner's current keys are known until step 7 keeps
-			// rotation records; the client ignores a pair that does not
-			// hash to its key.
+			// The owner's current keys if they hash to this fingerprint,
+			// else a pair from their rotation records that does; the client
+			// ignores a pair that does not hash to its key.
 			u, err := tx.UserByID(rec.OwnerID)
 			if errors.Is(err, store.ErrNotFound) {
 				continue
@@ -492,14 +536,30 @@ func (s *Server) handleGetMembership(w http.ResponseWriter, r *http.Request) {
 			}
 			if u.FP == rec.OwnerFp {
 				v.Owners[rec.OwnerFp] = keyPairOf(u)
+				continue
+			}
+			rows, err := rotationsOf(rec.OwnerID)
+			if err != nil {
+				return err
+			}
+			if kp, ok := keysInRotations(rows, rec.OwnerFp); ok {
+				v.Owners[rec.OwnerFp] = kp
+			}
+		}
+		for _, m := range members {
+			note(m.UserID)
+		}
+		for _, id := range rotated {
+			rows, err := rotationsOf(id)
+			if err != nil {
+				return err
+			}
+			for _, row := range rows {
+				v.Rotations[id] = append(v.Rotations[id], rotationEnvelope(row))
 			}
 		}
 		if !linkScope {
 			return nil
-		}
-		members, err := tx.Members()
-		if err != nil {
-			return err
 		}
 		v.Keys = map[string]e2e.KeyPair{}
 		for _, m := range members {
@@ -581,12 +641,14 @@ type pendingView struct {
 	Approval   *e2e.Envelope `json:"approval"`
 }
 
-// States of a pending entry. rotated needs the rotation records of step 7,
-// so until then every changed key is keyChanged.
+// States of a pending entry. rotated is a changed key that a chain of the
+// user's rotation records explains; keyChanged is any other change. Like
+// approved, rotated is for the owner only.
 const (
 	pendingNew        = "new"
 	pendingApproved   = "approved"
 	pendingKeyChanged = "keyChanged"
+	pendingRotated    = "rotated"
 )
 
 // handlePending lists the users the caller's client should ask about: team
@@ -626,13 +688,24 @@ func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
 		for _, wr := range cur.Wraps {
 			wraps[wr.UserID] = append(wraps[wr.UserID], wr)
 		}
+		var rotErr error
 		for _, u := range users {
 			if u.ID == latest.Owner || !u.Verified || u.Disabled ||
 				e2e.ExcludedMatch(latest.Excluded, u.ID, u.FP, u.Email) != nil {
 				continue
 			}
-			state := pendingState(latest, u, listed, wraps[u.ID])
-			if state == "" || (state == pendingApproved && !owner) {
+			explained := func(oldFP string) bool {
+				rows, err := tx.Rotations(u.ID)
+				if err != nil {
+					rotErr = err
+				}
+				return rotationLinked(rows, oldFP, u.FP)
+			}
+			state := pendingState(latest, u, listed, wraps[u.ID], approval[u.ID], explained)
+			if rotErr != nil {
+				return rotErr
+			}
+			if state == "" || ((state == pendingApproved || state == pendingRotated) && !owner) {
 				continue
 			}
 			v := pendingView{ID: u.ID, Name: u.Name, Email: u.Email, X25519Pub: e2e.B64(u.X25519Pub),
@@ -654,21 +727,35 @@ func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
 
 // pendingState classifies one user, or returns "" when there is nothing to
 // ask about. A user who holds a wrap or is listed under a fingerprint that
-// is no longer theirs is keyChanged; an unlisted user with a wrap for the
-// current epoch is approved; an unlisted user with none is new while the
-// record shares with a team.
-func pendingState(latest *e2e.MembershipBody, u *store.KeyedUser, listed map[string]e2e.Member, wraps []store.Wrap) string {
+// is no longer theirs, or who is unlisted and was approved under one, has a
+// changed key: rotated when explained(oldFP) says a chain of their rotation
+// records leads from that fingerprint to the current one, else keyChanged.
+// An unlisted user with a wrap for the current epoch is approved; an unlisted
+// user with none is new while the record shares with a team.
+func pendingState(latest *e2e.MembershipBody, u *store.KeyedUser, listed map[string]e2e.Member, wraps []store.Wrap,
+	approval *store.Approval, explained func(oldFP string) bool) string {
+	changed := func(oldFP string) string {
+		if explained(oldFP) {
+			return pendingRotated
+		}
+		return pendingKeyChanged
+	}
 	m, isListed := listed[u.ID]
 	if isListed && m.FP != u.FP {
-		return pendingKeyChanged
+		return changed(m.FP)
 	}
 	for _, wr := range wraps {
 		if wr.FP != u.FP {
-			return pendingKeyChanged
+			return changed(wr.FP)
 		}
 	}
 	if isListed {
 		return ""
+	}
+	// A member of the team who rotated re-made their wraps under the new
+	// key, so only the approval still carries the old one.
+	if approval != nil && approval.FP != u.FP {
+		return changed(approval.FP)
 	}
 	for _, wr := range wraps {
 		if wr.Epoch == latest.Epoch {

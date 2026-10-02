@@ -665,8 +665,8 @@ about:
   epoch through an approval, and is not listed. `approval` is the signed
   `approval` envelope stored with it, and is `null` in every other state.
 - `keyChanged`: the user holds a wrap, or is listed, under a fingerprint that
-  is no longer theirs, and no rotation record the server holds explains the
-  change.
+  is no longer theirs, or holds a wrap through an approval made for one. No
+  rotation record the server holds explains the change.
 - `rotated`: shown to the owner only. As `keyChanged`, but a chain of
   rotation records leads from the old fingerprint to the current one. The
   owner's client asks whether to start a new epoch, in case the old keys
@@ -926,13 +926,19 @@ The server checks:
   `old` is the current public keys, and `new` is the bundle's.
 - `keyring` is the keyring sealed under the new `MK`, with `rev` one more
   than the stored `rev`.
-- `wraps` replaces every wrap the caller holds, one for one.
+- `wraps` replaces, one for one, every wrap the caller holds under their
+  current fingerprint. A wrap left under an earlier fingerprint by a
+  password-only reset stays as it is, because the caller cannot open it, so
+  owners still see that user as `keyChanged`.
 - `records` holds one new head record for every artifact the caller owns,
   signed by the new key, with `ownerFp` set to the new fingerprint. Inside
   the transaction, the server verifies each one under the bundle's new
   Ed25519 key, not the stored one, and checks it as a membership change, at
   either epoch. Its `wraps` and `linkTokenHash` are the ones that change
-  needs.
+  needs. When the artifacts the records name differ from the ones the caller
+  owns, the answer is `409`, naming the artifact. An artifact transferred,
+  created, or deleted after the client read the list causes this, so the
+  client reads the list again and retries.
 - `estate` replaces every estate copy of every artifact the caller owns,
   sealed under the new `EK`, and adds the copy of each new epoch.
 
@@ -941,8 +947,11 @@ it touches, the server stores the new bundle and keyring, replaces the wraps
 and estate copies, adds the records, revokes every API key, deletes the
 successor's copy, and stores the rotation record. It also closes every open
 transfer offer made by or to the caller, because the new head records move
-`prev` and the caller's fingerprint changes. The token version increases,
-and the answer sets a new cookie.
+`prev` and the caller's fingerprint changes. The token version increases.
+
+The answer is `200 {"seq", "epochs": {"artifact ID": epoch}}`, with the
+new rotation `seq` and the epoch of every artifact the caller owns, and it
+sets a new cookie.
 
 The client then shows the new recovery code, and the new public link of
 every public artifact that moved to a new epoch, because each old link stops

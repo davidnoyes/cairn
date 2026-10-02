@@ -31,6 +31,7 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /api/me/archives", s.requireAuth(s.handleMeArchives))
 	mux.HandleFunc("GET /api/me/keyring", s.requireAuth(s.handleGetKeyring))
 	mux.HandleFunc("PUT /api/me/keyring", s.requireAuth(s.handlePutKeyring))
+	mux.HandleFunc("POST /api/me/rotate", s.requireSession(s.handleMeRotate))
 
 	// API keys: the user's own only.
 	mux.HandleFunc("GET /api/keys", s.requireAuth(s.handleListKeys))
@@ -40,6 +41,7 @@ func (s *Server) routes() {
 	// User directory (any authenticated user)
 	mux.HandleFunc("GET /api/users", s.requireAuth(s.handleUsers))
 	mux.HandleFunc("GET /api/users/{id}", s.requireAuth(s.handleUserByID))
+	mux.HandleFunc("GET /api/users/{id}/rotations", s.requireAuth(s.handleUserRotations))
 
 	// Admin: grant or remove a role, deactivate, or delete. No endpoint here
 	// sets a password, creates an account, or creates an API key for someone
