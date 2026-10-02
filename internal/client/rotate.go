@@ -188,7 +188,7 @@ func (c *Client) RotateKeys(password string, keepEpochs bool) (*RotateResult, er
 				}
 			}
 		} else {
-			pending, err := s.Pending(a.ID)
+			pending, err := s.pendingFor(old, a.ID, va)
 			if err != nil {
 				return nil, err
 			}

@@ -3,11 +3,14 @@
 package client
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"net/http"
 	"slices"
 	"strings"
 
@@ -33,17 +36,36 @@ var (
 )
 
 // KeyChangedError means a user's current keys differ from the ones pinned
-// for them. ResetAt is when the server says they last reset their account
-// without the recovery code, if it says so.
+// for them, and no rotation chain explains it. ResetAt is when the server
+// says they last reset their account without the recovery code, if it says
+// so. Fork is set when the user's rotation records conflict with the pin
+// (e2e.ErrRotationFork or e2e.ErrRollback), which may be an attack. FetchErr
+// is set when the records could not be read, so nothing says whether the
+// keys rotated or were replaced: the command is to be tried again.
 type KeyChangedError struct {
 	User      string
 	Email     string
 	PinnedFP  string
 	CurrentFP string
 	ResetAt   string
+	Fork      error
+	FetchErr  error
 }
 
+// Error states the facts only; what to do about a fork or a rollback is the
+// command's advice, given once.
 func (e *KeyChangedError) Error() string {
+	switch {
+	case errors.Is(e.Fork, e2e.ErrRollback):
+		return fmt.Sprintf("WARNING: the server served fewer rotation records than you pinned for %s (%s), and this may be an attack: pinned %s, now %s (%v)",
+			e.Email, e.User, formatHexFP(e.PinnedFP), formatHexFP(e.CurrentFP), e.Fork)
+	case e.Fork != nil:
+		return fmt.Sprintf("WARNING: the rotation records of %s (%s) conflict with each other or with the record you pinned, and this may be an attack: pinned %s, now %s (%v)",
+			e.Email, e.User, formatHexFP(e.PinnedFP), formatHexFP(e.CurrentFP), e.Fork)
+	case e.FetchErr != nil:
+		return fmt.Sprintf("cairn could not read the rotation records of %s (%s), so it cannot tell whether their keys rotated: pinned %s, now %s (%v); retry before considering --accept-new-key",
+			e.Email, e.User, formatHexFP(e.PinnedFP), formatHexFP(e.CurrentFP), e.FetchErr)
+	}
 	msg := fmt.Sprintf("the keys of %s (%s) changed: pinned %s, now %s", e.Email, e.User,
 		formatHexFP(e.PinnedFP), formatHexFP(e.CurrentFP))
 	if e.ResetAt != "" {
@@ -51,6 +73,8 @@ func (e *KeyChangedError) Error() string {
 	}
 	return msg + ". Confirm the new fingerprint with them, then pass --accept-new-key"
 }
+
+func (e *KeyChangedError) Unwrap() error { return e.Fork }
 
 // formatHexFP groups a hex fingerprint for reading aloud, or returns it as
 // it is when it is not hex.
@@ -161,25 +185,78 @@ func ExcludedMatch(excluded []e2e.ExcludedEntry, u DirectoryUser) *e2e.ExcludedE
 	return e2e.ExcludedMatch(excluded, u.ID, u.FP, u.Email)
 }
 
-// checkPin compares u's current keys with the keyring's pin. A changed key
-// is a *KeyChangedError unless acceptNewKey. It returns the state before
-// any change, and the pin to store, or nil when the stored one stands.
-func checkPin(kr *e2e.Keyring, u DirectoryUser, acceptNewKey bool) (string, *e2e.Pin, error) {
+// rotationsOf returns user's rotation records: those in known, which the
+// caller read with the membership, or else the server's.
+func (c *Client) rotationsOf(userID string, known map[string][]e2e.Envelope) ([]e2e.Envelope, error) {
+	if recs, ok := known[userID]; ok {
+		return recs, nil
+	}
+	return c.Rotations(userID)
+}
+
+// followPin is e2e.FollowPin for u against the keyring's pin. A pin on u's
+// current keys reads no rotation records. A first pin reads them, so that it
+// records the seq of the record that made the keys, and so does a pin on other
+// keys, which a chain may explain. They come from known, the records the
+// caller has by user ID, or else the server. fork is FollowPin's error for
+// records that conflict with the pin. Records the server fails to serve are no
+// records: a first pin is taken at seq 0, and a pin on other keys is a plain
+// change, which only --accept-new-key stores, never a fork. fetchErr is why
+// the records could not be read, set for a pin on other keys, which the
+// caller must not take for a change of keys, and for any failure that
+// fatalFetch says to stop on, which the caller returns.
+func (c *Client) followPin(kr *e2e.Keyring, u DirectoryUser, known map[string][]e2e.Envelope) (state string, next e2e.Pin, fork, fetchErr error) {
 	var pin *e2e.Pin
 	if p, ok := kr.Pins[u.ID]; ok {
 		pin = &p
 	}
-	state, fp := e2e.PinState(pin, u.X25519Pub, u.Ed25519Pub)
+	var records []e2e.Envelope
+	if pin == nil || pin.FP != u.FP {
+		var err error
+		if records, err = c.rotationsOf(u.ID, known); err != nil && (pin != nil || fatalFetch(err)) {
+			return e2e.PinChanged, e2e.Pin{FP: u.FP, State: e2e.PinUnverified}, nil, err
+		}
+	}
+	state, next, fork = e2e.FollowPin(u.ID, pin, records, u.X25519Pub, u.Ed25519Pub)
+	return state, next, fork, nil
+}
+
+// fatalFetch reports whether err, from a fetch of rotation records, ends the
+// command rather than degrading it: the caller cancelled it, or the server
+// refused its credentials. Anything else may be a fault that passes.
+func fatalFetch(err error) bool {
+	var api *APIError
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+		errors.As(err, &api) && api.Status == http.StatusUnauthorized
+}
+
+// checkPin compares u's current keys with the keyring's pin, following the
+// user's rotation records as followPin does; known holds the ones the caller
+// has. A changed key is a *KeyChangedError unless acceptNewKey, and one that
+// a rotation chain explains is not a change: the state is e2e.PinRotated,
+// and the pin to store is unverified. It returns the state before any
+// change, and the pin to store, or nil when the stored one stands.
+func (c *Client) checkPin(kr *e2e.Keyring, u DirectoryUser, acceptNewKey bool, known map[string][]e2e.Envelope) (string, *e2e.Pin, error) {
+	state, next, fork, fetchErr := c.followPin(kr, u, known)
+	if fatalFetch(fetchErr) {
+		return "", nil, fetchErr
+	}
 	switch state {
-	case e2e.PinNew:
-		return state, &e2e.Pin{FP: fp, State: e2e.PinUnverified}, nil
+	case e2e.PinNew, e2e.PinRotated:
+		return state, &next, nil
 	case e2e.PinChanged:
 		if !acceptNewKey {
-			return state, nil, &KeyChangedError{User: u.ID, Email: u.Email, PinnedFP: pin.FP, CurrentFP: fp, ResetAt: u.ResetAt}
+			return state, nil, &KeyChangedError{User: u.ID, Email: u.Email, PinnedFP: kr.Pins[u.ID].FP, CurrentFP: u.FP, ResetAt: u.ResetAt, Fork: fork, FetchErr: fetchErr}
 		}
-		return state, &e2e.Pin{FP: fp, State: e2e.PinUnverified}, nil
+		return state, &next, nil
 	}
 	return state, nil, nil
+}
+
+// wasVerified reports whether prior is a rotation that dropped a verified
+// pin to unverified, so the person is told to compare the keys again.
+func wasVerified(kr *e2e.Keyring, user, prior string) bool {
+	return prior == e2e.PinRotated && kr.Pins[user].State == e2e.PinVerified
 }
 
 // storePin writes a pin for user. basedOn is the fingerprint the keyring
@@ -206,13 +283,16 @@ func (c *Client) storePin(k *UnlockedKeys, user string, pin e2e.Pin, basedOn str
 // PinResult is what Pin did.
 type PinResult struct {
 	User  DirectoryUser
-	Prior string // the state before: new, unverified, verified, or changed
+	Prior string // the state before: new, unverified, verified, rotated, or changed
 	State string // the state stored
+	// WasVerified is set when Prior is rotated and the pin was verified: it
+	// is unverified now.
+	WasVerified bool
 }
 
 // Pin records the current fingerprint of who in the keyring, unverified, or
 // verified when the caller has compared it with them. A changed key is a
-// *KeyChangedError unless acceptNewKey.
+// *KeyChangedError unless acceptNewKey; one a rotation chain explains is not.
 func (c *Client) Pin(who string, verified, acceptNewKey bool) (*PinResult, error) {
 	k, err := c.Unlock()
 	if err != nil {
@@ -230,7 +310,7 @@ func (c *Client) Pin(who string, verified, acceptNewKey bool) (*PinResult, error
 	if err != nil {
 		return nil, err
 	}
-	prior, pin, err := checkPin(kr, u, acceptNewKey)
+	prior, pin, err := c.checkPin(kr, u, acceptNewKey, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -246,19 +326,27 @@ func (c *Client) Pin(who string, verified, acceptNewKey bool) (*PinResult, error
 			return nil, err
 		}
 	}
-	return &PinResult{User: u, Prior: prior, State: pin.State}, nil
+	return &PinResult{User: u, Prior: prior, State: pin.State, WasVerified: wasVerified(kr, u.ID, prior)}, nil
 }
+
+// MemberConflict is the state of a Members row whose rotation records
+// conflict with the pin: a fork or a rollback, which may be an attack.
+const MemberConflict = "conflict"
 
 // MemberView is one row of Members: the owner or a member, with the pin
 // state of their current keys. State is "self" for the caller, and "-" for
-// a user the directory no longer lists.
+// a user the directory no longer lists. It is "rotated" when a rotation
+// chain leads from the pin to their current keys; WasVerified then says
+// whether the pin was verified, which a rotation drops. It is MemberConflict
+// when the rotation records fork or roll back.
 type MemberView struct {
-	User  string
-	Name  string
-	Email string
-	Role  string // owner, editor, or viewer
-	FP    string // hex, as the latest verified record lists it
-	State string
+	User        string
+	Name        string
+	Email       string
+	Role        string // owner, editor, or viewer
+	FP          string // hex, as the latest verified record lists it
+	State       string
+	WasVerified bool
 }
 
 // Members verifies an artifact's chain and lists its owner and members.
@@ -293,11 +381,14 @@ func (c *Client) Members(artifactID string) (*VerifiedArtifact, []MemberView, er
 		case !ok:
 			r.State = "-"
 		default:
-			var pin *e2e.Pin
-			if p, ok := va.Keyring.Pins[r.User]; ok {
-				pin = &p
+			state, _, fork, fetchErr := c.followPin(va.Keyring, u, va.Membership.Rotations)
+			if fatalFetch(fetchErr) {
+				return nil, nil, fetchErr
 			}
-			r.State, _ = e2e.PinState(pin, u.X25519Pub, u.Ed25519Pub)
+			if fork != nil {
+				state = MemberConflict
+			}
+			r.State, r.WasVerified = state, wasVerified(va.Keyring, r.User, state)
 		}
 		if ok {
 			r.Name, r.Email = u.Name, u.Email
@@ -325,6 +416,9 @@ type ShareResult struct {
 	// the owner is asked about.
 	Listed   []DirectoryUser
 	Unlisted []UnlistedUser
+
+	// WasVerified is set when Prior is rotated and the pin was verified.
+	WasVerified bool
 }
 
 // Share adds who to an artifact at its current epoch, or promotes a viewer
@@ -364,15 +458,19 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	if u.ID == k.UserID {
 		return nil, ErrShareSelf
 	}
-	prior, pin, err := checkPin(va.Keyring, u, acceptNewKey)
+	prior, pin, err := c.checkPin(va.Keyring, u, acceptNewKey, va.Membership.Rotations)
 	if err != nil {
 		return nil, err
 	}
-	res := &ShareResult{User: u, Prior: prior, Role: role, Epoch: latest.Epoch, TeamRole: latest.Team}
-	pending, err := c.Pending(artifactID)
+	res := &ShareResult{User: u, Prior: prior, WasVerified: wasVerified(va.Keyring, u.ID, prior), Role: role, Epoch: latest.Epoch, TeamRole: latest.Team}
+	pending, err := c.pendingFor(k, artifactID, va)
 	if err != nil {
 		return nil, err
 	}
+	// A user the pending list reports rotated, and whose chain pendingFor
+	// verified, holds wraps under their new keys already: they re-made their
+	// own when they rotated.
+	rotated := slices.ContainsFunc(pending, func(p PendingUser) bool { return p.User.ID == u.ID && p.State == PendingRotated })
 	// An approved user holds their wraps already, so the owner's client takes
 	// the server's word for it only after the checks listApproved makes.
 	approved := false
@@ -390,20 +488,28 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	switch {
 	case i < 0:
 		members = append(members, e2e.Member{User: u.ID, Role: role, FP: u.FP})
-		needsWraps = !approved
+		needsWraps = !approved && !rotated
 	default:
 		demote = members[i].Role == "editor" && role == "viewer"
 		res.Promoted = members[i].Role != role && !demote
 		res.Demoted = demote
-		needsWraps = members[i].FP != u.FP
-		res.Unchanged = !res.Promoted && !demote && !needsWraps
+		relist := members[i].FP != u.FP
+		needsWraps = relist && !rotated
+		res.Unchanged = !res.Promoted && !demote && !relist
 		members[i] = e2e.Member{User: u.ID, Role: role, FP: u.FP}
 	}
 	basedOn := va.Keyring.Pins[u.ID].FP
 	if demote {
 		return c.shareNextEpoch(k, artifactID, va, dir, pending, members, u, pin, basedOn, res)
 	}
-	if res.Unchanged {
+	// A member who rotated is listed under their new keys in any record this
+	// writes, so the user's own entry unchanged is not Unchanged while one waits.
+	pins := map[string]pinDecision{}
+	relisted, err := c.relistRotated(va, pending, members, pins)
+	if err != nil {
+		return nil, err
+	}
+	if res.Unchanged && !relisted {
 		if pin != nil {
 			if err := c.storePin(k, u.ID, *pin, basedOn); err != nil {
 				return nil, err
@@ -411,11 +517,15 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 		}
 		return res, nil
 	}
-	var lst approvedListing
+	res.Unchanged = false
+	lst := approvedListing{pins: pins}
 	if latest.Team != "none" {
-		lst = c.listApproved(k, va, dir, pending, latest.Team, func(id string) bool {
+		if lst, err = c.listApproved(k, va, dir, pending, latest.Team, func(id string) bool {
 			return slices.ContainsFunc(members, func(m e2e.Member) bool { return m.User == id })
-		})
+		}); err != nil {
+			return nil, err
+		}
+		maps.Copy(lst.pins, pins)
 	}
 	members = append(members, lst.members...)
 	res.Listed, res.Unlisted = lst.listed, lst.unlisted
@@ -448,6 +558,13 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	next.Members = members
 	next.Excluded, res.Dropped = dropExcluded(latest.Excluded, members, dir)
 	if err := c.putRecord(k, artifactID, va, next, wraps, nil, ""); err != nil {
+		// A member who rotated needs no wrap, which cairn could not know
+		// while their records were out of reach: the server refuses it as a
+		// bad request.
+		var api *APIError
+		if i := slices.IndexFunc(pending, func(p PendingUser) bool { return p.User.ID == u.ID && p.RotationsErr != nil }); i >= 0 && wraps != nil && errors.As(err, &api) && api.Status == http.StatusBadRequest {
+			return nil, fmt.Errorf("the rotation records of %s could not be read (%v), so cairn may have sent a wrap the server did not need; retry when the records can be read: %w", u.Email, pending[i].RotationsErr, err)
+		}
 		return nil, err
 	}
 	for id, d := range lst.pins {

@@ -2224,11 +2224,10 @@ async function followSteps(user, records, pin) {
     started = true;
     if (!fromHere) throw new ChainError('old keys are not the keys the chain reached');
     // With pin.rotSeq 0 the chain may start at any seq of 1 or more whose
-    // old fp is the pin's, and this is deliberate. A pin first taken after
-    // the user already rotated has rotSeq 0 (until step 7d records the
-    // current rotSeq when pinning), and rotationLinker asks from any point
-    // in the chain. The record is still signed by the pinned key, and
-    // continuity is enforced from there.
+    // old fp is the pin's, and this is deliberate. A pin taken before pins
+    // recorded rotSeq, or one of a user with no chain, has rotSeq 0, and
+    // rotationLinker asks from any point in the chain. The record is still
+    // signed by the pinned key, and continuity is enforced from there.
     if (res.seq > 0 && b.seq !== res.seq + 1) {
       throw new ChainError(`seq ${b.seq} does not follow the last accepted`);
     }

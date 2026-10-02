@@ -103,6 +103,13 @@ func linkTokenHash(ak []byte, artifactID string, epoch int) (string, error) {
 	return e2e.LinkTokenHash(token), nil
 }
 
+// errRotationsUnreadable is the refusal for a user the server calls rotated
+// and whose rotation records could not be read: without them cairn cannot
+// tell which keys their wraps were made for, or whether they changed keys.
+func errRotationsUnreadable(p PendingUser) error {
+	return fmt.Errorf("cannot read the rotation records of %s (%s): %w; without them cairn cannot tell which keys their wraps were made for. Retry when the records can be read", p.User.Email, p.User.ID, p.RotationsErr)
+}
+
 // buildNextEpoch builds a next-epoch record from r, and sends nothing. It
 // makes the new AK, wraps it to every listed member, seals the estate copy,
 // and excludes every user the record removes or drops, and every team member
@@ -128,12 +135,32 @@ func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 	}
 
 	// Team members who hold a wrap are listed or excluded.
-	var lst approvedListing
+	lst := approvedListing{pins: map[string]pinDecision{}}
 	if next.Team != "none" {
-		lst = c.listApproved(k, va, dir, pending, next.Team, func(id string) bool { return inMembers(id) || id == r.exclude })
+		var err error
+		if lst, err = c.listApproved(k, va, dir, pending, next.Team, func(id string) bool { return inMembers(id) || id == r.exclude }); err != nil {
+			return nil, err
+		}
 	}
 	next.Members = append(slices.Clone(next.Members), lst.members...)
 	slices.SortFunc(next.Members, func(a, b e2e.Member) int { return strings.Compare(a.User, b.User) })
+
+	// A listed member whose rotation chain verified is listed under their
+	// current keys, and holds wraps under them already. rotated means listed
+	// and rotated: the guard on latest.Members keeps out an unlisted holder
+	// who rotated, whom the loop below excludes.
+	rotated := map[string]bool{}
+	for _, p := range pending {
+		if u, ok := byID[p.User.ID]; ok && p.State == PendingRotated &&
+			slices.ContainsFunc(latest.Members, func(m e2e.Member) bool { return m.User == p.User.ID }) {
+			rotated[u.ID] = true
+		}
+	}
+	for i, m := range next.Members {
+		if rotated[m.User] {
+			next.Members[i].FP = byID[m.User].FP
+		}
+	}
 
 	change := &EpochChange{NewEpoch: true}
 	exclude := map[string]e2e.ExcludedEntry{}
@@ -164,6 +191,10 @@ func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 			continue
 		}
 		switch {
+		case p.State == PendingKeyChanged && p.RotationsErr != nil:
+			// The server says they rotated, and without their records no pin
+			// says which key their wraps were made for.
+			return nil, errRotationsUnreadable(p)
 		case p.State == PendingKeyChanged:
 			// Not listed, so a wrap they hold was made for a key other than
 			// their current one. The server accepts only a fingerprint it can
@@ -179,8 +210,13 @@ func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 			exclude1(p.User, pin.FP, reason)
 		case p.User.ID == r.exclude:
 			exclude1(p.User, p.User.FP, "removed")
-		case p.State == PendingApproved:
+		case p.State == PendingApproved || p.State == PendingRotated:
+			// A rotated user who is not listed holds wraps under their new keys
+			// and an approval for their old ones, which no record can list.
 			reason := "team sharing ended while they held a wrap"
+			if p.State == PendingRotated {
+				reason = "their keys rotated after they were approved, so the approval no longer checks out"
+			}
 			if i := slices.IndexFunc(lst.unlisted, func(u UnlistedUser) bool { return u.User.ID == p.User.ID }); i >= 0 {
 				reason = fmt.Sprintf("their approval does not check out: %v", lst.unlisted[i].Err)
 			}
@@ -196,13 +232,24 @@ func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 			return nil, fmt.Errorf("the account of member %s was deleted, so no new key can be wrapped to them; remove them first with cairn unshare %s %s", m.User, artifactID, m.User)
 		}
 		if m.FP != u.FP {
+			// A member who rotated, whose records cannot be read, is not
+			// known to have changed keys the owner is to decide about.
+			if i := slices.IndexFunc(pending, func(p PendingUser) bool { return p.User.ID == m.User && p.RotationsErr != nil }); i >= 0 {
+				return nil, errRotationsUnreadable(pending[i])
+			}
 			return nil, fmt.Errorf("%w: %s (%s); share with them again with cairn share --accept-new-key, or remove them with cairn unshare", ErrMemberKeyChanged, u.Email, u.ID)
 		}
 		if m.User == r.decided {
 			continue
 		}
-		if _, _, err := checkPin(va.Keyring, u, false); err != nil {
+		state, pin, err := c.checkPin(va.Keyring, u, false, va.Membership.Rotations)
+		if err != nil {
 			return nil, fmt.Errorf("member %s: %w", u.Email, err)
+		}
+		// A member the owner holds no pin for is pinned too when their chain
+		// verified: it is anchored on the fingerprint the owner's record listed.
+		if pin != nil && (state == e2e.PinRotated || rotated[m.User]) {
+			lst.pins[m.User] = pinDecision{*pin, va.Keyring.Pins[m.User].FP}
 		}
 	}
 
@@ -252,7 +299,7 @@ func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 	for _, m := range next.Members {
 		u := byID[m.User]
 		epochs := []int{epoch}
-		held := slices.ContainsFunc(latest.Members, func(l e2e.Member) bool { return l.User == m.User && l.FP == m.FP }) ||
+		held := rotated[m.User] || slices.ContainsFunc(latest.Members, func(l e2e.Member) bool { return l.User == m.User && l.FP == m.FP }) ||
 			slices.ContainsFunc(pending, func(p PendingUser) bool {
 				return p.User.ID == m.User && p.State == PendingApproved && p.User.FP == m.FP
 			})
@@ -351,14 +398,14 @@ func (c *Client) Unshare(artifactID, who string) (*UnshareResult, error) {
 	if u.ID == k.UserID {
 		return nil, ErrUnshareOwner
 	}
-	pending, err := c.Pending(artifactID)
+	pending, err := c.pendingFor(k, artifactID, va)
 	if err != nil {
 		return nil, err
 	}
 	next := latest
 	next.Members = slices.DeleteFunc(slices.Clone(latest.Members), func(m e2e.Member) bool { return m.User == u.ID })
 	if len(next.Members) == len(latest.Members) && !slices.ContainsFunc(pending, func(p PendingUser) bool {
-		return p.User.ID == u.ID && (p.State == PendingApproved || p.State == PendingKeyChanged)
+		return p.User.ID == u.ID && (p.State == PendingApproved || p.State == PendingKeyChanged || p.State == PendingRotated)
 	}) {
 		return nil, fmt.Errorf("%w: %s", ErrNotMember, u.Email)
 	}

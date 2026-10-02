@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/aloisdeniel/cairn/internal/client"
@@ -37,9 +38,30 @@ func showFP(fp string) string {
 	return e2e.FormatFingerprint(b)
 }
 
+// rotationAdvice is what to do about err when it is a user's rotation records
+// in doubt, which is a fork, a rollback, or records that could not be read,
+// or "" for any other error.
+func rotationAdvice(err error) string {
+	var changed *client.KeyChangedError
+	switch {
+	case !errors.As(err, &changed):
+		return ""
+	case errors.Is(changed.Fork, e2e.ErrRollback):
+		return "The server served fewer rotation records than you pinned, which can hide a rotation from you. Do not pass --accept-new-key until you have confirmed the fingerprint with them over a channel you trust"
+	case changed.Fork != nil:
+		return "The server serves rotation records for this user that conflict with each other or with what you pinned. It may be tampering, or whoever holds one of their old private keys may have signed these. Do not pass --accept-new-key until you have confirmed the new fingerprint with them in person or over a channel you trust"
+	case changed.FetchErr != nil:
+		return "This is usually a network or server fault, and their keys may be fine"
+	}
+	return ""
+}
+
 // explainRefusal adds to a keyring refusal what it means and how to go on
 // once the user has checked with their admin; any other error is unchanged.
 func explainRefusal(c *client.Client, err error) error {
+	if advice := rotationAdvice(err); advice != "" {
+		return fmt.Errorf("%w\n%s", err, advice)
+	}
 	var refused *client.KeyringRefusedError
 	if !errors.As(err, &refused) {
 		return err
@@ -73,7 +95,7 @@ func runPin(args []string) error {
 	if *jsonOut {
 		return printJSON(map[string]string{"user": res.User.ID, "email": res.User.Email, "fp": res.User.FP, "prior": res.Prior, "state": res.State})
 	}
-	fmt.Printf("%s (%s)\nfingerprint %s\npinned %s (was %s)\n", res.User.Email, res.User.ID, showFP(res.User.FP), res.State, res.Prior)
+	fmt.Printf("%s (%s)\nfingerprint %s\npinned %s (was %s)\n", res.User.Email, res.User.ID, showFP(res.User.FP), res.State, priorLabel(res.Prior, res.WasVerified))
 	return nil
 }
 
@@ -100,7 +122,11 @@ func runMembers(args []string) error {
 	if *jsonOut {
 		out := make([]map[string]string, 0, len(rows))
 		for _, r := range rows {
-			out = append(out, map[string]string{"user": r.User, "name": r.Name, "email": r.Email, "role": r.Role, "fp": r.FP, "state": r.State})
+			row := map[string]string{"user": r.User, "name": r.Name, "email": r.Email, "role": r.Role, "fp": r.FP, "state": r.State}
+			if r.State == e2e.PinRotated {
+				row["wasVerified"] = strconv.FormatBool(r.WasVerified)
+			}
+			out = append(out, row)
 		}
 		return printJSON(map[string]any{"artifact": a.ID, "epoch": va.Chain.Latest.Epoch, "seq": va.Chain.Latest.Seq, "members": out})
 	}
@@ -110,7 +136,12 @@ func runMembers(args []string) error {
 		if who == "" {
 			who = r.User
 		}
-		fmt.Printf("%-6s  %-32s  %-10s  %s\n", r.Role, who, r.State, showFP(r.FP))
+		fmt.Printf("%-6s  %-32s  %-10s  %s\n", r.Role, who, priorLabel(r.State, r.WasVerified), showFP(r.FP))
+	}
+	for _, r := range rows {
+		if r.State == e2e.PinRotated && r.WasVerified {
+			fmt.Printf("re-verify %s: compare the new fingerprint with them, then run: cairn pin %s --verified\n", r.Email, r.Email)
+		}
 	}
 	return nil
 }
@@ -151,7 +182,7 @@ func runShare(args []string) error {
 		epochChangeJSON(out, res.EpochChange)
 		return printJSON(out)
 	}
-	fmt.Printf("%s (%s)\nfingerprint %s (%s)\n", res.User.Email, res.User.ID, showFP(res.User.FP), shareState(res.Prior))
+	fmt.Printf("%s (%s)\nfingerprint %s (%s)\n", res.User.Email, res.User.ID, showFP(res.User.FP), shareState(res.Prior, res.WasVerified))
 	switch {
 	case res.Unchanged:
 		fmt.Printf("already a %s of %s; nothing changed\n", res.Role, a.Name)
@@ -269,7 +300,18 @@ func listingJSON(listed []client.DirectoryUser, unlisted []client.UnlistedUser) 
 		l = append(l, map[string]string{"user": d.ID, "name": d.Name, "email": d.Email, "fp": d.FP})
 	}
 	for _, x := range unlisted {
-		u = append(u, map[string]string{"user": x.User.ID, "name": x.User.Name, "email": x.User.Email, "fp": x.User.FP, "reason": x.Err.Error()})
+		row := map[string]string{"user": x.User.ID, "name": x.User.Name, "email": x.User.Email, "fp": x.User.FP, "reason": x.Err.Error()}
+		// Set only where it holds: a conflict in their rotation records, or
+		// records that could not be read.
+		var changed *client.KeyChangedError
+		if errors.As(x.Err, &changed) {
+			if changed.Fork != nil {
+				row["rotationConflict"] = "true"
+			} else if changed.FetchErr != nil {
+				row["rotationsUnreadable"] = "true"
+			}
+		}
+		u = append(u, row)
 	}
 	return l, u
 }
@@ -283,6 +325,12 @@ func printListing(artifact, role string, listed []client.DirectoryUser, unlisted
 		fmt.Printf("listed approved team member %s (%s), fingerprint %s\n", d.Email, d.Name, showFP(d.FP))
 	}
 	for _, x := range unlisted {
+		// A conflict or an unreadable record is not for the owner to share
+		// past, so the advice is the refusal's, and no command to run.
+		if advice := rotationAdvice(x.Err); advice != "" {
+			fmt.Printf("not listed: %s (%s), fingerprint %s\n%v\n%s\n", x.User.Name, x.User.Email, showFP(x.User.FP), x.Err, advice)
+			continue
+		}
 		fmt.Printf("not listed: %s (%s), fingerprint %s: %v\ncheck the fingerprint with them, then run: cairn share %s %s --role %s\n",
 			x.User.Name, x.User.Email, showFP(x.User.FP), x.Err, artifact, x.User.Email, role)
 	}
@@ -339,7 +387,7 @@ func runApprove(args []string) error {
 		})
 	}
 	fmt.Printf("%s (%s)\nfingerprint %s (%s)\napproved for %s: they can read it now, and the owner's next cairn team or cairn share lists them with the team's role\n",
-		res.User.Email, res.User.ID, showFP(res.User.FP), shareState(res.Prior), a.Name)
+		res.User.Email, res.User.ID, showFP(res.User.FP), shareState(res.Prior, res.WasVerified), a.Name)
 	if res.Prior != e2e.PinVerified {
 		fmt.Printf("compare the fingerprint with them, then run: cairn pin %s --verified\n", res.User.Email)
 	}
@@ -355,7 +403,11 @@ func listPending(c *client.Client, id, name string, jsonOut bool) error {
 	if jsonOut {
 		out := make([]map[string]string, 0, len(list))
 		for _, p := range list {
-			out = append(out, map[string]string{"user": p.User.ID, "name": p.User.Name, "email": p.User.Email, "fp": p.User.FP, "state": p.State})
+			entry := map[string]string{"user": p.User.ID, "name": p.User.Name, "email": p.User.Email, "fp": p.User.FP, "state": p.State}
+			if p.RotationsErr != nil {
+				entry["rotationsUnreadable"] = "true"
+			}
+			out = append(out, entry)
 		}
 		return printJSON(map[string]any{"artifact": id, "pending": out})
 	}
@@ -372,11 +424,18 @@ func listPending(c *client.Client, id, name string, jsonOut bool) error {
 		return nil
 	}
 	states := map[string]bool{}
+	var unreadable []client.PendingUser
 	for _, p := range list {
-		states[p.State] = true
+		// A user whose records could not be read is not told to be shared
+		// with again: nothing says their keys changed.
+		if p.RotationsErr == nil {
+			states[p.State] = true
+		} else {
+			unreadable = append(unreadable, p)
+		}
 		fmt.Printf("%-10s  %-20s  %-32s  %s\n", p.State, p.User.Name, p.User.Email, showFP(p.User.FP))
 	}
-	fmt.Println("new: waiting for approval; approved: approved, not yet listed by the owner; keyChanged: keys changed since they were wrapped to or listed")
+	fmt.Println("new: waiting for approval; approved: approved, not yet listed by the owner; keyChanged: keys changed since they were wrapped to or listed; rotated: keys rotated since they were listed; the owner's next record lists the new keys")
 	if states[client.PendingNew] {
 		fmt.Printf("compare a fingerprint with them, then run: cairn approve %s USER\n", id)
 	}
@@ -385,6 +444,12 @@ func listPending(c *client.Client, id, name string, jsonOut bool) error {
 	}
 	if states[client.PendingKeyChanged] {
 		fmt.Printf("keyChanged: the owner shares again with cairn share %s USER\n", id)
+	}
+	for _, p := range unreadable {
+		fmt.Printf("keyChanged: the rotation records of %s could not be read (%v); run cairn approve %s again, their keys may be fine\n", p.User.Email, p.RotationsErr, id)
+	}
+	if states[client.PendingRotated] {
+		fmt.Printf("rotated: the owner's next cairn share %s USER or cairn team %s viewer|editor lists the new keys\n", id, id)
 	}
 	return nil
 }
@@ -607,14 +672,31 @@ func runPublic(args []string) error {
 	return nil
 }
 
-func shareState(prior string) string {
+func shareState(prior string, wasVerified bool) string {
 	switch prior {
 	case e2e.PinNew:
 		return "new; pinned unverified"
 	case e2e.PinChanged:
 		return "changed; the new key is pinned unverified"
+	case e2e.PinRotated:
+		return priorLabel(prior, wasVerified) + "; the new key is pinned unverified"
 	}
 	return prior
+}
+
+// priorLabel is a pin state as shown to a person. A rotation raises no
+// warning, but it drops a verified pin to unverified, which the label says.
+// Rotation records that conflict are shown as a change, with the reason.
+func priorLabel(state string, wasVerified bool) string {
+	switch {
+	case state == e2e.PinRotated && wasVerified:
+		return "rotated, not re-verified"
+	case state == e2e.PinRotated:
+		return "keys rotated"
+	case state == client.MemberConflict:
+		return "changed: rotation records conflict"
+	}
+	return state
 }
 
 // Interface check: the config file is the CLI's anchor store.

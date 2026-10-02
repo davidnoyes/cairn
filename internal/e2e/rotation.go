@@ -87,11 +87,11 @@ func followRotations(user string, records []Envelope, pin Pin) (RotationResult, 
 		case !ok || oldFP != res.FP:
 			return RotationResult{}, nil, fmt.Errorf("record %d: %w: old keys are not the keys the chain reached", i+1, ErrChain)
 		// With pin.RotSeq 0 the chain may start at any seq of 1 or more
-		// whose old fp is the pin's, and this is deliberate. A pin first
-		// taken after the user already rotated has rotSeq 0 (until step 7d
-		// records the current rotSeq when pinning), and RotationLinker asks
-		// from any point in the chain. The record is still signed by the
-		// pinned key, and continuity is enforced from there.
+		// whose old fp is the pin's, and this is deliberate. A pin taken
+		// before pins recorded rotSeq, or one of a user with no chain, has
+		// rotSeq 0, and RotationLinker asks from any point in the chain.
+		// The record is still signed by the pinned key, and continuity is
+		// enforced from there.
 		case res.Seq > 0 && b.Seq != res.Seq+1:
 			return RotationResult{}, nil, fmt.Errorf("record %d: %w: seq %d does not follow the last accepted", i+1, ErrChain, b.Seq)
 		case b.Seq < 1:

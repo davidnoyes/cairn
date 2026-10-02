@@ -5,6 +5,7 @@ package client
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
 )
@@ -78,11 +79,32 @@ func (c *Client) Public(artifactID string, on bool, writes *bool) (*PublicResult
 	if err != nil {
 		return nil, fmt.Errorf("cannot make a link for host %s: %w", c.Host, err)
 	}
-	if latest.Public && next.PublicWrites == latest.PublicWrites {
-		res.Unchanged = true
-	} else if err := c.putRecord(k, artifactID, va, next, nil, nil, ""); err != nil {
+	// A member who rotated is listed under their new keys in any record the
+	// owner writes, and a public artifact already set so is Unchanged only if
+	// none waits.
+	pending, err := c.pendingFor(k, artifactID, va)
+	if err != nil {
 		return nil, err
-	} else if err := c.readBack(k, artifactID, ""); err != nil {
+	}
+	next.Members = slices.Clone(latest.Members)
+	pins := map[string]pinDecision{}
+	relisted, err := c.relistRotated(va, pending, next.Members, pins)
+	if err != nil {
+		return nil, err
+	}
+	if latest.Public && next.PublicWrites == latest.PublicWrites && !relisted {
+		res.Unchanged = true
+		return res, nil
+	}
+	if err := c.putRecord(k, artifactID, va, next, nil, nil, ""); err != nil {
+		return nil, err
+	}
+	for id, d := range pins {
+		if err := c.storePin(k, id, d.pin, d.basedOn); err != nil {
+			return nil, fmt.Errorf("the server accepted the new membership record, but pinning %s failed: %w", id, err)
+		}
+	}
+	if err := c.readBack(k, artifactID, ""); err != nil {
 		return nil, err
 	}
 	return res, nil
@@ -94,7 +116,7 @@ func (c *Client) publicOffNextEpoch(k *UnlockedKeys, artifactID string, va *Veri
 	if err != nil {
 		return nil, err
 	}
-	pending, err := c.Pending(artifactID)
+	pending, err := c.pendingFor(k, artifactID, va)
 	if err != nil {
 		return nil, err
 	}

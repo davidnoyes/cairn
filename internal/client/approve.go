@@ -5,6 +5,7 @@ package client
 
 import (
 	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,7 +34,7 @@ var (
 	// that are no longer theirs. A changed key is never a new member.
 	ErrChangedKey = errors.New("the user's keys changed after they were wrapped to or listed; the owner shares again with cairn share")
 	// ErrNotWaiting means the server lists the user as none of new, approved,
-	// or keyChanged.
+	// keyChanged, or rotated.
 	ErrNotWaiting = errors.New("the user is not waiting for approval on this artifact")
 	// ErrApprovalUnverified means the owner's client does not list a user the
 	// server reports as approved, because the approval does not check out.
@@ -49,16 +50,21 @@ const (
 	PendingNew        = "new"
 	PendingApproved   = "approved"
 	PendingKeyChanged = "keyChanged"
+	PendingRotated    = "rotated"
 )
 
 // PendingUser is one entry of GET /api/artifacts/{id}/pending: a user with
 // the keys the server serves for them now, and why the caller's client
 // should ask about them. Approval is the stored approval of an approved
-// user, shown to the owner only.
+// user, shown to the owner only. State is rotated only after the client
+// checked the user's rotation chain itself, as pendingFor does.
 type PendingUser struct {
 	User     DirectoryUser
 	State    string
 	Approval *e2e.Envelope
+	// RotationsErr is why a keyChanged entry is one: the server called the
+	// user rotated, and their rotation records could not be read.
+	RotationsErr error
 }
 
 type pendingWire struct {
@@ -68,8 +74,25 @@ type pendingWire struct {
 }
 
 // Pending lists the users the caller, an owner or an editor, should be
-// asked about.
+// asked about. It verifies the artifact's chain first, for pendingFor.
 func (c *Client) Pending(artifactID string) ([]PendingUser, error) {
+	k, err := c.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	va, err := c.VerifyArtifact(k, artifactID, "")
+	if err != nil {
+		return nil, err
+	}
+	return c.pendingFor(k, artifactID, va)
+}
+
+// pendingFor is Pending for a caller that holds the verified artifact. The
+// server's word that a user is rotated is not enough: the entry stays
+// rotated only for the owner, and only when a chain of the user's rotation
+// records, which verifies, leads from the fingerprint the latest record lists
+// for them to the keys served now. Any other rotated entry is keyChanged.
+func (c *Client) pendingFor(k *UnlockedKeys, artifactID string, va *VerifiedArtifact) ([]PendingUser, error) {
 	var resp []pendingWire
 	if err := c.doJSON("GET", "/api/artifacts/"+artifactID+"/pending", nil, &resp); err != nil {
 		return nil, err
@@ -80,16 +103,99 @@ func (c *Client) Pending(artifactID string) ([]PendingUser, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, PendingUser{User: u, State: w.State, Approval: w.Approval})
+		var fetchErr error
+		if w.State == PendingRotated {
+			if w.State, fetchErr = c.checkRotated(k, va, u); fatalFetch(fetchErr) {
+				return nil, fetchErr
+			}
+		}
+		out = append(out, PendingUser{User: u, State: w.State, Approval: w.Approval, RotationsErr: fetchErr})
 	}
 	return out, nil
+}
+
+// checkRotated returns PendingRotated when u's rotation records lead from the
+// fingerprint the latest record lists for them to their current keys, and
+// PendingKeyChanged otherwise, which includes records the server fails to
+// serve: they cannot be verified, so the keys count as changed, and the
+// error says why the records could not be read. For a user the
+// record does not list, the chain starts at the owner's pin, or with no pin at
+// the first record's old keys: nothing else says which keys they held. Only
+// the owner is told of rotated, so for anyone else it is keyChanged.
+func (c *Client) checkRotated(k *UnlockedKeys, va *VerifiedArtifact, u DirectoryUser) (string, error) {
+	latest := va.Chain.Latest
+	if latest.Owner != k.UserID {
+		return PendingKeyChanged, nil
+	}
+	records, err := c.rotationsOf(u.ID, va.Membership.Rotations)
+	if err != nil {
+		return PendingKeyChanged, err
+	}
+	var oldFP string
+	if i := slices.IndexFunc(latest.Members, func(m e2e.Member) bool { return m.User == u.ID }); i >= 0 {
+		oldFP = latest.Members[i].FP
+	} else if p, ok := va.Keyring.Pins[u.ID]; ok {
+		oldFP = p.FP
+	} else if len(records) > 0 {
+		// The last resort takes the first record's old keys on the server's
+		// word, which is safe: the verdict never writes a pin, it only decides
+		// whether the owner's client wraps to or excludes the user, and the
+		// server's own rules still require a wrap under the user's current
+		// fingerprint. A lie here costs nothing beyond what the server could
+		// already do.
+		var b e2e.RotationBody
+		if e2e.DecodeStrict(records[0].Body, &b) == nil {
+			x, errX := e2e.UnB64(b.Old.X25519)
+			ed, errEd := e2e.UnB64(b.Old.Ed25519)
+			if errX == nil && errEd == nil {
+				oldFP = hex.EncodeToString(e2e.Fingerprint(x, ed))
+			}
+		}
+	}
+	res, err := e2e.FollowRotations(u.ID, records, e2e.Pin{FP: oldFP})
+	if err != nil || oldFP == u.FP || res.FP != u.FP {
+		return PendingKeyChanged, nil
+	}
+	return PendingRotated, nil
+}
+
+// relistRotated lists each member of members whose pending entry is rotated
+// under their current fingerprint, in place, and puts the pin to store for
+// them in pins, which is a pin for a member the owner holds none for too. It
+// reports whether it listed anyone. The new fingerprint needs no wrap at the
+// same epoch: the member re-made their own when they rotated. A member whose
+// pin check refuses stays as listed, for the owner to decide about.
+func (c *Client) relistRotated(va *VerifiedArtifact, pending []PendingUser, members []e2e.Member, pins map[string]pinDecision) (bool, error) {
+	relisted := false
+	for _, p := range pending {
+		i := slices.IndexFunc(members, func(m e2e.Member) bool { return m.User == p.User.ID })
+		if p.State != PendingRotated || i < 0 || members[i].FP == p.User.FP {
+			continue
+		}
+		_, pin, err := c.checkPin(va.Keyring, p.User, false, va.Membership.Rotations)
+		var changed *KeyChangedError
+		if errors.As(err, &changed) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		members[i].FP = p.User.FP
+		relisted = true
+		if pin != nil {
+			pins[p.User.ID] = pinDecision{*pin, va.Keyring.Pins[p.User.ID].FP}
+		}
+	}
+	return relisted, nil
 }
 
 // ApproveResult is what Approve did.
 type ApproveResult struct {
 	User  DirectoryUser
-	Prior string // the pin state before: new, unverified, verified, or changed
-	Epoch int
+	Prior string // the pin state before: new, unverified, verified, rotated, or changed
+	// WasVerified is set when Prior is rotated and the pin was verified.
+	WasVerified bool
+	Epoch       int
 }
 
 // Approve approves who, a team member waiting for access, at the
@@ -127,17 +233,19 @@ func (c *Client) Approve(artifactID, who string, acceptNewKey bool) (*ApproveRes
 	if e := ExcludedMatch(latest.Excluded, u); e != nil {
 		return nil, fmt.Errorf("%w: %s matches the excluded entry for %s (%s)", ErrExcluded, u.Email, e.Email, e.User)
 	}
-	pending, err := c.Pending(artifactID)
+	pending, err := c.pendingFor(k, artifactID, va)
 	if err != nil {
 		return nil, err
 	}
 	p := slices.IndexFunc(pending, func(p PendingUser) bool { return p.User.ID == u.ID })
+	listed := slices.ContainsFunc(latest.Members, func(m e2e.Member) bool { return m.User == u.ID })
 	// A listed member whose key changed is pending as keyChanged, so this
-	// check comes before ErrAlreadyListed.
-	if p >= 0 && pending[p].State == PendingKeyChanged {
+	// check comes before ErrAlreadyListed. A user who holds a wrap and
+	// rotated is listed by the owner, with cairn share.
+	if p >= 0 && (pending[p].State == PendingKeyChanged || pending[p].State == PendingRotated && !listed) {
 		return nil, fmt.Errorf("%w: %s", ErrChangedKey, u.Email)
 	}
-	if u.ID == latest.Owner || slices.ContainsFunc(latest.Members, func(m e2e.Member) bool { return m.User == u.ID }) {
+	if u.ID == latest.Owner || listed {
 		return nil, fmt.Errorf("%w: %s", ErrAlreadyListed, u.Email)
 	}
 	switch {
@@ -148,7 +256,7 @@ func (c *Client) Approve(artifactID, who string, acceptNewKey bool) (*ApproveRes
 	case pending[p].User.FP != u.FP:
 		return nil, fmt.Errorf("%w: %s", ErrPendingKeysDiffer, u.Email)
 	}
-	prior, pin, err := checkPin(va.Keyring, u, acceptNewKey)
+	prior, pin, err := c.checkPin(va.Keyring, u, acceptNewKey, va.Membership.Rotations)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +299,7 @@ func (c *Client) Approve(artifactID, who string, acceptNewKey bool) (*ApproveRes
 			return nil, fmt.Errorf("the server accepted the approval, but pinning %s failed: %w", u.Email, err)
 		}
 	}
-	return &ApproveResult{User: u, Prior: prior, Epoch: latest.Epoch}, nil
+	return &ApproveResult{User: u, Prior: prior, WasVerified: wasVerified(va.Keyring, u.ID, prior), Epoch: latest.Epoch}, nil
 }
 
 // approverOf reports whether the keys in k may approve under the record:
@@ -310,8 +418,9 @@ func checkApproved(k *UnlockedKeys, latest e2e.MembershipBody, rotations map[str
 // approval passes all four checks of e2e.CheckApproval, the directory lists
 // the keys the pending entry does, and the keys do not contradict the
 // owner's pin. A user failing a check is reported, never listed. skip names
-// users already in the record being built.
-func (c *Client) listApproved(k *UnlockedKeys, va *VerifiedArtifact, dir []DirectoryUser, pending []PendingUser, role string, skip func(id string) bool) approvedListing {
+// users already in the record being built. An error is a failure that ends
+// the command (fatalFetch), never a user to leave unlisted.
+func (c *Client) listApproved(k *UnlockedKeys, va *VerifiedArtifact, dir []DirectoryUser, pending []PendingUser, role string, skip func(id string) bool) (approvedListing, error) {
 	out := approvedListing{pins: map[string]pinDecision{}}
 	for _, p := range pending {
 		if p.State != PendingApproved || skip(p.User.ID) {
@@ -320,7 +429,10 @@ func (c *Client) listApproved(k *UnlockedKeys, va *VerifiedArtifact, dir []Direc
 		err := checkApproved(k, va.Chain.Latest, va.Membership.Rotations, dir, p)
 		var pin *e2e.Pin
 		if err == nil {
-			_, pin, err = checkPin(va.Keyring, p.User, false)
+			_, pin, err = c.checkPin(va.Keyring, p.User, false, va.Membership.Rotations)
+		}
+		if fatalFetch(err) {
+			return approvedListing{}, err
 		}
 		if err != nil {
 			out.unlisted = append(out.unlisted, UnlistedUser{User: p.User, Err: err})
@@ -332,7 +444,7 @@ func (c *Client) listApproved(k *UnlockedKeys, va *VerifiedArtifact, dir []Direc
 			out.pins[p.User.ID] = pinDecision{*pin, va.Keyring.Pins[p.User.ID].FP}
 		}
 	}
-	return out
+	return out, nil
 }
 
 // teamNoneNextEpoch is Team none while a team member holds a wrap: a next-epoch
@@ -399,7 +511,7 @@ func (c *Client) Team(artifactID, team string) (*TeamResult, error) {
 	if latest.Owner != k.UserID || latest.OwnerFP != k.FP {
 		return nil, ErrNotOwner
 	}
-	pending, err := c.Pending(artifactID)
+	pending, err := c.pendingFor(k, artifactID, va)
 	if err != nil {
 		return nil, err
 	}
@@ -409,30 +521,39 @@ func (c *Client) Team(artifactID, team string) (*TeamResult, error) {
 	}
 	if team == "none" {
 		// A team member holds a wrap while they are approved, or while a
-		// wrap they hold is for keys that are no longer theirs.
+		// wrap they hold is for keys that are no longer theirs, including
+		// keys they rotated away from.
 		if slices.ContainsFunc(pending, func(p PendingUser) bool {
-			return p.State == PendingApproved || p.State == PendingKeyChanged && !listed(p.User.ID)
+			return p.State == PendingApproved || (p.State == PendingKeyChanged || p.State == PendingRotated) && !listed(p.User.ID)
 		}) {
 			return c.teamNoneNextEpoch(k, artifactID, va, pending, res)
 		}
 	}
-	var lst approvedListing
+	lst := approvedListing{pins: map[string]pinDecision{}}
 	if team != "none" {
 		dir, err := c.Directory()
 		if err != nil {
 			return nil, err
 		}
-		lst = c.listApproved(k, va, dir, pending, team, listed)
+		if lst, err = c.listApproved(k, va, dir, pending, team, listed); err != nil {
+			return nil, err
+		}
 	}
 	res.Listed, res.Unlisted = lst.listed, lst.unlisted
-	if latest.Team == team && len(lst.members) == 0 {
+	next := latest
+	next.Team = team
+	next.Members = slices.Clone(latest.Members)
+	// The pending legend names this command to list the new keys of a member
+	// who rotated, so a team already set is Unchanged only if none waits.
+	relisted, err := c.relistRotated(va, pending, next.Members, lst.pins)
+	if err != nil {
+		return nil, err
+	}
+	if latest.Team == team && len(lst.members) == 0 && !relisted {
 		res.Unchanged = true
 		return res, nil
 	}
-
-	next := latest
-	next.Team = team
-	next.Members = append(slices.Clone(latest.Members), lst.members...)
+	next.Members = append(next.Members, lst.members...)
 	slices.SortFunc(next.Members, func(a, b e2e.Member) int { return strings.Compare(a.User, b.User) })
 	if err := c.putRecord(k, artifactID, va, next, nil, nil, ""); err != nil {
 		return nil, err
