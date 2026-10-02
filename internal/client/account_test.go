@@ -19,14 +19,24 @@ import (
 // mailer, allowing sign-up from "example.com".
 func newTestServer(t *testing.T) (host string, m *mail.Capture) {
 	t.Helper()
+	return newTestServerWith(t, nil)
+}
+
+// newTestServerWith is newTestServer with cfg adjusting the server's Config.
+func newTestServerWith(t *testing.T, cfg func(*server.Config)) (host string, m *mail.Capture) {
+	t.Helper()
 	m = &mail.Capture{}
-	s, err := server.New(server.Config{
+	c := server.Config{
 		DataDir:       t.TempDir(),
 		SignupDomains: []string{"example.com"},
 		AdminEmail:    "admin@example.com",
 		Mail:          m,
 		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
-	})
+	}
+	if cfg != nil {
+		cfg(&c)
+	}
+	s, err := server.New(c)
 	if err != nil {
 		t.Fatal(err)
 	}

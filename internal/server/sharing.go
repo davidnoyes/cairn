@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/aloisdeniel/cairn/internal/access"
 	"github.com/aloisdeniel/cairn/internal/e2e"
@@ -243,10 +244,23 @@ func (s *Server) pageArtifact(w http.ResponseWriter, r *http.Request) *store.Art
 
 // Artifact JSON
 
+// transferView is an open ownership offer. Offer is the owner's signed offer,
+// which the offered user needs to name in the accepting record; it is null for
+// an administrator's.
 type transferView struct {
-	To string `json:"to"`
-	By string `json:"by"`
-	At string `json:"at"`
+	To    string        `json:"to"`
+	By    string        `json:"by"`
+	At    string        `json:"at"`
+	Offer *e2e.Envelope `json:"offer"`
+}
+
+func viewOfOffer(o *store.Offer) *transferView {
+	v := &transferView{To: o.To, By: o.By, At: o.CreatedAt}
+	if o.Envelope != nil {
+		env := envelopeOf(*o.Envelope)
+		v.Offer = &env
+	}
+	return v
 }
 
 // artifactView is an artifact as GET /api/artifacts/{id} and each entry of
@@ -274,7 +288,7 @@ func (s *Server) viewOf(a *store.Artifact, level access.Level) (*artifactView, e
 	o, err := s.store.OpenOffer(a.ID)
 	switch {
 	case err == nil:
-		v.Transfer = &transferView{To: o.To, By: o.By, At: o.CreatedAt}
+		v.Transfer = viewOfOffer(o)
 	case !errors.Is(err, store.ErrNotFound):
 		return nil, err
 	}
@@ -449,9 +463,15 @@ type membershipView struct {
 	// empty until successors are built.
 	Rotations  map[string][]e2e.Envelope `json:"rotations"`
 	Successors map[string]e2e.Envelope   `json:"successors"`
+	// OwnerChanges maps the seq of each record that sets transfer or
+	// handover to the date the server stored it, YYYY-MM-DD.
+	OwnerChanges map[string]string `json:"ownerChanges"`
 	// Keys is set for link scope only: every listed editor's keys.
 	Keys map[string]e2e.KeyPair `json:"keys,omitempty"`
 }
+
+// dateOf is the date part of a stored RFC 3339 time.
+func dateOf(t string) string { return t[:len("2006-01-02")] }
 
 func keyPairOf(u *store.KeyedUser) e2e.KeyPair {
 	return e2e.KeyPair{X25519: e2e.B64(u.X25519Pub), Ed25519: e2e.B64(u.Ed25519Pub)}
@@ -486,6 +506,7 @@ func (s *Server) handleGetMembership(w http.ResponseWriter, r *http.Request) {
 	v := membershipView{
 		Records: []e2e.Envelope{}, Offers: map[string]e2e.Envelope{}, Owners: map[string]e2e.KeyPair{},
 		Rotations: map[string][]e2e.Envelope{}, Successors: map[string]e2e.Envelope{},
+		OwnerChanges: map[string]string{},
 	}
 	err := s.store.WithArtifact(a.ID, func(tx *store.ArtifactTx) error {
 		records, err := tx.Records()
@@ -521,6 +542,9 @@ func (s *Server) handleGetMembership(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, rec := range records {
 			v.Records = append(v.Records, envelopeOf(rec.Envelope))
+			if rec.Transfer != "" || rec.Handover != "" {
+				v.OwnerChanges[strconv.Itoa(rec.Seq)] = dateOf(rec.CreatedAt)
+			}
 			if o := accepted[rec.Transfer]; rec.Transfer != "" && o != nil && o.Envelope != nil {
 				v.Offers[rec.Transfer] = envelopeOf(*o.Envelope)
 			}

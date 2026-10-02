@@ -447,7 +447,9 @@ listed under an old fingerprint, or under keys that contradict the owner's
 pin, and names the member. A member whose account was deleted cannot be
 wrapped to, so the client refuses to keep them and names their user ID, which
 `cairn unshare` accepts. Their `excluded` entry carries that ID in place of an
-email, because the server takes any email for a user it no longer has.
+email, because the server takes any email for a user it no longer has. It
+takes any for a deactivated user too, whom no client can read from the
+directory.
 
 When the artifact stays public across a next epoch, the new record carries the
 hash of the new epoch's link token, and the client prints the new link; the
@@ -571,8 +573,11 @@ artifact.
 ```
 
 `access` is `owner`, `editor`, `viewer`, `team`, or `link`. `transfer` is
-`null`, or `{"to", "by", "at"}` while an offer is open, where `by` is `owner`
-or `admin`. `PATCH` takes `name` and `description` only; `public` is gone from
+`null`, or `{"to", "by", "at", "offer"}` while an offer is open, where `by` is
+`owner` or `admin`. `offer` is the owner's signed offer envelope, which the
+offered user hashes into the accepting record, and `null` for an
+administrator's offer. `POST /api/artifacts/{id}/transfer` returns the same
+object. `PATCH` takes `name` and `description` only; `public` is gone from
 both requests.
 
 #### Changing membership
@@ -603,7 +608,8 @@ The answer is `200 {"epoch"}`.
 {"records": [envelope, ...], "offers": {"64 hex": envelope},
  "owners": {"64 hex": {"x25519", "ed25519"}},
  "rotations": {"user ID": [envelope, ...]},
- "successors": {"seq": envelope}}
+ "successors": {"seq": envelope},
+ "ownerChanges": {"seq": "YYYY-MM-DD"}}
 ```
 
 - `offers` maps the `transfer` hash in each accepting record to the offer
@@ -615,6 +621,9 @@ The answer is `200 {"epoch"}`.
   chain names and every member the latest record lists.
 - `successors` maps the `seq` of each record whose `handover` is `admin` to
   the previous owner's latest `successor` record, when there is one.
+- `ownerChanges` maps the `seq` of each record that sets `transfer` or
+  `handover` to the date the server stored it. It is `{}` when there are none.
+  The handover notice shows the date.
 
 A link holder can read the records, because every holder of `AK` checks
 `akCommit`. A link holder may not be signed in, so cannot read the user
@@ -872,13 +881,38 @@ more, so the notice still shows. A link-scope visitor gets no prompt, and
 sees the same notice. There is no waiting period, because a deactivated owner
 cannot sign in to refuse.
 
+The acknowledgement gates only what relies on the chain's owner key. Writing a
+membership record, pushing a version, and the other writes that verify the
+chain need it, and so do accepting and withdrawing an offer. Database and
+file writes do not verify the chain and do not rely on the owner key, so the
+acknowledgement does not gate them. Declining an offer signs nothing, so it
+does not need one either.
+
+An administrator's offer exists only while the owner is deactivated, and the
+directory lists active users only. So a client refuses an offer that the
+server calls an administrator's while the directory still lists the latest
+owner, because `by` is unauthenticated. The deactivated owner cannot be kept
+as an editor, because the client has no keys of theirs to wrap to. So
+accepting an administrator's offer drops the previous owner by default, in a
+next-epoch record, as `--drop-previous-owner` does for an owner's offer.
+
+A client that opens an artifact for the first time anchors its chain at the
+creator's fingerprint from the directory, and pins it unverified. A
+deactivated creator has no directory entry (`404`), so the client takes the
+keys the server served in `owners` for record 0's `ownerFp` instead. Both are
+server-served and unverified, so the trust level is the same, and the chain
+check still refuses keys that do not hash to `ownerFp`. Any other lookup
+error still fails.
+
 The owner withdraws an offer with `DELETE /api/artifacts/{id}/transfer`
-`{"membership": envelope}`, a same-epoch record. It moves `prev`, so the old
-offer can never be accepted. The offered user declines with the same call and
-no body. Either call answers `200 {"ok": true}`. With no offer open it answers
-`409`, and any other listed member gets `403`. Whether or not an offer is
-open, a link holder gets `403` from this call and from accepting, and a caller
-with no access gets `404`.
+`{"membership": envelope, "linkTokenHash": "64 hex"}`, a same-epoch record.
+`linkTokenHash` goes with it while the artifact is public, as with any public
+record, and the closing record of a second offer carries it the same way. It
+moves `prev`, so the old offer can never be accepted. The offered user declines
+with the same call and no body. Either call answers `200 {"ok": true}`. With no
+offer open it answers `409`, and any other listed member gets `403`. Whether or
+not an offer is open, a link holder gets `403` from this call and from
+accepting, and a caller with no access gets `404`.
 
 `GET /api/admin/users/{id}/artifacts` returns
 `[{"id", "editors": [{"id", "name"}]}]`, so an administrator can choose an
@@ -957,9 +991,17 @@ successor's copy, and stores the rotation record. It also closes every open
 transfer offer made by or to the caller, because the new head records move
 `prev` and the caller's fingerprint changes. The token version increases.
 
-The answer is `200 {"seq", "epochs": {"artifact ID": epoch}}`, with the
-new rotation `seq` and the epoch of every artifact the caller owns, and it
-sets a new cookie.
+The answer is:
+
+```text
+200 {"seq", "epochs": {"artifact ID": epoch},
+     "transfers": [{"artifact", "from", "to", "at"}]}
+```
+
+It carries the new rotation `seq`, the epoch of every artifact the caller owns,
+and every change of owner to or from the caller in the last 30 days by the
+server's clock, and it sets a new cookie. `from` and `to` are user IDs, `at`
+is `YYYY-MM-DD`, and `transfers` is `[]` when there are none.
 
 The client then shows the new recovery code, and the new public link of
 every public artifact that moved to a new epoch, because each old link stops

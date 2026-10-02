@@ -58,6 +58,12 @@ type nextEpochRecord struct {
 	decided string
 	// exclude is a user the caller removes, listed or holding a wrap, or "".
 	exclude string
+	// newOwner is the listed member who takes ownership in this record, or
+	// "". They leave the members list without being removed.
+	newOwner string
+	// prevOwner is the owner who gives up ownership in this record and is
+	// excluded from it, or "".
+	prevOwner string
 }
 
 // nextEpochBuild is a next-epoch record built from a nextEpochRecord, and
@@ -176,7 +182,7 @@ func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 	}
 	// Removed members, under the fingerprint the previous record lists them.
 	for _, m := range latest.Members {
-		if inMembers(m.User) {
+		if inMembers(m.User) || m.User == r.newOwner {
 			continue
 		}
 		u, ok := byID[m.User]
@@ -185,6 +191,15 @@ func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 			continue
 		}
 		exclude1(u, m.FP, "removed")
+	}
+	if r.prevOwner != "" {
+		// The directory does not list a deactivated owner; the server takes
+		// any email for one.
+		u, ok := byID[r.prevOwner]
+		if !ok {
+			u = DirectoryUser{ID: r.prevOwner, FP: latest.OwnerFP}
+		}
+		exclude1(u, latest.OwnerFP, "the previous owner, who was not kept")
 	}
 	for _, p := range pending {
 		if exclude[p.User.ID].User != "" || inMembers(p.User.ID) {
@@ -269,8 +284,9 @@ func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 	}
 	slices.SortFunc(next.Excluded, func(a, b e2e.ExcludedEntry) int { return strings.Compare(a.User, b.User) })
 
-	// The new epoch's key, which no earlier epoch used.
-	aks, err := c.epochAKs(k, artifactID, va.Chain)
+	// The new epoch's key, which no earlier epoch used. The caller is the
+	// owner, or the editor about to become one.
+	aks, err := c.callerAKs(k, artifactID, va.Chain)
 	if err != nil {
 		return nil, err
 	}
@@ -377,6 +393,9 @@ func (c *Client) Unshare(artifactID, who string) (*UnshareResult, error) {
 	}
 	va, err := c.VerifyArtifact(k, artifactID, "")
 	if err != nil {
+		return nil, err
+	}
+	if err := c.checkHandover(k, artifactID, va); err != nil {
 		return nil, err
 	}
 	latest := va.Chain.Latest

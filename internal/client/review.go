@@ -88,6 +88,9 @@ func (c *Client) Vouch(artifactID, versionID string) error {
 	if err != nil {
 		return err
 	}
+	if err := c.checkHandover(k, artifactID, va); err != nil {
+		return err
+	}
 	if latest := va.Chain.Latest; latest.Owner != k.UserID || latest.OwnerFP != k.FP {
 		return ErrVouchNotOwner
 	}

@@ -65,6 +65,9 @@ type offerTransferRequest struct {
 	To         string        `json:"to"`
 	Offer      e2e.Envelope  `json:"offer"`
 	Membership *e2e.Envelope `json:"membership"`
+	// LinkTokenHash goes with a closing record of a public artifact, as with
+	// any public record.
+	LinkTokenHash string `json:"linkTokenHash"`
 }
 
 // handleOfferTransfer opens an owner's offer. With an offer already open, the
@@ -79,7 +82,7 @@ func (s *Server) handleOfferTransfer(w http.ResponseWriter, r *http.Request) {
 	var closing membership.Change
 	if req.Membership != nil {
 		var err error
-		if closing, err = changeOf(*req.Membership, nil, nil, ""); err != nil {
+		if closing, err = changeOf(*req.Membership, nil, nil, req.LinkTokenHash); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -149,11 +152,12 @@ func currentOffer(tx *store.ArtifactTx) (*transferView, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &transferView{To: o.To, By: o.By, At: o.CreatedAt}, nil
+	return viewOfOffer(o), nil
 }
 
 type closeTransferRequest struct {
-	Membership e2e.Envelope `json:"membership"`
+	Membership    e2e.Envelope `json:"membership"`
+	LinkTokenHash string       `json:"linkTokenHash"`
 }
 
 // handleCloseTransfer withdraws an open offer, for the owner with a
@@ -168,7 +172,7 @@ func (s *Server) handleCloseTransfer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var err error
-		if ch, err = changeOf(req.Membership, nil, nil, ""); err != nil {
+		if ch, err = changeOf(req.Membership, nil, nil, req.LinkTokenHash); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}

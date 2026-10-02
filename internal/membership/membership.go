@@ -611,7 +611,9 @@ func checkExcluded(b *e2e.MembershipBody, cur Current, dir Directory, prevMember
 		if err != nil {
 			return err
 		}
-		if u != nil && x.Email != u.Email {
+		// A deactivated user is not in the directory a client reads, so for one
+		// the client writes the user ID as the email.
+		if u != nil && x.Email != u.Email && (u.Active || x.Email != x.User) {
 			return refuse(RuleExcludedEntry, "excluded %s email is not their current email", x.User)
 		}
 		fps := map[string]bool{}

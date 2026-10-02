@@ -72,7 +72,7 @@ func TestPublicOffCommand(t *testing.T) {
 func TestPublicCommandRefusals(t *testing.T) {
 	w := newTeamWorld(t)
 	w.as(t, "ada")
-	const usage = "usage: cairn public ARTIFACT on|off [--writes on|off] [--json]"
+	const usage = "usage: cairn public ARTIFACT on|off [--writes on|off] [--accept-new-owner] [--json]"
 	if _, err := runQuiet(t, runPublic, w.artifact); err == nil || !strings.Contains(err.Error(), usage) {
 		t.Errorf("public with no value: %v", err)
 	}

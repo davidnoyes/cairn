@@ -105,6 +105,39 @@ func TestCheckAcceptAdminHandover(t *testing.T) {
 	refused(t, err, 400, RuleNewMember, "not active")
 }
 
+// A deactivated user is missing from the directory a client reads, so the
+// client writes their user ID as the email of their excluded entry; any other
+// email must be theirs.
+func TestCheckExcludedEmailOfADeactivatedUser(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		email string
+		want  bool
+	}{
+		{"the user ID, as the client writes for a user the directory lacks", "u-o", true},
+		{"their email", "o@x.y", true},
+		{"another email", "other@x.y", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.o.Active = false
+			b := f.takeOverExcluding()
+			b.Transfer, b.Handover = "", "admin"
+			b.Excluded[0].Email = c.email
+			ch := f.accepting(t, b, wrapsFor(f.b, 3), estates(3))
+			ch.Accept.OfferHash = ""
+			_, err := Check(f.cur, f.dir, ch)
+			if c.want {
+				if err != nil {
+					t.Fatalf("Check: %v", err)
+				}
+				return
+			}
+			refused(t, err, 400, RuleExcludedEntry, "email")
+		})
+	}
+}
+
 func TestCheckAcceptRefusals(t *testing.T) {
 	cases := []struct {
 		name   string

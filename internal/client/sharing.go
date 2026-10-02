@@ -171,6 +171,10 @@ type Membership struct {
 	Owners     map[string]e2e.KeyPair    `json:"owners"`
 	Rotations  map[string][]e2e.Envelope `json:"rotations"`
 	Successors map[string]e2e.Envelope   `json:"successors"`
+	// OwnerChanges maps the seq of each record that changed the owner to the
+	// date the server stored it. A server that omits it leaves the notice
+	// without a date.
+	OwnerChanges map[string]string `json:"ownerChanges"`
 	// Keys is set only for a link holder: every listed editor's keys.
 	Keys map[string]e2e.KeyPair `json:"keys,omitempty"`
 }

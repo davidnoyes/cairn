@@ -215,6 +215,9 @@ func (c *Client) Approve(artifactID, who string, acceptNewKey bool) (*ApproveRes
 	if err != nil {
 		return nil, err
 	}
+	if err := c.checkHandover(k, artifactID, va); err != nil {
+		return nil, err
+	}
 	latest := va.Chain.Latest
 	if !approverOf(latest, k) {
 		return nil, ErrNotApprover
@@ -505,6 +508,9 @@ func (c *Client) Team(artifactID, team string) (*TeamResult, error) {
 	}
 	va, err := c.VerifyArtifact(k, artifactID, "")
 	if err != nil {
+		return nil, err
+	}
+	if err := c.checkHandover(k, artifactID, va); err != nil {
 		return nil, err
 	}
 	latest := va.Chain.Latest

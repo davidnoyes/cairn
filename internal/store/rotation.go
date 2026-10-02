@@ -74,6 +74,36 @@ func (s *Store) OwnedWithRecords(userID string) ([]string, error) {
 	return queryOwnedWithRecords(s.db, userID)
 }
 
+// OwnerChange is a record that moved an artifact from one owner to another.
+type OwnerChange struct {
+	ArtifactID string
+	From, To   string
+	At         string
+}
+
+// OwnerChanges returns every record stored at or after since (RFC 3339) whose
+// owner differs from the previous record's and is userID on either side,
+// oldest first.
+func (s *Store) OwnerChanges(userID, since string) ([]OwnerChange, error) {
+	rows, err := s.db.Query(`SELECT r.artifact_id, p.owner_id, r.owner_id, r.created_at
+		FROM artifact_records r JOIN artifact_records p ON p.artifact_id = r.artifact_id AND p.seq = r.seq - 1
+		WHERE r.owner_id != p.owner_id AND (r.owner_id = ? OR p.owner_id = ?) AND r.created_at >= ?
+		ORDER BY r.created_at, r.artifact_id, r.seq`, userID, userID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OwnerChange
+	for rows.Next() {
+		var c OwnerChange
+		if err := rows.Scan(&c.ArtifactID, &c.From, &c.To, &c.At); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // RotateTx is the transaction RotateKeys runs: the user's row and every
 // artifact RotateKeys locked, and nothing else.
 type RotateTx struct {

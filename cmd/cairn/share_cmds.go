@@ -62,6 +62,10 @@ func explainRefusal(c *client.Client, err error) error {
 	if advice := rotationAdvice(err); advice != "" {
 		return fmt.Errorf("%w\n%s", err, advice)
 	}
+	var handover *client.HandoverNotAckedError
+	if errors.As(err, &handover) {
+		return fmt.Errorf("%w\nconfirm the handover with the people involved, then run the command again with --accept-new-owner", err)
+	}
 	var refused *client.KeyringRefusedError
 	if !errors.As(err, &refused) {
 		return err
@@ -119,6 +123,10 @@ func runMembers(args []string) error {
 	if err != nil {
 		return explainRefusal(c, err)
 	}
+	offer, err := visibleOffer(c, a.ID, rows)
+	if err != nil {
+		return explainRefusal(c, err)
+	}
 	if *jsonOut {
 		out := make([]map[string]string, 0, len(rows))
 		for _, r := range rows {
@@ -128,7 +136,11 @@ func runMembers(args []string) error {
 			}
 			out = append(out, row)
 		}
-		return printJSON(map[string]any{"artifact": a.ID, "epoch": va.Chain.Latest.Epoch, "seq": va.Chain.Latest.Seq, "members": out})
+		res := map[string]any{"artifact": a.ID, "epoch": va.Chain.Latest.Epoch, "seq": va.Chain.Latest.Seq, "members": out}
+		if offer != nil {
+			res["transfer"] = map[string]any{"to": offer.to, "email": offer.email, "by": offer.by, "at": offer.at}
+		}
+		return printArtifactJSON(a.ID, res)
 	}
 	fmt.Printf("%s (%s), epoch %d, record %d\n", a.Name, a.ID, va.Chain.Latest.Epoch, va.Chain.Latest.Seq)
 	for _, r := range rows {
@@ -143,12 +155,61 @@ func runMembers(args []string) error {
 			fmt.Printf("re-verify %s: compare the new fingerprint with them, then run: cairn pin %s --verified\n", r.Email, r.Email)
 		}
 	}
+	if offer != nil {
+		fmt.Println(offer.text(a.ID))
+	}
 	return nil
 }
 
+// openOffer is an open ownership offer as cairn members shows it.
+type openOffer struct {
+	to, email, by, at string
+	toSelf            bool
+}
+
+// visibleOffer returns the artifact's open ownership offer when the caller is
+// its owner or the user it is offered to, and nil otherwise. rows are the
+// members the chain lists, which name the offered user.
+func visibleOffer(c *client.Client, artifactID string, rows []client.MemberView) (*openOffer, error) {
+	open, err := c.OpenTransfer(artifactID)
+	if err != nil || open == nil {
+		return nil, err
+	}
+	o := &openOffer{to: open.To, email: open.To, by: open.By, at: open.At}
+	if len(o.at) > len("2006-01-02") {
+		o.at = o.at[:len("2006-01-02")]
+	}
+	var owner bool
+	for _, r := range rows {
+		owner = owner || r.State == "self" && r.Role == "owner"
+		if r.User == open.To {
+			o.toSelf = r.State == "self"
+			if r.Email != "" {
+				o.email = r.Email
+			}
+		}
+	}
+	if !owner && !o.toSelf {
+		return nil, nil
+	}
+	return o, nil
+}
+
+func (o *openOffer) text(artifactID string) string {
+	by := ""
+	if o.by == "admin" {
+		by = " by an administrator"
+	}
+	if o.toSelf {
+		return fmt.Sprintf("ownership offered to you on %s%s; accept with: cairn transfer accept %s", o.at, by, artifactID)
+	}
+	return fmt.Sprintf("ownership offered to %s on %s%s; they accept with: cairn transfer accept %s", o.email, o.at, by, artifactID)
+}
+
 func runShare(args []string) error {
-	const usage = "cairn share ARTIFACT USER [--role viewer|editor] [--accept-new-key] [--json]"
+	const usage = "cairn share ARTIFACT USER [--role viewer|editor] [--accept-new-key] [--accept-new-owner] [--json]"
 	fs := flag.NewFlagSet("share", flag.ExitOnError)
+	accept := acceptNewOwnerFlag(fs)
 	role := fs.String("role", "viewer", "viewer or editor")
 	acceptNewKey := fs.Bool("accept-new-key", false, "share even though the user's fingerprint changed since it was pinned")
 	jsonOut := fs.Bool("json", false, "JSON output")
@@ -160,6 +221,7 @@ func runShare(args []string) error {
 	if err != nil {
 		return err
 	}
+	c.AcceptNewOwner = *accept
 	a, err := c.ResolveArtifact(pos[0])
 	if err != nil {
 		return err
@@ -180,7 +242,7 @@ func runShare(args []string) error {
 			"unchanged": res.Unchanged, "epoch": res.Epoch, "listed": listed, "unlisted": unlisted, "dropped": dropped,
 		}
 		epochChangeJSON(out, res.EpochChange)
-		return printJSON(out)
+		return printArtifactJSON(a.ID, out)
 	}
 	fmt.Printf("%s (%s)\nfingerprint %s (%s)\n", res.User.Email, res.User.ID, showFP(res.User.FP), shareState(res.Prior, res.WasVerified))
 	switch {
@@ -253,8 +315,9 @@ func printEpochChange(c *client.Client, artifact string, epoch int, ch client.Ep
 }
 
 func runUnshare(args []string) error {
-	const usage = "cairn unshare ARTIFACT USER [--json]"
+	const usage = "cairn unshare ARTIFACT USER [--accept-new-owner] [--json]"
 	fs := flag.NewFlagSet("unshare", flag.ExitOnError)
+	accept := acceptNewOwnerFlag(fs)
 	jsonOut := fs.Bool("json", false, "JSON output")
 	pos, err := parsePositional(fs, args, 2, usage)
 	if err != nil {
@@ -264,6 +327,7 @@ func runUnshare(args []string) error {
 	if err != nil {
 		return err
 	}
+	c.AcceptNewOwner = *accept
 	a, err := c.ResolveArtifact(pos[0])
 	if err != nil {
 		return err
@@ -278,7 +342,7 @@ func runUnshare(args []string) error {
 			"artifact": a.ID, "user": res.User.ID, "email": res.User.Email, "epoch": res.Epoch, "listed": listed,
 		}
 		epochChangeJSON(out, res.EpochChange)
-		return printJSON(out)
+		return printArtifactJSON(a.ID, out)
 	}
 	if res.User.Email == "" {
 		fmt.Printf("removed deleted account %s from %s\n", res.User.ID, a.Name)
@@ -354,8 +418,9 @@ func parsePositionalRange(fs *flag.FlagSet, args []string, min, max int, usage s
 }
 
 func runApprove(args []string) error {
-	const usage = "cairn approve ARTIFACT [USER] [--accept-new-key] [--json]"
+	const usage = "cairn approve ARTIFACT [USER] [--accept-new-key] [--accept-new-owner] [--json]"
 	fs := flag.NewFlagSet("approve", flag.ExitOnError)
+	accept := acceptNewOwnerFlag(fs)
 	acceptNewKey := fs.Bool("accept-new-key", false, "approve even though the user's fingerprint changed since it was pinned")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	pos, err := parsePositionalRange(fs, args, 1, 2, usage)
@@ -369,6 +434,7 @@ func runApprove(args []string) error {
 	if err != nil {
 		return err
 	}
+	c.AcceptNewOwner = *accept
 	a, err := c.ResolveArtifact(pos[0])
 	if err != nil {
 		return err
@@ -381,7 +447,7 @@ func runApprove(args []string) error {
 		return explainRefusal(c, err)
 	}
 	if *jsonOut {
-		return printJSON(map[string]any{
+		return printArtifactJSON(a.ID, map[string]any{
 			"artifact": a.ID, "user": res.User.ID, "email": res.User.Email, "fp": res.User.FP,
 			"prior": res.Prior, "epoch": res.Epoch, "approved": true,
 		})
@@ -409,7 +475,7 @@ func listPending(c *client.Client, id, name string, jsonOut bool) error {
 			}
 			out = append(out, entry)
 		}
-		return printJSON(map[string]any{"artifact": id, "pending": out})
+		return printArtifactJSON(id, map[string]any{"artifact": id, "pending": out})
 	}
 	if len(list) == 0 {
 		va, _, err := c.Members(id)
@@ -491,7 +557,7 @@ func runReview(args []string) error {
 			}
 			out = append(out, map[string]any{"id": v.ID, "seq": v.Seq, "pushedBy": pusher, "email": emails[v.PushedBy], "createdAt": v.CreatedAt})
 		}
-		return printJSON(map[string]any{"artifact": a.ID, "versions": out})
+		return printArtifactJSON(a.ID, map[string]any{"artifact": a.ID, "versions": out})
 	}
 	if len(list) == 0 {
 		fmt.Printf("no versions on %s need review\n", a.Name)
@@ -518,8 +584,9 @@ func runReview(args []string) error {
 }
 
 func runVouch(args []string) error {
-	const usage = "cairn vouch ARTIFACT VERSION [--json]"
+	const usage = "cairn vouch ARTIFACT VERSION [--accept-new-owner] [--json]"
 	fs := flag.NewFlagSet("vouch", flag.ExitOnError)
+	accept := acceptNewOwnerFlag(fs)
 	jsonOut := fs.Bool("json", false, "JSON output")
 	pos, err := parsePositional(fs, args, 2, usage)
 	if err != nil {
@@ -529,6 +596,7 @@ func runVouch(args []string) error {
 	if err != nil {
 		return err
 	}
+	c.AcceptNewOwner = *accept
 	a, err := c.ResolveArtifact(pos[0])
 	if err != nil {
 		return err
@@ -537,15 +605,16 @@ func runVouch(args []string) error {
 		return explainRefusal(c, err)
 	}
 	if *jsonOut {
-		return printJSON(map[string]any{"artifact": a.ID, "version": pos[1], "vouched": true})
+		return printArtifactJSON(a.ID, map[string]any{"artifact": a.ID, "version": pos[1], "vouched": true})
 	}
 	fmt.Printf("vouched for version %s of %s\n", pos[1], a.Name)
 	return nil
 }
 
 func runTeam(args []string) error {
-	const usage = "cairn team ARTIFACT none|viewer|editor [--json]"
+	const usage = "cairn team ARTIFACT none|viewer|editor [--accept-new-owner] [--json]"
 	fs := flag.NewFlagSet("team", flag.ExitOnError)
+	accept := acceptNewOwnerFlag(fs)
 	jsonOut := fs.Bool("json", false, "JSON output")
 	pos, err := parsePositional(fs, args, 2, usage)
 	if err != nil {
@@ -558,6 +627,7 @@ func runTeam(args []string) error {
 	if err != nil {
 		return err
 	}
+	c.AcceptNewOwner = *accept
 	a, err := c.ResolveArtifact(pos[0])
 	if err != nil {
 		return err
@@ -573,7 +643,7 @@ func runTeam(args []string) error {
 			"listed": listed, "unlisted": unlisted,
 		}
 		epochChangeJSON(out, res.EpochChange)
-		return printJSON(out)
+		return printArtifactJSON(a.ID, out)
 	}
 	if res.Unchanged {
 		fmt.Printf("team is already %s; nothing changed\n", res.Team)
@@ -597,8 +667,9 @@ func parseOnOff(what, s string) (bool, error) {
 }
 
 func runPublic(args []string) error {
-	const usage = "cairn public ARTIFACT on|off [--writes on|off] [--json]"
+	const usage = "cairn public ARTIFACT on|off [--writes on|off] [--accept-new-owner] [--json]"
 	fs := flag.NewFlagSet("public", flag.ExitOnError)
+	accept := acceptNewOwnerFlag(fs)
 	writesFlag := fs.String("writes", "", "on or off: whether a signed-in link holder can write to the database and files")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	pos, err := parsePositional(fs, args, 2, usage)
@@ -632,6 +703,7 @@ func runPublic(args []string) error {
 	if err != nil {
 		return err
 	}
+	c.AcceptNewOwner = *accept
 	a, err := c.ResolveArtifact(pos[0])
 	if err != nil {
 		return err
@@ -647,7 +719,7 @@ func runPublic(args []string) error {
 		}
 		out["listed"], _ = listingJSON(res.Listed, nil)
 		epochChangeJSON(out, client.EpochChange{NewEpoch: res.NewEpoch, Excluded: res.Excluded, Link: res.Link})
-		return printJSON(out)
+		return printArtifactJSON(a.ID, out)
 	}
 	if !res.Public {
 		if res.NewEpoch {

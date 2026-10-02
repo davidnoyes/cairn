@@ -3,11 +3,13 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/aloisdeniel/cairn/internal/auth"
+	"github.com/aloisdeniel/cairn/internal/clock"
 	"github.com/aloisdeniel/cairn/internal/e2e"
 	"github.com/aloisdeniel/cairn/internal/store"
 )
@@ -29,7 +31,14 @@ type transferWorld struct {
 
 func newTransferWorld(t *testing.T) *transferWorld {
 	t.Helper()
-	s, ts := testServer(t)
+	return newTransferWorldWith(t, nil)
+}
+
+// newTransferWorldWith is newTransferWorld on a server that cfg configures.
+func newTransferWorldWith(t *testing.T, cfg func(*Config)) *transferWorld {
+	t.Helper()
+	s, ts := newTestServer(t, cfg)
+	seedAccount(t, s, "admin@example.com", "admin-password", true)
 	w := &transferWorld{t: t, s: s, base: ts.URL, admin: login(t, ts.URL, "admin@example.com", "admin-password")}
 	w.owner = seedKeyedAccount(t, s, ts.URL, "owner@example.com")
 	w.ed = seedKeyedAccount(t, s, ts.URL, "ed@example.com")
@@ -757,6 +766,217 @@ func TestAcceptanceLeavesTheOfferAccepted(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAcceptingTwiceIsRefused(t *testing.T) {
+	w := newTransferWorld(t)
+	offer := w.offer(w.ed)
+	_, req := w.acceptOwnerOffer(w.ed, offer, false)
+	w.ed.mustDo("POST", w.transferPath("/accept"), req, nil, http.StatusOK)
+	records := len(getMembership(t, w.v.testClient, w.o.id).Records)
+	if code, msg := status(w.ed.testClient, "POST", w.transferPath("/accept"), req); code != http.StatusConflict {
+		t.Errorf("the second accept: %d %q, want 409", code, msg)
+	}
+	if got := len(getMembership(t, w.v.testClient, w.o.id).Records); got != records {
+		t.Errorf("records after the second accept: %d, want %d", got, records)
+	}
+}
+
+// An owner who rotates keys while an offer is open writes a record, and any
+// record closes the offer, so the offeree finds none (it is never accepted as
+// stale).
+func TestAcceptAfterTheOwnerRotatedFindsNoOffer(t *testing.T) {
+	w := newTransferWorld(t)
+	offer := w.offer(w.ed)
+	r := newRotation(t, w.s, w.base, w.owner, w.o)
+	w.owner.mustDo("POST", "/api/me/rotate", r.request(), nil, http.StatusOK)
+	w.o.latest, w.o.hash = r.built[w.o.id], e2e.BodyHash(r.envs[w.o.id].Body)
+	_, req := w.acceptOwnerOffer(w.ed, offer, false)
+	code, msg := status(w.ed.testClient, "POST", w.transferPath("/accept"), req)
+	if code != http.StatusConflict || !strings.Contains(msg, "no offer to you is open") {
+		t.Errorf("accept after the owner rotated: %d %q, want 409 saying no offer is open", code, msg)
+	}
+	if got := w.viewOf(w.v.testClient); got.Owner != w.owner.id {
+		t.Errorf("the closed offer changed the owner: %+v", got)
+	}
+}
+
+func today() string { return time.Now().UTC().Format("2006-01-02") }
+
+type offerView struct {
+	Transfer struct {
+		Offer *e2e.Envelope `json:"offer"`
+	} `json:"transfer"`
+}
+
+// The offered user reads the owner's offer from the artifact view, to put its
+// hash in the accepting record. An administrator's offer has none.
+func TestOfferIsReadableByTheOfferedUser(t *testing.T) {
+	w := newTransferWorld(t)
+	req := w.offerReq(w.ed, w.offerFor(w.ed))
+	var posted offerView
+	w.owner.mustDo("POST", w.transferPath(""), req, &posted, http.StatusOK)
+	want := req["offer"].(e2e.Envelope)
+	if o := posted.Transfer.Offer; o == nil || e2e.BodyHash(o.Body) != e2e.BodyHash(want.Body) || o.Signer != w.owner.id {
+		t.Errorf("offer in the POST answer: %+v", o)
+	}
+	for _, c := range []*testClient{w.ed.testClient, w.v.testClient} {
+		var got offerView
+		c.mustDo("GET", "/api/artifacts/"+w.o.id, nil, &got, http.StatusOK)
+		o := got.Transfer.Offer
+		if o == nil || string(o.Body) != string(want.Body) || string(o.Sig) != string(want.Sig) || o.Signer != w.owner.id {
+			t.Errorf("offer in the artifact view: %+v", o)
+		}
+	}
+
+	w = newTransferWorld(t)
+	w.deactivate(w.owner)
+	var raw struct {
+		Transfer map[string]json.RawMessage `json:"transfer"`
+	}
+	w.admin.mustDo("POST", "/api/admin/artifacts/"+w.o.id+"/transfer", map[string]any{"to": w.ed.id}, &raw, http.StatusOK)
+	if got, ok := raw.Transfer["offer"]; !ok || string(got) != "null" {
+		t.Errorf("an administrator's offer in the POST answer: %s, %v", got, ok)
+	}
+	w.ed.mustDo("GET", "/api/artifacts/"+w.o.id, nil, &raw, http.StatusOK)
+	if got, ok := raw.Transfer["offer"]; !ok || string(got) != "null" {
+		t.Errorf("an administrator's offer in the artifact view: %s, %v", got, ok)
+	}
+}
+
+// The membership view dates every record that changes the owner, by the
+// server's clock, as the notice of a handover needs.
+func TestMembershipServesTheDatesOfOwnerChanges(t *testing.T) {
+	w := newTransferWorld(t)
+	var got struct {
+		OwnerChanges map[string]string `json:"ownerChanges"`
+	}
+	var raw map[string]json.RawMessage
+	w.v.mustDo("GET", "/api/artifacts/"+w.o.id+"/membership", nil, &raw, http.StatusOK)
+	if string(raw["ownerChanges"]) != "{}" {
+		t.Fatalf("ownerChanges before any change: %s", raw["ownerChanges"])
+	}
+	offer := w.offer(w.ed)
+	_, req := w.acceptOwnerOffer(w.ed, offer, false)
+	w.ed.mustDo("POST", w.transferPath("/accept"), req, nil, http.StatusOK)
+	w.v.mustDo("GET", "/api/artifacts/"+w.o.id+"/membership", nil, &got, http.StatusOK)
+	seq := len(getMembership(t, w.v.testClient, w.o.id).Records)
+	if len(got.OwnerChanges) != 1 || got.OwnerChanges[strconv.Itoa(seq)] != today() {
+		t.Errorf("ownerChanges: %+v, want {%d: %s}", got.OwnerChanges, seq, today())
+	}
+
+	// An administrator's handover is dated the same way.
+	w = newTransferWorld(t)
+	w.deactivate(w.owner)
+	w.admin.mustDo("POST", "/api/admin/artifacts/"+w.o.id+"/transfer", map[string]any{"to": w.ed.id}, nil, http.StatusOK)
+	_, req = w.accepting(w.ed, "", "admin", true)
+	w.ed.mustDo("POST", w.transferPath("/accept"), req, nil, http.StatusOK)
+	w.v.mustDo("GET", "/api/artifacts/"+w.o.id+"/membership", nil, &got, http.StatusOK)
+	seq = len(getMembership(t, w.v.testClient, w.o.id).Records)
+	if len(got.OwnerChanges) != 1 || got.OwnerChanges[strconv.Itoa(seq)] != today() {
+		t.Errorf("ownerChanges after a handover: %+v, %v", got.OwnerChanges, seq)
+	}
+}
+
+// A public record carries the hash of the epoch's link token, so the record
+// that closes an offer on a public artifact needs one too.
+func TestClosingRecordOnAPublicArtifactCarriesTheLinkHash(t *testing.T) {
+	t.Run("withdraw", func(t *testing.T) {
+		w := newTransferWorld(t)
+		w.o.makePublic()
+		w.offer(w.ed)
+		req := w.o.change(w.closingRecord())
+		delete(req, "wraps")
+		delete(req, "estate")
+		noHash := map[string]any{"membership": req["membership"]}
+		wantStatus(t, w.owner.testClient, "DELETE", w.transferPath(""), noHash, http.StatusBadRequest)
+		w.owner.mustDo("DELETE", w.transferPath(""), map[string]any{"membership": req["membership"], "linkTokenHash": req["linkTokenHash"]}, nil, http.StatusOK)
+	})
+	t.Run("a second offer", func(t *testing.T) {
+		w := newTransferWorld(t)
+		w.o.makePublic()
+		w.offer(w.ed)
+		rec := w.closingRecord()
+		closing := w.o.change(rec)
+		w.o.latest, w.o.hash = rec, e2e.BodyHash(closing["membership"].(e2e.Envelope).Body)
+		req := w.offerReq(w.ed2, w.offerFor(w.ed2))
+		req["membership"], req["linkTokenHash"] = closing["membership"], closing["linkTokenHash"]
+		w.owner.mustDo("POST", w.transferPath(""), req, nil, http.StatusOK)
+	})
+}
+
+// An administrator's handover excludes the deactivated owner, whose email no
+// client can read, so the entry may carry any.
+func TestExcludingADeactivatedOwnerNeedsNoEmail(t *testing.T) {
+	w := newTransferWorld(t)
+	w.deactivate(w.owner)
+	w.admin.mustDo("POST", "/api/admin/artifacts/"+w.o.id+"/transfer", map[string]any{"to": w.ed.id}, nil, http.StatusOK)
+	b, req := w.accepting(w.ed, "", "admin", true)
+	for i := range b.Excluded {
+		b.Excluded[i].Email = b.Excluded[i].User
+	}
+	req["membership"] = signRecord(t, w.ed, b)
+	w.ed.mustDo("POST", w.transferPath("/accept"), req, nil, http.StatusOK)
+}
+
+type transferRow struct {
+	Artifact string `json:"artifact"`
+	From     string `json:"from"`
+	To       string `json:"to"`
+	At       string `json:"at"`
+}
+
+// rotateFor rotates who, who owns owned, and returns the transfers the answer
+// lists. The field must be present and an array, never null.
+func rotateFor(t *testing.T, w *transferWorld, who actor, owned ...*owned) []transferRow {
+	t.Helper()
+	r := newRotation(t, w.s, w.base, who, owned...)
+	var out struct {
+		Transfers *[]transferRow `json:"transfers"`
+	}
+	who.mustDo("POST", "/api/me/rotate", r.request(), &out, http.StatusOK)
+	if out.Transfers == nil {
+		t.Fatal("the rotate answer has no transfers array")
+	}
+	return *out.Transfers
+}
+
+// A rotation answers with every change of owner in the last 30 days that
+// involved the caller, so the client can warn about it.
+func TestRotateAnswersWithRecentTransfers(t *testing.T) {
+	w := newTransferWorld(t)
+	offer := w.offer(w.ed)
+	b, req := w.acceptOwnerOffer(w.ed, offer, false)
+	w.ed.mustDo("POST", w.transferPath("/accept"), req, nil, http.StatusOK)
+	w.o.latest, w.o.hash = b, e2e.BodyHash(req["membership"].(e2e.Envelope).Body)
+	w.o.latest.Transfer = ""
+	w.o.owner = w.ed
+
+	want := transferRow{Artifact: w.o.id, From: w.owner.id, To: w.ed.id, At: today()}
+	if got := rotateFor(t, w, w.owner); len(got) != 1 || got[0] != want {
+		t.Errorf("previous owner: %+v, want %+v", got, want)
+	}
+	if got := rotateFor(t, w, w.ed, w.o); len(got) != 1 || got[0] != want {
+		t.Errorf("new owner: %+v, want %+v", got, want)
+	}
+	if got := rotateFor(t, w, w.ed2); len(got) != 0 {
+		t.Errorf("another member: %+v", got)
+	}
+}
+
+// A change older than 30 days by the server's clock is not reported.
+func TestRotateOmitsTransfersOlderThanThirtyDays(t *testing.T) {
+	for days, want := range map[int]int{29: 1, 31: 0} {
+		clk := clock.NewFake(time.Now())
+		w := newTransferWorldWith(t, func(c *Config) { c.Clock = clk })
+		offer := w.offer(w.ed)
+		_, req := w.acceptOwnerOffer(w.ed, offer, false)
+		w.ed.mustDo("POST", w.transferPath("/accept"), req, nil, http.StatusOK)
+		clk.Advance(time.Duration(days) * 24 * time.Hour)
+		if got := rotateFor(t, w, w.owner); len(got) != want {
+			t.Errorf("after %d days: %+v, want %d", days, got, want)
+		}
 	}
 }
 

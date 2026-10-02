@@ -66,14 +66,36 @@ func keyPairOf(k *UnlockedKeys) e2e.KeyPair {
 	return e2e.KeyPair{X25519: e2e.B64(k.X25519Pub), Ed25519: e2e.B64(k.Ed25519Pub)}
 }
 
-// recentTransferWarnings is where RotateKeys warns about artifacts
-// transferred to or from the caller in the last 30 days, because whoever held
-// the old key could have signed an offer or accepted one. Neither a
-// membership record nor a transfer offer carries a time, and the server
-// serves a time only for an offer still open, which a rotation closes, so
-// there is nothing to date a finished transfer by. It warns about nothing
-// until the records carry one.
-func recentTransferWarnings() []string { return nil }
+// rotateTransfer is a change of owner to or from the caller in the last 30
+// days, as the rotate answer lists it.
+type rotateTransfer struct {
+	Artifact string `json:"artifact"`
+	From     string `json:"from"`
+	To       string `json:"to"`
+	At       string `json:"at"`
+}
+
+// transferWarnings makes one warning for each change of owner the server
+// reported, because whoever held the old key could have signed an offer or
+// accepted one. emails maps user IDs to the emails the directory knows; a
+// user it does not know is named by ID.
+func transferWarnings(transfers []rotateTransfer, me string, emails map[string]string) []string {
+	name := func(id string) string {
+		if e := emails[id]; e != "" {
+			return e
+		}
+		return id
+	}
+	var out []string
+	for _, t := range transfers {
+		if t.From == me {
+			out = append(out, fmt.Sprintf("you handed ownership of artifact %s to %s on %s; check that you made that offer, because anyone who held your old key could have signed one", t.Artifact, name(t.To), t.At))
+		} else {
+			out = append(out, fmt.Sprintf("you took ownership of artifact %s from %s on %s; check that you accepted it, because anyone who held your old key could have accepted for you", t.Artifact, name(t.From), t.At))
+		}
+	}
+	return out
+}
 
 // RotateKeys replaces the caller's keys, as design/e2e-api.md ("Rotating
 // keys") describes, and keeps the password. It signs in with the password,
@@ -248,8 +270,9 @@ func (c *Client) RotateKeys(password string, keepEpochs bool) (*RotateResult, er
 	}
 
 	var ans struct {
-		Seq    int            `json:"seq"`
-		Epochs map[string]int `json:"epochs"`
+		Seq       int              `json:"seq"`
+		Epochs    map[string]int   `json:"epochs"`
+		Transfers []rotateTransfer `json:"transfers"`
 	}
 	if err := s.doJSON("POST", "/api/me/rotate", map[string]any{
 		"authKey": e2e.B64(ps.AuthKey), "bundle": na.Wire, "rotation": rotation,
@@ -280,7 +303,7 @@ func (c *Client) RotateKeys(password string, keepEpochs bool) (*RotateResult, er
 	// carries the result to this client, and reports the new recovery code
 	// whatever fails. Signing in comes first, because it yields the device
 	// key, and a failure to save the anchor must not cost the CLI that key.
-	res.Seq, res.Epochs, res.Warnings = ans.Seq, ans.Epochs, recentTransferWarnings()
+	res.Seq, res.Epochs, res.Warnings = ans.Seq, ans.Epochs, transferWarnings(ans.Transfers, me.ID, nil)
 	var first error
 	keep := func(err error) {
 		if first == nil {
@@ -293,6 +316,14 @@ func (c *Client) RotateKeys(password string, keepEpochs bool) (*RotateResult, er
 		keep(fmt.Errorf("the keys were rotated, but signing in again failed: %w; save the new recovery code and run cairn login", err))
 	} else {
 		res.APIKey = out.APIKey
+		// Now the directory can name the other party of each transfer.
+		if dir, err := signedIn.Directory(); err == nil && len(ans.Transfers) > 0 {
+			emails := map[string]string{}
+			for _, u := range dir {
+				emails[u.ID] = u.Email
+			}
+			res.Warnings = transferWarnings(ans.Transfers, me.ID, emails)
+		}
 		if key, err := e2e.ParseAPIKey(out.APIKey); err != nil {
 			keep(err)
 		} else {

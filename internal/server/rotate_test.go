@@ -474,7 +474,7 @@ func TestRotateWithNothingOwned(t *testing.T) {
 	}
 	var raw json.RawMessage
 	w.mem.mustDo("POST", "/api/me/rotate", r.request(), &raw, http.StatusOK)
-	if string(raw) != `{"epochs":{},"seq":1}` {
+	if string(raw) != `{"epochs":{},"seq":1,"transfers":[]}` {
 		t.Errorf("answer = %s", raw)
 	}
 	// Their wraps are under the new fingerprint, and the old session is out.
@@ -493,7 +493,7 @@ func TestRotateWithNoWrapsNoArtifactsAndNoEstate(t *testing.T) {
 	r := newRotation(t, w.s, w.base, fresh)
 	var raw json.RawMessage
 	fresh.mustDo("POST", "/api/me/rotate", r.request(), &raw, http.StatusOK)
-	if string(raw) != `{"epochs":{},"seq":1}` {
+	if string(raw) != `{"epochs":{},"seq":1,"transfers":[]}` {
 		t.Errorf("answer = %s", raw)
 	}
 	if got := heldWraps(t, w.s, fresh.id); len(got) != 0 {

@@ -53,6 +53,9 @@ func (c *Client) Public(artifactID string, on bool, writes *bool) (*PublicResult
 	if err != nil {
 		return nil, err
 	}
+	if err := c.checkHandover(k, artifactID, va); err != nil {
+		return nil, err
+	}
 	latest := va.Chain.Latest
 	if latest.Owner != k.UserID || latest.OwnerFP != k.FP {
 		return nil, ErrNotOwner
@@ -145,11 +148,13 @@ func (c *Client) linkTokenHashFor(k *UnlockedKeys, artifactID string, chain *e2e
 // OpenedLink is what OpenLink verified: the link, the chain it opens, and the
 // editors whose served keys verified, by user ID. Editors are the writers the
 // visitor trusts; an editor missing from it has no keys served or changed
-// them.
+// them. Handover is the latest administrator's handover in the chain, or nil;
+// a visitor has no keyring to acknowledge it, so it is never Acked.
 type OpenedLink struct {
-	Link    *e2e.Link
-	Chain   *e2e.Chain
-	Editors map[string]e2e.KeyPair
+	Link     *e2e.Link
+	Chain    *e2e.Chain
+	Editors  map[string]e2e.KeyPair
+	Handover *HandoverNotice
 }
 
 // OpenLink opens a public link as a visitor, with no account: it reads the
@@ -183,5 +188,9 @@ func (c *Client) OpenLink(l *e2e.Link) (*OpenedLink, error) {
 	if err != nil {
 		return nil, fmt.Errorf("the link's artifact %s does not verify: %w", l.Artifact, err)
 	}
-	return &OpenedLink{Link: l, Chain: verified.Chain, Editors: verified.Editors}, nil
+	out := &OpenedLink{Link: l, Chain: verified.Chain, Editors: verified.Editors, Handover: handoverOf(verified.Chain, m, 0)}
+	if out.Handover != nil && c.OnHandover != nil {
+		c.OnHandover(l.Artifact, *out.Handover)
+	}
+	return out, nil
 }

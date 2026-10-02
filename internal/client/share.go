@@ -443,6 +443,9 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	if err != nil {
 		return nil, err
 	}
+	if err := c.checkHandover(k, artifactID, va); err != nil {
+		return nil, err
+	}
 	latest := va.Chain.Latest
 	if latest.Owner != k.UserID || latest.OwnerFP != k.FP {
 		return nil, ErrNotOwner
@@ -628,7 +631,14 @@ func dropExcluded(excluded []e2e.ExcludedEntry, members []e2e.Member, dir []Dire
 // signNext makes next the record after the verified chain's latest, and
 // signs it as signer with seed. It returns the record as signed.
 func signNext(seed []byte, signer string, va *VerifiedArtifact, next e2e.MembershipBody) (e2e.MembershipBody, e2e.Envelope, error) {
-	next.Seq, next.Prev, next.Transfer, next.Handover = va.Chain.Latest.Seq+1, va.Chain.Head, "", ""
+	next.Transfer, next.Handover = "", ""
+	return signChained(seed, signer, va, next)
+}
+
+// signChained is signNext for a record that may set transfer or handover, as
+// the one that accepts ownership does.
+func signChained(seed []byte, signer string, va *VerifiedArtifact, next e2e.MembershipBody) (e2e.MembershipBody, e2e.Envelope, error) {
+	next.Seq, next.Prev = va.Chain.Latest.Seq+1, va.Chain.Head
 	if next.Excluded == nil {
 		next.Excluded = []e2e.ExcludedEntry{}
 	}

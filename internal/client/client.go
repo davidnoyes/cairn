@@ -34,6 +34,15 @@ type Client struct {
 	// LinkToken, when set, is sent as X-Cairn-Link-Token (base64), which
 	// opens a public artifact to its link's holder.
 	LinkToken string
+	// AcceptNewOwner says the person confirmed an administrator's handover of
+	// an artifact with the people involved. A function that writes to such an
+	// artifact then records the acknowledgement in the keyring and goes
+	// ahead; without it, the function refuses with *HandoverNotAckedError.
+	AcceptNewOwner bool
+	// OnHandover, when set, is called each time VerifyArtifact finds an
+	// administrator's handover in an artifact's chain, acknowledged or not,
+	// so a command can show the notice.
+	OnHandover func(artifactID string, n HandoverNotice)
 }
 
 func New(host, token string) *Client {
@@ -214,6 +223,9 @@ func (c *Client) Push(artifactID, versionID, dir, name, changelog string) (*stor
 	}
 	va, err := c.VerifyArtifact(k, artifactID, "")
 	if err != nil {
+		return nil, err
+	}
+	if err := c.checkHandover(k, artifactID, va); err != nil {
 		return nil, err
 	}
 	epoch := va.Chain.Latest.Epoch

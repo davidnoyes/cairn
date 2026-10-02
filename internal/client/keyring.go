@@ -5,6 +5,7 @@ package client
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -145,6 +146,9 @@ type VerifiedArtifact struct {
 	Chain      *e2e.Chain
 	Membership *Membership
 	Keyring    *e2e.Keyring
+	// Handover is the latest administrator's handover in the chain, or nil
+	// when there is none. VerifyArtifact sets it.
+	Handover *HandoverNotice
 }
 
 // VerifyArtifact reads an artifact's membership chain and verifies it. The
@@ -168,6 +172,10 @@ func (c *Client) VerifyArtifact(k *UnlockedKeys, artifactID, currentOwnerFP stri
 	if err != nil {
 		return nil, err
 	}
+	va.Handover = handoverOf(va.Chain, va.Membership, va.Keyring.Epochs[artifactID].Ack)
+	if va.Handover != nil && c.OnHandover != nil {
+		c.OnHandover(artifactID, *va.Handover)
+	}
 	return va, nil
 }
 
@@ -189,11 +197,11 @@ func (c *Client) checkArtifact(k *UnlockedKeys, kr *e2e.Keyring, artifactID, cur
 		if p, ok := kr.Pins[creator]; ok {
 			anchor = p.FP
 		} else {
-			u, err := c.DirectoryUser(creator)
+			x25519, ed25519, err := c.creatorKeys(m, creator)
 			if err != nil {
 				return nil, "", nil, fmt.Errorf("looking up the creator of artifact %s: %w", artifactID, err)
 			}
-			_, anchor = e2e.PinState(nil, u.X25519Pub, u.Ed25519Pub)
+			_, anchor = e2e.PinState(nil, x25519, ed25519)
 			newPin = &e2e.Pin{FP: anchor, State: e2e.PinUnverified}
 		}
 	}
@@ -206,6 +214,37 @@ func (c *Client) checkArtifact(k *UnlockedKeys, kr *e2e.Keyring, artifactID, cur
 		return nil, "", nil, fmt.Errorf("the membership of artifact %s does not verify: %w", artifactID, err)
 	}
 	return &VerifiedArtifact{Chain: chain, Membership: m, Keyring: kr}, creator, newPin, nil
+}
+
+// creatorKeys is the creator's public keys for a first-sight anchor: the
+// directory's, or, when the directory has no such user because an
+// administrator deactivated them, the owner keys the server served for
+// record 0's ownerFp. Both are server-served and unverified, so the trust
+// level is the same; the chain check then refuses keys that do not hash to
+// the fingerprint record 0 names.
+func (c *Client) creatorKeys(m *Membership, creator string) (x25519, ed25519 []byte, err error) {
+	u, err := c.DirectoryUser(creator)
+	if err == nil {
+		return u.X25519Pub, u.Ed25519Pub, nil
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusNotFound {
+		return nil, nil, err
+	}
+	var first e2e.MembershipBody
+	if json.Unmarshal(m.Records[0].Body, &first) != nil {
+		return nil, nil, err
+	}
+	kp, ok := m.Owners[first.OwnerFP]
+	if !ok {
+		return nil, nil, err
+	}
+	x, errX := e2e.UnB64(kp.X25519)
+	ed, errEd := e2e.UnB64(kp.Ed25519)
+	if errX != nil || errEd != nil {
+		return nil, nil, err
+	}
+	return x, ed, nil
 }
 
 // recordChain stores a verified chain as artifactID's epochs entry, and a

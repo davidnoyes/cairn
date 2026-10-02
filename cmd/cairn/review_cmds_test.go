@@ -107,7 +107,7 @@ func TestReviewAndVouchUsage(t *testing.T) {
 	if _, err := runQuiet(t, runReview); err == nil || !strings.Contains(err.Error(), "usage: cairn review ARTIFACT [--json]") {
 		t.Errorf("review with no artifact: %v", err)
 	}
-	if _, err := runQuiet(t, runVouch, "only-one"); err == nil || !strings.Contains(err.Error(), "usage: cairn vouch ARTIFACT VERSION [--json]") {
+	if _, err := runQuiet(t, runVouch, "only-one"); err == nil || !strings.Contains(err.Error(), "usage: cairn vouch ARTIFACT VERSION [--accept-new-owner] [--json]") {
 		t.Errorf("vouch with no version: %v", err)
 	}
 }

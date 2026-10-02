@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"time"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
 	"github.com/aloisdeniel/cairn/internal/membership"
@@ -195,6 +196,14 @@ func (s *Server) handleMeRotate(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := sameSet(have, owned); err != nil {
 		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+
+	// The records that changed an owner are not touched by the rotation, but
+	// read them before it changes anything.
+	transfers, err := s.recentTransfers(u.ID)
+	if err != nil {
+		s.writeStoreError(w, err, "account")
 		return
 	}
 
@@ -387,7 +396,30 @@ func (s *Server) handleMeRotate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.setSessionCookie(w, token, s.cfg.TokenTTL)
 	s.log.Info("keys rotated", "email", u.Email, "seq", seq)
-	writeJSON(w, http.StatusOK, map[string]any{"seq": seq, "epochs": epochs})
+	writeJSON(w, http.StatusOK, map[string]any{"seq": seq, "epochs": epochs, "transfers": transfers})
+}
+
+// transferWarningDays is how long after a change of owner a rotation reports
+// it: the new owner's chain names the keys that are about to be replaced.
+const transferWarningDays = 30
+
+type rotateTransferView struct {
+	Artifact string `json:"artifact"`
+	From     string `json:"from"`
+	To       string `json:"to"`
+	At       string `json:"at"`
+}
+
+// recentTransfers lists the changes of owner to or from userID within the
+// last 30 days by the server's clock. It is never nil.
+func (s *Server) recentTransfers(userID string) ([]rotateTransferView, error) {
+	since := s.clk.Now().UTC().AddDate(0, 0, -transferWarningDays).Format(time.RFC3339)
+	changes, err := s.store.OwnerChanges(userID, since)
+	out := []rotateTransferView{}
+	for _, c := range changes {
+		out = append(out, rotateTransferView{Artifact: c.ArtifactID, From: c.From, To: c.To, At: dateOf(c.At)})
+	}
+	return out, err
 }
 
 // keyPairIs reports whether kp holds exactly these public keys. A key that is

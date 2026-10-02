@@ -598,6 +598,7 @@ func artifactDelete(args []string) error {
 
 func runPush(args []string) error {
 	fs := flag.NewFlagSet("push", flag.ExitOnError)
+	accept := acceptNewOwnerFlag(fs)
 	artifact := fs.String("artifact", "", "target artifact id or name (required)")
 	create := fs.Bool("create", false, "create the artifact when it does not exist")
 	name := fs.String("name", "", "version name")
@@ -610,7 +611,7 @@ func runPush(args []string) error {
 	}
 	dir := leadOrArg(lead, fs)
 	if dir == "" || *artifact == "" {
-		return fmt.Errorf("usage: cairn push <dir> --artifact <id|name> [--create] [--name v1] [--changelog ...] [--overwrite <vid|latest>]")
+		return fmt.Errorf("usage: cairn push <dir> --artifact <id|name> [--create] [--name v1] [--changelog ...] [--overwrite <vid|latest>] [--accept-new-owner]")
 	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		return fmt.Errorf("%s is not a directory", dir)
@@ -622,6 +623,7 @@ func runPush(args []string) error {
 	if err != nil {
 		return err
 	}
+	c.AcceptNewOwner = *accept
 	a, err := c.ResolveArtifact(*artifact)
 	if err != nil {
 		if !*create {
@@ -647,10 +649,10 @@ func runPush(args []string) error {
 	}
 	v, err := c.Push(a.ID, versionID, dir, *name, *changelog)
 	if err != nil {
-		return err
+		return explainRefusal(c, err)
 	}
 	if *jsonOut {
-		return printJSON(map[string]any{
+		return printArtifactJSON(a.ID, map[string]any{
 			"artifact": a,
 			"version":  v,
 			"url":      fmt.Sprintf("%s/artifacts/%s/%s/", c.Host, a.ID, v.ID),

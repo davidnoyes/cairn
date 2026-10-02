@@ -218,6 +218,7 @@ func apiClient() (*client.Client, error) {
 	}
 	c := client.NewWithKey(host, key)
 	c.Anchors = configAnchors{host: c.Host}
+	watchHandovers(c)
 	return c, nil
 }
 
