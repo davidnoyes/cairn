@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>hostile</title></head>
+<body>
+<pre id="results"></pre>
+<script>
+(async () => {
+  const APP = 'http://localhost:__PORT__';
+  const id = location.hostname.split('.')[0];
+  const results = { navigate: [], api: {} };
+  const err = (e) => ({ error: (e && e.name) || String(e) });
+
+  try { top.location = APP + '/admin'; results.topNav = { threw: false }; }
+  catch (e) { results.topNav = { threw: true, name: e.name }; }
+
+  try { results.cookie = document.cookie; } catch (e) { results.cookie = null; results.cookieError = e.name; }
+
+  try {
+    const r = await fetch(APP + '/api/me', { credentials: 'include' });
+    results.appFetch = { status: r.status };
+  } catch (e) { results.appFetch = err(e); }
+
+  const calls = {
+    membershipPut: ['PUT', '/api/artifacts/' + id + '/membership'],
+    deleteArtifact: ['DELETE', '/api/artifacts/' + id],
+    transfer: ['POST', '/api/artifacts/' + id + '/transfer'],
+    keys: ['GET', '/api/artifacts/' + id + '/keys'],
+  };
+  for (const [name, [method, path]] of Object.entries(calls)) {
+    try {
+      const init = { method };
+      if (method === 'PUT' || method === 'POST') {
+        init.headers = { 'Content-Type': 'application/json' };
+        init.body = '{}';
+      }
+      const r = await fetch(path, init);
+      results.api[name] = { status: r.status };
+    } catch (e) { results.api[name] = err(e); }
+  }
+
+  for (const href of ['/admin', 'https://evil.example/', '//evil.example', '/\\evil.example',
+                      'javascript:alert(1)', '/shared/not-a-uuid']) {
+    try { parent.postMessage({ cairn: 'navigate', href }, '*'); results.navigate.push({ href, posted: true }); }
+    catch (e) { results.navigate.push({ href, posted: false, name: e.name }); }
+  }
+
+  document.getElementById('results').textContent = JSON.stringify(results);
+})();
+</script>
+</body>
+</html>

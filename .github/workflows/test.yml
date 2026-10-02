@@ -104,3 +104,26 @@ jobs:
       - run: npm ci
       - name: mutations
         run: MUTATE_SHARD=${{ matrix.shard }}/8 ./scripts/mutate.sh
+
+  # Browser end-to-end suite on all three engines, for milestone and
+  # integration branches only: it is written ahead of the feature it tests.
+  browser:
+    if: startsWith(github.ref_name, 'e2e/') || github.ref_name == 'feat/e2e-trust-model'
+    runs-on: ubuntu-latest
+    env:
+      CAIRN_HOST: ""
+      CAIRN_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: install browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: playwright
+        run: npx playwright test
