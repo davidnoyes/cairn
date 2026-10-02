@@ -269,6 +269,8 @@ type vectorFile struct {
 	Keyring       []keyringVec       `json:"keyring"`
 	Link          []linkVec          `json:"link"`
 	LinkChain     []linkChainVec     `json:"linkChain"`
+	RotationChain []rotationChainVec `json:"rotationChain"`
+	RotationLink  []rotationLinkVec  `json:"rotationLink"`
 }
 
 type encVec struct {
@@ -1156,6 +1158,8 @@ func generateVectors(t testing.TB) vectorFile {
 	vf.Keyring = keyringVectors(t)
 	vf.Link = linkVectors()
 	vf.LinkChain = linkChainVectors(t)
+	vf.RotationChain = rotationChainVectors(t)
+	vf.RotationLink = rotationLinkVectors(t)
 
 	return vf
 }
@@ -1545,6 +1549,8 @@ func checkVectors(t *testing.T, vf vectorFile) {
 	t.Run("keyring", func(t *testing.T) { checkKeyringVectors(t, vf.Keyring) })
 	t.Run("link", func(t *testing.T) { checkLinkVectors(t, vf.Link) })
 	t.Run("linkChain", func(t *testing.T) { checkLinkChainVectors(t, vf.LinkChain) })
+	t.Run("rotationChain", func(t *testing.T) { checkRotationChainVectors(t, vf.RotationChain) })
+	t.Run("rotationLink", func(t *testing.T) { checkRotationLinkVectors(t, vf.RotationLink) })
 
 	t.Run("strictJSON", func(t *testing.T) {
 		for _, v := range vf.StrictJSON {

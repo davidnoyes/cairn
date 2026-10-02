@@ -117,6 +117,16 @@ export class ApprovalDuplicateError extends Error {
   }
 }
 
+// RotationForkError matches Go's ErrRotationFork: a rotation record at the
+// pinned seq hashes to another head, or two records share a seq and differ.
+// See followRotations.
+export class RotationForkError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'RotationForkError';
+  }
+}
+
 // The keyring errors, matching Go's ErrKeyringRev, ErrKeyringRollback, and
 // ErrKeyringFork. See openKeyring.
 export class KeyringRevError extends Error {
@@ -2061,14 +2071,14 @@ function isHex64(s) {
   return s.length === 64 && isLowerHex(s);
 }
 
-function checkFirstRecord(b, anchor, linked) {
+async function checkFirstRecord(b, anchor, linked) {
   if (b.seq !== 1) throw new ChainError(`first record has seq ${b.seq}`);
   if (b.prev !== '') throw new ChainError('first record has a prev');
   if (b.epoch !== 1) throw new ChainError(`first record has epoch ${b.epoch}`);
   if (b.transfer !== '' || b.handover !== '') {
     throw new ChainError('first record sets transfer or handover');
   }
-  if (!linked(b.owner, anchor, b.ownerFp)) {
+  if (!(await linked(b.owner, anchor, b.ownerFp))) {
     throw new ChainError("first record's ownerFp does not reach the anchor");
   }
 }
@@ -2091,7 +2101,7 @@ async function checkNextRecord(input, owners, linked, prev, prevHash, b, handove
     if (b.transfer !== '' || b.handover !== '') {
       throw new ChainError('transfer or handover set without a change of owner');
     }
-    if (!linked(b.owner, prev.ownerFp, b.ownerFp)) {
+    if (!(await linked(b.owner, prev.ownerFp, b.ownerFp))) {
       throw new ChainError("ownerFp does not follow from the previous record's");
     }
     return;
@@ -2111,7 +2121,7 @@ async function checkNextRecord(input, owners, linked, prev, prevHash, b, handove
     throw new ChainError('the new owner is not listed in the previous record');
   }
   if (listed.role !== 'editor') throw new ChainError(`the new owner is listed as ${listed.role}, not editor`);
-  if (!linked(b.owner, listed.fp, b.ownerFp)) {
+  if (!(await linked(b.owner, listed.fp, b.ownerFp))) {
     throw new ChainError('ownerFp does not follow from the fp the previous record lists for the new owner');
   }
   if (b.handover !== '') {
@@ -2140,7 +2150,7 @@ async function checkNextRecord(input, owners, linked, prev, prevHash, b, handove
 // reach; currentOwnerFp, when non-empty, the latest record's ownerFp; pin
 // the keyring's {epoch, seq, head}, or null on first sight; and linked an
 // optional (user, fromFp, toFp) => boolean rotation chain hook, which
-// defaults to fromFp === toFp. Returns {bodies, latest, head, handovers}.
+// may be async and defaults to fromFp === toFp. Returns {bodies, latest, head, handovers}.
 // A record that fails to parse throws FormatError, and one whose signature
 // fails DecryptError; every other broken rule throws ChainError,
 // RollbackError, ForkError, or StaleEpochError. Mirrors VerifyChain in
@@ -2156,7 +2166,7 @@ export async function verifyChain(input) {
   for (let i = 0; i < records.length; i++) {
     const b = await openRecord(records[i], input.artifact, owners);
     if (i === 0) {
-      checkFirstRecord(b, input.anchor, linked);
+      await checkFirstRecord(b, input.anchor, linked);
     } else {
       await checkNextRecord(input, owners, linked, bodies[i - 1], prevHash, b, handovers);
     }
@@ -2179,6 +2189,101 @@ export async function verifyChain(input) {
     if (latest.epoch < pin.epoch) throw new StaleEpochError(`latest epoch ${latest.epoch}, pinned ${pin.epoch}`);
   }
   return { bodies, latest, head: prevHash, handovers };
+}
+
+// keyPairFp returns the fingerprint of a key pair, or null when a key does
+// not decode.
+async function keyPairFp(kp) {
+  try {
+    return toHex(await fingerprint(unb64(kp.x25519), unb64(kp.ed25519)));
+  } catch {
+    return null;
+  }
+}
+
+// followSteps is followRotations, and also returns each fingerprint the
+// chain reached after the first, which rotationLinker reads.
+async function followSteps(user, records, pin) {
+  let res = { fp: pin.fp, seq: pin.rotSeq, head: pin.rotHead, keys: { x25519: '', ed25519: '' } };
+  const reached = [];
+  const heads = new Map();
+  let started = false;
+  for (const env of records) {
+    const b = decodeStrict(unb64(env.body), BODY_SCHEMAS.rotation);
+    if (b.user !== user) throw new ChainError(`rotation for user ${b.user}, not ${user}`);
+    const head = await bodyHash(unb64(env.body));
+    if (heads.has(b.seq) && heads.get(b.seq) !== head) throw new RotationForkError(`two records with seq ${b.seq}`);
+    heads.set(b.seq, head);
+    if (pin.rotSeq > 0 && b.seq <= pin.rotSeq) {
+      if (b.seq === pin.rotSeq && head !== pin.rotHead) throw new RotationForkError(`seq ${b.seq} is not the pinned record`);
+      continue;
+    }
+    const oldFp = await keyPairFp(b.old);
+    const fromHere = oldFp !== null && oldFp === res.fp;
+    if (!started && !fromHere) continue;
+    started = true;
+    if (!fromHere) throw new ChainError('old keys are not the keys the chain reached');
+    // With pin.rotSeq 0 the chain may start at any seq of 1 or more whose
+    // old fp is the pin's, and this is deliberate. A pin first taken after
+    // the user already rotated has rotSeq 0 (until step 7d records the
+    // current rotSeq when pinning), and rotationLinker asks from any point
+    // in the chain. The record is still signed by the pinned key, and
+    // continuity is enforced from there.
+    if (res.seq > 0 && b.seq !== res.seq + 1) {
+      throw new ChainError(`seq ${b.seq} does not follow the last accepted`);
+    }
+    if (b.seq < 1) throw new ChainError(`seq ${b.seq}`);
+    const opened = await openRotation(env, unb64(b.old.ed25519));
+    const newFp = await keyPairFp(opened.new);
+    if (newFp === null) throw new FormatError('new keys do not decode');
+    res = { fp: newFp, seq: opened.seq, head, keys: opened.new };
+    reached.push(newFp);
+  }
+  if (pin.rotSeq > 0 && !heads.has(pin.rotSeq)) {
+    throw new RollbackError(`the rotation record the keyring pins, seq ${pin.rotSeq}, is missing`);
+  }
+  return { res, reached };
+}
+
+// followRotations follows user's rotation records, oldest first, from the
+// key the pin names to the key the chain ends at, as design/e2e-wire-formats.md
+// ("The keyring") requires. pin is {fp, rotSeq, rotHead}. Records at or below
+// pin.rotSeq were accepted already and are skipped, but the one at rotSeq
+// must hash to rotHead (RotationForkError), and a list that omits it throws
+// RollbackError: the server withheld a record the keyring pins. The chain
+// starts at the first record whose old keys hash to the pin's fp; the
+// records before it predate the pin. From there each record must be the
+// user's, one seq above the last, rotate from the fp the last reached, and
+// verify under both keys. A record for any other user is refused wherever it
+// stands. A record that fails to parse throws FormatError, and one whose
+// signature fails DecryptError; every other broken rule throws ChainError.
+// Returns {fp, seq, head, keys}: where the chain ends, or the pin's own fp,
+// rotSeq, and rotHead with empty keys when no record applies, so a caller
+// that writes the result back into the pin changes nothing. Mirrors
+// FollowRotations in internal/e2e/rotation.go.
+export async function followRotations(user, records, pin) {
+  return (await followSteps(user, records, pin)).res;
+}
+
+// rotationLinker returns the linked hook of verifyChain: it reports whether
+// user's rotation chain leads from fromFp to toFp, or from toFp to fromFp,
+// "in either direction". Equal fingerprints are always linked. Only the
+// records from fromFp onward are verified (the earlier ones are skipped
+// unchecked), and a break or a bad record on that stretch links nothing, even
+// a fingerprint reached before it. rotations maps a user ID to that user's
+// records, and the hook is async. Mirrors RotationLinker in
+// internal/e2e/rotation.go.
+export function rotationLinker(rotations) {
+  const leads = async (user, fromFp, toFp) => {
+    try {
+      const { reached } = await followSteps(user, hasOwn(rotations, user) ? rotations[user] : [], { fp: fromFp, rotSeq: 0, rotHead: '' });
+      return reached.includes(toFp);
+    } catch {
+      return false;
+    }
+  };
+  return async (user, fromFp, toFp) =>
+    fromFp === toFp || (await leads(user, fromFp, toFp)) || (await leads(user, toFp, fromFp));
 }
 
 // A public link is <host>/shared/<artifact>#k=<b64(AK)>&e=<epoch>&o=<hex(fp)>.

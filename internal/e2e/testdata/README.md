@@ -291,6 +291,40 @@ The overrides, and which primitives read them:
   the chain, and a latest record that is private. Editor keys that are
   missing or do not hash to the listed fingerprint are no error: the entry is
   accepted, with that editor out of `editors`.
+- **`rotationChain`**: one user's rotation records and the pin held for them,
+  which `FollowRotations`/`followRotations` must accept or refuse. (The
+  earlier `rotation` section is the signature check on one record.) Each entry
+  has `name`, `why`, `user`, `records` (wire form, oldest first), and `pin`
+  (`fp`, `state`, `rotSeq`, `rotHead`). An accepted entry has `want` with
+  `fp`, `seq`, `head`, and `keys` of the last record followed, or the pin's
+  own `fp`, `rotSeq` as `seq`, and `rotHead` as `head`, with empty `keys`,
+  when none applies. A refused entry has `error`, which is `chain`, `format`,
+  or `decrypt` from the `chain` section, or:
+
+  | `error` | Go | JavaScript |
+  | --- | --- | --- |
+  | `rotationFork` | `ErrRotationFork` | `RotationForkError` |
+  | `rollback` | `ErrRollback` | `RollbackError` |
+
+  The entries cover:
+
+  - Accepted chains: no rotation, one, three in a row, a pin taken
+    mid-chain, records skipped under `rotSeq`, and records served newest
+    first.
+  - Forks: a record at `rotSeq` that does not hash to `rotHead`, or to an
+    empty one, and two records of one seq, at a seq greater or less than
+    `rotSeq`.
+  - Rollbacks: a list that omits the record at `rotSeq`, and an empty list.
+  - Broken records, before the chain starts or inside it: a skipped,
+    repeated, descending, or zero seq; old keys that do not match or do not
+    decode; a bad `sig` or `newSig`; a missing `newSig`; an undeclared body
+    field; and a record for another user.
+- **`rotationLink`**: a question for `RotationLinker`/`rotationLinker`: does
+  `user`'s chain in `rotations` (user ID to records) link `from` to `to`, in
+  either direction. `want` is the answer. Only the records from `from`
+  onward are verified (the earlier ones are skipped unchecked), and a break
+  or a bad record on that stretch links nothing, even a fingerprint reached
+  before it.
 
 ## Blob transforms
 

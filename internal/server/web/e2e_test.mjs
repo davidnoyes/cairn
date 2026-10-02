@@ -1203,6 +1203,35 @@ test('verifyChain: linked replaces fingerprint equality', async () => {
   ]);
 });
 
+// rotationLinker is async, since checking a rotation signature is, so
+// verifyChain must wait for the hook: an unawaited Promise is always truthy.
+test('verifyChain: an async linked that says no refuses the chain', async () => {
+  const v = vf.chain.find((c) => c.name === 'owner-fp-changed');
+  const input = { ...chainInput(v), anchor: 'anchor-fp' };
+  input.linked = async (_user, from) => from !== 'anchor-fp'; // refuses only the anchor
+  await assert.rejects(() => e2e.verifyChain(input), e2e.ChainError);
+  input.linked = async (_user, from) => from === 'anchor-fp'; // refuses only the later record
+  await assert.rejects(() => e2e.verifyChain(input), e2e.ChainError);
+  input.linked = async () => true;
+  await e2e.verifyChain(input);
+});
+
+// The owner-change path asks linked about the fp the previous record lists for
+// the new owner. The first call for anyone but the creator is that one, so
+// refusing it kills an unawaited Promise there, which the same-owner test
+// above does not reach.
+test('verifyChain: an async linked that says no refuses an owner change', async () => {
+  for (const name of ['admin-handover', 'transfer']) {
+    const v = vf.chain.find((c) => c.name === name);
+    const creator = JSON.parse(new TextDecoder().decode(e2e.unb64(v.records[0].body))).owner;
+    const input = chainInput(v);
+    input.linked = async (user, from, to) => user === creator && from === to;
+    await assert.rejects(() => e2e.verifyChain(input), e2e.ChainError, name);
+    input.linked = async (_user, from, to) => from === to;
+    await e2e.verifyChain(input); // positive control
+  }
+});
+
 // approvalErrors maps each approval entry's error kind to the class
 // checkApproval throws for it; see testdata/README.md.
 const approvalErrors = {
@@ -1522,12 +1551,67 @@ describe('linkChain', () => {
   }
 });
 
+// rotationErrors maps each rotationChain entry's error kind to the class
+// followRotations throws for it; see testdata/README.md.
+const rotationErrors = { ...chainErrors, rotationFork: e2e.RotationForkError, rollback: e2e.RollbackError };
+
+// rotationChain mirrors the Go rotationChain vector check: followRotations
+// must accept each valid chain with the same result, and refuse each other
+// one with the class for its error kind.
+describe('rotationChain', () => {
+  for (const v of vf.rotationChain) {
+    test(v.name, async () => {
+      if (v.error) {
+        assert.ok(rotationErrors[v.error], `${v.name}: unknown error kind ${v.error}`);
+        await assert.rejects(
+          () => e2e.followRotations(v.user, v.records, v.pin),
+          rotationErrors[v.error],
+          `${v.name}: ${v.why}`,
+        );
+        return;
+      }
+      const got = await e2e.followRotations(v.user, v.records, v.pin);
+      assert.deepEqual(got, v.want, `${v.name}: ${v.why}`);
+    });
+  }
+
+  test('a fork is not a chain error', async () => {
+    const v = vf.rotationChain.find((c) => c.name === 'fork-against-rotHead');
+    await assert.rejects(() => e2e.followRotations(v.user, v.records, v.pin), (err) => {
+      assert.ok(err instanceof e2e.RotationForkError);
+      assert.ok(!(err instanceof e2e.ChainError));
+      return true;
+    });
+  });
+});
+
+// rotationLink mirrors the Go rotationLink vector check: rotationLinker
+// must answer each question as the vector does.
+describe('rotationLink', () => {
+  for (const v of vf.rotationLink) {
+    test(v.name, async () => {
+      const linked = e2e.rotationLinker(v.rotations);
+      assert.equal(await linked(v.user, v.from, v.to), v.want, `${v.name}: ${v.why}`);
+    });
+  }
+});
+
+// A user ID is untrusted input, and an object lookup finds "__proto__" and
+// "constructor" on every map, so the linker must not read them as records.
+test('rotationLinker: user IDs that name Object properties link nothing', async () => {
+  const linked = e2e.rotationLinker({});
+  for (const user of ['__proto__', 'constructor']) {
+    assert.equal(await linked(user, 'a'.repeat(64), 'b'.repeat(64)), false, user);
+  }
+});
+
 test('vectors.json has no section this file does not check', () => {
   const handled = [
     'enc', 'derive', 'argon2', 'recoveryCode', 'apiKey', 'akCommit', 'seal',
     'blob', 'wrap', 'signature', 'rotation', 'ed25519Strict', 'x25519Strict',
     'fingerprint', 'linkToken', 'fileAddress', 'blindIndex', 'strictJSON',
     'base64url', 'envelope', 'chain', 'approval', 'keyring', 'link', 'linkChain',
+    'rotationChain', 'rotationLink',
   ];
   const unhandled = Object.keys(vf).filter((k) => !handled.includes(k));
   assert.deepEqual(unhandled, []);

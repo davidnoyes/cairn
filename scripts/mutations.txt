@@ -367,3 +367,25 @@ internal/client/epoch.go	if link != "" {	if false {	go test ./internal/client -r
 internal/client/public.go	Listed: listed}	Listed: listed[:0]}	go test ./cmd/cairn -run TestPublicOffCommandReportsTheTeamMembersItLists
 cmd/cairn/share_cmds.go	printListing(a.ID, "", res.Listed, nil)	_ = res.Listed	go test ./cmd/cairn -run TestPublicOffCommandReportsTheTeamMembersItLists
 cmd/cairn/share_cmds.go	out["listed"], _ = listingJSON(res.Listed, nil)	out["listed"], _ = listingJSON(nil, nil)	go test ./cmd/cairn -run TestPublicOffCommandReportsTheTeamMembersItLists
+
+# Rotation chains (step 7a)
+internal/e2e/rotation.go	if b.Seq == pin.RotSeq && head != pin.RotHead {	if false {	go test ./internal/e2e
+internal/e2e/rotation.go	ok && prior != head {	ok && prior == "x" {	go test ./internal/e2e
+internal/e2e/rotation.go	res.Seq > 0 && b.Seq != res.Seq+1:	res.Seq > 0 && false:	go test ./internal/e2e
+internal/e2e/rotation.go	case !ok || oldFP != res.FP:	case false:	go test ./internal/e2e
+internal/e2e/rotation.go	if b.User != user {	if false {	go test ./internal/e2e
+internal/e2e/rotation.go	case b.Seq < 1:	case false:	go test ./internal/e2e
+internal/e2e/rotation.go	|| leads(user, toFP, fromFP)	|| false	go test ./internal/e2e
+internal/server/web/e2e.mjs	if (b.user !== user) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (b.seq === pin.rotSeq && head !== pin.rotHead) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (res.seq > 0 && b.seq !== res.seq + 1) {	if (res.seq > 0 && false) {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (!fromHere) throw new ChainError(	if (false) throw new ChainError(	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	|| (await leads(user, toFp, fromFp))	|| false	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (!(await linked(b.owner, anchor, b.ownerFp))) {	if (!linked(b.owner, anchor, b.ownerFp)) {	node --test internal/server/web/e2e_test.mjs
+internal/e2e/rotation.go	pin.RotSeq > 0 && !ok {	false && !ok {	go test ./internal/e2e
+internal/e2e/rotation.go	head != pin.RotHead	head != pin.RotHead && pin.RotHead != ""	go test ./internal/e2e
+internal/server/web/e2e.mjs	heads.get(b.seq) !== head)	heads.get(b.seq) === "x")	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (b.seq < 1) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (!started && !fromHere) continue;	if (false) continue;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	await linked(b.owner, listed.fp	linked(b.owner, listed.fp	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (pin.rotSeq > 0 && !heads.has(pin.rotSeq)) {	if (false) {	node --test internal/server/web/e2e_test.mjs
