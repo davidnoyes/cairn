@@ -393,10 +393,12 @@ allowlist, which milestone 3 fixed:
 - `cairn.users()` reads `GET /api/users`.
 - `cairn.artifact()` reads `GET /api/artifacts/{id}`.
 
-Under the token both get `404`. Before the worker serves an artifact with a
-token, move them onto the allowlist's routes, or change the allowlist in
-`e2e-api.md` first. `files.download` and `<img>` file URLs send no
-`Authorization` header, so they rely on the worker adding the token.
+Under the token both get `404`. The worker therefore answers both itself
+from the handshake's `context`, and the allowlist stays as it is. See
+[The service worker](e2e-api.md#the-service-worker).
+
+`files.download` and `<img>` file URLs send no `Authorization` header, so
+they rely on the worker adding the token.
 
 Security regressions added: everything in the hostile-artifact list (H1, H3,
 H6); `frame-ancestors 'none'` on app pages (H1); worker update headers (M4);

@@ -1059,3 +1059,241 @@ writes to it refuses until the person acknowledges the handover with
 
 `cairn rotate-keys` asks for the password, because it needs a session; every
 API key stops working when it finishes.
+
+## Encrypted content and serving
+
+Milestone 4. A version's files reach the server already encrypted, and each
+artifact renders on its own content origin, decrypted by a service worker
+that the app-origin shell hands the keys to. The database and stored files
+stay as they are until milestone 5, and so do artifact and version names,
+descriptions, and changelogs, which milestone 5 encrypts as `meta` records.
+
+### Content domain
+
+| Flag | Environment | Meaning |
+| --- | --- | --- |
+| `--content-domain` | `CAIRN_CONTENT_DOMAIN` | The domain under which each artifact gets its own host, `<artifact ID>.<content domain>`. The scheme and port are the public URL's. |
+
+When the public URL's host is `localhost`, `127.0.0.1`, or `[::1]`, the flag
+defaults to `localhost`, so artifacts load from
+`http://<artifact ID>.localhost:<port>`. Otherwise the server refuses to start
+without it.
+
+The server also refuses to start when the content domain:
+
+- is an IP address;
+- equals the public URL's host, or either one is a subdomain of the other;
+- shares a registrable domain with the public URL's host, by the Public Suffix
+  List.
+
+`localhost` passes the last check, because `localhost` has no registrable
+domain, so each `<artifact ID>.localhost` is a site of its own.
+
+A request whose `Host` is a single UUID label followed by the content domain,
+and the public URL's port if it has one, goes to the content origin's routes.
+Every other request goes to the app's routes, as before.
+
+### Content-origin routes
+
+| Path | Serves |
+| --- | --- |
+| `/_cairn/boot` | The boot page, which registers the worker and runs the handshake |
+| `/_cairn/sw.js` | The service worker |
+| `/_cairn/frame.js` | The script the worker adds to every HTML page |
+| `/_cairn/*` | The other static assets those three load, such as `e2e.mjs`, `cairn.js`, and Mermaid |
+| `/api/...` | The content-origin token's allowlist, for this host's artifact only |
+
+- On a content host, an `/api/` route outside the allowlist answers `404`,
+  whatever credentials the request carries, and so does an allowlisted route
+  whose `{id}` does not resolve to the host's artifact.
+- Any other `GET` that asks for HTML gets the boot page, which takes over
+  once the worker runs. Anything else gets `404`.
+- Every response sends `X-Content-Type-Options: nosniff`, and every HTML
+  response sends
+  `Content-Security-Policy: frame-ancestors <app origin>`.
+- `/_cairn/sw.js` sends `Cache-Control: no-cache` and
+  `Service-Worker-Allowed: /`.
+
+Session cookies are host-only on the app origin, so no request to a content
+host carries one.
+
+### Content-origin tokens
+
+`POST /api/artifacts/{id}/content-token` needs a session, not an API key, and
+read access to the artifact. It answers `{"token", "expiresAt"}`: a sign-in JWT
+whose `art` claim names the artifact, valid for 10 minutes. A caller whose only
+access is a public link also sends `X-Cairn-Link-Token`, and gets a token with
+link-scope access and nothing more. The shell asks for a new token a minute
+before the old one expires and passes it to the worker.
+
+An anonymous visitor gets no token. The worker sends the link token alone.
+
+### Pushing a version
+
+`POST /api/artifacts/{id}/versions` takes `multipart/form-data`:
+
+- `version`, a JSON part:
+  `{"id", "epoch", "manifestHash", "name", "changelog"}`. `id` is a UUID the
+  client chose, because the manifest and every blob's context name it. The
+  server refuses an `id` that is not a lowercase UUID, or that any version
+  already uses, with `409`. `epoch` must be the artifact's current epoch,
+  or the server refuses the push with `409`.
+  `manifestHash` is `hex(SHA-256)` of the manifest envelope's body.
+- `manifest`, the version's signed manifest, sealed as a blob with kind
+  `manifest`.
+- One `blob` part per file, whose filename is the blob ID: 32 lowercase `hex`
+  characters, chosen at random by the client.
+
+The server cannot read any of it, so it checks only the shape:
+
+- the caller may push;
+- every blob ID is well formed and appears once;
+- every blob and the manifest start with the blob header and are long
+  enough to hold one tagged chunk;
+- the total size is within `--max-upload-mb`.
+
+It stores the parts under a fresh content directory, as `manifest` and
+`blobs/<blob ID>`, and records `epoch`, `manifestHash`, and `pushedBy`.
+
+`PUT /api/artifacts/{id}/versions/{vid}` replaces a version's content with
+the same parts. The `id` in `version` must equal `{vid}`, and the
+replacement swaps content directories as before and deletes the vouch.
+
+A request that carries the old `file` zip part is refused with `400`, and
+a message telling the person to update the `cairn` tool.
+
+### Reading a version
+
+| Method and path | Returns |
+| --- | --- |
+| `GET /api/artifacts/{id}/versions/{vid}/manifest` | The manifest blob |
+| `GET /api/artifacts/{id}/versions/{vid}/blobs/{blob}` | One file's blob |
+
+Both send `application/octet-stream` and `Cache-Control: no-store`, and both
+join the content-origin token's allowlist. `GET .../versions/{vid}` adds
+`epoch` and `manifestHash` to what it returns.
+
+A vouch's `manifest` must now equal the version's `manifestHash`.
+
+A version is trusted when either of these holds:
+
+- Its manifest is signed by someone the latest membership record lists as
+  owner or editor, under the key listed for them or one a rotation chain links
+  to it.
+- The current owner vouched for its `manifestHash`.
+
+Otherwise the shell does not render it, and says that the person who pushed
+it is no longer an editor and the owner has not reviewed it.
+
+### The handshake
+
+The shell runs on the app origin at `/shared/{id}` and `/shared/{id}/{vid}`.
+It verifies the membership chain and the version as the command-line client
+does, and gets `AK` for the version's epoch:
+
+- from the caller's wrap, when they are signed in and listed;
+- from the link's `#k`, for a public link. The shell then removes the
+  fragment from the address bar with `history.replaceState`.
+
+It frames `<content origin>/_cairn/boot`, sandboxed as the
+[trust model](e2e-trust-model.md#artifact-isolation) describes. Every message
+is an object with a `cairn` field naming its type:
+
+| From | To | Message |
+| --- | --- | --- |
+| Boot page | Shell | `{"cairn": "ready", "version", "path"}` |
+| Shell | Boot page | `{"cairn": "keys", "artifact", "version", "epoch", "ak", "signer", "manifestHash", "token", "tokenExpires", "linkToken", "context", "path"}` |
+| Shell | Frame | `{"cairn": "token", "token", "tokenExpires"}` |
+| Frame | Shell | `{"cairn": "need-keys", "version"}` |
+| Frame | Shell | `{"cairn": "navigate", "href"}` |
+
+- The shell sends to the content origin's exact origin, never `*`, and acts
+  on a message only when its `source` is the frame's window and its `origin`
+  is the content origin.
+- The boot page sends to the app origin, which the server writes into the
+  page, and acts only on messages from `parent` with that origin.
+- `ready` and `need-keys` name a version. The shell answers only for a
+  version of the same artifact, and verifies that version first.
+- In `keys`, `ak` and `linkToken` are `b64`, and `token`, `tokenExpires`, and
+  `linkToken` may be `null`. `signer` is `{"user", "ed25519"}`, the key the
+  manifest must verify under, or `null` when the version is trusted through a
+  vouch. `context` is
+  `{"artifact": {"id", "name", "description"}, "users": [{"id", "name", "email"}]}`,
+  where `users` lists the latest record's owner and members, or is empty for
+  an anonymous visitor.
+
+The boot page passes `keys` to the worker, waits for it to confirm, then
+replaces its own location with `/<version><path>`.
+
+### The service worker
+
+The worker keeps every `keys` message in memory, by version, and writes
+nothing to Cache Storage, IndexedDB, or any other storage. It opens a
+version before serving any of it:
+
+1. It fetches the manifest blob and opens it with `AK`.
+2. It checks that `manifestHash` is the hash of the envelope's body.
+3. When `signer` is set, it checks that the envelope's `signer` is that user
+   and its signature verifies under that key.
+4. It checks that the body's `artifact`, `version`, and `epoch` match.
+
+Any failure shows an error page, and nothing from the version is served.
+
+For a request to `/<version>/<path>`, the worker:
+
+- Looks the path up in the manifest. A navigation to a path with no file
+  extension that the manifest does not hold gets `index.html`, as the SPA
+  fallback does today. Any other missing path gets `404`.
+- Fetches the blob, checks its SHA-256 against the manifest, opens it with
+  the context `content`, the version, and the path, and checks its size.
+- Answers with a media type taken from the extension,
+  `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, and on HTML,
+  `Content-Security-Policy: frame-ancestors <app origin>`. It inserts
+  `<script src="/_cairn/frame.js"></script>` at the start of every HTML
+  document.
+
+For a request to `/api/`, the worker adds `Authorization: Bearer <token>`
+when it has a token, and `X-Cairn-Link-Token` when it has a link token. It
+answers two reads itself, from `context`, so they never reach the server:
+`GET /api/artifacts/{id}` and `GET /api/users`. That keeps `cairn.artifact()`
+and `cairn.users()` working without widening the allowlist, and limits the
+users an artifact can list to the people who can open it.
+
+It never intercepts `/_cairn/`.
+
+When the browser has stopped the worker, it has no keys. For a navigation it
+answers with the boot page, which runs the handshake again. For any other
+request it asks the page, through `frame.js`, to send `need-keys`, and waits
+up to 10 seconds.
+
+### Navigation and full screen
+
+`frame.js` opens external links in a new tab, and asks the shell to navigate
+for a link to another Cairn page, under the rules in the
+[trust model](e2e-trust-model.md#serving-a-private-artifact). It also loads
+Mermaid when the page has a diagram.
+
+Full screen is `/full/{id}` and `/full/{id}/{vid}`: the shell with its chrome
+hidden. There, a `navigate` to `/shared/<uuid>/<uuid>` opens
+`/full/<uuid>/<uuid>`.
+
+### App pages in milestone 4
+
+- The shell page's Content Security Policy adds
+  `frame-src <scheme>://*.<content domain>[:<port>]`. The full screen page
+  adds it too, and no other page does.
+- `/artifacts/{id}` and every path under it redirect to the same path under
+  `/shared/`, so existing links keep working. The server no longer serves an
+  artifact's files from the app origin.
+
+### Commands in milestone 4
+
+`cairn push` checks the tree as the server used to: `index.html` at the root,
+no symlinks, every name a valid path, and the total within the server's
+limit. It then:
+
+1. Chooses the version ID and the blob IDs.
+2. Seals each file under the current epoch's `AK`.
+3. Signs the manifest, then seals it under the same key.
+4. Uploads the lot.
+`cairn open` prints the `/shared/` address.
