@@ -55,11 +55,18 @@ type contentWorld struct {
 func newContentWorld(t *testing.T) *contentWorld {
 	t.Helper()
 	s, ts := testServer(t)
-	w := &contentWorld{s: s, base: ts.URL}
-	w.owner = seedKeyedAccount(t, s, ts.URL, "owner@example.com")
-	w.editor = seedKeyedAccount(t, s, ts.URL, "editor@example.com")
-	w.viewer = seedKeyedAccount(t, s, ts.URL, "viewer@example.com")
-	w.outside = seedKeyedAccount(t, s, ts.URL, "outside@example.com")
+	return buildContentWorld(t, s, ts.URL)
+}
+
+// buildContentWorld seeds the world's accounts and artifact on a running
+// server at base.
+func buildContentWorld(t *testing.T, s *Server, base string) *contentWorld {
+	t.Helper()
+	w := &contentWorld{s: s, base: base}
+	w.owner = seedKeyedAccount(t, s, base, "owner@example.com")
+	w.editor = seedKeyedAccount(t, s, base, "editor@example.com")
+	w.viewer = seedKeyedAccount(t, s, base, "viewer@example.com")
+	w.outside = seedKeyedAccount(t, s, base, "outside@example.com")
 	w.art = newArtifact(t, w.owner, "notes")
 	w.art.share("editor", w.editor)
 	w.art.share("viewer", w.viewer)
@@ -197,6 +204,21 @@ func TestContentTokenRouteTable(t *testing.T) {
 	wantCode(t, tok, "POST", "/api/auth/logout", http.StatusNotFound)
 }
 
+// Every key of contentTokenRoutes is a pattern the mux registers; a renamed
+// route would otherwise leave a dead entry that allows nothing.
+func TestContentTokenRoutesAreRegisteredPatterns(t *testing.T) {
+	w := newContentWorld(t)
+	registered := map[string]bool{}
+	for _, p := range w.s.patterns {
+		registered[p] = true
+	}
+	for pattern := range contentTokenRoutes {
+		if !registered[pattern] {
+			t.Errorf("contentTokenRoutes lists %q, which is not a registered pattern", pattern)
+		}
+	}
+}
+
 // Every allowlisted artifact route, given another artifact, answers 404 and
 // changes nothing there; that includes reaching it by a resource value.
 func TestContentTokenIsScopedToOneArtifact(t *testing.T) {
@@ -209,6 +231,10 @@ func TestContentTokenIsScopedToOneArtifact(t *testing.T) {
 	}
 	w.owner.mustDo("POST", "/api/artifacts/"+b.id+"/resources",
 		map[string]string{"type": "claude-session", "value": "b-session"}, nil, http.StatusCreated)
+	// The database is created lazily, so seed it, or db/download is a 404
+	// whenever the loop reaches it first.
+	w.owner.mustDo("POST", w.vbase+"/db/batch",
+		map[string]any{"statements": []map[string]any{{"sql": "CREATE TABLE IF NOT EXISTS t (x)"}}}, nil, http.StatusOK)
 	tok := w.token(t, w.owner.id)
 	for pattern := range contentTokenRoutes {
 		if !strings.Contains(pattern, " /api/artifacts/{id}") {

@@ -80,18 +80,29 @@ pass "anonymous lookup of a private artifact is not found"
 pass "CLI resolves resource value"
 
 echo "== serving"
-LOC=$(curl -s -o /dev/null -w '%{redirect_url}' "${AUTH[@]}" "$HOST/artifacts/$AID")
-[[ "$LOC" == "$HOST/artifacts/$AID/$VID/" || "$LOC" == "/artifacts/$AID/$VID/" ]] || fail "latest redirect ($LOC)"
-pass "artifact redirects to latest version"
+# The app origin serves no artifact file: the old paths go to the shared page.
+for from in "$AID" "$AID/$VID" "$AID/$VID/" "$AID/$VID/sub/page.html"; do
+  LOC=$(curl -s -o /dev/null -w '%{redirect_url}' "${AUTH[@]}" "$HOST/artifacts/$from")
+  [[ "$LOC" == "$HOST/shared/$from" || "$LOC" == "/shared/$from" ]] || fail "/artifacts/$from redirect ($LOC)"
+done
+pass "/artifacts/... redirects to /shared/..."
 # grep without -q reads the whole body. With -q it exits at the first match,
 # curl then fails writing to the closed pipe (exit 23), and pipefail reports
 # the pipeline as failed, which is how "cairn.js injected" flaked.
-curl -sf "${AUTH[@]}" "$HOST/artifacts/$AID/$VID/" | grep "Guestbook" >/dev/null || fail "index served"
-pass "index.html served"
-curl -sf "${AUTH[@]}" "$HOST/artifacts/$AID/$VID/cairn.js" | grep "cairn.js" >/dev/null || fail "cairn.js injected"
-pass "cairn.js available inside version"
 curl -sf "${AUTH[@]}" "$HOST/shared/$AID" | grep "iframe" >/dev/null || fail "shared shell"
 pass "shared shell renders"
+# The artifact's content origin is <id>.localhost on the public URL's port.
+CONTENT_HOST="$AID.localhost:$PORT"
+curl -s -D "$WORK/boot.headers" -o "$WORK/boot.html" --resolve "$CONTENT_HOST:127.0.0.1" \
+  "http://$CONTENT_HOST/_cairn/boot" || fail "content origin did not answer"
+grep -i "^content-security-policy: frame-ancestors $HOST" "$WORK/boot.headers" >/dev/null || fail "boot page frame-ancestors: $(cat "$WORK/boot.headers")"
+grep "cairn-app-origin" "$WORK/boot.html" >/dev/null || fail "boot page: $(cat "$WORK/boot.html")"
+pass "the content origin serves the boot page, framed only by the app"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' --resolve "$CONTENT_HOST:127.0.0.1" "${AUTH[@]}" "http://$CONTENT_HOST/api/keys")
+[[ "$STATUS" == "404" ]] || fail "content origin /api/keys ($STATUS)"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' --resolve "$CONTENT_HOST:127.0.0.1" "${AUTH[@]}" "http://$CONTENT_HOST/api/me")
+[[ "$STATUS" == "401" ]] || fail "content origin /api/me with an API key ($STATUS)"
+pass "the content origin refuses routes outside the allowlist, and API keys"
 
 echo "== shared database"
 "$BIN" db query --artifact guestbook \
@@ -150,7 +161,7 @@ pass "per-version databases isolated; old data readable"
 pass "re-upload (overwrite latest)"
 
 echo "== private gating"
-STATUS=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: text/html' "$HOST/artifacts/$AID/$VID/")
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: text/html' "$HOST/shared/$AID/$VID")
 [[ "$STATUS" == "302" ]] || fail "private page not gated ($STATUS)"
 pass "private artifact redirects to login"
 
@@ -186,7 +197,7 @@ BEARER2=$(python3 -c "import json;print('_'.join(json.load(open('$CONFIG2'))['ap
 AUTH2=(-H "Authorization: Bearer $BEARER2")
 "$BIN" push "$ROOT/examples/guestbook" --artifact notes --name v1 --json > "$WORK/notes-push.json"
 NVID=$(python3 -c "import json;print(json.load(open('$WORK/notes-push.json'))['version']['id'])")
-STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH2[@]}" "$HOST/artifacts/$NID/$NVID/")
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH2[@]}" "$HOST/shared/$NID/$NVID")
 [[ "$STATUS" == "404" ]] || fail "a stranger reads the artifact before the share ($STATUS)"
 pass "the second account cannot read the artifact before the share"
 
@@ -199,7 +210,7 @@ pass "cairn share adds a viewer and pins their key unverified"
 "$BIN" members notes | grep -E "viewer +share@e2e.test +verified" >/dev/null || fail "members after pin --verified"
 pass "cairn pin --verified shows in cairn members"
 
-curl -sf "${AUTH2[@]}" "$HOST/artifacts/$NID/$NVID/" | grep "Guestbook" >/dev/null || fail "the member cannot read the artifact"
+curl -sf "${AUTH2[@]}" "$HOST/shared/$NID/$NVID" | grep "iframe" >/dev/null || fail "the member cannot read the artifact"
 curl -sf "${AUTH2[@]}" "$HOST/api/artifacts/$NID/keys" \
   | python3 -c "import json,sys;k=json.load(sys.stdin);assert [w['epoch'] for w in k['wraps']]==[1] and k['estate']==[], k" \
   || fail "the member holds no wrap of epoch 1"
@@ -310,7 +321,7 @@ team_batch() {
 }
 
 "$BIN" team teamdoc viewer | grep "team set to viewer for teamdoc" >/dev/null || fail "cairn team viewer"
-STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH3[@]}" "$HOST/artifacts/$TID/$TVID/")
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH3[@]}" "$HOST/shared/$TID/$TVID")
 [[ "$STATUS" == "404" ]] || fail "a team member reads before an approval ($STATUS)"
 pass "a team share gives a new member nothing until they are approved"
 
@@ -325,7 +336,7 @@ pass "cairn approve lists the new member, to the owner and to an editor"
 CAIRN_CONFIG="$CONFIG2" "$BIN" approve teamdoc team@e2e.test > "$WORK/approve.txt" || fail "approve: $(cat "$WORK/approve.txt")"
 grep -q "approved for teamdoc" "$WORK/approve.txt" || fail "approve output: $(cat "$WORK/approve.txt")"
 grep -q "they can read it now" "$WORK/approve.txt" || fail "approve output says nothing of reading: $(cat "$WORK/approve.txt")"
-curl -sf "${AUTH3[@]}" "$HOST/artifacts/$TID/$TVID/" | grep "Guestbook" >/dev/null || fail "the approved member cannot read"
+curl -sf "${AUTH3[@]}" "$HOST/shared/$TID/$TVID" | grep "iframe" >/dev/null || fail "the approved member cannot read"
 curl -sf "${AUTH3[@]}" "$HOST/api/artifacts/$TID/keys" \
   | python3 -c "import json,sys;k=json.load(sys.stdin);assert [w['epoch'] for w in k['wraps']]==[1], k" \
   || fail "the approved member holds no wrap of epoch 1"
@@ -397,8 +408,8 @@ pass "cairn public on prints a link whose fragment holds the key, the epoch, and
 [[ "$(pub_status GET "/api/artifacts/$PID/membership" "${LINKH[@]}")" == "200" ]] || fail "the right token does not read the membership"
 [[ "$(pub_status GET "/api/artifacts/$PID/membership")" == "404" ]] || fail "no token reads the membership"
 [[ "$(pub_status GET "/api/artifacts/$PID/membership" "${WRONGH[@]}")" == "404" ]] || fail "a wrong token reads the membership"
-curl -sf "${LINKH[@]}" "$HOST/artifacts/$PID/$PVID/" | grep "Guestbook" >/dev/null || fail "the right token does not read the content"
-[[ "$(pub_status GET "/artifacts/$PID/$PVID/" "${WRONGH[@]}")" != "200" ]] || fail "a wrong token reads the content"
+curl -sf "${LINKH[@]}" "$HOST/shared/$PID/$PVID" | grep "iframe" >/dev/null || fail "the right token does not open the shared page"
+[[ "$(pub_status GET "/shared/$PID/$PVID" "${WRONGH[@]}")" != "200" ]] || fail "a wrong token opens the shared page"
 curl -sf "${LINKH[@]}" "$HOST/api/artifacts/$PID/membership" \
   | jq -e '.records | length == 2' >/dev/null || fail "the link's membership holds the public record"
 pass "an anonymous caller reads with the right token, and gets 404 with none or a wrong one"

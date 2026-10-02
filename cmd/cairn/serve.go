@@ -31,6 +31,7 @@ func runServe(args []string) error {
 	addr := fs.String("addr", envOr("CAIRN_ADDR", ":8787"), "listen address")
 	dataDir := fs.String("data-dir", envOr("CAIRN_DATA_DIR", "data"), "data directory")
 	publicURL := fs.String("public-url", envOr("CAIRN_PUBLIC_URL", ""), "external public URL (https enables Secure cookies); every emailed link is built from it")
+	contentDomain := fs.String("content-domain", envOr("CAIRN_CONTENT_DOMAIN", ""), "domain each artifact is served under, as <artifact ID>.<domain>; defaults to localhost for a localhost public URL, otherwise required, and must not share a registrable domain with it")
 	tokenTTL := fs.Duration("token-ttl", envDurationOr("CAIRN_TOKEN_TTL", 7*24*time.Hour), "JWT lifetime")
 	adminEmail := fs.String("admin-email", envOr("CAIRN_ADMIN_EMAIL", ""), "address that may always sign up, and becomes an administrator when it does")
 	smtpURL := fs.String("smtp-url", envOr("CAIRN_SMTP_URL", ""), "smtp://[user:pass@]host:port, or log:// to write mail to the server log (required)")
@@ -70,6 +71,7 @@ func runServe(args []string) error {
 		Addr:          *addr,
 		DataDir:       *dataDir,
 		PublicURL:     *publicURL,
+		ContentDomain: *contentDomain,
 		TokenTTL:      *tokenTTL,
 		SignupDomains: []string(signupDomains),
 		AdminEmail:    *adminEmail,

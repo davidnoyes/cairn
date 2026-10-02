@@ -82,6 +82,9 @@ type Claims struct {
 	// Artifact, when non-empty, makes the JWT a content-origin token scoped
 	// to that artifact. Login never sets it.
 	Artifact string `json:"art,omitempty"`
+	// Link, with Artifact, limits the token to what a public link gives: the
+	// holder's own access to the artifact counts for nothing.
+	Link bool `json:"lnk,omitempty"`
 }
 
 var b64 = base64.RawURLEncoding

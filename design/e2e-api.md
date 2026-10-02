@@ -1072,7 +1072,7 @@ descriptions, and changelogs, which milestone 5 encrypts as `meta` records.
 
 | Flag | Environment | Meaning |
 | --- | --- | --- |
-| `--content-domain` | `CAIRN_CONTENT_DOMAIN` | The domain under which each artifact gets its own host, `<artifact ID>.<content domain>`. The scheme and port are the public URL's. |
+| `--content-domain` | `CAIRN_CONTENT_DOMAIN` | The domain under which each artifact gets its own host, `<artifact ID>.<content domain>`. The scheme and port are the public URL's, or the listen address's port when there is no public URL, left out when it is the scheme's default. |
 
 When the public URL's host is `localhost`, `127.0.0.1`, or `[::1]`, the flag
 defaults to `localhost`, so artifacts load from
@@ -1081,7 +1081,8 @@ without it.
 
 The server also refuses to start when the content domain:
 
-- is an IP address;
+- is an IP address, or has a label over 63 characters or is over 253
+  characters in all;
 - equals the public URL's host, or either one is a subdomain of the other;
 - shares a registrable domain with the public URL's host, by the Public Suffix
   List.
@@ -1089,9 +1090,17 @@ The server also refuses to start when the content domain:
 `localhost` passes the last check, because `localhost` has no registrable
 domain, so each `<artifact ID>.localhost` is a site of its own.
 
-A request whose `Host` is a single UUID label followed by the content domain,
-and the public URL's port if it has one, goes to the content origin's routes.
-Every other request goes to the app's routes, as before.
+It also refuses a public URL that is not `http` or `https` with a host.
+
+Routing compares the host name only: the server lowercases `Host` and drops
+any port, because a browser leaves out a default one. A host that is a single
+lowercase UUID label followed by the content domain goes to the content
+origin's routes. Any other host that is the content domain or under it, with
+or without a trailing dot, gets a plain `404` with `Cache-Control: no-store`
+and never reaches an app route. The exception is a content domain that is
+also the app's host, as with `localhost` beside a `localhost` public URL:
+that host itself still reaches the app. Every other request goes to the app's
+routes, as before.
 
 ### Content-origin routes
 
@@ -1109,8 +1118,9 @@ Every other request goes to the app's routes, as before.
 - On a content host, the server ignores the `Cookie` header. An
   `Authorization` header must carry a content-origin token whose `art` claim
   names the host's artifact, or the request gets `401`.
-- Any other `GET` that asks for HTML gets the boot page, which takes over
-  once the worker runs. Anything else gets `404`.
+- `GET` and `HEAD` of `/_cairn/boot`, and any other `GET` or `HEAD` that asks
+  for HTML, get the boot page, which takes over once the worker runs.
+  Anything else gets `404`.
 - Every response sends `X-Content-Type-Options: nosniff`, and every HTML
   response sends
   `Content-Security-Policy: frame-ancestors <app origin>`.

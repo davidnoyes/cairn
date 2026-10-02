@@ -8,7 +8,6 @@
 
 internal/server/middleware.go	|| strings.Contains(next, `\`) {	{	go test ./internal/server -run 'TestSafeNext|TestLoginNextRejectsBackslash'
 internal/mail/mail.go	if strings.ContainsAny(m.To, "\r\n") || strings.ContainsAny(m.Subject, "\r\n") {	if false && strings.ContainsAny(m.To, "\r\n") {	go test ./internal/mail -run TestSendRejectsHeaderInjection
-internal/server/serving.go	if _, err := os.Stat(filepath.Join(root, clean)); err != nil {	if true {	go test ./internal/server -run TestSqlJSPrecedence
 internal/mail/mail.go	func (l *Log) Send(_ context.Context, m Message) error {	func (l *Log) Send(_ context.Context, m Message) error { validate := func(Message) error { return nil }	go test ./internal/mail -run TestMailersRejectInvalidMessages
 internal/mail/mail.go	func (s *SMTP) Send(_ context.Context, m Message) error {	func (s *SMTP) Send(_ context.Context, m Message) error { validate := func(Message) error { return nil }	go test ./internal/mail -run TestMailersRejectInvalidMessages
 internal/e2e/keys.go	p.Memory < floorMemory	false	go test ./internal/e2e -run TestParamsCheckFloorMemory
@@ -646,13 +645,13 @@ internal/server/content_token.go	"GET /api/me":	"GET /api/users": true, "GET /ap
 internal/server/content_token.go	writeError(w, http.StatusNotFound, "not found")	writeError(w, http.StatusNotFound, "no route")	go test ./internal/server -run 'TestContentTokenRouteTable'
 internal/server/content_token.go	if st.Artifact.OwnerID != userID && st.Member == nil {	if st.Artifact.OwnerID != userID && st.Member == nil && false {	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
 internal/server/content_token.go	access.Check(req, access.ReadMembership) != access.Allow	access.Check(req, access.ReadMembership) != access.Allow && false	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
-internal/server/handlers_users.go	art := requestTokenArtifact(r); art != ""	art := requestTokenArtifact(r); art == "x"	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
-internal/server/sharing.go	c.Kind, c.TokenArtifactID = access.ContentToken, tokenArtifact	_ = tokenArtifact	go test ./internal/server -run 'TestContentTokenBackstops'
-internal/server/sharing.go	s.callerFor(u, key, tokenArtifact)	s.callerFor(u, key, tokenArtifact[:0])	go test ./internal/server -run 'TestContentTokenBackstops'
-internal/server/handlers_artifacts.go	requestAPIKey(r), requestTokenArtifact(r))	requestAPIKey(r), "")	go test ./internal/server -run 'TestContentTokenBackstops'
-internal/server/middleware.go	u, tokenArtifact, err := s.userFromJWT(cred)	u, tokenArtifact, err := s.userFromJWT(cred); tokenArtifact = ""	go test ./internal/server -run 'TestContentTokenBackstops'
-internal/server/middleware.go	if err == nil && tokenArtifact != "" {	if err == nil && tokenArtifact == "x" {	go test ./internal/server -run 'TestContentTokenBackstops'
-internal/server/middleware.go	r = withTokenArtifact(r, tokenArtifact)	_ = tokenArtifact	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
+internal/server/handlers_users.go	if scope := requestTokenScope(r); scope.Artifact != "" {	if scope := requestTokenScope(r); scope.Artifact == "x" {	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
+internal/server/sharing.go	c.Kind, c.TokenArtifactID, c.LinkOnly = access.ContentToken, scope.Artifact, scope.LinkOnly	_ = scope	go test ./internal/server -run 'TestContentTokenBackstops'
+internal/server/sharing.go	s.callerFor(u, key, scope)	s.callerFor(u, key, tokenScope{LinkOnly: scope.LinkOnly})	go test ./internal/server -run 'TestContentTokenBackstops'
+internal/server/handlers_artifacts.go	requestAPIKey(r), requestTokenScope(r))	requestAPIKey(r), tokenScope{})	go test ./internal/server -run 'TestContentTokenBackstops'
+internal/server/middleware.go	u, scope, err := s.userFromJWT(cred)	u, scope, err := s.userFromJWT(cred); scope = tokenScope{}	go test ./internal/server -run 'TestContentTokenBackstops'
+internal/server/middleware.go	if err == nil && scope.Artifact != "" {	if err == nil && scope.Artifact == "x" {	go test ./internal/server -run 'TestContentTokenBackstops'
+internal/server/middleware.go	r = withTokenScope(r, scope)	_ = scope	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
 internal/server/server.go	s.contentTokenGate(s.mux)	s.mux	go test ./internal/server -run 'TestContentTokenRouteTable'
 internal/auth/auth.go	`json:"art,omitempty"`	`json:"art"`	go test ./internal/auth -run 'TestJWTArtifactClaim'
 internal/auth/auth.go	`json:"art,omitempty"`	`json:"artifact,omitempty"`	go test ./internal/auth -run 'TestJWTArtifactClaim'
@@ -883,3 +882,52 @@ internal/server/web/sw.js	|| u.protocol === 'https:'	|| false	node --test intern
 internal/server/web/sw.js	u.protocol === 'http:' || u.protocol === 'https:' ? u.origin	true ? u.origin	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	? u.origin : "'none'"	? u.origin : u.origin	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	return "'none'";	return 'null';	node --test internal/server/web/sw_test.mjs
+# m4 content origin: the startup refusals, host routing, the content-origin
+# routes and their auth, the token mint, link scope, and the app pages.
+internal/server/contentdomain.go	if _, err := netip.ParseAddr(strings.Trim(cd, "[]")); err == nil {	if _, err := netip.ParseAddr(strings.Trim(cd, "[]")); false && err == nil {	go test ./internal/server -run 'TestResolveContentDomain|TestNewRefusesABadContentDomain'
+internal/server/contentdomain.go	if !validDomainName(cd) {	if false && !validDomainName(cd) {	go test ./internal/server -run 'TestResolveContentDomain|TestNewRefusesABadContentDomain'
+internal/server/contentdomain.go	if !isLocalHost(host) {	if false && !isLocalHost(host) {	go test ./internal/server -run 'TestResolveContentDomain|TestNewRefusesABadContentDomain'
+internal/server/contentdomain.go	if cd == host || strings	if false || strings	go test ./internal/server -run 'TestResolveContentDomain|TestNewRefusesABadContentDomain'
+internal/server/contentdomain.go	strings.HasSuffix(cd, "."+host) ||	false ||	go test ./internal/server -run 'TestResolveContentDomain|TestNewRefusesABadContentDomain'
+internal/server/contentdomain.go	|| strings.HasSuffix(host, "."+cd) {	{	go test ./internal/server -run 'TestResolveContentDomain|TestNewRefusesABadContentDomain'
+internal/server/contentdomain.go	if aerr == nil && cerr == nil && a == c {	if aerr != nil && cerr == nil && a == c {	go test ./internal/server -run 'TestResolveContentDomain|TestNewRefusesABadContentDomain'
+internal/server/contentdomain.go	(u.Scheme != "http" && u.Scheme != "https") ||	false ||	go test ./internal/server -run 'TestResolveContentDomain|TestNewRefusesABadContentDomain'
+internal/server/contentdomain.go	|| u.Hostname() == "" {	|| false {	go test ./internal/server -run 'TestResolveContentDomain|TestNewRefusesABadContentDomain'
+internal/server/contentdomain.go	if len(cd) > 253 {	if len(cd) > 2530 {	go test ./internal/server -run 'TestResolveContentDomain|TestNewRefusesABadContentDomain'
+internal/server/contentdomain.go	if len(label) > 63 {	if len(label) > 630 {	go test ./internal/server -run 'TestResolveContentDomain|TestNewRefusesABadContentDomain'
+internal/server/server.go	contentDomain, err := resolveContentDomain(cfg.PublicURL, cfg.ContentDomain)	contentDomain, err := cfg.ContentDomain, error(nil)	go test ./internal/server -run TestNewRefusesABadContentDomain
+internal/server/server.go	return s.routeByHost(app)	return app	go test ./internal/server -run TestContentHostMatching
+internal/server/contentorigin.go	strings.CutSuffix(hostName(host), "."+s.contentDomain)	strings.CutSuffix(host, "."+s.contentDomain)	go test ./internal/server -run 'TestContentHostMatching|TestContentHostRoutingByConfig'
+internal/server/contentorigin.go	if !ok || len(label) != 36 {	if !ok && len(label) != 36 {	go test ./internal/server -run TestContentHostMatching
+internal/server/contentorigin.go	if _, err := uuid.Parse(label); err != nil {	if _, err := uuid.Parse(label); err != nil && false {	go test ./internal/server -run TestContentHostMatching
+internal/server/contentorigin.go	if u.Scheme == "https" && port == "443" || u.Scheme == "http" && port == "80" {	if false {	go test ./internal/server -run TestContentHostRoutingByConfig
+internal/server/contentorigin.go	err == nil && p != "80" {	err == nil && p != "80" && false {	go test ./internal/server -run TestContentHostRoutingByConfig
+internal/server/contentorigin.go	err == nil && p != "80" {	err == nil && p != "" {	go test ./internal/server -run TestContentHostRoutingByConfig
+internal/server/contentorigin.go	if s.inContentDomain(r.Host) {	if false && s.inContentDomain(r.Host) {	go test ./internal/server -run 'TestContentHostMatching|TestContentHostRoutingByConfig'
+internal/server/contentorigin.go	return name != s.appHost && !(s.appHost == "" && isLocalHost(name))	return true	go test ./internal/server -run 'TestContentHostMatching|TestContentHostRoutingByConfig'
+internal/server/contentorigin.go	name := strings.TrimSuffix(hostName(host), ".")	name := hostName(host)	go test ./internal/server -run 'TestContentHostMatching|TestContentHostRoutingByConfig'
+internal/server/contentorigin.go	if h, _, err := net.SplitHostPort(host); err == nil {	if h, _, err := net.SplitHostPort(host); err == nil && false {	go test ./internal/server -run 'TestContentHostMatching|TestContentHostRoutingByConfig'
+internal/server/contentorigin.go	if _, pattern := s.mux.Handler(r); !contentTokenRoutes[pattern] {	if _, pattern := s.mux.Handler(r); false && !contentTokenRoutes[pattern] {	go test ./internal/server -run TestContentOriginAPIAllowlist
+internal/server/sharing.go	ok && r.PathValue("id") != host {	ok && false && r.PathValue("id") != host {	go test ./internal/server -run TestContentOriginAPIAllowlist
+internal/server/contentorigin.go	r.Header.Del("Cookie")	r.Header.Del("Cookie-Dropped")	go test ./internal/server -run TestContentOriginAuthorization
+internal/server/contentorigin.go	return err == nil && claims.Artifact == artifactID	return err == nil && claims.Artifact != ""	go test ./internal/server -run TestContentOriginAuthorization
+internal/server/contentorigin.go	h != "" && !s.isContentTokenFor(h, artifactID) {	h != "" && false && !s.isContentTokenFor(h, artifactID) {	go test ./internal/server -run TestContentOriginAuthorization
+internal/server/middleware.go	u.Disabled || u.TokenVersion != claims.TokenVersion {	u.Disabled {	go test ./internal/server -run TestContentOriginTokenRevocation
+internal/server/middleware.go	u, err := s.store.UserByID(claims.UserID)	u, err := s.store.UserByID(claims.UserID); err = nil	go test ./internal/server -run TestContentOriginTokenRevocation
+internal/server/contentorigin.go	w.Header().Set("Content-Security-Policy", "frame-ancestors "+ancestors)	w.Header().Set("Content-Security-Policy", "frame-ancestors "+ancestors+" *")	go test ./internal/server -run TestContentOriginBootPage
+internal/server/contentorigin.go	w.Header().Set("X-Content-Type-Options", "nosniff")	w.Header().Set("X-Content-Type-Options", "sniff")	go test ./internal/server -run TestContentOriginBootPage
+internal/server/contentorigin.go	case read && (r.URL.Path == "/_cairn/boot" || acceptsHTML(r)):	case (r.URL.Path == "/_cairn/boot" || acceptsHTML(r)):	go test ./internal/server -run TestContentOriginBootPage
+internal/server/contentorigin.go	case read && (r.URL.Path == "/_cairn/boot" || acceptsHTML(r)):	case r.Method == http.MethodGet && (r.URL.Path == "/_cairn/boot" || acceptsHTML(r)):	go test ./internal/server -run TestContentOriginHead
+internal/server/contentorigin.go	sw.headers = map[string]string{"Service-Worker-Allowed": "/"}	sw.headers = map[string]string{"Service-Worker-Allowed": "/x"}	go test ./internal/server -run TestContentOriginAssets
+internal/server/routes.go	s.requireSession(s.artifactRoute(access.ReadContent, s.handleContentToken))	s.requireAuth(s.artifactRoute(access.ReadContent, s.handleContentToken))	go test ./internal/server -run TestMintContentTokenRefusals
+internal/server/routes.go	access.ReadContent, s.handleContentToken	access.Rename, s.handleContentToken	go test ./internal/server -run 'TestMintContentToken$'
+internal/server/content_token.go	const contentTokenTTL = 10 * time.Minute	const contentTokenTTL = 24 * time.Hour	go test ./internal/server -run 'TestMintContentToken$'
+internal/server/content_token.go	Artifact:     a.ID,	Artifact:     a.ID + "x",	go test ./internal/server -run 'TestMintContentToken$'
+internal/server/content_token.go	Link:         access.LevelOf(withoutLink) == access.LevelNone,	Link:         false,	go test ./internal/server -run TestMintContentTokenLinkScope
+internal/server/content_token.go	withoutLink.LinkToken = false	withoutLink.LinkToken = true	go test ./internal/server -run TestMintContentTokenLinkScope
+internal/server/middleware.go	LinkOnly: claims.Artifact != "" && claims.Link	LinkOnly: false	go test ./internal/server -run TestMintContentTokenLinkScope
+internal/access/access.go	m.owner, m.member, m.team = false, false, false	m.owner, m.member = false, false	go test ./internal/access -run TestLinkOnlyContentToken
+internal/access/access.go	m.owner, m.member, m.team = false, false, false	m.owner, m.team = false, false	go test ./internal/access -run TestLinkOnlyContentToken
+internal/server/csp.go	"://*." + s.contentDomain + s.contentPort	"://*." + s.contentDomain	go test ./internal/server -run 'TestShellCSPFollowsPublicURL|TestContentHostRoutingByConfig'
+internal/server/routes.go	handle("GET /shared/{id}", s.withShellCSP(s.handleShared))	handle("GET /shared/{id}", s.handleShared)	go test ./internal/server -run TestSharedRoutesAndShellCSP
+internal/server/serving.go	http.Redirect(w, r, target, http.StatusFound)	http.Redirect(w, r, target, http.StatusMovedPermanently)	go test ./internal/server -run TestArtifactPagesRedirectToShared

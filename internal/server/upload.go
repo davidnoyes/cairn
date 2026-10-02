@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -244,13 +243,4 @@ func readerSize(r io.ReaderAt) (int64, error) {
 		}
 		return 0, errors.New("cannot determine upload size")
 	}
-}
-
-// serveFileFromVersion is defined in serving.go (M4); path helper shared here.
-func cleanRequestPath(p string) (string, bool) {
-	p = path.Clean("/" + p)
-	if strings.Contains(p, "..") {
-		return "", false
-	}
-	return strings.TrimPrefix(p, "/"), true
 }

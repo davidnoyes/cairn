@@ -16,6 +16,7 @@ func TestEmailedLinksUsePublicURLNotHost(t *testing.T) {
 	s, ts := newTestServer(t, func(c *Config) {
 		c.SignupDomains = []string{"example.com"}
 		c.PublicURL = "https://cairn.example"
+		c.ContentDomain = "localhost"
 	})
 	body, err := json.Marshal(map[string]any{
 		"email": "ada@example.com", "name": "Ada", "authKey": e2e.B64(testAuthKey("pw")), "bundle": testBundleWire(),
@@ -52,7 +53,7 @@ func TestEmailedLinksUsePublicURLNotHost(t *testing.T) {
 
 // TestResetLinkUsesPublicURLNotHost is the reset half of L3.
 func TestResetLinkUsesPublicURLNotHost(t *testing.T) {
-	s, ts := newTestServer(t, func(c *Config) { c.PublicURL = "https://cairn.example" })
+	s, ts := newTestServer(t, func(c *Config) { c.PublicURL, c.ContentDomain = "https://cairn.example", "localhost" })
 	seedAccount(t, s, "ada@example.com", "pw", false)
 	req, err := http.NewRequest("POST", ts.URL+"/api/auth/forgot", strings.NewReader(`{"email":"ada@example.com"}`))
 	if err != nil {

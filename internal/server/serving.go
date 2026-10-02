@@ -4,12 +4,9 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"html/template"
 	"net/http"
-	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,139 +14,17 @@ import (
 	"github.com/aloisdeniel/cairn/internal/store"
 )
 
-func artifactPageHeaders(w http.ResponseWriter) {
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	// Allow embedding only by our own shell frame.
-	w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
-}
-
-// handleArtifactRedirect sends /artifacts/{id} to the latest version's
-// canonical URL so every relative asset resolves inside one version. The {id}
-// may be a resource reference (e.g. a Claude session id); the redirect
-// canonicalizes it to the artifact id.
+// handleArtifactRedirect sends /artifacts/{id} and every path under it to the
+// same path under /shared/, so links from before milestone 4 keep working. The
+// app origin no longer serves an artifact's files: they render on the
+// artifact's content origin, inside the shell. The redirect names no artifact
+// data and checks no access; the shell page does.
 func (s *Server) handleArtifactRedirect(w http.ResponseWriter, r *http.Request) {
-	a := s.pageArtifact(w, r)
-	if a == nil {
-		return
+	target := "/shared" + strings.TrimPrefix(r.URL.EscapedPath(), "/artifacts")
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
 	}
-	v, err := s.store.LatestVersion(a.ID)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "this artifact has no versions yet", http.StatusNotFound)
-			return
-		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	http.Redirect(w, r, "/artifacts/"+a.ID+"/"+v.ID+"/", http.StatusFound)
-}
-
-// handleVersionPage serves the files of one version. The path shape is
-// /artifacts/{id}/{vid}/{path...} — a trailing-slash canonical base URL, so
-// relative routing inside the SPA needs no rewriting at all.
-func (s *Server) handleVersionPage(w http.ResponseWriter, r *http.Request) {
-	a := s.pageArtifact(w, r)
-	if a == nil {
-		return
-	}
-	v, err := s.store.VersionByID(a.ID, r.PathValue("vid"))
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	rel := r.PathValue("path")
-	artifactPageHeaders(w)
-	s.serveVersionFile(w, r, a, v, rel)
-}
-
-// handleVersionNoSlash canonicalizes /artifacts/{id}/{vid} (no trailing
-// slash) so relative asset paths resolve inside the version.
-func (s *Server) handleVersionNoSlash(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
-}
-
-func (s *Server) serveVersionFile(w http.ResponseWriter, r *http.Request, a *store.Artifact, v *store.Version, rel string) {
-	root := s.layout.ContentDir(a.ID, v.ContentDir)
-	clean, ok := cleanRequestPath(rel)
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	if clean == "" {
-		clean = "index.html"
-	}
-	// cairn.js is always available inside a version's URL space so artifacts
-	// can load it with a relative <script src="./cairn.js"> that also works
-	// when the directory is opened locally (drop the file next to index.html).
-	if clean == "cairn.js" {
-		if _, err := os.Stat(filepath.Join(root, "cairn.js")); err != nil {
-			s.serveCairnJS(w, r)
-			return
-		}
-	}
-	// mermaid.js is likewise always available so artifacts can render
-	// ```mermaid fences with a relative <script src="./mermaid.js">.
-	if clean == "mermaid.js" {
-		if _, err := os.Stat(filepath.Join(root, "mermaid.js")); err != nil {
-			s.serveMermaidJS(w, r)
-			return
-		}
-	}
-	// The vendored sql.js is likewise available next to cairn.js, which
-	// looks for it there before anywhere else.
-	if clean == "sql-wasm.js" || clean == "sql-wasm.wasm" {
-		if _, err := os.Stat(filepath.Join(root, clean)); err != nil {
-			s.serveSqlJS(w, r)
-			return
-		}
-	}
-	target := filepath.Join(root, filepath.FromSlash(clean))
-	st, err := os.Stat(target)
-	if err == nil && st.IsDir() {
-		idx := filepath.Join(target, "index.html")
-		if _, ierr := os.Stat(idx); ierr == nil {
-			// Directories need a trailing slash for relative resolution.
-			if !strings.HasSuffix(r.URL.Path, "/") {
-				http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
-				return
-			}
-			target, st, err = idx, nil, nil
-			if st, err = os.Stat(idx); err != nil {
-				http.NotFound(w, r)
-				return
-			}
-		} else {
-			http.NotFound(w, r)
-			return
-		}
-	}
-	if err != nil {
-		// SPA fallback: extension-less paths negotiated as HTML get
-		// index.html; real assets 404 so missing files fail loudly.
-		if path.Ext(clean) == "" && acceptsHTML(r) {
-			http.ServeFile(w, r, filepath.Join(root, "index.html"))
-			return
-		}
-		http.NotFound(w, r)
-		return
-	}
-	if !st.Mode().IsRegular() {
-		http.NotFound(w, r)
-		return
-	}
-	// Defense in depth: never follow a path that escapes the version dir.
-	if resolved, err := filepath.EvalSymlinks(target); err != nil || !strings.HasPrefix(resolved+string(filepath.Separator), mustEval(root)+string(filepath.Separator)) {
-		http.NotFound(w, r)
-		return
-	}
-	http.ServeFile(w, r, target)
-}
-
-func mustEval(p string) string {
-	if r, err := filepath.EvalSymlinks(p); err == nil {
-		return r
-	}
-	return p
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 func acceptsHTML(r *http.Request) bool {

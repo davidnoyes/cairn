@@ -61,3 +61,11 @@ var Argon2Wasm []byte
 
 //go:embed vendor/wasm_exec.js
 var WasmExecJS []byte
+
+// ContentAssets holds the files an artifact's content origin serves under
+// /_cairn/, besides cairn.js, Mermaid, and sql.js, which are served from the
+// variables above. Its pages load them and the service worker never
+// intercepts them.
+//
+//go:embed boot.js sw.js frame.js content.mjs e2e.mjs
+var ContentAssets embed.FS

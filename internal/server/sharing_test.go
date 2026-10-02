@@ -545,7 +545,7 @@ func TestPublicLink(t *testing.T) {
 	o := newArtifact(t, a, "site")
 	vid := pushVersion(t, a.testClient, o.id)
 	base := "/api/artifacts/" + o.id
-	page := "/artifacts/" + o.id + "/" + vid + "/"
+	page := "/shared/" + o.id + "/" + vid
 
 	// While private, the right token for epoch 1 opens nothing.
 	early := anonWithLink(t, ts.URL, testLinkToken(t, o.id, 1))
@@ -704,7 +704,7 @@ func TestUnreadableResourceReference(t *testing.T) {
 
 	// B cannot see A's artifact through the reference: 404, never 409.
 	wantStatus(t, b.testClient, "GET", "/api/artifacts/sess-1", nil, http.StatusNotFound)
-	if r := get(t, ts.URL+"/artifacts/sess-1", b.token, ""); r.StatusCode != http.StatusNotFound {
+	if r := get(t, ts.URL+"/shared/sess-1", b.token, ""); r.StatusCode != http.StatusNotFound {
 		t.Errorf("B's page via A's reference: %d", r.StatusCode)
 	}
 
@@ -1014,7 +1014,7 @@ func TestAdminWithoutAccessGets404(t *testing.T) {
 	if _, ok := listIDs(t, admin)[o.id]; ok {
 		t.Error("the admin lists an artifact they have no access to")
 	}
-	if r := get(t, ts.URL+"/artifacts/"+o.id+"/"+vid+"/", admin.token, ""); r.StatusCode != http.StatusNotFound {
+	if r := get(t, ts.URL+"/shared/"+o.id+"/"+vid, admin.token, ""); r.StatusCode != http.StatusNotFound {
 		t.Errorf("admin page: %d", r.StatusCode)
 	}
 	if r := get(t, ts.URL+"/shared/"+o.id, admin.token, ""); r.StatusCode != http.StatusNotFound {

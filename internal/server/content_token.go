@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/aloisdeniel/cairn/internal/access"
 	"github.com/aloisdeniel/cairn/internal/auth"
@@ -54,15 +55,46 @@ func (s *Server) contentTokenGate(next http.Handler) http.Handler {
 	})
 }
 
+// contentTokenTTL is how long a content-origin token lives. The shell asks
+// for a new one a minute before it expires.
+const contentTokenTTL = 10 * time.Minute
+
+// handleContentToken mints a content-origin token for the artifact: a sign-in
+// JWT whose art claim names it. The route needs a session and read access.
+// A caller whose only access is the public link, which they prove with
+// X-Cairn-Link-Token, gets a token limited to link access.
+func (s *Server) handleContentToken(w http.ResponseWriter, r *http.Request) {
+	a := requestArtifact(r)
+	withoutLink := requestAccess(r)
+	withoutLink.LinkToken = false
+	now := s.clk.Now()
+	exp := now.Add(contentTokenTTL)
+	u := requestUser(r)
+	tok, err := auth.SignJWT(s.secret, auth.Claims{
+		UserID:       u.ID,
+		TokenVersion: u.TokenVersion,
+		IssuedAt:     now.Unix(),
+		ExpiresAt:    exp.Unix(),
+		Artifact:     a.ID,
+		Link:         access.LevelOf(withoutLink) == access.LevelNone,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"token": tok, "expiresAt": exp.Unix()})
+}
+
 // tokenMayReadUser returns nil if the content-origin token on r, scoped to
 // artifactID, may read userID: its holder may read the artifact's membership,
 // and userID is the owner or a member of the latest record. Otherwise it
 // returns store.ErrNotFound, or the error that stopped the check.
-func (s *Server) tokenMayReadUser(r *http.Request, artifactID, userID string) error {
-	c, err := s.callerFor(requestUser(r), requestAPIKey(r), artifactID)
+func (s *Server) tokenMayReadUser(r *http.Request, scope tokenScope, userID string) error {
+	c, err := s.callerFor(requestUser(r), requestAPIKey(r), scope)
 	if err != nil {
 		return err
 	}
+	artifactID := scope.Artifact
 	_, req, err := s.accessRequest(c, artifactID, nil)
 	if err != nil {
 		return err

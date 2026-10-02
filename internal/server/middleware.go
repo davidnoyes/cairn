@@ -38,10 +38,19 @@ type ctxKey int
 const (
 	userCtxKey ctxKey = iota
 	apiKeyCtxKey
-	tokenArtifactCtxKey
+	tokenScopeCtxKey
 	artifactCtxKey
 	accessCtxKey
+	contentHostCtxKey
 )
+
+// tokenScope is what a content-origin token is limited to: its artifact, and
+// whether it carries link access only. The zero value is no content-origin
+// token.
+type tokenScope struct {
+	Artifact string
+	LinkOnly bool
+}
 
 // apiKeyBearerPrefix starts every API key bearer credential:
 // cairn_<keyid 16 hex>_<authSecret 32 hex>.
@@ -109,8 +118,8 @@ func (s *Server) currentUser(r *http.Request) (*store.User, error) {
 	if u, ok := r.Context().Value(userCtxKey).(*store.User); ok {
 		return u, nil
 	}
-	u, _, tokenArtifact, err := s.resolveAny(r)
-	if err == nil && tokenArtifact != "" {
+	u, _, scope, err := s.resolveAny(r)
+	if err == nil && scope.Artifact != "" {
 		return nil, errBadCredentials
 	}
 	return u, err
@@ -118,39 +127,39 @@ func (s *Server) currentUser(r *http.Request) (*store.User, error) {
 
 // resolveAny is currentUser's underlying resolution, also returning the
 // matched API key (nil for a cookie or JWT credential) so callers that need
-// it, such as GET /api/me/bundle, can tell the two apart. tokenArtifact is the
-// artifact a content-origin token is scoped to, empty for any other credential.
-func (s *Server) resolveAny(r *http.Request) (u *store.User, key *store.APIKey, tokenArtifact string, err error) {
+// it, such as GET /api/me/bundle, can tell the two apart. scope is what a
+// content-origin token is limited to, zero for any other credential.
+func (s *Server) resolveAny(r *http.Request) (u *store.User, key *store.APIKey, scope tokenScope, err error) {
 	cred, isKey, err := extractCredential(r, s.sessionCookieName())
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, tokenScope{}, err
 	}
 	if cred == "" {
-		return nil, nil, "", nil
+		return nil, nil, tokenScope{}, nil
 	}
 	if isKey {
 		u, key, err = s.userFromAPIKey(cred)
-		return u, key, "", err
+		return u, key, tokenScope{}, err
 	}
-	u, tokenArtifact, err = s.userFromJWT(cred)
-	return u, nil, tokenArtifact, err
+	u, scope, err = s.userFromJWT(cred)
+	return u, nil, scope, err
 }
 
-// userFromJWT verifies a sign-in JWT and returns its user, with the artifact
-// of a content-origin token (empty for a sign-in token).
-func (s *Server) userFromJWT(token string) (*store.User, string, error) {
+// userFromJWT verifies a sign-in JWT and returns its user, with the scope of
+// a content-origin token (zero for a sign-in token).
+func (s *Server) userFromJWT(token string) (*store.User, tokenScope, error) {
 	claims, err := auth.VerifyJWT(s.secret, token)
 	if err != nil {
-		return nil, "", err
+		return nil, tokenScope{}, err
 	}
 	u, err := s.store.UserByID(claims.UserID)
 	if err != nil {
-		return nil, "", auth.ErrInvalidToken
+		return nil, tokenScope{}, auth.ErrInvalidToken
 	}
 	if u.Disabled || u.TokenVersion != claims.TokenVersion {
-		return nil, "", auth.ErrInvalidToken
+		return nil, tokenScope{}, auth.ErrInvalidToken
 	}
-	return u, claims.Artifact, nil
+	return u, tokenScope{Artifact: claims.Artifact, LinkOnly: claims.Artifact != "" && claims.Link}, nil
 }
 
 // userFromAPIKey looks the key up by id and compares the SHA-256 of the
@@ -208,23 +217,23 @@ func requestAPIKey(r *http.Request) *store.APIKey {
 	return k
 }
 
-// withTokenArtifact stores the artifact a content-origin token is scoped to.
-func withTokenArtifact(r *http.Request, artifactID string) *http.Request {
-	return r.WithContext(context.WithValue(r.Context(), tokenArtifactCtxKey, artifactID))
+// withTokenScope stores what a content-origin token is limited to.
+func withTokenScope(r *http.Request, scope tokenScope) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), tokenScopeCtxKey, scope))
 }
 
-// requestTokenArtifact returns the artifact attached by requireAuth, or "" when
-// the request is not carrying a content-origin token.
-func requestTokenArtifact(r *http.Request) string {
-	id, _ := r.Context().Value(tokenArtifactCtxKey).(string)
-	return id
+// requestTokenScope returns the scope attached by requireAuth, zero when the
+// request is not carrying a content-origin token.
+func requestTokenScope(r *http.Request) tokenScope {
+	scope, _ := r.Context().Value(tokenScopeCtxKey).(tokenScope)
+	return scope
 }
 
 // requireAuth implements the "Any" auth rule: a session cookie, a sign-in
 // JWT, or an API key.
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u, key, tokenArtifact, err := s.resolveAny(r)
+		u, key, scope, err := s.resolveAny(r)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "invalid credentials")
 			return
@@ -237,8 +246,8 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		if key != nil {
 			r = withAPIKey(r, key)
 		}
-		if tokenArtifact != "" {
-			r = withTokenArtifact(r, tokenArtifact)
+		if scope.Artifact != "" {
+			r = withTokenScope(r, scope)
 		}
 		next(w, r)
 	}
@@ -257,12 +266,12 @@ func (s *Server) requireSession(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "authentication required")
 			return
 		}
-		u, tokenArtifact, err := s.userFromJWT(cred)
+		u, scope, err := s.userFromJWT(cred)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
-		if tokenArtifact != "" {
+		if scope.Artifact != "" {
 			writeError(w, http.StatusNotFound, "not found")
 			return
 		}

@@ -33,8 +33,8 @@ func requestAccess(r *http.Request) access.Request {
 
 // callerFor describes a resolved user, or an anonymous caller when u is nil.
 // key is the API key that authenticated the request, nil for a session.
-// tokenArtifact is the artifact of a content-origin token, empty otherwise.
-func (s *Server) callerFor(u *store.User, key *store.APIKey, tokenArtifact string) (access.Caller, error) {
+// scope is what a content-origin token is limited to, zero otherwise.
+func (s *Server) callerFor(u *store.User, key *store.APIKey, scope tokenScope) (access.Caller, error) {
 	if u == nil {
 		return access.Caller{Kind: access.Anonymous}, nil
 	}
@@ -42,8 +42,8 @@ func (s *Server) callerFor(u *store.User, key *store.APIKey, tokenArtifact strin
 	if key != nil {
 		c.Kind = access.APIKey
 	}
-	if tokenArtifact != "" {
-		c.Kind, c.TokenArtifactID = access.ContentToken, tokenArtifact
+	if scope.Artifact != "" {
+		c.Kind, c.TokenArtifactID, c.LinkOnly = access.ContentToken, scope.Artifact, scope.LinkOnly
 	}
 	b, err := s.store.BundleFor(u.ID)
 	if err != nil {
@@ -56,11 +56,11 @@ func (s *Server) callerFor(u *store.User, key *store.APIKey, tokenArtifact strin
 // callerOf resolves the request's credentials. Invalid credentials are
 // errBadCredentials.
 func (s *Server) callerOf(r *http.Request) (access.Caller, *store.User, *store.APIKey, error) {
-	u, key, tokenArtifact, err := s.resolveAny(r)
+	u, key, scope, err := s.resolveAny(r)
 	if err != nil {
 		return access.Caller{}, nil, nil, errBadCredentials
 	}
-	c, err := s.callerFor(u, key, tokenArtifact)
+	c, err := s.callerFor(u, key, scope)
 	return c, u, key, err
 }
 
@@ -167,9 +167,14 @@ func decisionMessage(d access.Decision) string {
 
 // artifactRoute resolves the {id} segment among the artifacts the caller can
 // read, checks act, and attaches the artifact, the access.Request, and the
-// caller to the request.
+// caller to the request. On a content host, the {id} must be the host's
+// artifact itself, not a resource reference, or the answer is 404.
 func (s *Server) artifactRoute(act access.Action, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if host, ok := r.Context().Value(contentHostCtxKey).(string); ok && r.PathValue("id") != host {
+			writeError(w, http.StatusNotFound, "artifact not found")
+			return
+		}
 		c, u, key, err := s.callerOf(r)
 		if errors.Is(err, errBadCredentials) {
 			writeError(w, http.StatusUnauthorized, "invalid credentials")

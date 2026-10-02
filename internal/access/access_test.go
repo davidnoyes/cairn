@@ -419,6 +419,53 @@ func TestContentTokenAtTeamAndLinkLevels(t *testing.T) {
 	}
 }
 
+// A link-scope token gets what the link gives, whoever the user is.
+func TestLinkOnlyContentToken(t *testing.T) {
+	linkOnly := func(r Request) Request {
+		r = viaContentToken(r, aid)
+		r.Caller.LinkOnly = true
+		return r
+	}
+	team2 := func(r Request) Request { return withWrap(team(r, TeamEditor), 2) }
+	for name, r := range map[string]Request{
+		"owner":  asUser(withLink(public(base(), false)), owner),
+		"editor": asUser(withLink(public(base(), false)), editor),
+		"viewer": asUser(withLink(public(base(), false)), viewer),
+		"team":   asUser(team2(withLink(public(base(), false))), teamer),
+		"other":  asUser(withLink(public(base(), false)), someone),
+	} {
+		if got := LevelOf(linkOnly(r)); got != LevelLink {
+			t.Errorf("%s: level %v, want link", name, got)
+		}
+		if got := Check(linkOnly(r), ReadContent); got != Allow {
+			t.Errorf("%s reads: %v, want Allow", name, got)
+		}
+		// Public writes are off, and a link holder does not write then.
+		if got := Check(linkOnly(r), WriteData); got != Forbidden {
+			t.Errorf("%s writes: %v, want Forbidden", name, got)
+		}
+	}
+	// The same members without the flag keep their own access.
+	if got := Check(viaContentToken(asUser(withLink(public(base(), false)), owner), aid), WriteData); got != Allow {
+		t.Errorf("owner's ordinary token writes: %v, want Allow", got)
+	}
+	// With no link token, a link-scope token has no access at all, whoever
+	// owns the artifact.
+	for _, id := range []string{owner, editor, viewer} {
+		r := linkOnly(asUser(public(base(), false), id))
+		if got := LevelOf(r); got != LevelNone {
+			t.Errorf("%s without the link token: level %v, want none", id, got)
+		}
+		if got := Check(r, ReadContent); got != NotFound {
+			t.Errorf("%s without the link token reads: %v, want NotFound", id, got)
+		}
+	}
+	// Public writes let a signed-in link holder write, as for any link holder.
+	if got := Check(linkOnly(asUser(withLink(public(base(), true)), owner)), WriteData); got != Allow {
+		t.Errorf("signed-in link holder with public writes: %v, want Allow", got)
+	}
+}
+
 func TestSignedInNeedsAUserID(t *testing.T) {
 	// A session or key with no user ID is not signed in, so it cannot match an
 	// artifact whose owner is also empty.

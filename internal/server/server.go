@@ -27,6 +27,7 @@ type Config struct {
 	Addr          string
 	DataDir       string
 	PublicURL     string // external URL; its scheme drives the Secure cookie flag, and every emailed link is built from it
+	ContentDomain string // domain each artifact is served under, as <artifact ID>.<ContentDomain>; defaults to localhost for a loopback PublicURL
 	TokenTTL      time.Duration
 	SignupDomains []string    // email domains allowed to self-signup, besides AdminEmail
 	AdminEmail    string      // may always sign up, and becomes an administrator when it does
@@ -81,6 +82,10 @@ type Server struct {
 	mux            *http.ServeMux
 	patterns       []string // every pattern routes registered, in order; read only by tests
 	secure         bool     // serve behind https (from PublicURL)
+	contentDomain  string   // the resolved Config.ContentDomain
+	contentPort    string   // ":port" a content URL carries, from PublicURL or else Addr, empty for the scheme's default; never used to route
+	appHost        string   // lowercase host name of PublicURL, empty when there is none
+	appOrigin      string   // scheme://host[:port] of PublicURL, the only origin that may frame a content host
 	clk            clock.Clock
 	mail           mail.Mailer
 
@@ -96,6 +101,11 @@ func New(cfg Config) (*Server, error) {
 	if cfg.Mail == nil {
 		return nil, errors.New("no mail sender configured: --smtp-url is required, because sign-up and reset cannot work without mail")
 	}
+	contentDomain, err := resolveContentDomain(cfg.PublicURL, cfg.ContentDomain)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ContentDomain = contentDomain
 	layout, err := store.NewLayout(cfg.DataDir)
 	if err != nil {
 		return nil, fmt.Errorf("data dir: %w", err)
@@ -131,15 +141,19 @@ func New(cfg Config) (*Server, error) {
 	if u, err := url.Parse(cfg.PublicURL); err == nil && u.Scheme == "https" {
 		s.secure = true
 	}
+	s.initContent()
 	s.routes()
 	return s, nil
 }
 
 // Handler wraps the route mux with request protection: every /api/ mutation
 // that doesn't carry an Authorization header is checked against the server's
-// own public origin (see protectMutations).
+// own public origin (see protectMutations). A request for an artifact's
+// content host never reaches it: routeByHost sends that to the content
+// origin's routes.
 func (s *Server) Handler() http.Handler {
-	return protectMutations(originOf(s.cfg.PublicURL), s.contentTokenGate(s.mux))
+	app := protectMutations(originOf(s.cfg.PublicURL), s.contentTokenGate(s.mux))
+	return s.routeByHost(app)
 }
 
 // Run serves until ctx is cancelled, then shuts down gracefully.

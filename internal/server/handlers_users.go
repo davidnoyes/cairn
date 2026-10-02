@@ -57,8 +57,8 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUserByID(w http.ResponseWriter, r *http.Request) {
 	// A content-origin token reads only the owner and members its artifact's
 	// latest record lists.
-	if art := requestTokenArtifact(r); art != "" {
-		if err := s.tokenMayReadUser(r, art, r.PathValue("id")); err != nil {
+	if scope := requestTokenScope(r); scope.Artifact != "" {
+		if err := s.tokenMayReadUser(r, scope, r.PathValue("id")); err != nil {
 			s.writeStoreError(w, err, "user")
 			return
 		}

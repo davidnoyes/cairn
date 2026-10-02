@@ -2,7 +2,6 @@ package server
 
 import (
 	"net/http"
-	"strings"
 	"testing"
 )
 
@@ -59,9 +58,9 @@ func TestResourceReferenceResolution(t *testing.T) {
 		t.Errorf("upload landed on %q", uploaded.ArtifactID)
 	}
 
-	// Page URL canonicalizes the reference to the artifact id
+	// The old page URL passes the reference on to the shared page, which resolves it
 	pr := get(t, ts.URL+"/artifacts/sess-123", admin.token, "text/html")
-	if pr.StatusCode != http.StatusFound || !strings.HasPrefix(pr.Header.Get("Location"), "/artifacts/"+aid+"/") {
+	if pr.StatusCode != http.StatusFound || pr.Header.Get("Location") != "/shared/sess-123" {
 		t.Errorf("page redirect: %d %s", pr.StatusCode, pr.Header.Get("Location"))
 	}
 	pr.Body.Close()

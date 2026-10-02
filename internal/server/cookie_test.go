@@ -16,12 +16,13 @@ import (
 func cookieTestServer(t *testing.T, publicURL string) *Server {
 	t.Helper()
 	s, err := New(Config{
-		DataDir:    t.TempDir(),
-		PublicURL:  publicURL,
-		AdminEmail: "admin@example.com",
-		TokenTTL:   time.Hour,
-		Mail:       &mail.Capture{},
-		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		DataDir:       t.TempDir(),
+		PublicURL:     publicURL,
+		ContentDomain: "localhost",
+		AdminEmail:    "admin@example.com",
+		TokenTTL:      time.Hour,
+		Mail:          &mail.Capture{},
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	if err != nil {
 		t.Fatal(err)

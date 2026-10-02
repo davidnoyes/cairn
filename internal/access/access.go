@@ -117,6 +117,9 @@ type Caller struct {
 	Wraps []Wrap
 	// TokenArtifactID is the one artifact a ContentToken is scoped to.
 	TokenArtifactID string
+	// LinkOnly limits a ContentToken to what the public link gives: the
+	// caller's ownership, listing, and team wraps match nothing.
+	LinkOnly bool
 }
 
 // Wrap is a wrap the caller holds. Only its epoch matters here.
@@ -171,6 +174,9 @@ func match(r Request) matches {
 	// "record does not list them" condition needs no check here.
 	m.team = m.signedIn && (a.Team == TeamViewer || a.Team == TeamEditor) && holdsWrap(c.Wraps, a.Epoch)
 	m.link = a.Public && r.LinkToken
+	if c.LinkOnly {
+		m.owner, m.member, m.team = false, false, false
+	}
 	// A listed editor whose current keys differ from the listed fingerprint
 	// can read but not write, until the owner lists the new fingerprint.
 	m.editorPower = m.member && r.Member.Role == RoleEditor && r.Member.FP == c.Fingerprint
