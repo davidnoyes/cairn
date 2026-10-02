@@ -2343,16 +2343,19 @@ export function parseLink(s) {
 
 // verifyLinkChain checks a membership chain read through a public link,
 // which the server answers and so cannot be trusted. input is
-// {link: {artifact, ak, epoch, o}, records, owners, offers, keys}, where keys
-// is the link scope's editor keys. The chain must verify with its first
-// record anchored at the link's o, and its latest record must be public, at
-// the link's epoch, with the akCommit the link's key makes. A link for an
-// older epoch throws StaleLinkError. A reader needs only the link's key and
-// the chain, so an editor whose keys are not served, or do not hash to the fp
-// the record lists, does not fail the open; that editor is left out of
-// editors. Returns {chain, editors}: chain is what verifyChain returns, and
-// editors maps each editor's user ID to the keys that verified, the writers
-// the visitor trusts. Mirrors VerifyLinkChain in internal/e2e/link.go.
+// {link: {artifact, ak, epoch, o}, records, owners, offers, keys, rotations},
+// where keys is the link scope's editor keys and rotations the rotation
+// records the server serves, by user ID. The chain must verify with its first
+// record anchored at the link's o, or at a fp a rotation chain links to o, so
+// it follows an owner who rotated after the link was made. Its latest record
+// must be public, at the link's epoch, with the akCommit the link's key
+// makes. A link for an older epoch throws StaleLinkError. A reader needs only
+// the link's key and the chain, so an editor whose keys are not served, or do
+// not hash to the fp the record lists, does not fail the open, even if a
+// rotation chain would link them; that editor is left out of editors. Returns
+// {chain, editors}: chain is what verifyChain returns, and editors maps each
+// editor's user ID to the keys that verified, the writers the visitor trusts.
+// Mirrors VerifyLinkChain in internal/e2e/link.go.
 export async function verifyLinkChain(input) {
   const { link } = input;
   const c = await verifyChain({
@@ -2361,6 +2364,7 @@ export async function verifyLinkChain(input) {
     owners: input.owners,
     offers: input.offers,
     anchor: link.o,
+    linked: rotationLinker(input.rotations),
   });
   const b = c.latest;
   if (!b.public) throw new ChainError('the latest record is not public');
@@ -2407,19 +2411,64 @@ async function keysFingerprint(keys) {
   return { fp: toHex(await fingerprint(unb64(keys.x25519), ed)), ed };
 }
 
+// openApproval opens the approval under the first candidate key pair that
+// is linked to listedFp and verifies it. The candidates are input.signerKeys,
+// then every old and new pair in the signer's rotation records, each fp
+// tried once. A pair that does not decode is skipped. With no linked
+// candidate it throws ApprovalSignerError, and with linked candidates and no
+// valid signature the first DecryptError. Mirrors openApproval in
+// internal/e2e/approval.go.
+async function openApproval(input, listedFp) {
+  const { approval, rotations } = input;
+  const signer = approval.signer;
+  const candidates = [input.signerKeys];
+  for (const env of hasOwn(rotations, signer) ? rotations[signer] : []) {
+    try {
+      const r = decodeStrict(unb64(env.body), BODY_SCHEMAS.rotation);
+      candidates.push(r.old, r.new);
+    } catch {
+      // a record that does not parse names no keys
+    }
+  }
+  const linked = rotationLinker(rotations);
+  const tried = new Set();
+  let sigErr = null;
+  for (const kp of candidates) {
+    let k;
+    try {
+      k = await keysFingerprint(kp);
+    } catch {
+      continue;
+    }
+    if (tried.has(k.fp)) continue;
+    tried.add(k.fp);
+    if (listedFp === '' || !(await linked(signer, listedFp, k.fp))) continue;
+    try {
+      return await openEnvelope(approval, k.ed, 'approval');
+    } catch (err) {
+      if (!(err instanceof DecryptError)) throw err;
+      sigErr ??= err;
+    }
+  }
+  throw sigErr ?? new ApprovalSignerError(`${signer} is not the owner or a listed editor`);
+}
+
 // checkApproval runs the four checks that let an owner's client list an
 // approved team member, in the order Go's CheckApproval does. input is
-// {artifact, latest, approval, signerKeys, user, directory}: latest is the
-// current record of a verified chain, signerKeys the keys the server serves
-// for approval.signer, user the approved user as the server serves them
-// ({id, email, keys}), and directory every user the directory lists. It
-// throws ApprovalMissingError, ApprovalSignerError, DecryptError or
-// FormatError, ApprovalMismatchError, ApprovalExcludedError, or
-// ApprovalDuplicateError.
+// {artifact, latest, approval, signerKeys, user, directory, rotations}:
+// latest is the current record of a verified chain, signerKeys the keys the
+// server serves for approval.signer, user the approved user as the server
+// serves them ({id, email, keys}), directory every user the directory
+// lists, and rotations the rotation records the server serves, by user ID.
+// The approval must verify under a key pair that hashes to the fp the record
+// lists for its signer, or that a rotation chain of the signer's links to
+// it: the signerKeys, then each old and new pair in the signer's rotation
+// records. It throws ApprovalMissingError, ApprovalSignerError,
+// DecryptError or FormatError, ApprovalMismatchError,
+// ApprovalExcludedError, or ApprovalDuplicateError.
 export async function checkApproval(input) {
   const { latest, approval, user } = input;
   if (!approval) throw new ApprovalMissingError('no approval');
-  const signer = await keysFingerprint(input.signerKeys);
   let listedFp = '';
   if (approval.signer === latest.owner) {
     listedFp = latest.ownerFp;
@@ -2428,10 +2477,7 @@ export async function checkApproval(input) {
       if (m.user === approval.signer && m.role === 'editor') listedFp = m.fp;
     }
   }
-  if (listedFp === '' || signer.fp !== listedFp) {
-    throw new ApprovalSignerError(`${approval.signer} is not the owner or a listed editor`);
-  }
-  const body = await openEnvelope(approval, signer.ed, 'approval');
+  const body = await openApproval(input, listedFp);
   const userFp = (await keysFingerprint(user.keys)).fp;
   if (body.artifact !== input.artifact) throw new ApprovalMismatchError(`artifact ${body.artifact}`);
   if (body.epoch !== latest.epoch) throw new ApprovalMismatchError(`epoch ${body.epoch}, current ${latest.epoch}`);
@@ -2476,13 +2522,17 @@ export function checkNewAk(ak, earlier) {
 
 // The keyring: the user's pins and epoch records, sealed under mkSealKey with
 // the fields ["keyring"]. Mirrors internal/e2e/keyring.go. A pin's rotSeq and
-// rotHead record the last rotation accepted; until rotation is implemented
-// they only round-trip, and nothing here follows a rotation chain.
+// rotHead record the last rotation accepted, which followRotations checks
+// the user's rotation records against.
+//
+// PIN_NEW and PIN_CHANGED are what pinState reports, and followPin adds
+// PIN_ROTATED; only PIN_UNVERIFIED and PIN_VERIFIED are ever stored.
 
 export const PIN_NEW = 'new';
 export const PIN_UNVERIFIED = 'unverified';
 export const PIN_VERIFIED = 'verified';
 export const PIN_CHANGED = 'changed';
+export const PIN_ROTATED = 'rotated';
 
 const PIN_SCHEMA = {
   fp: field('string'),
@@ -2603,11 +2653,81 @@ export async function openKeyring(key, rev, sealed, anchor) {
 // pinState compares a user's current public keys with the pin for them,
 // null if there is none, and returns {state, fp}: PIN_NEW with no pin, the
 // pin's own state when the fingerprint matches, PIN_CHANGED when it
-// differs. Mirrors PinState.
+// differs. It reads no rotation records, so a changed key that a rotation
+// chain explains is followPin's. Mirrors PinState.
 export async function pinState(pin, x25519Pub, ed25519Pub) {
   const fp = toHex(await fingerprint(x25519Pub, ed25519Pub));
   if (!pin) return { state: PIN_NEW, fp };
   return { state: pin.fp === fp ? pin.state : PIN_CHANGED, fp };
+}
+
+// followPin is pinState with the user's rotation records, oldest first.
+// pin is {fp, state, rotSeq, rotHead} or null. Returns {state, next}: the
+// state to show, and the pin to store if the caller goes ahead; neither is
+// stored here, and pin is not edited.
+//
+// With no pin the state is PIN_NEW. With a pin on the current fingerprint it
+// is the pin's own, with a copy of the pin as next, and records are not
+// read. Otherwise followRotations follows the records from the pin. A chain
+// that ends at the current fingerprint is PIN_ROTATED, and next is
+// unverified at the last record followed, even for a verified pin. A chain
+// that ends elsewhere, or that does not verify (ChainError, FormatError,
+// DecryptError), explains nothing: PIN_CHANGED. A fork or rollback
+// (RotationForkError, RollbackError) is PIN_CHANGED too, but is thrown, so
+// the caller can warn hard; the error carries state and next, which is what
+// Go returns beside its error.
+//
+// Every other next is an unverified pin on the current fingerprint, taken at
+// the latest of the user's records that made these keys, when that record
+// verifies, and at rotSeq 0 otherwise. Mirrors FollowPin.
+export async function followPin(user, pin, records, x25519Pub, ed25519Pub) {
+  const fp = toHex(await fingerprint(x25519Pub, ed25519Pub));
+  if (pin && pin.fp === fp) return { state: pin.state, next: { ...pin } };
+  const fresh = await pinTakenAt(user, records, fp);
+  if (!pin) return { state: PIN_NEW, next: fresh };
+  let res;
+  try {
+    res = await followRotations(user, records, pin);
+  } catch (err) {
+    if (err instanceof RotationForkError || err instanceof RollbackError) {
+      err.state = PIN_CHANGED;
+      err.next = fresh;
+      throw err;
+    }
+    if (err instanceof ChainError || err instanceof FormatError || err instanceof DecryptError) {
+      return { state: PIN_CHANGED, next: fresh };
+    }
+    throw err;
+  }
+  if (res.fp !== fp) return { state: PIN_CHANGED, next: fresh };
+  return { state: PIN_ROTATED, next: { fp, state: PIN_UNVERIFIED, rotSeq: res.seq, rotHead: res.head } };
+}
+
+// pinTakenAt is the unverified pin on fp, at the latest of user's records
+// whose new keys hash to fp, if that record verifies under its old key and
+// its new one. Else rotSeq is 0.
+async function pinTakenAt(user, records, fp) {
+  const pin = { fp, state: PIN_UNVERIFIED, rotSeq: 0, rotHead: '' };
+  for (let i = records.length - 1; i >= 0; i--) {
+    let b;
+    try {
+      b = decodeStrict(unb64(records[i].body), BODY_SCHEMAS.rotation);
+    } catch {
+      continue;
+    }
+    if ((await keyPairFp(b.new)) !== fp) continue;
+    if (b.user === user && b.seq >= 1) {
+      try {
+        await openRotation(records[i], unb64(b.old.ed25519));
+        pin.rotSeq = b.seq;
+        pin.rotHead = await bodyHash(unb64(records[i].body));
+      } catch {
+        // a record that does not verify explains nothing
+      }
+    }
+    break;
+  }
+  return pin;
 }
 
 // The key is scoped to the user's own fingerprint as well as the user ID. A

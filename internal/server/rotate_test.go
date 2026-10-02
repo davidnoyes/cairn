@@ -702,8 +702,8 @@ func TestPendingResetStaysKeyChangedAndResetThenRotateLeavesStaleWraps(t *testin
 	r2 := newRotation(t, w.s, w.base, reset2)
 	req := r2.request()
 	req["wraps"] = []any{map[string]any{"artifact": o.id, "epoch": 1, "wrapped": e2e.B64(newWrap)}}
-	if got, _, _ := r2.post(reset2.testClient, req); got != http.StatusBadRequest {
-		t.Errorf("a wrap under a stale fingerprint: %d, want 400", got)
+	if got, _, _ := r2.post(reset2.testClient, req); got != http.StatusConflict {
+		t.Errorf("a wrap under a stale fingerprint: %d, want 409", got)
 	}
 }
 
@@ -872,14 +872,14 @@ func TestRotateRefusals(t *testing.T) {
 		{name: "keyring over 1 MiB", want: 413, mutate: func(w *rotWorld, r *rotation, req map[string]any) {
 			req["keyring"] = map[string]any{"rev": r.keyringRev() + 1, "keyring": e2e.B64(make([]byte, 1<<20+1))}
 		}},
-		{name: "a missing wrap", want: 400, mutate: func(w *rotWorld, r *rotation, req map[string]any) {
+		{name: "a missing wrap", want: 409, msg: "missing the wrap for artifact", mutate: func(w *rotWorld, r *rotation, req map[string]any) {
 			req["wraps"] = req["wraps"].([]any)[1:]
 		}},
-		{name: "no wraps", want: 400, mutate: func(w *rotWorld, r *rotation, req map[string]any) { req["wraps"] = []any{} }},
-		{name: "an extra wrap", want: 400, mutate: func(w *rotWorld, r *rotation, req map[string]any) {
+		{name: "no wraps", want: 409, msg: "missing the wrap for artifact", mutate: func(w *rotWorld, r *rotation, req map[string]any) { req["wraps"] = []any{} }},
+		{name: "an extra wrap", want: 409, msg: "is not one the caller holds", mutate: func(w *rotWorld, r *rotation, req map[string]any) {
 			req["wraps"] = append(req["wraps"].([]any), map[string]any{"artifact": w.a.id, "epoch": 1, "wrapped": e2e.B64(newWrap)})
 		}},
-		{name: "an extra epoch", want: 400, mutate: func(w *rotWorld, r *rotation, req map[string]any) {
+		{name: "an extra epoch", want: 409, msg: "is not one the caller holds", mutate: func(w *rotWorld, r *rotation, req map[string]any) {
 			req["wraps"] = append(req["wraps"].([]any), map[string]any{"artifact": w.c.id, "epoch": 3, "wrapped": e2e.B64(newWrap)})
 		}},
 		{name: "a duplicate wrap", want: 400, mutate: func(w *rotWorld, r *rotation, req map[string]any) {
@@ -1053,6 +1053,32 @@ func TestRotateRefusedWhenTheOwnedSetMoved(t *testing.T) {
 	}
 	r.owned = append(r.owned, extra)
 	w.rot.mustDo("POST", "/api/me/rotate", r.request(), nil, http.StatusOK)
+}
+
+// TestRotateRefusedWhenTheHeldWrapsMoved: the wraps the caller holds are
+// read before the post, and an owner can change them in between, which is a
+// 409 the client recovers from by reading again, not a malformed request.
+func TestRotateRefusedWhenTheHeldWrapsMoved(t *testing.T) {
+	w := newRotWorld(t)
+	r := w.rotation(t)
+	req := r.request()
+	// The owner of c moves it to a new epoch, so rot now holds a wrap the
+	// request lacks.
+	w.c.apply(w.c.nextEpoch())
+	got, msg, _ := r.post(w.rot.testClient, req)
+	if got != http.StatusConflict || !strings.Contains(msg, "missing the wrap for artifact "+w.c.id+" at epoch 3") {
+		t.Errorf("a held artifact that moved to a new epoch: %d %q, want 409 naming the wrap", got, msg)
+	}
+	// The owner of c stops sharing with rot, so a wrap the request carries is
+	// no longer rot's.
+	w2 := newRotWorld(t)
+	r2 := w2.rotation(t)
+	req2 := r2.request()
+	w2.c.removeAndExclude(w2.rot)
+	got, msg, _ = r2.post(w2.rot.testClient, req2)
+	if got != http.StatusConflict || !strings.Contains(msg, "is not one the caller holds") {
+		t.Errorf("a held artifact that was unshared: %d %q, want 409 naming the wrap", got, msg)
+	}
 }
 
 func TestRotateClosesOpenOffers(t *testing.T) {

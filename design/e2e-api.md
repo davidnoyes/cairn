@@ -634,10 +634,12 @@ prefix of the chain. For example, it can hide a later record that turned
 public writes off or removed an editor, as long as the artifact was still
 public at the link's epoch. Turning a link off needs a new epoch.
 
-Link verification must follow owner key rotations, which step 7 builds.
-`VerifyLinkChain` passes no `Linked` function to `VerifyChain` yet, so it
-requires each record's `ownerFp` to equal `o`. After a rotation, the owner's
-new records carry a new `ownerFp`, and the link would refuse them.
+Link verification follows owner key rotations. The answer carries
+`rotations` for every owner the chain names, in link scope too, and
+`VerifyLinkChain` checks each record's `ownerFp` against them. A record
+whose `ownerFp` differs from `o` verifies only when a rotation chain links
+`o` to it. So a link made before the owner ran `cairn rotate-keys
+--keep-epochs` still opens.
 
 #### Keys
 

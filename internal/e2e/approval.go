@@ -12,7 +12,8 @@ var (
 	// ErrApprovalMissing means the server served no approval for the user.
 	ErrApprovalMissing = errors.New("e2e: approval missing")
 	// ErrApprovalSigner means the signer is neither the owner nor an editor
-	// the current record lists under the fingerprint their key hashes to.
+	// the current record lists, or no key pair offered for them hashes to
+	// the fingerprint listed or is linked to it by their rotation chain.
 	ErrApprovalSigner = errors.New("e2e: approval signer is not the owner or a listed editor")
 	// ErrApprovalMismatch means the approval names another artifact, epoch,
 	// user, or fingerprint than the ones it must.
@@ -36,6 +37,8 @@ type ApprovalUser struct {
 // record of a chain the caller verified. SignerKeys are the keys the server
 // serves for Approval.Signer, User is the user the approval is for as the
 // server serves them, and Directory is every user the directory lists.
+// Rotations are the rotation records the server serves, by user ID; only
+// the signer's are read.
 type ApprovalInput struct {
 	Artifact   string
 	Latest     *MembershipBody
@@ -43,6 +46,7 @@ type ApprovalInput struct {
 	SignerKeys KeyPair
 	User       ApprovalUser
 	Directory  []ApprovalUser
+	Rotations  map[string][]Envelope
 }
 
 // fp returns the hex fingerprint of a wire-form key pair, and its Ed25519 key.
@@ -59,7 +63,11 @@ func (k KeyPair) fp() (string, []byte, error) {
 // approved team member, as "Team approval" in design/e2e-api.md lists them:
 //
 //  1. The signer is the owner, or an editor in the current record, and the
-//     keys the server serves for them hash to the fingerprint listed.
+//     approval verifies under a key pair that hashes to the fingerprint
+//     listed, or that a rotation chain of the signer's links to it, in
+//     either direction. The pairs tried are the keys the server serves for
+//     them, then each old and new pair in the signer's rotation records, so
+//     an approval signed before or after a rotation both pass.
 //  2. artifact is this artifact, and epoch is the current epoch.
 //  3. user is the user, and fp is the fingerprint of the keys served for them.
 //  4. The user matches no excluded entry by ID, fingerprint, or normalized
@@ -73,10 +81,6 @@ func CheckApproval(in ApprovalInput) error {
 		return ErrApprovalMissing
 	}
 	latest := in.Latest
-	signerFP, signerEd, err := in.SignerKeys.fp()
-	if err != nil {
-		return err
-	}
 	var listedFP string
 	if in.Approval.Signer == latest.Owner {
 		listedFP = latest.OwnerFP
@@ -87,11 +91,8 @@ func CheckApproval(in ApprovalInput) error {
 			}
 		}
 	}
-	if listedFP == "" || signerFP != listedFP {
-		return fmt.Errorf("%w: %s", ErrApprovalSigner, in.Approval.Signer)
-	}
 	var body ApprovalBody
-	if err := OpenEnvelope(*in.Approval, signerEd, "approval", &body); err != nil {
+	if err := openApproval(in, listedFP, &body); err != nil {
 		return err
 	}
 	userFP, _, err := in.User.Keys.fp()
@@ -125,6 +126,50 @@ func CheckApproval(in ApprovalInput) error {
 		}
 	}
 	return nil
+}
+
+// openApproval opens the approval under the first candidate key pair that
+// is linked to listedFP and verifies it. The candidates are in.SignerKeys,
+// then every old and new pair in the signer's rotation records, each fp
+// tried once. A pair that does not decode is skipped. With no linked
+// candidate it returns ErrApprovalSigner, and with linked candidates and no
+// valid signature the first signature error.
+func openApproval(in ApprovalInput, listedFP string, body *ApprovalBody) error {
+	signer := in.Approval.Signer
+	candidates := []KeyPair{in.SignerKeys}
+	for _, env := range in.Rotations[signer] {
+		var r RotationBody
+		if DecodeStrict(env.Body, &r) == nil {
+			candidates = append(candidates, r.Old, r.New)
+		}
+	}
+	linked := RotationLinker(in.Rotations)
+	tried := map[string]bool{}
+	var sigErr error
+	for _, kp := range candidates {
+		fp, ed, err := kp.fp()
+		if err != nil || tried[fp] {
+			continue
+		}
+		tried[fp] = true
+		if listedFP == "" || !linked(signer, listedFP, fp) {
+			continue
+		}
+		err = OpenEnvelope(*in.Approval, ed, "approval", body)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, ErrDecrypt) {
+			return err
+		}
+		if sigErr == nil {
+			sigErr = err
+		}
+	}
+	if sigErr == nil {
+		return fmt.Errorf("%w: %s", ErrApprovalSigner, signer)
+	}
+	return sigErr
 }
 
 // ExcludedMatch returns the excluded entry a user matches by ID,

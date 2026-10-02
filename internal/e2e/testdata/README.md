@@ -213,6 +213,9 @@ The overrides, and which primitives read them:
     `keys`, the same pair in b64. The fingerprint is always computed from
     `keys`.
   - `directory`: every user of the directory, in the shape of `user`.
+  - `rotations`: the rotation records the server serves, as user ID to a
+    list of records in wire form, oldest first. Only the signer's are read.
+    It is `{}` when the server serves none.
   - `error`: absent when the approval passes all four checks. Otherwise the
     error kind it must fail with:
 
@@ -230,6 +233,24 @@ The overrides, and which primitives read them:
   signature and the body, the artifact, epoch, user, and fingerprint, the
   excluded entries, and the directory. Each entry breaks one rule, so the
   kind shows which check refused it.
+
+  The signer check tries `signerKeys`, then each old and new key pair in the
+  signer's `rotations`. A pair counts when its fingerprint is the one
+  `latest` lists, or when the signer's rotation chain links the two. The
+  entries cover these cases:
+  - An editor signed, then rotated. The record lists the old fingerprint,
+    the server serves the new keys, and the old keys in the rotation record
+    verify the approval. It passes.
+  - An editor or the owner rotated, then signed under the new keys. The
+    record still lists the old fingerprint. It passes.
+  - The new keys are reachable only through a chain that skips a seq. They
+    are not linked, but the listed fingerprint is still a candidate and the
+    signature does not verify under it, so the kind is `decrypt`.
+  - The signer's keys are on a chain that never names the listed
+    fingerprint, or the server serves no rotation records. No pair is
+    linked, so the kind is `signer`.
+  - The chain verifies, but another key signed the approval. The kind is
+    `decrypt`.
 - **`keyring`**: a `GET /api/me/keyring` answer that `OpenKeyring`/
   `openKeyring` must accept or refuse. Each entry has these fields:
   - `name` and `why`.
@@ -275,8 +296,10 @@ The overrides, and which primitives read them:
 - **`linkChain`**: a `GET /api/artifacts/{id}/membership` answer read through
   a link, which `VerifyLinkChain`/`verifyLinkChain` must accept or refuse.
   Each entry has `name`, `why`, `artifact`, `ak` (hex), `epoch`, and `o`
-  (the link), and `records`, `owners`, `offers`, and `keys` (the answer, in
-  wire form; `keys` holds the editors' keys the link scope serves). An
+  (the link), and `records`, `owners`, `offers`, `keys`, and `rotations` (the
+  answer, in wire form; `keys` holds the editors' keys the link scope
+  serves, and `rotations` maps a user ID to that user's rotation records,
+  or is `{}`). An
   accepted entry has `want` with `head`, `seq`, and `epoch` of the latest
   record, and `editors`, the sorted user IDs of the editors whose served
   keys hash to the listed `fp`: the trusted writers. A refused entry has
@@ -290,7 +313,16 @@ The overrides, and which primitives read them:
   owner, substituted owner keys, the wrong AK, a stale link, a link ahead of
   the chain, and a latest record that is private. Editor keys that are
   missing or do not hash to the listed fingerprint are no error: the entry is
-  accepted, with that editor out of `editors`.
+  accepted, with that editor out of `editors`. A rotation chain never
+  rescues an editor's keys.
+
+  Rotation entries cover three cases:
+  - The owner rotated after the link was made, and signed the latest record
+    under the new keys. The served chain links `o` to the new fingerprint,
+    so the entry is accepted.
+  - The only rotation record served for the owner belongs to another user.
+    It explains nothing, so the kind is `chain`.
+  - The same chain with no rotation records served. The kind is `chain`.
 - **`rotationChain`**: one user's rotation records and the pin held for them,
   which `FollowRotations`/`followRotations` must accept or refuse. (The
   earlier `rotation` section is the signature check on one record.) Each entry
@@ -325,6 +357,45 @@ The overrides, and which primitives read them:
   onward are verified (the earlier ones are skipped unchecked), and a break
   or a bad record on that stretch links nothing, even a fingerprint reached
   before it.
+- **`followPin`**: a user's current keys, the pin held for them, and their
+  rotation records, which `FollowPin`/`followPin` must answer with a state
+  and the pin to store. Each entry has these fields:
+  - `name` and `why`.
+  - `user`: the user ID.
+  - `pin`: `{fp, state, rotSeq, rotHead}`, or `null` on first sight.
+  - `records`: the user's rotation records in wire form, oldest first.
+  - `keys`: the user's current `{x25519, ed25519}` keys, in b64.
+  - `want`: `state`, `next`, and `error`. `next` is the pin in the same
+    shape as `pin`. `error` is absent, or `rotationFork` or `rollback` from
+    the `rotationChain` section.
+
+  `state` is `new`, `unverified`, `verified`, `changed`, or `rotated`. Go
+  returns the error beside `state` and `next`. JavaScript throws it, with
+  `state` and `next` set on the error. The rules, in order:
+  - No pin gives `new`.
+  - A pin on the current fingerprint gives the pin's own state and the pin
+    as `next`. The records are not read, so a bad record there is no error.
+  - A fork or rollback gives `changed` and the error.
+  - Any other broken chain gives `changed` and no error. So does a chain
+    that ends at another fingerprint, as after a password-only reset.
+  - A chain that ends at the current fingerprint gives `rotated`. `next` is
+    `unverified`, even when the pin was `verified`, at the last record
+    followed.
+
+  Every other `next` is an unverified pin on the current fingerprint. Its
+  `rotSeq` and `rotHead` come from the latest record whose new keys hash to
+  it, when that record belongs to `user` and verifies under both its keys.
+  Otherwise they are `0` and `""`. The entries cover these cases:
+  - New pins with the latest record matching, an earlier record matching,
+    and no record matching.
+  - A matching record with a bad `sig`, a bad `newSig`, another user, or a
+    `seq` of 0. All four give `rotSeq` 0.
+  - A matching pin in each stored state: `unverified` and `verified`.
+  - Rotated pins: one step, a verified pin dropping to unverified, and a pin
+    with `rotSeq` followed to the end.
+  - Forks and rollbacks, with an empty record list too.
+  - A broken chain, a bad signature inside a chain, a chain that ends
+    elsewhere, and records that all predate the pin.
 
 ## Blob transforms
 
@@ -351,7 +422,7 @@ that shape, from either side, exiting non-zero on any failure. The Go test
 runs both: it checks a freshly emitted Node file with this package, and asks
 Node to check a freshly emitted Go file.
 
-Every byte value is hex, as above, with one exception: `signature.envelope`
+Every byte value is hex, as in the preceding sections, with one exception: `signature.envelope`
 is the real `{body, sig, signer}` b64 JSON wire form (see "Signatures" in
 `design/e2e-wire-formats.md`), not hex, since that is what the field actually
 carries on the wire.

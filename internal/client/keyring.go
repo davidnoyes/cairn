@@ -63,6 +63,19 @@ func (c *Client) ReadKeyring(k *UnlockedKeys) (*e2e.Keyring, error) {
 }
 
 func (c *Client) readKeyring(k *UnlockedKeys) (*e2e.Keyring, e2e.KeyringAnchor, error) {
+	kr, next, err := c.openKeyring(k)
+	if err != nil {
+		return nil, e2e.KeyringAnchor{}, err
+	}
+	if err := c.Anchors.SaveAnchor(k.UserID, k.FP, next); err != nil {
+		return nil, e2e.KeyringAnchor{}, fmt.Errorf("saving the keyring anchor: %w", err)
+	}
+	return kr, next, nil
+}
+
+// openKeyring is readKeyring without the write: it stores no anchor, and
+// returns the one to store.
+func (c *Client) openKeyring(k *UnlockedKeys) (*e2e.Keyring, e2e.KeyringAnchor, error) {
 	store, err := c.anchors()
 	if err != nil {
 		return nil, e2e.KeyringAnchor{}, err
@@ -82,9 +95,6 @@ func (c *Client) readKeyring(k *UnlockedKeys) (*e2e.Keyring, e2e.KeyringAnchor, 
 	kr, next, err := e2e.OpenKeyring(k.MKSealKey, resp.Rev, sealed, anchor)
 	if err != nil {
 		return nil, e2e.KeyringAnchor{}, &KeyringRefusedError{k.UserID, k.FP, err}
-	}
-	if err := store.SaveAnchor(k.UserID, k.FP, next); err != nil {
-		return nil, e2e.KeyringAnchor{}, fmt.Errorf("saving the keyring anchor: %w", err)
 	}
 	return kr, next, nil
 }
@@ -150,12 +160,28 @@ func (c *Client) VerifyArtifact(k *UnlockedKeys, artifactID, currentOwnerFP stri
 	if err != nil {
 		return nil, err
 	}
-	m, err := c.Membership(artifactID)
+	va, creator, pin, err := c.checkArtifact(k, kr, artifactID, currentOwnerFP)
 	if err != nil {
 		return nil, err
 	}
+	va.Keyring, err = c.recordChain(k, kr, artifactID, va.Chain, creator, pin)
+	if err != nil {
+		return nil, err
+	}
+	return va, nil
+}
+
+// checkArtifact is VerifyArtifact against the keyring kr, which the caller
+// has read, without the write: it stores no pin and no epochs entry. It
+// returns the creator and the first-sight pin recordChain would store, or
+// nil. The chain follows each owner's rotation records.
+func (c *Client) checkArtifact(k *UnlockedKeys, kr *e2e.Keyring, artifactID, currentOwnerFP string) (*VerifiedArtifact, string, *e2e.Pin, error) {
+	m, err := c.Membership(artifactID)
+	if err != nil {
+		return nil, "", nil, err
+	}
 	if len(m.Records) == 0 {
-		return nil, fmt.Errorf("artifact %s: %w: no records", artifactID, e2e.ErrChain)
+		return nil, "", nil, fmt.Errorf("artifact %s: %w: no records", artifactID, e2e.ErrChain)
 	}
 	creator := m.Records[0].Signer
 	anchor, newPin := k.FP, (*e2e.Pin)(nil)
@@ -165,7 +191,7 @@ func (c *Client) VerifyArtifact(k *UnlockedKeys, artifactID, currentOwnerFP stri
 		} else {
 			u, err := c.DirectoryUser(creator)
 			if err != nil {
-				return nil, fmt.Errorf("looking up the creator of artifact %s: %w", artifactID, err)
+				return nil, "", nil, fmt.Errorf("looking up the creator of artifact %s: %w", artifactID, err)
 			}
 			_, anchor = e2e.PinState(nil, u.X25519Pub, u.Ed25519Pub)
 			newPin = &e2e.Pin{FP: anchor, State: e2e.PinUnverified}
@@ -174,15 +200,12 @@ func (c *Client) VerifyArtifact(k *UnlockedKeys, artifactID, currentOwnerFP stri
 	chain, err := e2e.VerifyChain(e2e.ChainInput{
 		Artifact: artifactID, Records: m.Records, Owners: m.Owners, Offers: m.Offers,
 		Anchor: anchor, CurrentOwnerFP: currentOwnerFP, Pin: kr.EpochPin(artifactID),
+		Linked: e2e.RotationLinker(m.Rotations),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("the membership of artifact %s does not verify: %w", artifactID, err)
+		return nil, "", nil, fmt.Errorf("the membership of artifact %s does not verify: %w", artifactID, err)
 	}
-	kr, err = c.recordChain(k, kr, artifactID, chain, creator, newPin)
-	if err != nil {
-		return nil, err
-	}
-	return &VerifiedArtifact{Chain: chain, Membership: m, Keyring: kr}, nil
+	return &VerifiedArtifact{Chain: chain, Membership: m, Keyring: kr}, creator, newPin, nil
 }
 
 // recordChain stores a verified chain as artifactID's epochs entry, and a

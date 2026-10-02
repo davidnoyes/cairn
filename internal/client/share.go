@@ -378,7 +378,7 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	approved := false
 	if p := slices.IndexFunc(pending, func(p PendingUser) bool { return p.User.ID == u.ID && p.State == PendingApproved }); p >= 0 {
 		approved = true
-		if err := checkApproved(k, latest, dir, pending[p]); err != nil {
+		if err := checkApproved(k, latest, va.Membership.Rotations, dir, pending[p]); err != nil {
 			return nil, fmt.Errorf("%w: %s: %w", ErrApprovalUnverified, u.Email, err)
 		}
 	}
@@ -508,21 +508,28 @@ func dropExcluded(excluded []e2e.ExcludedEntry, members []e2e.Member, dir []Dire
 	return kept, dropped
 }
 
-// putRecord signs next as the record after the verified chain's latest and
-// PUTs it with wraps and, for a next epoch, the estate copy of its AK. A
-// public record carries the hash of the epoch's link token, which the server
-// requires of every public record: linkHash for a next epoch, whose estate
-// copy the server does not hold yet, or empty to take it from the epoch's own.
-func (c *Client) putRecord(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, next e2e.MembershipBody, wraps, estate []map[string]any, linkHash string) error {
+// signNext makes next the record after the verified chain's latest, and
+// signs it as signer with seed. It returns the record as signed.
+func signNext(seed []byte, signer string, va *VerifiedArtifact, next e2e.MembershipBody) (e2e.MembershipBody, e2e.Envelope, error) {
 	next.Seq, next.Prev, next.Transfer, next.Handover = va.Chain.Latest.Seq+1, va.Chain.Head, "", ""
 	if next.Excluded == nil {
 		next.Excluded = []e2e.ExcludedEntry{}
 	}
 	body, err := json.Marshal(next)
 	if err != nil {
-		return err
+		return next, e2e.Envelope{}, err
 	}
-	env, err := e2e.NewEnvelope(k.Ed25519Seed, k.UserID, "membership", body)
+	env, err := e2e.NewEnvelope(seed, signer, "membership", body)
+	return next, env, err
+}
+
+// putRecord signs next as the record after the verified chain's latest and
+// PUTs it with wraps and, for a next epoch, the estate copy of its AK. A
+// public record carries the hash of the epoch's link token, which the server
+// requires of every public record: linkHash for a next epoch, whose estate
+// copy the server does not hold yet, or empty to take it from the epoch's own.
+func (c *Client) putRecord(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, next e2e.MembershipBody, wraps, estate []map[string]any, linkHash string) error {
+	next, env, err := signNext(k.Ed25519Seed, k.UserID, va, next)
 	if err != nil {
 		return err
 	}

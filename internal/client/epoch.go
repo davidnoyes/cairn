@@ -60,20 +60,63 @@ type nextEpochRecord struct {
 	exclude string
 }
 
-// putNextEpoch signs and PUTs a next-epoch record built from r. It makes the
-// new AK, wraps it to every listed member, seals the estate copy, and
-// excludes every user the record removes or drops, and every team member who
-// holds a wrap and cannot be listed. The server refuses a record that leaves
-// any of them out of both lists, and the CLI is not interactive, so a team
-// member whose approval fails a check is excluded: the owner lists them again
-// by name with Share.
+// nextEpochBuild is a next-epoch record built from a nextEpochRecord, and
+// not yet sent.
+type nextEpochBuild struct {
+	// next is the record, before its chain fields are set (signNext).
+	next e2e.MembershipBody
+	// wraps and estate are the new epoch's wraps and estate copy; estate is
+	// sealed under k.EK.
+	wraps, estate []map[string]any
+	linkHash      string
+	// aks holds the AK of every epoch, the new one included.
+	aks    map[int][]byte
+	change *EpochChange
+	lst    approvedListing
+}
+
+// putNextEpoch signs and PUTs a next-epoch record built from r, as
+// buildNextEpoch makes it, then stores the pins the build decided.
 func (c *Client) putNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, dir []DirectoryUser, pending []PendingUser, r nextEpochRecord) (*EpochChange, []DirectoryUser, error) {
+	b, err := c.buildNextEpoch(k, artifactID, va, dir, pending, r)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := c.putRecord(k, artifactID, va, b.next, b.wraps, b.estate, b.linkHash); err != nil {
+		return nil, nil, err
+	}
+	for id, d := range b.lst.pins {
+		if err := c.storePin(k, id, d.pin, d.basedOn); err != nil {
+			return nil, nil, fmt.Errorf("the server accepted the new membership record, but pinning %s failed: %w", id, err)
+		}
+	}
+	return b.change, b.lst.listed, nil
+}
+
+// linkTokenHash is the hash of the link token an epoch's AK makes, which the
+// server stores for a public record.
+func linkTokenHash(ak []byte, artifactID string, epoch int) (string, error) {
+	token, err := e2e.LinkToken(ak, artifactID, uint64(epoch))
+	if err != nil {
+		return "", err
+	}
+	return e2e.LinkTokenHash(token), nil
+}
+
+// buildNextEpoch builds a next-epoch record from r, and sends nothing. It
+// makes the new AK, wraps it to every listed member, seals the estate copy,
+// and excludes every user the record removes or drops, and every team member
+// who holds a wrap and cannot be listed. The server refuses a record that
+// leaves any of them out of both lists, and the CLI is not interactive, so a
+// team member whose approval fails a check is excluded: the owner lists them
+// again by name with Share.
+func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, dir []DirectoryUser, pending []PendingUser, r nextEpochRecord) (*nextEpochBuild, error) {
 	latest := va.Chain.Latest
 	epoch := latest.Epoch + 1
 	// Defense in depth behind VerifyChain's epoch pin, which already refuses a
 	// stale epoch.
 	if err := e2e.CheckEncryptEpoch(va.Keyring.EpochPin(artifactID), epoch); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	next := r.next
 	byID := map[string]DirectoryUser{}
@@ -127,7 +170,7 @@ func (c *Client) putNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedAr
 			// account for, which the owner's client knows from its pin.
 			pin, ok := va.Keyring.Pins[p.User.ID]
 			if !ok || pin.FP == p.User.FP {
-				return nil, nil, fmt.Errorf("%s holds a wrap made for a key that is no longer theirs, and cairn does not know which; share with them again with cairn share --accept-new-key, then unshare them", p.User.Email)
+				return nil, fmt.Errorf("%s holds a wrap made for a key that is no longer theirs, and cairn does not know which; share with them again with cairn share --accept-new-key, then unshare them", p.User.Email)
 			}
 			reason := "their keys changed after they were wrapped to"
 			if p.User.ID == r.exclude {
@@ -150,16 +193,16 @@ func (c *Client) putNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedAr
 	for _, m := range next.Members {
 		u, ok := byID[m.User]
 		if !ok {
-			return nil, nil, fmt.Errorf("the account of member %s was deleted, so no new key can be wrapped to them; remove them first with cairn unshare %s %s", m.User, artifactID, m.User)
+			return nil, fmt.Errorf("the account of member %s was deleted, so no new key can be wrapped to them; remove them first with cairn unshare %s %s", m.User, artifactID, m.User)
 		}
 		if m.FP != u.FP {
-			return nil, nil, fmt.Errorf("%w: %s (%s); share with them again with cairn share --accept-new-key, or remove them with cairn unshare", ErrMemberKeyChanged, u.Email, u.ID)
+			return nil, fmt.Errorf("%w: %s (%s); share with them again with cairn share --accept-new-key, or remove them with cairn unshare", ErrMemberKeyChanged, u.Email, u.ID)
 		}
 		if m.User == r.decided {
 			continue
 		}
 		if _, _, err := checkPin(va.Keyring, u, false); err != nil {
-			return nil, nil, fmt.Errorf("member %s: %w", u.Email, err)
+			return nil, fmt.Errorf("member %s: %w", u.Email, err)
 		}
 	}
 
@@ -182,22 +225,22 @@ func (c *Client) putNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedAr
 	// The new epoch's key, which no earlier epoch used.
 	aks, err := c.epochAKs(k, artifactID, va.Chain)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	ak, err := newAK()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	var earlier [][]byte
 	for _, old := range aks {
 		earlier = append(earlier, old)
 	}
 	if err := e2e.CheckNewAK(ak, earlier); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	commit, err := e2e.AKCommit(ak, artifactID, uint64(epoch))
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	next.Epoch, next.AKCommit = epoch, commit
 	aks[epoch] = ak
@@ -224,18 +267,18 @@ func (c *Client) putNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedAr
 				Purpose: "ak", Artifact: artifactID, Epoch: uint64(e), RecipientID: u.ID, RecipientPub: u.X25519Pub,
 			}, aks[e])
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			wraps = append(wraps, map[string]any{"user": u.ID, "epoch": e, "wrapped": e2e.B64(w)})
 		}
 	}
 	ekKey, err := e2e.EKSealKey(k.EK)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	sealed, err := e2e.Seal(rand.Reader, ekKey, estateFields(artifactID, epoch), ak)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	estate := []map[string]any{{"epoch": epoch, "sealed": e2e.B64(sealed)}}
 
@@ -244,23 +287,13 @@ func (c *Client) putNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedAr
 	var linkHash string
 	if next.Public {
 		if change.Link, err = e2e.PublicLink(c.Host, artifactID, ak, epoch, va.Chain.Bodies[0].OwnerFP); err != nil {
-			return nil, nil, fmt.Errorf("cannot make a link for host %s: %w", c.Host, err)
+			return nil, fmt.Errorf("cannot make a link for host %s: %w", c.Host, err)
 		}
-		token, err := e2e.LinkToken(ak, artifactID, uint64(epoch))
-		if err != nil {
-			return nil, nil, err
-		}
-		linkHash = e2e.LinkTokenHash(token)
-	}
-	if err := c.putRecord(k, artifactID, va, next, wraps, estate, linkHash); err != nil {
-		return nil, nil, err
-	}
-	for id, d := range lst.pins {
-		if err := c.storePin(k, id, d.pin, d.basedOn); err != nil {
-			return nil, nil, fmt.Errorf("the server accepted the new membership record, but pinning %s failed: %w", id, err)
+		if linkHash, err = linkTokenHash(ak, artifactID, epoch); err != nil {
+			return nil, err
 		}
 	}
-	return change, lst.listed, nil
+	return &nextEpochBuild{next: next, wraps: wraps, estate: estate, linkHash: linkHash, aks: aks, change: change, lst: lst}, nil
 }
 
 // readBack verifies the artifact after the server accepted a record. A

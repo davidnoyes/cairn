@@ -20,7 +20,9 @@ type approvalVec struct {
 	SignerKeys KeyPair        `json:"signerKeys"`
 	User       ApprovalUser   `json:"user"`
 	Directory  []ApprovalUser `json:"directory"`
-	Error      string         `json:"error,omitempty"`
+	// Rotations are the rotation records the server serves, by user ID.
+	Rotations map[string][]Envelope `json:"rotations"`
+	Error     string                `json:"error,omitempty"`
 }
 
 // approvalErrorKinds names each error CheckApproval returns, as the
@@ -106,6 +108,12 @@ func (u approvalUsers) signRaw(t testing.TB, signer chainUser, body []byte) *Env
 	return &env
 }
 
+// rotationOf is the rotation record that moves old's user from old to new
+// at seq, signed by both.
+func rotationOf(t testing.TB, seq int, old, new chainUser) Envelope {
+	return rotGens{t: t}.sign(RotationBody{V: 1, User: old.id, Seq: seq, Old: old.keys, New: new.keys}, old.seed, new.seed)
+}
+
 func approvalCases() []approvalCase {
 	withExcluded := func(v approvalVec, x ExcludedEntry) approvalVec {
 		v.Latest.Excluded = []ExcludedEntry{x}
@@ -117,6 +125,50 @@ func approvalCases() []approvalCase {
 		}},
 		{"editor-signed", "a listed editor's approval passes", nil, func(t testing.TB, u approvalUsers) approvalVec {
 			return u.baseApproval(t, u.bob)
+		}},
+		{"editor-signed-before-rotation", "an editor signed, then rotated: the record lists the old fp, the server serves the new keys, and the old keys in the rotation record verify it", nil, func(t testing.TB, u approvalUsers) approvalVec {
+			bob2 := newChainUser(t, "u-bob", "rot")
+			v := u.baseApproval(t, u.bob)
+			v.SignerKeys = bob2.keys
+			v.Rotations = map[string][]Envelope{u.bob.id: {rotationOf(t, 1, u.bob, bob2)}}
+			return v
+		}},
+		{"editor-signed-after-rotation", "an editor rotated, then signed under the new keys while the record still lists the old fp", nil, func(t testing.TB, u approvalUsers) approvalVec {
+			bob2 := newChainUser(t, "u-bob", "rot")
+			v := u.baseApproval(t, bob2)
+			v.Rotations = map[string][]Envelope{u.bob.id: {rotationOf(t, 1, u.bob, bob2)}}
+			return v
+		}},
+		{"owner-signed-after-rotation", "the owner rotated, then signed under the new keys while the record lists the old fp", nil, func(t testing.TB, u approvalUsers) approvalVec {
+			alice2 := newChainUser(t, "u-alice", "rot")
+			v := u.baseApproval(t, alice2)
+			v.Rotations = map[string][]Envelope{u.alice.id: {rotationOf(t, 1, u.alice, alice2)}}
+			return v
+		}},
+		{"signer-key-behind-broken-chain", "the new keys are reachable only through a chain that skips a seq, so they are not linked; the listed fp is still a candidate, and the signature does not verify under it", ErrDecrypt, func(t testing.TB, u approvalUsers) approvalVec {
+			bob1, bob2 := newChainUser(t, "u-bob", "rot1"), newChainUser(t, "u-bob", "rot2")
+			v := u.baseApproval(t, bob2)
+			v.Rotations = map[string][]Envelope{u.bob.id: {rotationOf(t, 1, u.bob, bob1), rotationOf(t, 3, bob1, bob2)}}
+			return v
+		}},
+		{"signer-key-on-unrelated-chain", "the signer's keys are on a rotation chain that never names the listed fp, so no candidate is linked", ErrApprovalSigner, func(t testing.TB, u approvalUsers) approvalVec {
+			bob1, bob2 := newChainUser(t, "u-bob", "rot1"), newChainUser(t, "u-bob", "rot2")
+			v := u.baseApproval(t, bob2)
+			v.Rotations = map[string][]Envelope{u.bob.id: {rotationOf(t, 1, bob1, bob2)}}
+			return v
+		}},
+		{"signer-rotations-not-served", "an editor's new keys with no rotation records served are not the listed fp", ErrApprovalSigner, func(t testing.TB, u approvalUsers) approvalVec {
+			return u.baseApproval(t, newChainUser(t, "u-bob", "rot"))
+		}},
+		{"signature-forged-with-rotation", "an editor's chain verifies, but the approval is signed by another key", ErrDecrypt, func(t testing.TB, u approvalUsers) approvalVec {
+			bob2 := newChainUser(t, "u-bob", "rot")
+			v := u.baseApproval(t, u.bob)
+			forged := u.baseApproval(t, u.mallory).Approval
+			forged.Signer = u.bob.id
+			v.Approval = forged
+			v.SignerKeys = bob2.keys
+			v.Rotations = map[string][]Envelope{u.bob.id: {rotationOf(t, 1, u.bob, bob2)}}
+			return v
 		}},
 		{"approval-missing", "a server that serves no approval gets the user asked about", ErrApprovalMissing, func(t testing.TB, u approvalUsers) approvalVec {
 			v := u.baseApproval(t, u.alice)
@@ -206,6 +258,9 @@ func approvalVectors(t testing.TB) []approvalVec {
 	for _, c := range approvalCases() {
 		v := c.build(t, u)
 		v.Name, v.Why = c.name, c.why
+		if v.Rotations == nil {
+			v.Rotations = map[string][]Envelope{}
+		}
 		if c.err != nil {
 			v.Error = approvalErrorKind(t, c.err)
 		}
@@ -215,7 +270,7 @@ func approvalVectors(t testing.TB) []approvalVec {
 }
 
 func (v approvalVec) input() ApprovalInput {
-	return ApprovalInput{Artifact: v.Artifact, Latest: &v.Latest, Approval: v.Approval, SignerKeys: v.SignerKeys, User: v.User, Directory: v.Directory}
+	return ApprovalInput{Artifact: v.Artifact, Latest: &v.Latest, Approval: v.Approval, SignerKeys: v.SignerKeys, User: v.User, Directory: v.Directory, Rotations: v.Rotations}
 }
 
 // checkApprovalVectors runs every approval entry, as read back from JSON,

@@ -44,8 +44,10 @@ type linkChainVec struct {
 	Owners   map[string]KeyPair  `json:"owners"`
 	Offers   map[string]Envelope `json:"offers"`
 	Keys     map[string]KeyPair  `json:"keys"`
-	Want     *linkChainWantVec   `json:"want,omitempty"`
-	Error    string              `json:"error,omitempty"`
+	// Rotations are the rotation records the server serves, by user ID.
+	Rotations map[string][]Envelope `json:"rotations"`
+	Want      *linkChainWantVec     `json:"want,omitempty"`
+	Error     string                `json:"error,omitempty"`
 }
 
 // linkChainWantVec is the chain's result plus Editors, the sorted user IDs
@@ -185,6 +187,8 @@ type linkChainCase struct {
 	seq       int
 	headEpoch int
 	editors   []string // user IDs whose keys verify; the trusted writers
+	// rotations is the rotation records the server serves, if any.
+	rotations func(t testing.TB, u chainUsers) map[string][]Envelope
 }
 
 func linkChainCases() []linkChainCase {
@@ -203,7 +207,28 @@ func linkChainCases() []linkChainCase {
 			return f, a, o, keys
 		}
 	}
+	// rotatedOwner is a chain whose second record is signed by alice's keys
+	// after she rotated, so its ownerFp is not the link's o. The editors
+	// verify as in public.
+	rotatedOwner := func(t testing.TB, u chainUsers) (*chainFixture, []byte, string, map[string]KeyPair) {
+		alice2 := newChainUser(t, "u-alice", "rot")
+		f := public(t, u).add(alice2, func(b *MembershipBody) { b.OwnerFP = alice2.fp })
+		return f, ak(1), u.alice.fp, map[string]KeyPair{u.bob.id: u.bob.keys}
+	}
+	rotatedOwnerRecords := func(t testing.TB, u chainUsers) map[string][]Envelope {
+		return map[string][]Envelope{u.alice.id: {rotationOf(t, 1, u.alice, newChainUser(t, "u-alice", "rot"))}}
+	}
 	return []linkChainCase{
+		{name: "owner-rotated-after-the-link", why: "alice rotated after the link was made, and signs the latest record under her new keys; the served rotation links her old fp to the new", seq: 3, headEpoch: 1, editors: []string{"u-bob"},
+			build: rotatedOwner, rotations: rotatedOwnerRecords},
+		{name: "rotation-record-of-another-user", why: "the only rotation record served for alice is u-carol's, which explains nothing", err: ErrChain,
+			build: rotatedOwner,
+			rotations: func(t testing.TB, u chainUsers) map[string][]Envelope {
+				carol2 := newChainUser(t, "u-carol", "rot")
+				return map[string][]Envelope{u.alice.id: {rotationOf(t, 1, u.carol, carol2)}}
+			}},
+		{name: "rotated-owner-no-rotations-served", why: "alice's later record is under keys the link's o does not name, and no rotation is served", err: ErrChain,
+			build: rotatedOwner},
 		{name: "public", why: "a public chain anchored at o, with the right AK and the editor's keys", seq: 2, headEpoch: 1, editors: []string{"u-bob"}, build: std},
 		{name: "public-writes", why: "public writes on is no obstacle", seq: 3, headEpoch: 1, editors: []string{"u-bob"},
 			build: with(func(u chainUsers, f *chainFixture, _ *[]byte, _ *string, _ map[string]KeyPair) *chainFixture {
@@ -294,7 +319,10 @@ func linkChainVectors(t testing.TB) []linkChainVec {
 		}
 		v := linkChainVec{
 			Name: c.name, Why: c.why, Artifact: chainArtifact, AK: hexEnc(ak), Epoch: epoch, O: o,
-			Records: f.records, Owners: f.owners, Offers: f.offers, Keys: keys,
+			Records: f.records, Owners: f.owners, Offers: f.offers, Keys: keys, Rotations: map[string][]Envelope{},
+		}
+		if c.rotations != nil {
+			v.Rotations = c.rotations(t, u)
 		}
 		if c.err != nil {
 			v.Error = linkChainErrorKind(t, c.err)
@@ -322,7 +350,7 @@ func checkLinkChainVectors(t *testing.T, vs []linkChainVec) {
 	for _, v := range parsed {
 		res, err := VerifyLinkChain(LinkChainInput{
 			Link:    Link{Artifact: v.Artifact, AK: hexDec(t, v.AK), Epoch: v.Epoch, Owner: v.O},
-			Records: v.Records, Owners: v.Owners, Offers: v.Offers, Keys: v.Keys,
+			Records: v.Records, Owners: v.Owners, Offers: v.Offers, Keys: v.Keys, Rotations: v.Rotations,
 		})
 		if v.Error != "" {
 			want := chainErrorKinds[v.Error]

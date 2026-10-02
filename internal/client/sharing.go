@@ -64,19 +64,25 @@ func (c *Client) Unlock() (*UnlockedKeys, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening MK with the API key: %w", err)
 	}
+	return openKeys(me.ID, mk, resp.bundleWire)
+}
+
+// openKeys opens the private keys of bundle b under mk, and refuses a bundle
+// whose published public keys are not the ones the private keys derive.
+func openKeys(userID string, mk []byte, b bundleWire) (*UnlockedKeys, error) {
 	mkKey, err := e2e.MKSealKey(mk)
 	if err != nil {
 		return nil, err
 	}
-	k := &UnlockedKeys{UserID: me.ID, MKSealKey: mkKey}
+	k := &UnlockedKeys{UserID: userID, MKSealKey: mkKey}
 	for _, f := range []struct {
 		name   string
 		sealed string
 		out    *[]byte
 	}{
-		{"x25519", resp.X25519Priv, &k.X25519Priv},
-		{"ed25519", resp.Ed25519Priv, &k.Ed25519Seed},
-		{"ek", resp.EK, &k.EK},
+		{"x25519", b.X25519Priv, &k.X25519Priv},
+		{"ed25519", b.Ed25519Priv, &k.Ed25519Seed},
+		{"ek", b.EK, &k.EK},
 	} {
 		sealed, err := e2e.UnB64(f.sealed)
 		if err != nil {
@@ -92,7 +98,7 @@ func (c *Client) Unlock() (*UnlockedKeys, error) {
 	if _, k.Ed25519Pub, err = e2e.GenerateEd25519(bytes.NewReader(k.Ed25519Seed)); err != nil {
 		return nil, err
 	}
-	if resp.X25519Pub != e2e.B64(k.X25519Pub) || resp.Ed25519Pub != e2e.B64(k.Ed25519Pub) {
+	if b.X25519Pub != e2e.B64(k.X25519Pub) || b.Ed25519Pub != e2e.B64(k.Ed25519Pub) {
 		return nil, errors.New("the server's published public keys do not match this account's private keys")
 	}
 	k.FP = hex.EncodeToString(e2e.Fingerprint(k.X25519Pub, k.Ed25519Pub))

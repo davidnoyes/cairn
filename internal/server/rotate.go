@@ -288,7 +288,7 @@ func (s *Server) handleMeRotate(w http.ResponseWriter, r *http.Request) {
 		}
 		for ref := range newWraps {
 			if !need[ref] {
-				return badRotation("wraps: the wrap for artifact %s at epoch %d is not one the caller holds under their current keys", ref.artifact, ref.epoch)
+				return conflictRotation("wraps: the wrap for artifact %s at epoch %d is not one the caller holds under their current keys", ref.artifact, ref.epoch)
 			}
 		}
 		for _, h := range held {
@@ -298,7 +298,7 @@ func (s *Server) handleMeRotate(w http.ResponseWriter, r *http.Request) {
 			}
 			wrapped, ok := newWraps[ref]
 			if !ok {
-				return badRotation("wraps: missing the wrap for artifact %s at epoch %d", ref.artifact, ref.epoch)
+				return conflictRotation("wraps: missing the wrap for artifact %s at epoch %d", ref.artifact, ref.epoch)
 			}
 			if err := rt.ReplaceHeldWrap(h.ArtifactID, h.Epoch, wrapped, newFP); err != nil {
 				return err

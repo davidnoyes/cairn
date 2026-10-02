@@ -31,6 +31,7 @@ Client:
   cairn vouch            Vouch for a version after reviewing it (ARTIFACT VERSION)
   cairn public           Turn the public link on or off (ARTIFACT on|off [--writes on|off])
   cairn pin              Pin a user's fingerprint in your keyring (--verified once compared)
+  cairn rotate-keys      Replace your keys, move your artifacts to a new epoch (--keep-epochs: stay), and print the new recovery code
   cairn push             Upload a directory as a new (or replaced) version (--create: new artifact)
   cairn db               Run SQL against a version's shared database
   cairn files            Manage a version's file storage (list|put|get|delete)
@@ -86,6 +87,8 @@ func main() {
 		err = runPublic(args)
 	case "pin":
 		err = runPin(args)
+	case "rotate-keys":
+		err = runRotateKeys(args)
 	case "push":
 		err = runPush(args)
 	case "db":

@@ -22,13 +22,14 @@ var (
 	ErrKeyringFork = errors.New("e2e: keyring differs from the anchor at the same rev")
 )
 
-// Pin states. PinNew and PinChanged are what PinState reports; only
-// PinUnverified and PinVerified are ever stored.
+// Pin states. PinNew and PinChanged are what PinState reports, and FollowPin
+// adds PinRotated; only PinUnverified and PinVerified are ever stored.
 const (
 	PinNew        = "new"
 	PinUnverified = "unverified"
 	PinVerified   = "verified"
 	PinChanged    = "changed"
+	PinRotated    = "rotated"
 )
 
 // Keyring is the user's pins and epoch records, sealed under MK.
@@ -40,8 +41,8 @@ type Keyring struct {
 }
 
 // Pin is the fingerprint the user accepted for another user. RotSeq and
-// RotHead record the last rotation accepted; until step 7 adds rotation
-// they only round-trip, and nothing here follows or checks a rotation chain.
+// RotHead record the last rotation accepted, which FollowRotations checks
+// the user's rotation records against.
 type Pin struct {
 	FP      string `json:"fp"`
 	State   string `json:"state"`
@@ -204,8 +205,8 @@ func OpenKeyring(mkSealKey []byte, rev int, sealed []byte, anchor *KeyringAnchor
 // PinState compares a user's current public keys with the pin for them, nil
 // if there is none, and returns the state to show and the current
 // fingerprint in hex: PinNew with no pin, the pin's own state when the
-// fingerprint matches, and PinChanged when it differs. A changed key that a
-// rotation chain explains is step 7's.
+// fingerprint matches, and PinChanged when it differs. It reads no rotation
+// records, so a changed key that a rotation chain explains is FollowPin's.
 func PinState(pin *Pin, x25519Pub, ed25519Pub []byte) (state, fp string) {
 	fp = hex.EncodeToString(Fingerprint(x25519Pub, ed25519Pub))
 	switch {
@@ -216,4 +217,64 @@ func PinState(pin *Pin, x25519Pub, ed25519Pub []byte) (state, fp string) {
 	default:
 		return PinChanged, fp
 	}
+}
+
+// FollowPin is PinState with the user's rotation records, oldest first, as
+// design/e2e-wire-formats.md ("The keyring") and design/e2e-api.md
+// ("Pending") describe. It returns the state to show and next, the pin to
+// store if the caller goes ahead; neither is stored here.
+//
+// With no pin the state is PinNew. With a pin on the current fingerprint it
+// is the pin's own, with the pin as next, and records are not read. Otherwise
+// FollowRotations follows the records from the pin. A chain that ends at the
+// current fingerprint is PinRotated, and next is unverified at the last
+// record followed, even for a verified pin. A chain that ends elsewhere, or
+// that does not verify (ErrChain, ErrFormat, ErrDecrypt), explains nothing:
+// PinChanged and no error. A fork or rollback (ErrRotationFork, ErrRollback)
+// is PinChanged with the error, so the caller can warn hard.
+//
+// Every other next is an unverified pin on the current fingerprint, taken at
+// the latest of the user's records that made these keys, when that record
+// verifies, and at rotSeq 0 otherwise. Mirrors followPin in
+// internal/server/web/e2e.mjs.
+func FollowPin(user string, pin *Pin, records []Envelope, x25519Pub, ed25519Pub []byte) (state string, next Pin, err error) {
+	fp := hex.EncodeToString(Fingerprint(x25519Pub, ed25519Pub))
+	if pin != nil && pin.FP == fp {
+		return pin.State, *pin, nil
+	}
+	fresh := pinTakenAt(user, records, fp)
+	if pin == nil {
+		return PinNew, fresh, nil
+	}
+	res, err := FollowRotations(user, records, *pin)
+	switch {
+	case errors.Is(err, ErrRotationFork) || errors.Is(err, ErrRollback):
+		return PinChanged, fresh, fmt.Errorf("rotation records for %s: %w", user, err)
+	case err != nil || res.FP != fp:
+		return PinChanged, fresh, nil
+	}
+	return PinRotated, Pin{FP: fp, State: PinUnverified, RotSeq: res.Seq, RotHead: res.Head}, nil
+}
+
+// pinTakenAt is the unverified pin on fp, at the latest of user's records
+// whose new keys hash to fp, if that record verifies under its old key and
+// its new one. Else RotSeq is 0.
+func pinTakenAt(user string, records []Envelope, fp string) Pin {
+	pin := Pin{FP: fp, State: PinUnverified}
+	for i := len(records) - 1; i >= 0; i-- {
+		var b RotationBody
+		if DecodeStrict(records[i].Body, &b) != nil {
+			continue
+		}
+		if newFP, ok := keyPairFP(b.New); !ok || newFP != fp {
+			continue
+		}
+		oldPub, err := UnB64(b.Old.Ed25519)
+		var opened RotationBody
+		if err == nil && b.User == user && b.Seq >= 1 && OpenRotation(records[i], oldPub, &opened) == nil {
+			pin.RotSeq, pin.RotHead = b.Seq, BodyHash(records[i].Body)
+		}
+		break
+	}
+	return pin
 }

@@ -39,6 +39,15 @@ func sealField(key []byte, field string, pt []byte) (string, error) {
 	return e2e.B64(sealed), nil
 }
 
+// newAccount is a freshly generated key bundle, with the secrets it seals.
+type newAccount struct {
+	AuthKey         []byte
+	Wire            bundleWire
+	RecoveryDisplay string
+	// Keys are the new private keys in the clear. UserID is not set.
+	Keys *UnlockedKeys
+}
+
 // generateAccount creates a brand-new key bundle: a fresh MK, X25519 and
 // Ed25519 key pairs, EK, and a recovery code, all sealed under a freshly
 // stretched password. Signup and a "new"-mode reset both start an account
@@ -48,73 +57,93 @@ func generateAccount(email, password string) (authKey []byte, wire bundleWire, r
 	if err != nil {
 		return nil, bundleWire{}, "", err
 	}
-	stretched, err := e2e.Stretch([]byte(password), email, params)
+	a, err := newBundle(email, password, params)
 	if err != nil {
 		return nil, bundleWire{}, "", err
+	}
+	return a.AuthKey, a.Wire, a.RecoveryDisplay, nil
+}
+
+// newBundle generates the keys of generateAccount under the given KDF
+// parameters. Rotation passes the account's own, so the password still
+// opens the new bundle.
+func newBundle(email, password string, params e2e.Params) (*newAccount, error) {
+	stretched, err := e2e.Stretch([]byte(password), email, params)
+	if err != nil {
+		return nil, err
 	}
 	authKey, kek := e2e.PasswordKeys(stretched)
 
 	mk := make([]byte, 32)
 	if _, err := rand.Read(mk); err != nil {
-		return nil, bundleWire{}, "", err
+		return nil, err
 	}
 	ek := make([]byte, 32)
 	if _, err := rand.Read(ek); err != nil {
-		return nil, bundleWire{}, "", err
+		return nil, err
 	}
 	recoveryCode, recoveryDisplay, err := e2e.NewRecoveryCode(rand.Reader)
 	if err != nil {
-		return nil, bundleWire{}, "", err
+		return nil, err
 	}
 	x25519Priv, x25519Pub, err := e2e.GenerateX25519(rand.Reader)
 	if err != nil {
-		return nil, bundleWire{}, "", err
+		return nil, err
 	}
 	ed25519Seed, ed25519Pub, err := e2e.GenerateEd25519(rand.Reader)
 	if err != nil {
-		return nil, bundleWire{}, "", err
+		return nil, err
 	}
 	mkSealKey, err := e2e.MKSealKey(mk)
 	if err != nil {
-		return nil, bundleWire{}, "", err
+		return nil, err
 	}
 
 	mkPassword, err := sealField(kek, "mk", mk)
 	if err != nil {
-		return nil, bundleWire{}, "", err
+		return nil, err
 	}
 	mkRecovery, err := sealField(e2e.RecoveryKEK(recoveryCode), "mk", mk)
 	if err != nil {
-		return nil, bundleWire{}, "", err
+		return nil, err
 	}
 	x25519PrivSealed, err := sealField(mkSealKey, "x25519", x25519Priv)
 	if err != nil {
-		return nil, bundleWire{}, "", err
+		return nil, err
 	}
 	ed25519PrivSealed, err := sealField(mkSealKey, "ed25519", ed25519Seed)
 	if err != nil {
-		return nil, bundleWire{}, "", err
+		return nil, err
 	}
 	ekSealed, err := sealField(mkSealKey, "ek", ek)
 	if err != nil {
-		return nil, bundleWire{}, "", err
+		return nil, err
 	}
 	kdfJSON, err := json.Marshal(params)
 	if err != nil {
-		return nil, bundleWire{}, "", err
+		return nil, err
 	}
 
-	wire = bundleWire{
-		KDF:         kdfJSON,
-		MKPassword:  mkPassword,
-		MKRecovery:  mkRecovery,
-		X25519Pub:   e2e.B64(x25519Pub),
-		X25519Priv:  x25519PrivSealed,
-		Ed25519Pub:  e2e.B64(ed25519Pub),
-		Ed25519Priv: ed25519PrivSealed,
-		EK:          ekSealed,
-	}
-	return authKey, wire, recoveryDisplay, nil
+	return &newAccount{
+		AuthKey: authKey,
+		Wire: bundleWire{
+			KDF:         kdfJSON,
+			MKPassword:  mkPassword,
+			MKRecovery:  mkRecovery,
+			X25519Pub:   e2e.B64(x25519Pub),
+			X25519Priv:  x25519PrivSealed,
+			Ed25519Pub:  e2e.B64(ed25519Pub),
+			Ed25519Priv: ed25519PrivSealed,
+			EK:          ekSealed,
+		},
+		RecoveryDisplay: recoveryDisplay,
+		Keys: &UnlockedKeys{
+			FP:        hex.EncodeToString(e2e.Fingerprint(x25519Pub, ed25519Pub)),
+			X25519Pub: x25519Pub, X25519Priv: x25519Priv,
+			Ed25519Pub: ed25519Pub, Ed25519Seed: ed25519Seed,
+			EK: ek, MKSealKey: mkSealKey,
+		},
+	}, nil
 }
 
 // Signup generates a fresh key bundle and a recovery code, then signs up.
@@ -189,11 +218,23 @@ type LoginResult struct {
 	IsAdmin bool
 }
 
-// Login signs in, then creates a device API key and leaves it set as c.Token
-// (as the bearer cairn_<keyid>_<authSecret>) so the client is usable right
-// away. The full four-part key, including keySecret, is returned for the
-// caller to save; it never touches the wire.
-func (c *Client) Login(email, password string) (*LoginResult, error) {
+// passwordSession is a sign-in with the password: the session token, and
+// what the password opens.
+type passwordSession struct {
+	Token   string
+	Params  e2e.Params
+	AuthKey []byte
+	MK      []byte
+	Email   string
+	Name    string
+	IsAdmin bool
+	Bundle  bundleWire
+}
+
+// passwordSignIn signs in with the password and opens MK. It makes no device
+// key; the session token is the credential for the endpoints that need a
+// session.
+func (c *Client) passwordSignIn(email, password string) (*passwordSession, error) {
 	if password == "" {
 		return nil, ErrEmptyPassword
 	}
@@ -231,28 +272,43 @@ func (c *Client) Login(email, password string) (*LoginResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening MK: %w", err)
 	}
+	return &passwordSession{
+		Token: loginOut.Token, Params: params, AuthKey: authKey, MK: mk, Bundle: loginOut.Bundle,
+		Email: loginOut.User.Email, Name: loginOut.User.Name, IsAdmin: loginOut.User.IsAdmin,
+	}, nil
+}
+
+// Login signs in, then creates a device API key and leaves it set as c.Token
+// (as the bearer cairn_<keyid>_<authSecret>) so the client is usable right
+// away. The full four-part key, including keySecret, is returned for the
+// caller to save; it never touches the wire.
+func (c *Client) Login(email, password string) (*LoginResult, error) {
+	ps, err := c.passwordSignIn(email, password)
+	if err != nil {
+		return nil, err
+	}
 
 	full, keyID, authSecret, keySecret, err := e2e.NewAPIKey(rand.Reader)
 	if err != nil {
 		return nil, err
 	}
-	sealedMK, err := e2e.Seal(rand.Reader, e2e.APIKeyKEK(keySecret, keyID), [][]byte{[]byte("mk"), []byte(keyID)}, mk)
+	sealedMK, err := e2e.Seal(rand.Reader, e2e.APIKeyKEK(keySecret, keyID), [][]byte{[]byte("mk"), []byte(keyID)}, ps.MK)
 	if err != nil {
 		return nil, err
 	}
 
 	// The device key is created with the session JWT login just returned,
 	// never with the API key it's about to make.
-	session := &Client{Host: c.Host, Token: loginOut.Token, HTTP: c.HTTP}
+	session := &Client{Host: c.Host, Token: ps.Token, HTTP: c.HTTP}
 	if err := session.doJSON("POST", "/api/keys", map[string]any{
-		"authKey": e2e.B64(authKey), "name": "device", "device": true,
+		"authKey": e2e.B64(ps.AuthKey), "name": "device", "device": true,
 		"keyId": keyID, "authSecret": authSecret, "mk": e2e.B64(sealedMK),
 	}, nil); err != nil {
 		return nil, err
 	}
 
 	c.Token = apiKeyBearer(keyID, authSecret)
-	return &LoginResult{APIKey: full, Email: loginOut.User.Email, Name: loginOut.User.Name, IsAdmin: loginOut.User.IsAdmin}, nil
+	return &LoginResult{APIKey: full, Email: ps.Email, Name: ps.Name, IsAdmin: ps.IsAdmin}, nil
 }
 
 // MeBundleResult is the caller's key bundle as returned by GET

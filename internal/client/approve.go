@@ -274,11 +274,13 @@ type pinDecision struct {
 // checkApproved runs the four checks of e2e.CheckApproval on the approval
 // in the pending entry p, and requires the directory to list the same keys
 // for the user as the pending entry does, so the approval's fingerprint is
-// the directory's. It does not look at the owner's pin.
-func checkApproved(k *UnlockedKeys, latest e2e.MembershipBody, dir []DirectoryUser, p PendingUser) error {
+// the directory's. rotations are the rotation records the membership GET
+// served, which let a signer's approval pass across a rotation. It does not
+// look at the owner's pin.
+func checkApproved(k *UnlockedKeys, latest e2e.MembershipBody, rotations map[string][]e2e.Envelope, dir []DirectoryUser, p PendingUser) error {
 	keysOf := func(id string) (e2e.KeyPair, bool) {
 		if id == k.UserID {
-			return e2e.KeyPair{X25519: e2e.B64(k.X25519Pub), Ed25519: e2e.B64(k.Ed25519Pub)}, true
+			return keyPairOf(k), true
 		}
 		for _, d := range dir {
 			if d.ID == id {
@@ -290,7 +292,7 @@ func checkApproved(k *UnlockedKeys, latest e2e.MembershipBody, dir []DirectoryUs
 	if d, ok := keysOf(p.User.ID); ok && d != approvalUser(p.User).Keys {
 		return fmt.Errorf("%w: %s", ErrPendingKeysDiffer, p.User.Email)
 	}
-	in := e2e.ApprovalInput{Artifact: latest.Artifact, Latest: &latest, Approval: p.Approval, User: approvalUser(p.User)}
+	in := e2e.ApprovalInput{Artifact: latest.Artifact, Latest: &latest, Approval: p.Approval, User: approvalUser(p.User), Rotations: rotations}
 	for _, d := range dir {
 		in.Directory = append(in.Directory, approvalUser(d))
 	}
@@ -315,7 +317,7 @@ func (c *Client) listApproved(k *UnlockedKeys, va *VerifiedArtifact, dir []Direc
 		if p.State != PendingApproved || skip(p.User.ID) {
 			continue
 		}
-		err := checkApproved(k, va.Chain.Latest, dir, p)
+		err := checkApproved(k, va.Chain.Latest, va.Membership.Rotations, dir, p)
 		var pin *e2e.Pin
 		if err == nil {
 			_, pin, err = checkPin(va.Keyring, p.User, false)

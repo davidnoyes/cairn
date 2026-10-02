@@ -1257,6 +1257,7 @@ describe('approval', () => {
         signerKeys: v.signerKeys,
         user: v.user,
         directory: v.directory,
+        rotations: v.rotations,
       };
       if (v.error) {
         assert.ok(approvalErrors[v.error], `${v.name}: unknown error kind ${v.error}`);
@@ -1533,6 +1534,7 @@ describe('linkChain', () => {
         owners: v.owners,
         offers: v.offers,
         keys: v.keys,
+        rotations: v.rotations,
       };
       if (v.error) {
         assert.ok(linkChainErrors[v.error], `${v.name}: unknown error kind ${v.error}`);
@@ -1596,6 +1598,47 @@ describe('rotationLink', () => {
   }
 });
 
+// followPin mirrors the Go followPin vector check: followPin must answer
+// each entry with the state and next pin the vector holds. A fork or rollback
+// throws the error, with the state and next pin attached to it.
+describe('followPin', () => {
+  for (const v of vf.followPin) {
+    test(v.name, async () => {
+      const keys = [e2e.unb64(v.keys.x25519), e2e.unb64(v.keys.ed25519)];
+      if (v.want.error) {
+        assert.ok(rotationErrors[v.want.error], `${v.name}: unknown error kind ${v.want.error}`);
+        await assert.rejects(() => e2e.followPin(v.user, v.pin, v.records, ...keys), (err) => {
+          assert.ok(err instanceof rotationErrors[v.want.error], `${v.name}: ${v.why}: ${err}`);
+          assert.equal(err.state, v.want.state, `${v.name}: ${v.why}`);
+          assert.deepEqual(err.next, v.want.next, `${v.name}: ${v.why}`);
+          return true;
+        });
+        return;
+      }
+      const got = await e2e.followPin(v.user, v.pin, v.records, ...keys);
+      assert.deepEqual(got, { state: v.want.state, next: v.want.next }, `${v.name}: ${v.why}`);
+    });
+  }
+
+  test('a fork is not a chain error', async () => {
+    const v = vf.followPin.find((c) => c.name === 'fork');
+    const keys = [e2e.unb64(v.keys.x25519), e2e.unb64(v.keys.ed25519)];
+    await assert.rejects(() => e2e.followPin(v.user, v.pin, v.records, ...keys), (err) => {
+      assert.ok(err instanceof e2e.RotationForkError);
+      assert.ok(!(err instanceof e2e.ChainError));
+      return true;
+    });
+  });
+
+  test('the pin passed in is not edited', async () => {
+    const v = vf.followPin.find((c) => c.name === 'rotated-verified-drops');
+    const keys = [e2e.unb64(v.keys.x25519), e2e.unb64(v.keys.ed25519)];
+    const before = structuredClone(v.pin);
+    await e2e.followPin(v.user, v.pin, v.records, ...keys);
+    assert.deepEqual(v.pin, before);
+  });
+});
+
 // A user ID is untrusted input, and an object lookup finds "__proto__" and
 // "constructor" on every map, so the linker must not read them as records.
 test('rotationLinker: user IDs that name Object properties link nothing', async () => {
@@ -1611,7 +1654,7 @@ test('vectors.json has no section this file does not check', () => {
     'blob', 'wrap', 'signature', 'rotation', 'ed25519Strict', 'x25519Strict',
     'fingerprint', 'linkToken', 'fileAddress', 'blindIndex', 'strictJSON',
     'base64url', 'envelope', 'chain', 'approval', 'keyring', 'link', 'linkChain',
-    'rotationChain', 'rotationLink',
+    'rotationChain', 'rotationLink', 'followPin',
   ];
   const unhandled = Object.keys(vf).filter((k) => !handled.includes(k));
   assert.deepEqual(unhandled, []);

@@ -147,13 +147,15 @@ func ParseLink(s string) (*Link, error) {
 
 // LinkChainInput is the answer of GET /api/artifacts/{id}/membership read
 // with a link's token, and the link it was read for. Keys is the link
-// scope's editor keys.
+// scope's editor keys. Rotations are the rotation records the server serves,
+// by user ID.
 type LinkChainInput struct {
-	Link    Link
-	Records []Envelope
-	Owners  map[string]KeyPair
-	Offers  map[string]Envelope
-	Keys    map[string]KeyPair
+	Link      Link
+	Records   []Envelope
+	Owners    map[string]KeyPair
+	Offers    map[string]Envelope
+	Keys      map[string]KeyPair
+	Rotations map[string][]Envelope
 }
 
 // LinkChain is what VerifyLinkChain verified: the chain, and Editors, the
@@ -167,14 +169,17 @@ type LinkChain struct {
 // VerifyLinkChain checks a membership chain a visitor read through a public
 // link, which the server answers and so cannot be trusted. The chain must
 // verify with its first record anchored at the link's o, so only keys that
-// hash to o sign it. Its latest record must be public, at the link's epoch,
-// with the akCommit the link's key makes. A link for an older epoch is
-// ErrStaleLink. A reader needs only the link's key and the chain, so an
-// editor whose keys are not served, or do not hash to the fp the record
-// lists, does not fail the open. That editor is left out of Editors, the
+// hash to o, or that a rotation chain in Rotations links to it, sign it. The
+// chain follows an owner who rotated after the link was made. Its latest
+// record must be public, at the link's epoch, with the akCommit the link's
+// key makes. A link for an older epoch is ErrStaleLink. A reader needs only
+// the link's key and the chain, so an editor whose keys are not served, or do
+// not hash to the fp the record lists, does not fail the open, even if a
+// rotation chain would link them. That editor is left out of Editors, the
 // writers the visitor trusts.
+// Mirrors verifyLinkChain in internal/server/web/e2e.mjs.
 func VerifyLinkChain(in LinkChainInput) (*LinkChain, error) {
-	c, err := VerifyChain(ChainInput{Artifact: in.Link.Artifact, Records: in.Records, Owners: in.Owners, Offers: in.Offers, Anchor: in.Link.Owner})
+	c, err := VerifyChain(ChainInput{Artifact: in.Link.Artifact, Records: in.Records, Owners: in.Owners, Offers: in.Offers, Anchor: in.Link.Owner, Linked: RotationLinker(in.Rotations)})
 	if err != nil {
 		return nil, err
 	}

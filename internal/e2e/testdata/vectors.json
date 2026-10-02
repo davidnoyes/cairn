@@ -4029,7 +4029,8 @@
             "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
           }
         }
-      ]
+      ],
+      "rotations": {}
     },
     {
       "name": "editor-signed",
@@ -4121,7 +4122,723 @@
             "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
           }
         }
-      ]
+      ],
+      "rotations": {}
+    },
+    {
+      "name": "editor-signed-before-rotation",
+      "why": "an editor signed, then rotated: the record lists the old fp, the server serves the new keys, and the old keys in the rotation record verify it",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "-sG1fiT1veT93et_2oUMGzlFTytU3l6gKOhfVMTwASEUpE-ndHEv0ufwZ70C7wwh7Pf4KM90yrKsTvAfU9xPCQ",
+        "signer": "u-bob"
+      },
+      "signerKeys": {
+        "x25519": "RV6LGJwdzpr4q-fZX3Z-J8pP6qDCoQSXWfafhVnzHlQ",
+        "ed25519": "LYaNdtiAtLNBzX1-M48N4EjDt5vwQPe-KQ6D48UNqdM"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "rotations": {
+        "u-bob": [
+          {
+            "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiI4Zm03SkpzN0swWnNRRUx1bTQtTG1hTTRCZ1k4SWdMYlBtcmtUb0VRYVFVIiwiZWQyNTUxOSI6IkhVcm4yb1hSbVExOEdHNkMwMnZBd1ktd25XQm40TzVWblJrdXZIaTBPLVEifSwibmV3Ijp7IngyNTUxOSI6IlJWNkxHSndkenByNHEtZlpYM1otSjhwUDZxRENvUVNYV2ZhZmhWbnpIbFEiLCJlZDI1NTE5IjoiTFlhTmR0aUF0TE5CelgxLU00OE40RWpEdDV2d1FQZS1LUTZENDhVTnFkTSJ9fQ",
+            "sig": "vYgkMmbHIOUf0u3CGQGY8MPPtbDNHzo_LPC6J1ktHx3uuZFCkOp9WafeddVcjyHaJTNLpM4l124_Xayze5S6CA",
+            "signer": "u-bob",
+            "newSig": "gHkR33R6imuEpdwmZ1fRhRoRPXXngD_op412C9sIGIpmHl2aMrAg9YEdBkt70fG09qwrGjDnF3pchS_M4fwfDw"
+          }
+        ]
+      }
+    },
+    {
+      "name": "editor-signed-after-rotation",
+      "why": "an editor rotated, then signed under the new keys while the record still lists the old fp",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "GaAA6DRdqUpmeB_1m1up9sEiuz-NwpDNohey8PhYKQc_INMhHEAezyqunBT0TcMtAOSBgGL0FLvIsjFtF2kjAQ",
+        "signer": "u-bob"
+      },
+      "signerKeys": {
+        "x25519": "RV6LGJwdzpr4q-fZX3Z-J8pP6qDCoQSXWfafhVnzHlQ",
+        "ed25519": "LYaNdtiAtLNBzX1-M48N4EjDt5vwQPe-KQ6D48UNqdM"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "rotations": {
+        "u-bob": [
+          {
+            "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiI4Zm03SkpzN0swWnNRRUx1bTQtTG1hTTRCZ1k4SWdMYlBtcmtUb0VRYVFVIiwiZWQyNTUxOSI6IkhVcm4yb1hSbVExOEdHNkMwMnZBd1ktd25XQm40TzVWblJrdXZIaTBPLVEifSwibmV3Ijp7IngyNTUxOSI6IlJWNkxHSndkenByNHEtZlpYM1otSjhwUDZxRENvUVNYV2ZhZmhWbnpIbFEiLCJlZDI1NTE5IjoiTFlhTmR0aUF0TE5CelgxLU00OE40RWpEdDV2d1FQZS1LUTZENDhVTnFkTSJ9fQ",
+            "sig": "vYgkMmbHIOUf0u3CGQGY8MPPtbDNHzo_LPC6J1ktHx3uuZFCkOp9WafeddVcjyHaJTNLpM4l124_Xayze5S6CA",
+            "signer": "u-bob",
+            "newSig": "gHkR33R6imuEpdwmZ1fRhRoRPXXngD_op412C9sIGIpmHl2aMrAg9YEdBkt70fG09qwrGjDnF3pchS_M4fwfDw"
+          }
+        ]
+      }
+    },
+    {
+      "name": "owner-signed-after-rotation",
+      "why": "the owner rotated, then signed under the new keys while the record lists the old fp",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "QrFmB7bh1lKrKLd825mgaEvWnNu9YM68diPSx8Pa8Q19iDXWo1KprBUzf24MNsFBR29KS6tDsKx3M4-hZTf7Ag",
+        "signer": "u-alice"
+      },
+      "signerKeys": {
+        "x25519": "sk98h3EW29gL15t-BgIUMT5XtyCD0zsOWdNVd3eTswM",
+        "ed25519": "ITfc0g3obJEi7DH5MnGWh_vdQor9M3dflf-v42jPadI"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "rotations": {
+        "u-alice": [
+          {
+            "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwib2xkIjp7IngyNTUxOSI6IjNaNUV0cmo4WjZWUjh1STU4V0dYT1NhamJKVUR5b3RUbHVLWDhGZ1FRbmMiLCJlZDI1NTE5IjoiRnh4RGNMWFc4aTFOdGFBT1BIejhBc0RhSHFVaVpod01OUTBXaTdPVWlfRSJ9LCJuZXciOnsieDI1NTE5Ijoic2s5OGgzRVcyOWdMMTV0LUJnSVVNVDVYdHlDRDB6c09XZE5WZDNlVHN3TSIsImVkMjU1MTkiOiJJVGZjMGczb2JKRWk3REg1TW5HV2hfdmRRb3I5TTNkZmxmLXY0MmpQYWRJIn19",
+            "sig": "EHJanfP4IqXarfEswH5BhBbiys_KGw_OQ8NXV5uprsYEUzo2GcRSWgEJUR4HhZEwUlyTKI9SqnvNuIQaQ316CA",
+            "signer": "u-alice",
+            "newSig": "qtvX5FnF8LosDjURZ_j2rzGmnNNCe52xyhN9H1b274kltP3KZzdFRp77zej51gx45fkOuvdxNqL0Dqk2U1W5BQ"
+          }
+        ]
+      }
+    },
+    {
+      "name": "signer-key-behind-broken-chain",
+      "why": "the new keys are reachable only through a chain that skips a seq, so they are not linked; the listed fp is still a candidate, and the signature does not verify under it",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "UkTxB1Jb7FgSxGPO6puLmmGhHB6OLus5JJxCrQ7lFOBohBiHkuJPW4iROuFHbjcDUkaotxdooE8xos6wjgISDw",
+        "signer": "u-bob"
+      },
+      "signerKeys": {
+        "x25519": "9lp-FYUs1WXZyTmGrVbL5ZxdpOVUY8CBWzjPwB8qQxU",
+        "ed25519": "TEEIHkFB_p9oF0LapVpJPs_xNZbEOmYXXoscbYtRDqU"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "rotations": {
+        "u-bob": [
+          {
+            "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiI4Zm03SkpzN0swWnNRRUx1bTQtTG1hTTRCZ1k4SWdMYlBtcmtUb0VRYVFVIiwiZWQyNTUxOSI6IkhVcm4yb1hSbVExOEdHNkMwMnZBd1ktd25XQm40TzVWblJrdXZIaTBPLVEifSwibmV3Ijp7IngyNTUxOSI6IkdjU3pzWldXbTlqUUU2cnBLRWR6cWtDTjZ4VXI4VjRRZm0tbldrcmpNVWMiLCJlZDI1NTE5IjoiZVBfSmtvQjhIUFB0eTk0U2dHaVlfSml3cDZxdUp2LUh1SnhvaHVJMlhEVSJ9fQ",
+            "sig": "etjwZLp82SqzIOmLzk0q7r7TFvV-iEdPTwPwSK9OVVSLntvihApIIAweDhe8nLzq34Lavzub56rI9K5ySqkBDg",
+            "signer": "u-bob",
+            "newSig": "AD4D4h0Wlm_F03jWAybLew7ovH_V8gt8JsTK6i-r2filzyeV941tXVn2-yieLme0Do0oDt-SEeA_MUDxoav4BA"
+          },
+          {
+            "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjMsIm9sZCI6eyJ4MjU1MTkiOiJHY1N6c1pXV205alFFNnJwS0VkenFrQ042eFVyOFY0UWZtLW5Xa3JqTVVjIiwiZWQyNTUxOSI6ImVQX0prb0I4SFBQdHk5NFNnR2lZX0ppd3A2cXVKdi1IdUp4b2h1STJYRFUifSwibmV3Ijp7IngyNTUxOSI6IjlscC1GWVVzMVdYWnlUbUdyVmJMNVp4ZHBPVlVZOENCV3pqUHdCOHFReFUiLCJlZDI1NTE5IjoiVEVFSUhrRkJfcDlvRjBMYXBWcEpQc194TlpiRU9tWVhYb3NjYll0UkRxVSJ9fQ",
+            "sig": "zRWt6lkqurxCnqMka00hs9RIoDI2fd1nqcUS7oAITi8xorhasfr8B8vLthP-TozUYChwajZk323zcixQ1mhbAg",
+            "signer": "u-bob",
+            "newSig": "dd30IbDOiTiibYtyaJov18zyU0VyLctGbhYmbJS1ZRiTpgWvAajpzNj_ULLra35vHhvBq61ZTG5ZY98Xt9jJBw"
+          }
+        ]
+      },
+      "error": "decrypt"
+    },
+    {
+      "name": "signer-key-on-unrelated-chain",
+      "why": "the signer's keys are on a rotation chain that never names the listed fp, so no candidate is linked",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "UkTxB1Jb7FgSxGPO6puLmmGhHB6OLus5JJxCrQ7lFOBohBiHkuJPW4iROuFHbjcDUkaotxdooE8xos6wjgISDw",
+        "signer": "u-bob"
+      },
+      "signerKeys": {
+        "x25519": "9lp-FYUs1WXZyTmGrVbL5ZxdpOVUY8CBWzjPwB8qQxU",
+        "ed25519": "TEEIHkFB_p9oF0LapVpJPs_xNZbEOmYXXoscbYtRDqU"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "rotations": {
+        "u-bob": [
+          {
+            "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJHY1N6c1pXV205alFFNnJwS0VkenFrQ042eFVyOFY0UWZtLW5Xa3JqTVVjIiwiZWQyNTUxOSI6ImVQX0prb0I4SFBQdHk5NFNnR2lZX0ppd3A2cXVKdi1IdUp4b2h1STJYRFUifSwibmV3Ijp7IngyNTUxOSI6IjlscC1GWVVzMVdYWnlUbUdyVmJMNVp4ZHBPVlVZOENCV3pqUHdCOHFReFUiLCJlZDI1NTE5IjoiVEVFSUhrRkJfcDlvRjBMYXBWcEpQc194TlpiRU9tWVhYb3NjYll0UkRxVSJ9fQ",
+            "sig": "xgfCGmHdp9XLXClZUBIzobg3VTnpHhDhRVRbw_lqRakQl-QrQnChXYlxvyc2DY9VW_qGfj75zPUthTgB1VPoBQ",
+            "signer": "u-bob",
+            "newSig": "YiHNXoCaW7tCCQpzZ50xHBNrF_0Kwwf1MRPZBxB-W4Jvg0hDDhlpIcM_dCAiYXabRIpIyH9L9jb0oQOha-YdDg"
+          }
+        ]
+      },
+      "error": "signer"
+    },
+    {
+      "name": "signer-rotations-not-served",
+      "why": "an editor's new keys with no rotation records served are not the listed fp",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "GaAA6DRdqUpmeB_1m1up9sEiuz-NwpDNohey8PhYKQc_INMhHEAezyqunBT0TcMtAOSBgGL0FLvIsjFtF2kjAQ",
+        "signer": "u-bob"
+      },
+      "signerKeys": {
+        "x25519": "RV6LGJwdzpr4q-fZX3Z-J8pP6qDCoQSXWfafhVnzHlQ",
+        "ed25519": "LYaNdtiAtLNBzX1-M48N4EjDt5vwQPe-KQ6D48UNqdM"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "rotations": {},
+      "error": "signer"
+    },
+    {
+      "name": "signature-forged-with-rotation",
+      "why": "an editor's chain verifies, but the approval is signed by another key",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "editor",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "JA68RKGuBpBk0EhvSKHFwa7Oc2ydjgBPEpRcFw353jn9BJELp5MSuJVIEgpqt_OjEbq3Djmeyy3ujoZbCZc4AA",
+        "signer": "u-bob"
+      },
+      "signerKeys": {
+        "x25519": "RV6LGJwdzpr4q-fZX3Z-J8pP6qDCoQSXWfafhVnzHlQ",
+        "ed25519": "LYaNdtiAtLNBzX1-M48N4EjDt5vwQPe-KQ6D48UNqdM"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "rotations": {
+        "u-bob": [
+          {
+            "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiI4Zm03SkpzN0swWnNRRUx1bTQtTG1hTTRCZ1k4SWdMYlBtcmtUb0VRYVFVIiwiZWQyNTUxOSI6IkhVcm4yb1hSbVExOEdHNkMwMnZBd1ktd25XQm40TzVWblJrdXZIaTBPLVEifSwibmV3Ijp7IngyNTUxOSI6IlJWNkxHSndkenByNHEtZlpYM1otSjhwUDZxRENvUVNYV2ZhZmhWbnpIbFEiLCJlZDI1NTE5IjoiTFlhTmR0aUF0TE5CelgxLU00OE40RWpEdDV2d1FQZS1LUTZENDhVTnFkTSJ9fQ",
+            "sig": "vYgkMmbHIOUf0u3CGQGY8MPPtbDNHzo_LPC6J1ktHx3uuZFCkOp9WafeddVcjyHaJTNLpM4l124_Xayze5S6CA",
+            "signer": "u-bob",
+            "newSig": "gHkR33R6imuEpdwmZ1fRhRoRPXXngD_op412C9sIGIpmHl2aMrAg9YEdBkt70fG09qwrGjDnF3pchS_M4fwfDw"
+          }
+        ]
+      },
+      "error": "decrypt"
     },
     {
       "name": "approval-missing",
@@ -4210,6 +4927,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "missing"
     },
     {
@@ -4303,6 +5021,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "signer"
     },
     {
@@ -4396,6 +5115,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "signer"
     },
     {
@@ -4489,6 +5209,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "signer"
     },
     {
@@ -4582,6 +5303,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "decrypt"
     },
     {
@@ -4675,6 +5397,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "format"
     },
     {
@@ -4768,6 +5491,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "mismatch"
     },
     {
@@ -4861,6 +5585,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "mismatch"
     },
     {
@@ -4954,6 +5679,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "mismatch"
     },
     {
@@ -5047,6 +5773,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "mismatch"
     },
     {
@@ -5140,6 +5867,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "mismatch"
     },
     {
@@ -5239,6 +5967,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "excluded"
     },
     {
@@ -5338,6 +6067,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "excluded"
     },
     {
@@ -5437,6 +6167,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "excluded"
     },
     {
@@ -5536,6 +6267,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "excluded"
     },
     {
@@ -5634,7 +6366,8 @@
             "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
           }
         }
-      ]
+      ],
+      "rotations": {}
     },
     {
       "name": "directory-shares-email",
@@ -5735,6 +6468,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "duplicate"
     },
     {
@@ -5836,6 +6570,7 @@
           }
         }
       ],
+      "rotations": {},
       "error": "duplicate"
     }
   ],
@@ -6850,6 +7585,164 @@
   ],
   "linkChain": [
     {
+      "name": "owner-rotated-after-the-link",
+      "why": "alice rotated after the link was made, and signs the latest record under her new keys; the served rotation links her old fp to the new",
+      "artifact": "artifact-chain",
+      "ak": "af4a73359b502ae55ad49fb6d2b65aee836e3d83ffc08a65585407bfa7bcaf85",
+      "epoch": 1,
+      "o": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJ2aWV3ZXIiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "pV_YZyC3j8t0rnfYHLQwzZOnJwF1JYJZ7brAAsAgPA2wszu_RpgBs1HJgNxwuikl5_1JYNL-wXL__xCMYAiQCg",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJ2aWV3ZXIiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOnRydWUsInB1YmxpY1dyaXRlcyI6ZmFsc2UsInByZXYiOiI2YTRjZjRjYWQ2MzM2Yjk2ODk3N2VkNzIwYTQ5NTFjN2QxMTgwOTM0NjJmNmE4MDgzZGI3YWNjMDE5MWI3MTZlIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "8xXJVrs5PpwoM0A9oMZrDFtDbszOOz3YzF_mPhd8sQrr79UNfTF4Ht9dYtIIqhX5RrUCedLuRP_iKjkUSrqNDw",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Mywib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjU3MzU1YTFkNzFmM2YzNmJjZTQ0NmFhYzQwZjQ3ZjM3NGUwZTI3ZTgyMzFkNzk3OTA2ZWJmNjk3YmFiOTc4ZmYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJ2aWV3ZXIiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOnRydWUsInB1YmxpY1dyaXRlcyI6ZmFsc2UsInByZXYiOiJjM2Y1YTBiMDE4ZjE1Yzc4MzdkOGFmN2VjNzcyZTFkNWJiMzY4ZDk3Yzc4MDhmZWIxN2I2MmU0ZDE3ODljYjU5IiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "OD6nqtSsdXReLDgcPoZnVlO8d8-IROB-HliBelJ3UdwUQf7uMyN6s0-633HHqiGY7TD6bQc6u5mQ1HO_O1BQCw",
+          "signer": "u-alice"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "57355a1d71f3f36bce446aac40f47f374e0e27e8231d797906ebf697bab978ff": {
+          "x25519": "sk98h3EW29gL15t-BgIUMT5XtyCD0zsOWdNVd3eTswM",
+          "ed25519": "ITfc0g3obJEi7DH5MnGWh_vdQor9M3dflf-v42jPadI"
+        }
+      },
+      "offers": {},
+      "keys": {
+        "u-bob": {
+          "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+          "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+        }
+      },
+      "rotations": {
+        "u-alice": [
+          {
+            "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwib2xkIjp7IngyNTUxOSI6IjNaNUV0cmo4WjZWUjh1STU4V0dYT1NhamJKVUR5b3RUbHVLWDhGZ1FRbmMiLCJlZDI1NTE5IjoiRnh4RGNMWFc4aTFOdGFBT1BIejhBc0RhSHFVaVpod01OUTBXaTdPVWlfRSJ9LCJuZXciOnsieDI1NTE5Ijoic2s5OGgzRVcyOWdMMTV0LUJnSVVNVDVYdHlDRDB6c09XZE5WZDNlVHN3TSIsImVkMjU1MTkiOiJJVGZjMGczb2JKRWk3REg1TW5HV2hfdmRRb3I5TTNkZmxmLXY0MmpQYWRJIn19",
+            "sig": "EHJanfP4IqXarfEswH5BhBbiys_KGw_OQ8NXV5uprsYEUzo2GcRSWgEJUR4HhZEwUlyTKI9SqnvNuIQaQ316CA",
+            "signer": "u-alice",
+            "newSig": "qtvX5FnF8LosDjURZ_j2rzGmnNNCe52xyhN9H1b274kltP3KZzdFRp77zej51gx45fkOuvdxNqL0Dqk2U1W5BQ"
+          }
+        ]
+      },
+      "want": {
+        "head": "39b676c0a69a530b85bca3f3ca1824f59102e61aba84db1ecfeb145dc93724a3",
+        "seq": 3,
+        "epoch": 1,
+        "handovers": [],
+        "editors": [
+          "u-bob"
+        ]
+      }
+    },
+    {
+      "name": "rotation-record-of-another-user",
+      "why": "the only rotation record served for alice is u-carol's, which explains nothing",
+      "artifact": "artifact-chain",
+      "ak": "af4a73359b502ae55ad49fb6d2b65aee836e3d83ffc08a65585407bfa7bcaf85",
+      "epoch": 1,
+      "o": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJ2aWV3ZXIiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "pV_YZyC3j8t0rnfYHLQwzZOnJwF1JYJZ7brAAsAgPA2wszu_RpgBs1HJgNxwuikl5_1JYNL-wXL__xCMYAiQCg",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJ2aWV3ZXIiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOnRydWUsInB1YmxpY1dyaXRlcyI6ZmFsc2UsInByZXYiOiI2YTRjZjRjYWQ2MzM2Yjk2ODk3N2VkNzIwYTQ5NTFjN2QxMTgwOTM0NjJmNmE4MDgzZGI3YWNjMDE5MWI3MTZlIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "8xXJVrs5PpwoM0A9oMZrDFtDbszOOz3YzF_mPhd8sQrr79UNfTF4Ht9dYtIIqhX5RrUCedLuRP_iKjkUSrqNDw",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Mywib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjU3MzU1YTFkNzFmM2YzNmJjZTQ0NmFhYzQwZjQ3ZjM3NGUwZTI3ZTgyMzFkNzk3OTA2ZWJmNjk3YmFiOTc4ZmYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJ2aWV3ZXIiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOnRydWUsInB1YmxpY1dyaXRlcyI6ZmFsc2UsInByZXYiOiJjM2Y1YTBiMDE4ZjE1Yzc4MzdkOGFmN2VjNzcyZTFkNWJiMzY4ZDk3Yzc4MDhmZWIxN2I2MmU0ZDE3ODljYjU5IiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "OD6nqtSsdXReLDgcPoZnVlO8d8-IROB-HliBelJ3UdwUQf7uMyN6s0-633HHqiGY7TD6bQc6u5mQ1HO_O1BQCw",
+          "signer": "u-alice"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "57355a1d71f3f36bce446aac40f47f374e0e27e8231d797906ebf697bab978ff": {
+          "x25519": "sk98h3EW29gL15t-BgIUMT5XtyCD0zsOWdNVd3eTswM",
+          "ed25519": "ITfc0g3obJEi7DH5MnGWh_vdQor9M3dflf-v42jPadI"
+        }
+      },
+      "offers": {},
+      "keys": {
+        "u-bob": {
+          "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+          "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+        }
+      },
+      "rotations": {
+        "u-alice": [
+          {
+            "body": "eyJ2IjoxLCJ1c2VyIjoidS1jYXJvbCIsInNlcSI6MSwib2xkIjp7IngyNTUxOSI6IlNCa2FyQW5lZUEtNW9oQmtTRVR3dDhUbUJBbWV4RXR6ZHBSSkhPUXJhbXMiLCJlZDI1NTE5IjoieHp5dHJkekktZkY0Ull3SzhUZmY5RlVKenZmQnNHUFFGdWNyNm82ZElTVSJ9LCJuZXciOnsieDI1NTE5IjoiUm9DX1NvOEkwdF9pYUJDcTBTZlhDSjRraXVWTzZfN0dDcGdfU0g4MzFXSSIsImVkMjU1MTkiOiIxeGlaR1BlajU2SkRhOUptZV9LSkpwZGtxSlZodXV1ZkIwbktNVk9JaUdBIn19",
+            "sig": "gr7WUHuro4K6p1xHy1Iv1sOtOiycEhnX9LYZKYA9SOZrkqFAd9_RPlxYwqQQ-W3E5iZkS0_XQndtFB2Ms9H8AQ",
+            "signer": "u-carol",
+            "newSig": "T2Z3m1RPqgra1ODFcUj4OYt64wRZOemNlkFYZaSh2_4c-GEZy6d5Fy_R0WDK0p75N14XPZ0vdnTOsZ1Ayn_qAA"
+          }
+        ]
+      },
+      "error": "chain"
+    },
+    {
+      "name": "rotated-owner-no-rotations-served",
+      "why": "alice's later record is under keys the link's o does not name, and no rotation is served",
+      "artifact": "artifact-chain",
+      "ak": "af4a73359b502ae55ad49fb6d2b65aee836e3d83ffc08a65585407bfa7bcaf85",
+      "epoch": 1,
+      "o": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJ2aWV3ZXIiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "pV_YZyC3j8t0rnfYHLQwzZOnJwF1JYJZ7brAAsAgPA2wszu_RpgBs1HJgNxwuikl5_1JYNL-wXL__xCMYAiQCg",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJ2aWV3ZXIiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOnRydWUsInB1YmxpY1dyaXRlcyI6ZmFsc2UsInByZXYiOiI2YTRjZjRjYWQ2MzM2Yjk2ODk3N2VkNzIwYTQ5NTFjN2QxMTgwOTM0NjJmNmE4MDgzZGI3YWNjMDE5MWI3MTZlIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "8xXJVrs5PpwoM0A9oMZrDFtDbszOOz3YzF_mPhd8sQrr79UNfTF4Ht9dYtIIqhX5RrUCedLuRP_iKjkUSrqNDw",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Mywib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjU3MzU1YTFkNzFmM2YzNmJjZTQ0NmFhYzQwZjQ3ZjM3NGUwZTI3ZTgyMzFkNzk3OTA2ZWJmNjk3YmFiOTc4ZmYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJ2aWV3ZXIiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOnRydWUsInB1YmxpY1dyaXRlcyI6ZmFsc2UsInByZXYiOiJjM2Y1YTBiMDE4ZjE1Yzc4MzdkOGFmN2VjNzcyZTFkNWJiMzY4ZDk3Yzc4MDhmZWIxN2I2MmU0ZDE3ODljYjU5IiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "OD6nqtSsdXReLDgcPoZnVlO8d8-IROB-HliBelJ3UdwUQf7uMyN6s0-633HHqiGY7TD6bQc6u5mQ1HO_O1BQCw",
+          "signer": "u-alice"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "57355a1d71f3f36bce446aac40f47f374e0e27e8231d797906ebf697bab978ff": {
+          "x25519": "sk98h3EW29gL15t-BgIUMT5XtyCD0zsOWdNVd3eTswM",
+          "ed25519": "ITfc0g3obJEi7DH5MnGWh_vdQor9M3dflf-v42jPadI"
+        }
+      },
+      "offers": {},
+      "keys": {
+        "u-bob": {
+          "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+          "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+        }
+      },
+      "rotations": {},
+      "error": "chain"
+    },
+    {
       "name": "public",
       "why": "a public chain anchored at o, with the right AK and the editor's keys",
       "artifact": "artifact-chain",
@@ -6881,6 +7774,7 @@
           "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
         }
       },
+      "rotations": {},
       "want": {
         "head": "c3f5a0b018f15c7837d8af7ec772e1d5bb368d97c7808feb17b62e4d1789cb59",
         "seq": 2,
@@ -6928,6 +7822,7 @@
           "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
         }
       },
+      "rotations": {},
       "want": {
         "head": "8f484a7662268fc9ca7fae66a55d4848a693c5e467e8880a333c4b34045e8a16",
         "seq": 3,
@@ -6975,6 +7870,7 @@
           "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
         }
       },
+      "rotations": {},
       "want": {
         "head": "291860f597a7936d8df6dd997522a00aa6c02f27d007260fc38d5c1d09f795cf",
         "seq": 3,
@@ -7021,6 +7917,7 @@
           "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
         }
       },
+      "rotations": {},
       "want": {
         "head": "c3f5a0b018f15c7837d8af7ec772e1d5bb368d97c7808feb17b62e4d1789cb59",
         "seq": 2,
@@ -7063,6 +7960,7 @@
           "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
         }
       },
+      "rotations": {},
       "error": "chain"
     },
     {
@@ -7097,6 +7995,7 @@
           "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
         }
       },
+      "rotations": {},
       "error": "chain"
     },
     {
@@ -7131,6 +8030,7 @@
           "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
         }
       },
+      "rotations": {},
       "error": "chain"
     },
     {
@@ -7165,6 +8065,7 @@
           "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
         }
       },
+      "rotations": {},
       "want": {
         "head": "c3f5a0b018f15c7837d8af7ec772e1d5bb368d97c7808feb17b62e4d1789cb59",
         "seq": 2,
@@ -7200,6 +8101,7 @@
       },
       "offers": {},
       "keys": {},
+      "rotations": {},
       "want": {
         "head": "c3f5a0b018f15c7837d8af7ec772e1d5bb368d97c7808feb17b62e4d1789cb59",
         "seq": 2,
@@ -7244,6 +8146,7 @@
           "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
         }
       },
+      "rotations": {},
       "want": {
         "head": "18fd81a1877c5ca65afa5e3a7442f7d57a2aa20cbad1054f8be250e8342f31c7",
         "seq": 2,
@@ -7286,6 +8189,7 @@
           "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
         }
       },
+      "rotations": {},
       "error": "chain"
     },
     {
@@ -7325,6 +8229,7 @@
           "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
         }
       },
+      "rotations": {},
       "error": "staleLink"
     },
     {
@@ -7359,6 +8264,7 @@
           "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
         }
       },
+      "rotations": {},
       "error": "chain"
     },
     {
@@ -7388,6 +8294,7 @@
           "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
         }
       },
+      "rotations": {},
       "error": "chain"
     },
     {
@@ -7427,6 +8334,7 @@
           "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
         }
       },
+      "rotations": {},
       "error": "chain"
     },
     {
@@ -7461,6 +8369,7 @@
           "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
         }
       },
+      "rotations": {},
       "error": "chain"
     }
   ],
@@ -8693,6 +9602,743 @@
       "from": "97e5ac279f1366def9ecf86f4738441fb139795d701e2e9812ca5e513c93b23a",
       "to": "8fc8e147abacfcbd1600f405144eeb3943a7ee498b7090c8644d7e6606f7047e",
       "want": false
+    }
+  ],
+  "followPin": [
+    {
+      "name": "new-no-rotations",
+      "why": "no pin and no records: the pin starts at rotSeq 0",
+      "user": "u-bob",
+      "pin": null,
+      "records": [],
+      "keys": {
+        "x25519": "ul_KD_55zpZofc_OZ43cSU6uzL6snDhK36JReo7_IRY",
+        "ed25519": "o03XMxXwpT67JhLfcezoUhLuZU_MvZ9YoMrCjT3RQ94"
+      },
+      "want": {
+        "state": "new",
+        "next": {
+          "fp": "97e5ac279f1366def9ecf86f4738441fb139795d701e2e9812ca5e513c93b23a",
+          "state": "unverified",
+          "rotSeq": 0,
+          "rotHead": ""
+        }
+      }
+    },
+    {
+      "name": "new-latest-record-matches",
+      "why": "no pin, and the latest record's new keys are the current ones: the pin starts at that record",
+      "user": "u-bob",
+      "pin": null,
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "JZhYL_hb4do1N25-7wNj8riJ9saK7-jIQa8W8QlNGgHklN3IxwqX6iLMX9K0331u28pMlbGTJUPwdNKH21daBA",
+          "signer": "u-bob",
+          "newSig": "aFAwixSxyKI-Z6B1Wxcx_zmN7ZcO0ZGury72lw3eog4JLpW73YjmkZ2mdZMl2t7U15sup6l0WMgjnqxdEoTlBg"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjIsIm9sZCI6eyJ4MjU1MTkiOiJuRjA2WkNBY3hVRTQ4WG1FaFR0cURrVkVRRnJkV0c1Q3IxQ0FjVWVNUzNJIiwiZWQyNTUxOSI6IjhvSkRIeU9STjQ1NVQzV3JKTEtoU2tqOGVuWGdla1lBR1ZKbWR4MGJDX2sifSwibmV3Ijp7IngyNTUxOSI6ImZiLTFucUhPZkpuSV9YQUhHMUdvQXRDZ2VhS0dKLU9iYXd5MWR4cDN3MjAiLCJlZDI1NTE5IjoiOXdUQWw2ckpSTnhueHY2LWlwLXAxRlozUVY1MWxWSGVXcHo2UHBVSHVOMCJ9fQ",
+          "sig": "L_sUgBFU8EWxLQ5ucEQIlnv1QyH1FGZIbPx4-SP50IBMc3RR9511TgTbOu2IR6Z63KaZJxVRfcJ92zyIoB6xBQ",
+          "signer": "u-bob",
+          "newSig": "3UxHjlWvQAp5FWaVp3iwRfKWj-IVTgZeB4ZJ3Sj-vIgNph_RhUhyYZyLFDK-s1DFzdeHHzJF6WCPBMtqb7FzDQ"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjMsIm9sZCI6eyJ4MjU1MTkiOiJmYi0xbnFIT2ZKbklfWEFIRzFHb0F0Q2dlYUtHSi1PYmF3eTFkeHAzdzIwIiwiZWQyNTUxOSI6Ijl3VEFsNnJKUk54bnh2Ni1pcC1wMUZaM1FWNTFsVkhlV3B6NlBwVUh1TjAifSwibmV3Ijp7IngyNTUxOSI6InplREM1SEVOOEFVaHhmYWhaall3QndBSGc4cUM0eGY4UXR2b3VfTF9GbWciLCJlZDI1NTE5IjoidFNmT3BRRE1RRVVISjNHTXpJVHVYTVhYRXkyOUFNYzZ4Vlg2Z0hjNkE0USJ9fQ",
+          "sig": "zZ0zHGoT4u50l1D7s9eHBqGhCLSetdo8krB99WUfxtN2xdhYMUYEpGNfGac1I44t1em6pWkg2YbqhbZ-9pxRDw",
+          "signer": "u-bob",
+          "newSig": "_gM3QXk-6na0lIXRB5yMHa5JYFJyPhgFN_MkF9vydcYk62Go18vl7ORI1ifYZlr8Be9_UKwVQPX2TCP_fZapDA"
+        }
+      ],
+      "keys": {
+        "x25519": "zeDC5HEN8AUhxfahZjYwBwAHg8qC4xf8Qtvou_L_Fmg",
+        "ed25519": "tSfOpQDMQEUHJ3GMzITuXMXXEy29AMc6xVX6gHc6A4Q"
+      },
+      "want": {
+        "state": "new",
+        "next": {
+          "fp": "0bb4b23832957f099a6339e829a5b69fd41c5d3f1c96bdc9ed094fa853da9110",
+          "state": "unverified",
+          "rotSeq": 3,
+          "rotHead": "aac50929eea368e60437781f9f60f47e0c1b3729a9b9845e3d178b1fa1039456"
+        }
+      }
+    },
+    {
+      "name": "new-earlier-record-matches",
+      "why": "no pin, and the current keys are the ones record 2 made: the pin starts at record 2",
+      "user": "u-bob",
+      "pin": null,
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "JZhYL_hb4do1N25-7wNj8riJ9saK7-jIQa8W8QlNGgHklN3IxwqX6iLMX9K0331u28pMlbGTJUPwdNKH21daBA",
+          "signer": "u-bob",
+          "newSig": "aFAwixSxyKI-Z6B1Wxcx_zmN7ZcO0ZGury72lw3eog4JLpW73YjmkZ2mdZMl2t7U15sup6l0WMgjnqxdEoTlBg"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjIsIm9sZCI6eyJ4MjU1MTkiOiJuRjA2WkNBY3hVRTQ4WG1FaFR0cURrVkVRRnJkV0c1Q3IxQ0FjVWVNUzNJIiwiZWQyNTUxOSI6IjhvSkRIeU9STjQ1NVQzV3JKTEtoU2tqOGVuWGdla1lBR1ZKbWR4MGJDX2sifSwibmV3Ijp7IngyNTUxOSI6ImZiLTFucUhPZkpuSV9YQUhHMUdvQXRDZ2VhS0dKLU9iYXd5MWR4cDN3MjAiLCJlZDI1NTE5IjoiOXdUQWw2ckpSTnhueHY2LWlwLXAxRlozUVY1MWxWSGVXcHo2UHBVSHVOMCJ9fQ",
+          "sig": "L_sUgBFU8EWxLQ5ucEQIlnv1QyH1FGZIbPx4-SP50IBMc3RR9511TgTbOu2IR6Z63KaZJxVRfcJ92zyIoB6xBQ",
+          "signer": "u-bob",
+          "newSig": "3UxHjlWvQAp5FWaVp3iwRfKWj-IVTgZeB4ZJ3Sj-vIgNph_RhUhyYZyLFDK-s1DFzdeHHzJF6WCPBMtqb7FzDQ"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjMsIm9sZCI6eyJ4MjU1MTkiOiJmYi0xbnFIT2ZKbklfWEFIRzFHb0F0Q2dlYUtHSi1PYmF3eTFkeHAzdzIwIiwiZWQyNTUxOSI6Ijl3VEFsNnJKUk54bnh2Ni1pcC1wMUZaM1FWNTFsVkhlV3B6NlBwVUh1TjAifSwibmV3Ijp7IngyNTUxOSI6InplREM1SEVOOEFVaHhmYWhaall3QndBSGc4cUM0eGY4UXR2b3VfTF9GbWciLCJlZDI1NTE5IjoidFNmT3BRRE1RRVVISjNHTXpJVHVYTVhYRXkyOUFNYzZ4Vlg2Z0hjNkE0USJ9fQ",
+          "sig": "zZ0zHGoT4u50l1D7s9eHBqGhCLSetdo8krB99WUfxtN2xdhYMUYEpGNfGac1I44t1em6pWkg2YbqhbZ-9pxRDw",
+          "signer": "u-bob",
+          "newSig": "_gM3QXk-6na0lIXRB5yMHa5JYFJyPhgFN_MkF9vydcYk62Go18vl7ORI1ifYZlr8Be9_UKwVQPX2TCP_fZapDA"
+        }
+      ],
+      "keys": {
+        "x25519": "fb-1nqHOfJnI_XAHG1GoAtCgeaKGJ-Obawy1dxp3w20",
+        "ed25519": "9wTAl6rJRNxnxv6-ip-p1FZ3QV51lVHeWpz6PpUHuN0"
+      },
+      "want": {
+        "state": "new",
+        "next": {
+          "fp": "f60dc2451b0d76b72d8614b825d415d93fa66dfc8e9fbca818bf698560310be1",
+          "state": "unverified",
+          "rotSeq": 2,
+          "rotHead": "7f480542c4930e2415cc5a7c6ce8d68251d6bedda6a6fd88290c023944a11255"
+        }
+      }
+    },
+    {
+      "name": "new-no-record-matches",
+      "why": "no pin, and no record's new keys are the current ones: rotSeq 0",
+      "user": "u-bob",
+      "pin": null,
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "JZhYL_hb4do1N25-7wNj8riJ9saK7-jIQa8W8QlNGgHklN3IxwqX6iLMX9K0331u28pMlbGTJUPwdNKH21daBA",
+          "signer": "u-bob",
+          "newSig": "aFAwixSxyKI-Z6B1Wxcx_zmN7ZcO0ZGury72lw3eog4JLpW73YjmkZ2mdZMl2t7U15sup6l0WMgjnqxdEoTlBg"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjIsIm9sZCI6eyJ4MjU1MTkiOiJuRjA2WkNBY3hVRTQ4WG1FaFR0cURrVkVRRnJkV0c1Q3IxQ0FjVWVNUzNJIiwiZWQyNTUxOSI6IjhvSkRIeU9STjQ1NVQzV3JKTEtoU2tqOGVuWGdla1lBR1ZKbWR4MGJDX2sifSwibmV3Ijp7IngyNTUxOSI6ImZiLTFucUhPZkpuSV9YQUhHMUdvQXRDZ2VhS0dKLU9iYXd5MWR4cDN3MjAiLCJlZDI1NTE5IjoiOXdUQWw2ckpSTnhueHY2LWlwLXAxRlozUVY1MWxWSGVXcHo2UHBVSHVOMCJ9fQ",
+          "sig": "L_sUgBFU8EWxLQ5ucEQIlnv1QyH1FGZIbPx4-SP50IBMc3RR9511TgTbOu2IR6Z63KaZJxVRfcJ92zyIoB6xBQ",
+          "signer": "u-bob",
+          "newSig": "3UxHjlWvQAp5FWaVp3iwRfKWj-IVTgZeB4ZJ3Sj-vIgNph_RhUhyYZyLFDK-s1DFzdeHHzJF6WCPBMtqb7FzDQ"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjMsIm9sZCI6eyJ4MjU1MTkiOiJmYi0xbnFIT2ZKbklfWEFIRzFHb0F0Q2dlYUtHSi1PYmF3eTFkeHAzdzIwIiwiZWQyNTUxOSI6Ijl3VEFsNnJKUk54bnh2Ni1pcC1wMUZaM1FWNTFsVkhlV3B6NlBwVUh1TjAifSwibmV3Ijp7IngyNTUxOSI6InplREM1SEVOOEFVaHhmYWhaall3QndBSGc4cUM0eGY4UXR2b3VfTF9GbWciLCJlZDI1NTE5IjoidFNmT3BRRE1RRVVISjNHTXpJVHVYTVhYRXkyOUFNYzZ4Vlg2Z0hjNkE0USJ9fQ",
+          "sig": "zZ0zHGoT4u50l1D7s9eHBqGhCLSetdo8krB99WUfxtN2xdhYMUYEpGNfGac1I44t1em6pWkg2YbqhbZ-9pxRDw",
+          "signer": "u-bob",
+          "newSig": "_gM3QXk-6na0lIXRB5yMHa5JYFJyPhgFN_MkF9vydcYk62Go18vl7ORI1ifYZlr8Be9_UKwVQPX2TCP_fZapDA"
+        }
+      ],
+      "keys": {
+        "x25519": "KQ5sYV_26fsY0s-aHZZ17Q_CdXMcnbGEpP9oIAww1wo",
+        "ed25519": "ysOXM63Ah5-bnCszefqgARdkyFty1VZcitEm9TQM3nE"
+      },
+      "want": {
+        "state": "new",
+        "next": {
+          "fp": "2a2e984def827d8ec958f36fcef9faaae340a6e144a560ca804261a9c8a50ff8",
+          "state": "unverified",
+          "rotSeq": 0,
+          "rotHead": ""
+        }
+      }
+    },
+    {
+      "name": "new-record-bad-newSig",
+      "why": "no pin, and the matching record is not signed by its new keys: rotSeq 0",
+      "user": "u-bob",
+      "pin": null,
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "JZhYL_hb4do1N25-7wNj8riJ9saK7-jIQa8W8QlNGgHklN3IxwqX6iLMX9K0331u28pMlbGTJUPwdNKH21daBA",
+          "signer": "u-bob",
+          "newSig": "dBnWfmq3V58utFrdNkCy-GUrqJle-6Llec5yNSMRpKxNVCXWRHiKx2WdmYwCp3OxWRlq7v5GpT6Lktn23fJfCg"
+        }
+      ],
+      "keys": {
+        "x25519": "nF06ZCAcxUE48XmEhTtqDkVEQFrdWG5Cr1CAcUeMS3I",
+        "ed25519": "8oJDHyORN455T3WrJLKhSkj8enXgekYAGVJmdx0bC_k"
+      },
+      "want": {
+        "state": "new",
+        "next": {
+          "fp": "8fc8e147abacfcbd1600f405144eeb3943a7ee498b7090c8644d7e6606f7047e",
+          "state": "unverified",
+          "rotSeq": 0,
+          "rotHead": ""
+        }
+      }
+    },
+    {
+      "name": "new-record-bad-sig",
+      "why": "no pin, and the matching record is not signed by its old keys: rotSeq 0",
+      "user": "u-bob",
+      "pin": null,
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "dBnWfmq3V58utFrdNkCy-GUrqJle-6Llec5yNSMRpKxNVCXWRHiKx2WdmYwCp3OxWRlq7v5GpT6Lktn23fJfCg",
+          "signer": "u-bob",
+          "newSig": "aFAwixSxyKI-Z6B1Wxcx_zmN7ZcO0ZGury72lw3eog4JLpW73YjmkZ2mdZMl2t7U15sup6l0WMgjnqxdEoTlBg"
+        }
+      ],
+      "keys": {
+        "x25519": "nF06ZCAcxUE48XmEhTtqDkVEQFrdWG5Cr1CAcUeMS3I",
+        "ed25519": "8oJDHyORN455T3WrJLKhSkj8enXgekYAGVJmdx0bC_k"
+      },
+      "want": {
+        "state": "new",
+        "next": {
+          "fp": "8fc8e147abacfcbd1600f405144eeb3943a7ee498b7090c8644d7e6606f7047e",
+          "state": "unverified",
+          "rotSeq": 0,
+          "rotHead": ""
+        }
+      }
+    },
+    {
+      "name": "new-record-of-another-user",
+      "why": "no pin, and the matching record is u-carol's: it explains nothing for u-bob",
+      "user": "u-bob",
+      "pin": null,
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1jYXJvbCIsInNlcSI6MSwib2xkIjp7IngyNTUxOSI6InVsX0tEXzU1enBab2ZjX09aNDNjU1U2dXpMNnNuRGhLMzZKUmVvN19JUlkiLCJlZDI1NTE5IjoibzAzWE14WHdwVDY3SmhMZmNlem9VaEx1WlVfTXZaOVlvTXJDalQzUlE5NCJ9LCJuZXciOnsieDI1NTE5IjoibkYwNlpDQWN4VUU0OFhtRWhUdHFEa1ZFUUZyZFdHNUNyMUNBY1VlTVMzSSIsImVkMjU1MTkiOiI4b0pESHlPUk40NTVUM1dySkxLaFNrajhlblhnZWtZQUdWSm1keDBiQ19rIn19",
+          "sig": "63AXueJBU9o_rdlyVR9iz4Kograx9dnmLT3aKTqxxTupvuP9lONc7uCKk8Cgy_AOYUpURBIIUj2_0K-QlwgyAw",
+          "signer": "u-carol",
+          "newSig": "wNk-TweYB_34CJ8MyAQ_8daM4vJC8C1WkvWOhXHSLE7YMzUGu3oP2_q_yDMCb-Jrj57oqCVUwwPWVQCuhIxyAw"
+        }
+      ],
+      "keys": {
+        "x25519": "nF06ZCAcxUE48XmEhTtqDkVEQFrdWG5Cr1CAcUeMS3I",
+        "ed25519": "8oJDHyORN455T3WrJLKhSkj8enXgekYAGVJmdx0bC_k"
+      },
+      "want": {
+        "state": "new",
+        "next": {
+          "fp": "8fc8e147abacfcbd1600f405144eeb3943a7ee498b7090c8644d7e6606f7047e",
+          "state": "unverified",
+          "rotSeq": 0,
+          "rotHead": ""
+        }
+      }
+    },
+    {
+      "name": "new-record-seq-zero",
+      "why": "no pin, and the matching record has seq 0, which the format never allows: rotSeq 0",
+      "user": "u-bob",
+      "pin": null,
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjAsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "b5A1v7EeVV7IttRfGM7VGNS5t3lQBJlZuF2ps7E4cx7sN27mi6GqNDV16N1sDx0kKJNuS42Qo3g45jnbFuZeCA",
+          "signer": "u-bob",
+          "newSig": "NALlbKgVcCaXMRDveZMT8RH1JGTiB_X28G6oO961rqTuM65A0CNjwx3KSsRzWy_ESD6tadciY4BdP_gE4g0ODg"
+        }
+      ],
+      "keys": {
+        "x25519": "nF06ZCAcxUE48XmEhTtqDkVEQFrdWG5Cr1CAcUeMS3I",
+        "ed25519": "8oJDHyORN455T3WrJLKhSkj8enXgekYAGVJmdx0bC_k"
+      },
+      "want": {
+        "state": "new",
+        "next": {
+          "fp": "8fc8e147abacfcbd1600f405144eeb3943a7ee498b7090c8644d7e6606f7047e",
+          "state": "unverified",
+          "rotSeq": 0,
+          "rotHead": ""
+        }
+      }
+    },
+    {
+      "name": "matching-unverified",
+      "why": "the pin is the current key: its state stands, and the records are not read",
+      "user": "u-bob",
+      "pin": {
+        "fp": "97e5ac279f1366def9ecf86f4738441fb139795d701e2e9812ca5e513c93b23a",
+        "state": "unverified",
+        "rotSeq": 0,
+        "rotHead": ""
+      },
+      "records": [],
+      "keys": {
+        "x25519": "ul_KD_55zpZofc_OZ43cSU6uzL6snDhK36JReo7_IRY",
+        "ed25519": "o03XMxXwpT67JhLfcezoUhLuZU_MvZ9YoMrCjT3RQ94"
+      },
+      "want": {
+        "state": "unverified",
+        "next": {
+          "fp": "97e5ac279f1366def9ecf86f4738441fb139795d701e2e9812ca5e513c93b23a",
+          "state": "unverified",
+          "rotSeq": 0,
+          "rotHead": ""
+        }
+      }
+    },
+    {
+      "name": "matching-verified",
+      "why": "a verified pin on the current key stays verified, with its rotSeq and rotHead, and bad records are not read",
+      "user": "u-bob",
+      "pin": {
+        "fp": "8fc8e147abacfcbd1600f405144eeb3943a7ee498b7090c8644d7e6606f7047e",
+        "state": "verified",
+        "rotSeq": 1,
+        "rotHead": "40d307f004fbed8d569ea26f31fde9ef1605bd031c9fbde034c52b305c2add7a"
+      },
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6ImZiLTFucUhPZkpuSV9YQUhHMUdvQXRDZ2VhS0dKLU9iYXd5MWR4cDN3MjAiLCJlZDI1NTE5IjoiOXdUQWw2ckpSTnhueHY2LWlwLXAxRlozUVY1MWxWSGVXcHo2UHBVSHVOMCJ9fQ",
+          "sig": "4GpuX7Nv6jhaa5SXKezml3zATTXCIllY6pH989_InnFeuc-VDWcTF_uEXhOqACVJzj7Tc8nwNvkR2A76dsX_Bg",
+          "signer": "u-bob",
+          "newSig": "4GpuX7Nv6jhaa5SXKezml3zATTXCIllY6pH989_InnFeuc-VDWcTF_uEXhOqACVJzj7Tc8nwNvkR2A76dsX_Bg"
+        }
+      ],
+      "keys": {
+        "x25519": "nF06ZCAcxUE48XmEhTtqDkVEQFrdWG5Cr1CAcUeMS3I",
+        "ed25519": "8oJDHyORN455T3WrJLKhSkj8enXgekYAGVJmdx0bC_k"
+      },
+      "want": {
+        "state": "verified",
+        "next": {
+          "fp": "8fc8e147abacfcbd1600f405144eeb3943a7ee498b7090c8644d7e6606f7047e",
+          "state": "verified",
+          "rotSeq": 1,
+          "rotHead": "40d307f004fbed8d569ea26f31fde9ef1605bd031c9fbde034c52b305c2add7a"
+        }
+      }
+    },
+    {
+      "name": "rotated-one-step",
+      "why": "an unverified pin and one rotation to the current key: rotated, recorded at that record",
+      "user": "u-bob",
+      "pin": {
+        "fp": "97e5ac279f1366def9ecf86f4738441fb139795d701e2e9812ca5e513c93b23a",
+        "state": "unverified",
+        "rotSeq": 0,
+        "rotHead": ""
+      },
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "JZhYL_hb4do1N25-7wNj8riJ9saK7-jIQa8W8QlNGgHklN3IxwqX6iLMX9K0331u28pMlbGTJUPwdNKH21daBA",
+          "signer": "u-bob",
+          "newSig": "aFAwixSxyKI-Z6B1Wxcx_zmN7ZcO0ZGury72lw3eog4JLpW73YjmkZ2mdZMl2t7U15sup6l0WMgjnqxdEoTlBg"
+        }
+      ],
+      "keys": {
+        "x25519": "nF06ZCAcxUE48XmEhTtqDkVEQFrdWG5Cr1CAcUeMS3I",
+        "ed25519": "8oJDHyORN455T3WrJLKhSkj8enXgekYAGVJmdx0bC_k"
+      },
+      "want": {
+        "state": "rotated",
+        "next": {
+          "fp": "8fc8e147abacfcbd1600f405144eeb3943a7ee498b7090c8644d7e6606f7047e",
+          "state": "unverified",
+          "rotSeq": 1,
+          "rotHead": "40d307f004fbed8d569ea26f31fde9ef1605bd031c9fbde034c52b305c2add7a"
+        }
+      }
+    },
+    {
+      "name": "rotated-verified-drops",
+      "why": "a verified pin followed through three rotations becomes unverified, at the last record",
+      "user": "u-bob",
+      "pin": {
+        "fp": "97e5ac279f1366def9ecf86f4738441fb139795d701e2e9812ca5e513c93b23a",
+        "state": "verified",
+        "rotSeq": 0,
+        "rotHead": ""
+      },
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "JZhYL_hb4do1N25-7wNj8riJ9saK7-jIQa8W8QlNGgHklN3IxwqX6iLMX9K0331u28pMlbGTJUPwdNKH21daBA",
+          "signer": "u-bob",
+          "newSig": "aFAwixSxyKI-Z6B1Wxcx_zmN7ZcO0ZGury72lw3eog4JLpW73YjmkZ2mdZMl2t7U15sup6l0WMgjnqxdEoTlBg"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjIsIm9sZCI6eyJ4MjU1MTkiOiJuRjA2WkNBY3hVRTQ4WG1FaFR0cURrVkVRRnJkV0c1Q3IxQ0FjVWVNUzNJIiwiZWQyNTUxOSI6IjhvSkRIeU9STjQ1NVQzV3JKTEtoU2tqOGVuWGdla1lBR1ZKbWR4MGJDX2sifSwibmV3Ijp7IngyNTUxOSI6ImZiLTFucUhPZkpuSV9YQUhHMUdvQXRDZ2VhS0dKLU9iYXd5MWR4cDN3MjAiLCJlZDI1NTE5IjoiOXdUQWw2ckpSTnhueHY2LWlwLXAxRlozUVY1MWxWSGVXcHo2UHBVSHVOMCJ9fQ",
+          "sig": "L_sUgBFU8EWxLQ5ucEQIlnv1QyH1FGZIbPx4-SP50IBMc3RR9511TgTbOu2IR6Z63KaZJxVRfcJ92zyIoB6xBQ",
+          "signer": "u-bob",
+          "newSig": "3UxHjlWvQAp5FWaVp3iwRfKWj-IVTgZeB4ZJ3Sj-vIgNph_RhUhyYZyLFDK-s1DFzdeHHzJF6WCPBMtqb7FzDQ"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjMsIm9sZCI6eyJ4MjU1MTkiOiJmYi0xbnFIT2ZKbklfWEFIRzFHb0F0Q2dlYUtHSi1PYmF3eTFkeHAzdzIwIiwiZWQyNTUxOSI6Ijl3VEFsNnJKUk54bnh2Ni1pcC1wMUZaM1FWNTFsVkhlV3B6NlBwVUh1TjAifSwibmV3Ijp7IngyNTUxOSI6InplREM1SEVOOEFVaHhmYWhaall3QndBSGc4cUM0eGY4UXR2b3VfTF9GbWciLCJlZDI1NTE5IjoidFNmT3BRRE1RRVVISjNHTXpJVHVYTVhYRXkyOUFNYzZ4Vlg2Z0hjNkE0USJ9fQ",
+          "sig": "zZ0zHGoT4u50l1D7s9eHBqGhCLSetdo8krB99WUfxtN2xdhYMUYEpGNfGac1I44t1em6pWkg2YbqhbZ-9pxRDw",
+          "signer": "u-bob",
+          "newSig": "_gM3QXk-6na0lIXRB5yMHa5JYFJyPhgFN_MkF9vydcYk62Go18vl7ORI1ifYZlr8Be9_UKwVQPX2TCP_fZapDA"
+        }
+      ],
+      "keys": {
+        "x25519": "zeDC5HEN8AUhxfahZjYwBwAHg8qC4xf8Qtvou_L_Fmg",
+        "ed25519": "tSfOpQDMQEUHJ3GMzITuXMXXEy29AMc6xVX6gHc6A4Q"
+      },
+      "want": {
+        "state": "rotated",
+        "next": {
+          "fp": "0bb4b23832957f099a6339e829a5b69fd41c5d3f1c96bdc9ed094fa853da9110",
+          "state": "unverified",
+          "rotSeq": 3,
+          "rotHead": "aac50929eea368e60437781f9f60f47e0c1b3729a9b9845e3d178b1fa1039456"
+        }
+      }
+    },
+    {
+      "name": "rotated-from-rotSeq",
+      "why": "a pin accepted at record 1 follows records 2 and 3, and records the third",
+      "user": "u-bob",
+      "pin": {
+        "fp": "8fc8e147abacfcbd1600f405144eeb3943a7ee498b7090c8644d7e6606f7047e",
+        "state": "verified",
+        "rotSeq": 1,
+        "rotHead": "40d307f004fbed8d569ea26f31fde9ef1605bd031c9fbde034c52b305c2add7a"
+      },
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "JZhYL_hb4do1N25-7wNj8riJ9saK7-jIQa8W8QlNGgHklN3IxwqX6iLMX9K0331u28pMlbGTJUPwdNKH21daBA",
+          "signer": "u-bob",
+          "newSig": "aFAwixSxyKI-Z6B1Wxcx_zmN7ZcO0ZGury72lw3eog4JLpW73YjmkZ2mdZMl2t7U15sup6l0WMgjnqxdEoTlBg"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjIsIm9sZCI6eyJ4MjU1MTkiOiJuRjA2WkNBY3hVRTQ4WG1FaFR0cURrVkVRRnJkV0c1Q3IxQ0FjVWVNUzNJIiwiZWQyNTUxOSI6IjhvSkRIeU9STjQ1NVQzV3JKTEtoU2tqOGVuWGdla1lBR1ZKbWR4MGJDX2sifSwibmV3Ijp7IngyNTUxOSI6ImZiLTFucUhPZkpuSV9YQUhHMUdvQXRDZ2VhS0dKLU9iYXd5MWR4cDN3MjAiLCJlZDI1NTE5IjoiOXdUQWw2ckpSTnhueHY2LWlwLXAxRlozUVY1MWxWSGVXcHo2UHBVSHVOMCJ9fQ",
+          "sig": "L_sUgBFU8EWxLQ5ucEQIlnv1QyH1FGZIbPx4-SP50IBMc3RR9511TgTbOu2IR6Z63KaZJxVRfcJ92zyIoB6xBQ",
+          "signer": "u-bob",
+          "newSig": "3UxHjlWvQAp5FWaVp3iwRfKWj-IVTgZeB4ZJ3Sj-vIgNph_RhUhyYZyLFDK-s1DFzdeHHzJF6WCPBMtqb7FzDQ"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjMsIm9sZCI6eyJ4MjU1MTkiOiJmYi0xbnFIT2ZKbklfWEFIRzFHb0F0Q2dlYUtHSi1PYmF3eTFkeHAzdzIwIiwiZWQyNTUxOSI6Ijl3VEFsNnJKUk54bnh2Ni1pcC1wMUZaM1FWNTFsVkhlV3B6NlBwVUh1TjAifSwibmV3Ijp7IngyNTUxOSI6InplREM1SEVOOEFVaHhmYWhaall3QndBSGc4cUM0eGY4UXR2b3VfTF9GbWciLCJlZDI1NTE5IjoidFNmT3BRRE1RRVVISjNHTXpJVHVYTVhYRXkyOUFNYzZ4Vlg2Z0hjNkE0USJ9fQ",
+          "sig": "zZ0zHGoT4u50l1D7s9eHBqGhCLSetdo8krB99WUfxtN2xdhYMUYEpGNfGac1I44t1em6pWkg2YbqhbZ-9pxRDw",
+          "signer": "u-bob",
+          "newSig": "_gM3QXk-6na0lIXRB5yMHa5JYFJyPhgFN_MkF9vydcYk62Go18vl7ORI1ifYZlr8Be9_UKwVQPX2TCP_fZapDA"
+        }
+      ],
+      "keys": {
+        "x25519": "zeDC5HEN8AUhxfahZjYwBwAHg8qC4xf8Qtvou_L_Fmg",
+        "ed25519": "tSfOpQDMQEUHJ3GMzITuXMXXEy29AMc6xVX6gHc6A4Q"
+      },
+      "want": {
+        "state": "rotated",
+        "next": {
+          "fp": "0bb4b23832957f099a6339e829a5b69fd41c5d3f1c96bdc9ed094fa853da9110",
+          "state": "unverified",
+          "rotSeq": 3,
+          "rotHead": "aac50929eea368e60437781f9f60f47e0c1b3729a9b9845e3d178b1fa1039456"
+        }
+      }
+    },
+    {
+      "name": "fork",
+      "why": "the record at rotSeq hashes to another head: changed, and the fork is reported",
+      "user": "u-bob",
+      "pin": {
+        "fp": "8fc8e147abacfcbd1600f405144eeb3943a7ee498b7090c8644d7e6606f7047e",
+        "state": "verified",
+        "rotSeq": 1,
+        "rotHead": "cfe3d79b4663e5a178e3720a0f44c5503a79c7fe5c2230192fc3bdadb8e89393"
+      },
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "JZhYL_hb4do1N25-7wNj8riJ9saK7-jIQa8W8QlNGgHklN3IxwqX6iLMX9K0331u28pMlbGTJUPwdNKH21daBA",
+          "signer": "u-bob",
+          "newSig": "aFAwixSxyKI-Z6B1Wxcx_zmN7ZcO0ZGury72lw3eog4JLpW73YjmkZ2mdZMl2t7U15sup6l0WMgjnqxdEoTlBg"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjIsIm9sZCI6eyJ4MjU1MTkiOiJuRjA2WkNBY3hVRTQ4WG1FaFR0cURrVkVRRnJkV0c1Q3IxQ0FjVWVNUzNJIiwiZWQyNTUxOSI6IjhvSkRIeU9STjQ1NVQzV3JKTEtoU2tqOGVuWGdla1lBR1ZKbWR4MGJDX2sifSwibmV3Ijp7IngyNTUxOSI6ImZiLTFucUhPZkpuSV9YQUhHMUdvQXRDZ2VhS0dKLU9iYXd5MWR4cDN3MjAiLCJlZDI1NTE5IjoiOXdUQWw2ckpSTnhueHY2LWlwLXAxRlozUVY1MWxWSGVXcHo2UHBVSHVOMCJ9fQ",
+          "sig": "L_sUgBFU8EWxLQ5ucEQIlnv1QyH1FGZIbPx4-SP50IBMc3RR9511TgTbOu2IR6Z63KaZJxVRfcJ92zyIoB6xBQ",
+          "signer": "u-bob",
+          "newSig": "3UxHjlWvQAp5FWaVp3iwRfKWj-IVTgZeB4ZJ3Sj-vIgNph_RhUhyYZyLFDK-s1DFzdeHHzJF6WCPBMtqb7FzDQ"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjMsIm9sZCI6eyJ4MjU1MTkiOiJmYi0xbnFIT2ZKbklfWEFIRzFHb0F0Q2dlYUtHSi1PYmF3eTFkeHAzdzIwIiwiZWQyNTUxOSI6Ijl3VEFsNnJKUk54bnh2Ni1pcC1wMUZaM1FWNTFsVkhlV3B6NlBwVUh1TjAifSwibmV3Ijp7IngyNTUxOSI6InplREM1SEVOOEFVaHhmYWhaall3QndBSGc4cUM0eGY4UXR2b3VfTF9GbWciLCJlZDI1NTE5IjoidFNmT3BRRE1RRVVISjNHTXpJVHVYTVhYRXkyOUFNYzZ4Vlg2Z0hjNkE0USJ9fQ",
+          "sig": "zZ0zHGoT4u50l1D7s9eHBqGhCLSetdo8krB99WUfxtN2xdhYMUYEpGNfGac1I44t1em6pWkg2YbqhbZ-9pxRDw",
+          "signer": "u-bob",
+          "newSig": "_gM3QXk-6na0lIXRB5yMHa5JYFJyPhgFN_MkF9vydcYk62Go18vl7ORI1ifYZlr8Be9_UKwVQPX2TCP_fZapDA"
+        }
+      ],
+      "keys": {
+        "x25519": "zeDC5HEN8AUhxfahZjYwBwAHg8qC4xf8Qtvou_L_Fmg",
+        "ed25519": "tSfOpQDMQEUHJ3GMzITuXMXXEy29AMc6xVX6gHc6A4Q"
+      },
+      "want": {
+        "state": "changed",
+        "next": {
+          "fp": "0bb4b23832957f099a6339e829a5b69fd41c5d3f1c96bdc9ed094fa853da9110",
+          "state": "unverified",
+          "rotSeq": 3,
+          "rotHead": "aac50929eea368e60437781f9f60f47e0c1b3729a9b9845e3d178b1fa1039456"
+        },
+        "error": "rotationFork"
+      }
+    },
+    {
+      "name": "fork-two-records-at-a-seq",
+      "why": "the user signed two different records 2: changed, and the fork is reported",
+      "user": "u-bob",
+      "pin": {
+        "fp": "8fc8e147abacfcbd1600f405144eeb3943a7ee498b7090c8644d7e6606f7047e",
+        "state": "verified",
+        "rotSeq": 1,
+        "rotHead": "40d307f004fbed8d569ea26f31fde9ef1605bd031c9fbde034c52b305c2add7a"
+      },
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "JZhYL_hb4do1N25-7wNj8riJ9saK7-jIQa8W8QlNGgHklN3IxwqX6iLMX9K0331u28pMlbGTJUPwdNKH21daBA",
+          "signer": "u-bob",
+          "newSig": "aFAwixSxyKI-Z6B1Wxcx_zmN7ZcO0ZGury72lw3eog4JLpW73YjmkZ2mdZMl2t7U15sup6l0WMgjnqxdEoTlBg"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjIsIm9sZCI6eyJ4MjU1MTkiOiJuRjA2WkNBY3hVRTQ4WG1FaFR0cURrVkVRRnJkV0c1Q3IxQ0FjVWVNUzNJIiwiZWQyNTUxOSI6IjhvSkRIeU9STjQ1NVQzV3JKTEtoU2tqOGVuWGdla1lBR1ZKbWR4MGJDX2sifSwibmV3Ijp7IngyNTUxOSI6ImZiLTFucUhPZkpuSV9YQUhHMUdvQXRDZ2VhS0dKLU9iYXd5MWR4cDN3MjAiLCJlZDI1NTE5IjoiOXdUQWw2ckpSTnhueHY2LWlwLXAxRlozUVY1MWxWSGVXcHo2UHBVSHVOMCJ9fQ",
+          "sig": "L_sUgBFU8EWxLQ5ucEQIlnv1QyH1FGZIbPx4-SP50IBMc3RR9511TgTbOu2IR6Z63KaZJxVRfcJ92zyIoB6xBQ",
+          "signer": "u-bob",
+          "newSig": "3UxHjlWvQAp5FWaVp3iwRfKWj-IVTgZeB4ZJ3Sj-vIgNph_RhUhyYZyLFDK-s1DFzdeHHzJF6WCPBMtqb7FzDQ"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjIsIm9sZCI6eyJ4MjU1MTkiOiJuRjA2WkNBY3hVRTQ4WG1FaFR0cURrVkVRRnJkV0c1Q3IxQ0FjVWVNUzNJIiwiZWQyNTUxOSI6IjhvSkRIeU9STjQ1NVQzV3JKTEtoU2tqOGVuWGdla1lBR1ZKbWR4MGJDX2sifSwibmV3Ijp7IngyNTUxOSI6IktRNXNZVl8yNmZzWTBzLWFIWloxN1FfQ2RYTWNuYkdFcFA5b0lBd3cxd28iLCJlZDI1NTE5IjoieXNPWE02M0FoNS1ibkNzemVmcWdBUmRreUZ0eTFWWmNpdEVtOVRRTTNuRSJ9fQ",
+          "sig": "EsqkuRvnpBdLfihWg5oLeHAKCUcSNQI5P7PH87znLTWnaQAD313FVfZgoHcB7omtnhi0O2rvPsQuDEKIACTyAQ",
+          "signer": "u-bob",
+          "newSig": "eMnUkUBzSNFY8pOjYNdy5z5wOl51x6QAHmie8erAFoEdxuufBG1xc_B9g76XuglYDdlC75gEMlgkJ3Xn9g7vAw"
+        }
+      ],
+      "keys": {
+        "x25519": "fb-1nqHOfJnI_XAHG1GoAtCgeaKGJ-Obawy1dxp3w20",
+        "ed25519": "9wTAl6rJRNxnxv6-ip-p1FZ3QV51lVHeWpz6PpUHuN0"
+      },
+      "want": {
+        "state": "changed",
+        "next": {
+          "fp": "f60dc2451b0d76b72d8614b825d415d93fa66dfc8e9fbca818bf698560310be1",
+          "state": "unverified",
+          "rotSeq": 2,
+          "rotHead": "7f480542c4930e2415cc5a7c6ce8d68251d6bedda6a6fd88290c023944a11255"
+        },
+        "error": "rotationFork"
+      }
+    },
+    {
+      "name": "rollback",
+      "why": "the records omit the one at rotSeq: changed, and the rollback is reported",
+      "user": "u-bob",
+      "pin": {
+        "fp": "8fc8e147abacfcbd1600f405144eeb3943a7ee498b7090c8644d7e6606f7047e",
+        "state": "verified",
+        "rotSeq": 1,
+        "rotHead": "40d307f004fbed8d569ea26f31fde9ef1605bd031c9fbde034c52b305c2add7a"
+      },
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjIsIm9sZCI6eyJ4MjU1MTkiOiJuRjA2WkNBY3hVRTQ4WG1FaFR0cURrVkVRRnJkV0c1Q3IxQ0FjVWVNUzNJIiwiZWQyNTUxOSI6IjhvSkRIeU9STjQ1NVQzV3JKTEtoU2tqOGVuWGdla1lBR1ZKbWR4MGJDX2sifSwibmV3Ijp7IngyNTUxOSI6ImZiLTFucUhPZkpuSV9YQUhHMUdvQXRDZ2VhS0dKLU9iYXd5MWR4cDN3MjAiLCJlZDI1NTE5IjoiOXdUQWw2ckpSTnhueHY2LWlwLXAxRlozUVY1MWxWSGVXcHo2UHBVSHVOMCJ9fQ",
+          "sig": "L_sUgBFU8EWxLQ5ucEQIlnv1QyH1FGZIbPx4-SP50IBMc3RR9511TgTbOu2IR6Z63KaZJxVRfcJ92zyIoB6xBQ",
+          "signer": "u-bob",
+          "newSig": "3UxHjlWvQAp5FWaVp3iwRfKWj-IVTgZeB4ZJ3Sj-vIgNph_RhUhyYZyLFDK-s1DFzdeHHzJF6WCPBMtqb7FzDQ"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjMsIm9sZCI6eyJ4MjU1MTkiOiJmYi0xbnFIT2ZKbklfWEFIRzFHb0F0Q2dlYUtHSi1PYmF3eTFkeHAzdzIwIiwiZWQyNTUxOSI6Ijl3VEFsNnJKUk54bnh2Ni1pcC1wMUZaM1FWNTFsVkhlV3B6NlBwVUh1TjAifSwibmV3Ijp7IngyNTUxOSI6InplREM1SEVOOEFVaHhmYWhaall3QndBSGc4cUM0eGY4UXR2b3VfTF9GbWciLCJlZDI1NTE5IjoidFNmT3BRRE1RRVVISjNHTXpJVHVYTVhYRXkyOUFNYzZ4Vlg2Z0hjNkE0USJ9fQ",
+          "sig": "zZ0zHGoT4u50l1D7s9eHBqGhCLSetdo8krB99WUfxtN2xdhYMUYEpGNfGac1I44t1em6pWkg2YbqhbZ-9pxRDw",
+          "signer": "u-bob",
+          "newSig": "_gM3QXk-6na0lIXRB5yMHa5JYFJyPhgFN_MkF9vydcYk62Go18vl7ORI1ifYZlr8Be9_UKwVQPX2TCP_fZapDA"
+        }
+      ],
+      "keys": {
+        "x25519": "zeDC5HEN8AUhxfahZjYwBwAHg8qC4xf8Qtvou_L_Fmg",
+        "ed25519": "tSfOpQDMQEUHJ3GMzITuXMXXEy29AMc6xVX6gHc6A4Q"
+      },
+      "want": {
+        "state": "changed",
+        "next": {
+          "fp": "0bb4b23832957f099a6339e829a5b69fd41c5d3f1c96bdc9ed094fa853da9110",
+          "state": "unverified",
+          "rotSeq": 3,
+          "rotHead": "aac50929eea368e60437781f9f60f47e0c1b3729a9b9845e3d178b1fa1039456"
+        },
+        "error": "rollback"
+      }
+    },
+    {
+      "name": "rollback-no-records",
+      "why": "rotSeq is 1 and no records are served: changed, and the rollback is reported; the next pin has rotSeq 0",
+      "user": "u-bob",
+      "pin": {
+        "fp": "8fc8e147abacfcbd1600f405144eeb3943a7ee498b7090c8644d7e6606f7047e",
+        "state": "verified",
+        "rotSeq": 1,
+        "rotHead": "40d307f004fbed8d569ea26f31fde9ef1605bd031c9fbde034c52b305c2add7a"
+      },
+      "records": [],
+      "keys": {
+        "x25519": "fb-1nqHOfJnI_XAHG1GoAtCgeaKGJ-Obawy1dxp3w20",
+        "ed25519": "9wTAl6rJRNxnxv6-ip-p1FZ3QV51lVHeWpz6PpUHuN0"
+      },
+      "want": {
+        "state": "changed",
+        "next": {
+          "fp": "f60dc2451b0d76b72d8614b825d415d93fa66dfc8e9fbca818bf698560310be1",
+          "state": "unverified",
+          "rotSeq": 0,
+          "rotHead": ""
+        },
+        "error": "rollback"
+      }
+    },
+    {
+      "name": "broken-chain",
+      "why": "record 2 is skipped past, so the chain breaks: no error, but the chain explains nothing and the key is changed",
+      "user": "u-bob",
+      "pin": {
+        "fp": "97e5ac279f1366def9ecf86f4738441fb139795d701e2e9812ca5e513c93b23a",
+        "state": "unverified",
+        "rotSeq": 0,
+        "rotHead": ""
+      },
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "JZhYL_hb4do1N25-7wNj8riJ9saK7-jIQa8W8QlNGgHklN3IxwqX6iLMX9K0331u28pMlbGTJUPwdNKH21daBA",
+          "signer": "u-bob",
+          "newSig": "aFAwixSxyKI-Z6B1Wxcx_zmN7ZcO0ZGury72lw3eog4JLpW73YjmkZ2mdZMl2t7U15sup6l0WMgjnqxdEoTlBg"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjMsIm9sZCI6eyJ4MjU1MTkiOiJuRjA2WkNBY3hVRTQ4WG1FaFR0cURrVkVRRnJkV0c1Q3IxQ0FjVWVNUzNJIiwiZWQyNTUxOSI6IjhvSkRIeU9STjQ1NVQzV3JKTEtoU2tqOGVuWGdla1lBR1ZKbWR4MGJDX2sifSwibmV3Ijp7IngyNTUxOSI6ImZiLTFucUhPZkpuSV9YQUhHMUdvQXRDZ2VhS0dKLU9iYXd5MWR4cDN3MjAiLCJlZDI1NTE5IjoiOXdUQWw2ckpSTnhueHY2LWlwLXAxRlozUVY1MWxWSGVXcHo2UHBVSHVOMCJ9fQ",
+          "sig": "U8w45m_Mq9ljU-oR6yzxaRUy2defRCFti5z66WUwawV9HBD3HLDUy2x8lohRoLMhy0-Iuov0kfF6WPzwOuT4CA",
+          "signer": "u-bob",
+          "newSig": "ghJd_vCvU0H4wlduF-fYTQuu8JMxGTWmGkzqnn-3D9QGLpeJ_6JnGtvkTBYKOcbLE5OCTIb-C9K4v_xQCvE3CA"
+        }
+      ],
+      "keys": {
+        "x25519": "fb-1nqHOfJnI_XAHG1GoAtCgeaKGJ-Obawy1dxp3w20",
+        "ed25519": "9wTAl6rJRNxnxv6-ip-p1FZ3QV51lVHeWpz6PpUHuN0"
+      },
+      "want": {
+        "state": "changed",
+        "next": {
+          "fp": "f60dc2451b0d76b72d8614b825d415d93fa66dfc8e9fbca818bf698560310be1",
+          "state": "unverified",
+          "rotSeq": 3,
+          "rotHead": "bff38ca038124e65ad3c1ee43f281ee163e83f55078eb53b5899f80a8a8f8045"
+        }
+      }
+    },
+    {
+      "name": "bad-signature-in-chain",
+      "why": "record 2 is signed by other keys: changed with no error, and the next pin is at rotSeq 0 because its record does not verify",
+      "user": "u-bob",
+      "pin": {
+        "fp": "97e5ac279f1366def9ecf86f4738441fb139795d701e2e9812ca5e513c93b23a",
+        "state": "unverified",
+        "rotSeq": 0,
+        "rotHead": ""
+      },
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "JZhYL_hb4do1N25-7wNj8riJ9saK7-jIQa8W8QlNGgHklN3IxwqX6iLMX9K0331u28pMlbGTJUPwdNKH21daBA",
+          "signer": "u-bob",
+          "newSig": "aFAwixSxyKI-Z6B1Wxcx_zmN7ZcO0ZGury72lw3eog4JLpW73YjmkZ2mdZMl2t7U15sup6l0WMgjnqxdEoTlBg"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjIsIm9sZCI6eyJ4MjU1MTkiOiJuRjA2WkNBY3hVRTQ4WG1FaFR0cURrVkVRRnJkV0c1Q3IxQ0FjVWVNUzNJIiwiZWQyNTUxOSI6IjhvSkRIeU9STjQ1NVQzV3JKTEtoU2tqOGVuWGdla1lBR1ZKbWR4MGJDX2sifSwibmV3Ijp7IngyNTUxOSI6ImZiLTFucUhPZkpuSV9YQUhHMUdvQXRDZ2VhS0dKLU9iYXd5MWR4cDN3MjAiLCJlZDI1NTE5IjoiOXdUQWw2ckpSTnhueHY2LWlwLXAxRlozUVY1MWxWSGVXcHo2UHBVSHVOMCJ9fQ",
+          "sig": "j3G9Y9LuYWfQFlvmwx1wAlg8J4-FHXU7e0C-iAPgKm1RlfA4DQR8jPRMFRulv00TBrNX4s5CbPazSzJWi0hLBA",
+          "signer": "u-bob",
+          "newSig": "3UxHjlWvQAp5FWaVp3iwRfKWj-IVTgZeB4ZJ3Sj-vIgNph_RhUhyYZyLFDK-s1DFzdeHHzJF6WCPBMtqb7FzDQ"
+        }
+      ],
+      "keys": {
+        "x25519": "fb-1nqHOfJnI_XAHG1GoAtCgeaKGJ-Obawy1dxp3w20",
+        "ed25519": "9wTAl6rJRNxnxv6-ip-p1FZ3QV51lVHeWpz6PpUHuN0"
+      },
+      "want": {
+        "state": "changed",
+        "next": {
+          "fp": "f60dc2451b0d76b72d8614b825d415d93fa66dfc8e9fbca818bf698560310be1",
+          "state": "unverified",
+          "rotSeq": 0,
+          "rotHead": ""
+        }
+      }
+    },
+    {
+      "name": "chain-ends-elsewhere",
+      "why": "the chain ends at gen 2 and the current keys are gen 4, as after a password-only reset: changed",
+      "user": "u-bob",
+      "pin": {
+        "fp": "97e5ac279f1366def9ecf86f4738441fb139795d701e2e9812ca5e513c93b23a",
+        "state": "unverified",
+        "rotSeq": 0,
+        "rotHead": ""
+      },
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "JZhYL_hb4do1N25-7wNj8riJ9saK7-jIQa8W8QlNGgHklN3IxwqX6iLMX9K0331u28pMlbGTJUPwdNKH21daBA",
+          "signer": "u-bob",
+          "newSig": "aFAwixSxyKI-Z6B1Wxcx_zmN7ZcO0ZGury72lw3eog4JLpW73YjmkZ2mdZMl2t7U15sup6l0WMgjnqxdEoTlBg"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjIsIm9sZCI6eyJ4MjU1MTkiOiJuRjA2WkNBY3hVRTQ4WG1FaFR0cURrVkVRRnJkV0c1Q3IxQ0FjVWVNUzNJIiwiZWQyNTUxOSI6IjhvSkRIeU9STjQ1NVQzV3JKTEtoU2tqOGVuWGdla1lBR1ZKbWR4MGJDX2sifSwibmV3Ijp7IngyNTUxOSI6ImZiLTFucUhPZkpuSV9YQUhHMUdvQXRDZ2VhS0dKLU9iYXd5MWR4cDN3MjAiLCJlZDI1NTE5IjoiOXdUQWw2ckpSTnhueHY2LWlwLXAxRlozUVY1MWxWSGVXcHo2UHBVSHVOMCJ9fQ",
+          "sig": "L_sUgBFU8EWxLQ5ucEQIlnv1QyH1FGZIbPx4-SP50IBMc3RR9511TgTbOu2IR6Z63KaZJxVRfcJ92zyIoB6xBQ",
+          "signer": "u-bob",
+          "newSig": "3UxHjlWvQAp5FWaVp3iwRfKWj-IVTgZeB4ZJ3Sj-vIgNph_RhUhyYZyLFDK-s1DFzdeHHzJF6WCPBMtqb7FzDQ"
+        }
+      ],
+      "keys": {
+        "x25519": "KQ5sYV_26fsY0s-aHZZ17Q_CdXMcnbGEpP9oIAww1wo",
+        "ed25519": "ysOXM63Ah5-bnCszefqgARdkyFty1VZcitEm9TQM3nE"
+      },
+      "want": {
+        "state": "changed",
+        "next": {
+          "fp": "2a2e984def827d8ec958f36fcef9faaae340a6e144a560ca804261a9c8a50ff8",
+          "state": "unverified",
+          "rotSeq": 0,
+          "rotHead": ""
+        }
+      }
+    },
+    {
+      "name": "chain-older-than-the-pin",
+      "why": "every record predates the pin, and the current key is none of them: changed",
+      "user": "u-bob",
+      "pin": {
+        "fp": "0bb4b23832957f099a6339e829a5b69fd41c5d3f1c96bdc9ed094fa853da9110",
+        "state": "unverified",
+        "rotSeq": 0,
+        "rotHead": ""
+      },
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiJ1bF9LRF81NXpwWm9mY19PWjQzY1NVNnV6TDZzbkRoSzM2SlJlbzdfSVJZIiwiZWQyNTUxOSI6Im8wM1hNeFh3cFQ2N0poTGZjZXpvVWhMdVpVX012WjlZb01yQ2pUM1JROTQifSwibmV3Ijp7IngyNTUxOSI6Im5GMDZaQ0FjeFVFNDhYbUVoVHRxRGtWRVFGcmRXRzVDcjFDQWNVZU1TM0kiLCJlZDI1NTE5IjoiOG9KREh5T1JONDU1VDNXckpMS2hTa2o4ZW5YZ2VrWUFHVkptZHgwYkNfayJ9fQ",
+          "sig": "JZhYL_hb4do1N25-7wNj8riJ9saK7-jIQa8W8QlNGgHklN3IxwqX6iLMX9K0331u28pMlbGTJUPwdNKH21daBA",
+          "signer": "u-bob",
+          "newSig": "aFAwixSxyKI-Z6B1Wxcx_zmN7ZcO0ZGury72lw3eog4JLpW73YjmkZ2mdZMl2t7U15sup6l0WMgjnqxdEoTlBg"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjIsIm9sZCI6eyJ4MjU1MTkiOiJuRjA2WkNBY3hVRTQ4WG1FaFR0cURrVkVRRnJkV0c1Q3IxQ0FjVWVNUzNJIiwiZWQyNTUxOSI6IjhvSkRIeU9STjQ1NVQzV3JKTEtoU2tqOGVuWGdla1lBR1ZKbWR4MGJDX2sifSwibmV3Ijp7IngyNTUxOSI6ImZiLTFucUhPZkpuSV9YQUhHMUdvQXRDZ2VhS0dKLU9iYXd5MWR4cDN3MjAiLCJlZDI1NTE5IjoiOXdUQWw2ckpSTnhueHY2LWlwLXAxRlozUVY1MWxWSGVXcHo2UHBVSHVOMCJ9fQ",
+          "sig": "L_sUgBFU8EWxLQ5ucEQIlnv1QyH1FGZIbPx4-SP50IBMc3RR9511TgTbOu2IR6Z63KaZJxVRfcJ92zyIoB6xBQ",
+          "signer": "u-bob",
+          "newSig": "3UxHjlWvQAp5FWaVp3iwRfKWj-IVTgZeB4ZJ3Sj-vIgNph_RhUhyYZyLFDK-s1DFzdeHHzJF6WCPBMtqb7FzDQ"
+        },
+        {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjMsIm9sZCI6eyJ4MjU1MTkiOiJmYi0xbnFIT2ZKbklfWEFIRzFHb0F0Q2dlYUtHSi1PYmF3eTFkeHAzdzIwIiwiZWQyNTUxOSI6Ijl3VEFsNnJKUk54bnh2Ni1pcC1wMUZaM1FWNTFsVkhlV3B6NlBwVUh1TjAifSwibmV3Ijp7IngyNTUxOSI6InplREM1SEVOOEFVaHhmYWhaall3QndBSGc4cUM0eGY4UXR2b3VfTF9GbWciLCJlZDI1NTE5IjoidFNmT3BRRE1RRVVISjNHTXpJVHVYTVhYRXkyOUFNYzZ4Vlg2Z0hjNkE0USJ9fQ",
+          "sig": "zZ0zHGoT4u50l1D7s9eHBqGhCLSetdo8krB99WUfxtN2xdhYMUYEpGNfGac1I44t1em6pWkg2YbqhbZ-9pxRDw",
+          "signer": "u-bob",
+          "newSig": "_gM3QXk-6na0lIXRB5yMHa5JYFJyPhgFN_MkF9vydcYk62Go18vl7ORI1ifYZlr8Be9_UKwVQPX2TCP_fZapDA"
+        }
+      ],
+      "keys": {
+        "x25519": "KQ5sYV_26fsY0s-aHZZ17Q_CdXMcnbGEpP9oIAww1wo",
+        "ed25519": "ysOXM63Ah5-bnCszefqgARdkyFty1VZcitEm9TQM3nE"
+      },
+      "want": {
+        "state": "changed",
+        "next": {
+          "fp": "2a2e984def827d8ec958f36fcef9faaae340a6e144a560ca804261a9c8a50ff8",
+          "state": "unverified",
+          "rotSeq": 0,
+          "rotHead": ""
+        }
+      }
     }
   ]
 }

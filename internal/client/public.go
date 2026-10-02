@@ -117,11 +117,7 @@ func (c *Client) linkTokenHashFor(k *UnlockedKeys, artifactID string, chain *e2e
 	if err != nil {
 		return "", err
 	}
-	token, err := e2e.LinkToken(aks[epoch], artifactID, uint64(epoch))
-	if err != nil {
-		return "", err
-	}
-	return e2e.LinkTokenHash(token), nil
+	return linkTokenHash(aks[epoch], artifactID, epoch)
 }
 
 // OpenedLink is what OpenLink verified: the link, the chain it opens, and the
@@ -160,7 +156,7 @@ func (c *Client) OpenLink(l *e2e.Link) (*OpenedLink, error) {
 		return nil, err
 	}
 	verified, err := e2e.VerifyLinkChain(e2e.LinkChainInput{
-		Link: *l, Records: m.Records, Owners: m.Owners, Offers: m.Offers, Keys: m.Keys,
+		Link: *l, Records: m.Records, Owners: m.Owners, Offers: m.Offers, Keys: m.Keys, Rotations: m.Rotations,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("the link's artifact %s does not verify: %w", l.Artifact, err)

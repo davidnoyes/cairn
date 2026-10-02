@@ -436,3 +436,97 @@ internal/server/rotate.go	writeError(w, http.StatusConflict, err.Error())	writeE
 internal/server/rotate.go	if err := sameSet(stored, owned); err != nil {	if err := sameSet(stored, owned); err != nil && false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 internal/server/rotate.go	if dec.More() {	if false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 internal/server/rotate.go	if errors.As(err, &tooBig) {	if errors.As(err, &tooBig) && false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
+internal/server/rotate.go	return conflictRotation("wraps: the wrap for artifact	return badRotation("wraps: the wrap for artifact	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
+internal/server/rotate.go	return conflictRotation("wraps: missing the wrap	return badRotation("wraps: missing the wrap	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
+
+# Rotation: library follow (7d-1)
+internal/e2e/keyring.go	pin != nil && pin.FP == fp	pin != nil && false	go test ./internal/e2e
+internal/e2e/keyring.go	fresh := pinTakenAt(user, records, fp)	fresh := Pin{FP: fp, State: PinUnverified}	go test ./internal/e2e
+internal/e2e/keyring.go	errors.Is(err, ErrRotationFork) || errors.Is(err, ErrRollback)	errors.Is(err, ErrRotationFork)	go test ./internal/e2e
+internal/e2e/keyring.go	errors.Is(err, ErrRotationFork) || errors.Is(err, ErrRollback)	false	go test ./internal/e2e
+internal/e2e/keyring.go	fmt.Errorf("rotation records for %s: %w", user, err)	nil	go test ./internal/e2e
+internal/e2e/keyring.go	case err != nil || res.FP != fp:	case err != nil:	go test ./internal/e2e
+internal/e2e/keyring.go	Pin{FP: fp, State: PinUnverified, RotSeq: res.Seq	Pin{FP: fp, State: pin.State, RotSeq: res.Seq	go test ./internal/e2e
+internal/e2e/keyring.go	Pin{FP: fp, State: PinUnverified, RotSeq: res.Seq, RotHead: res.Head}	Pin{FP: fp, State: PinUnverified}	go test ./internal/e2e
+internal/e2e/keyring.go	!ok || newFP != fp {	!ok || (newFP != fp && false) {	go test ./internal/e2e
+internal/e2e/keyring.go	err == nil && b.User == user && 	err == nil && 	go test ./internal/e2e
+internal/e2e/keyring.go	b.Seq >= 1 && OpenRotation	OpenRotation	go test ./internal/e2e
+internal/e2e/keyring.go	&& OpenRotation(records[i], oldPub, &opened) == nil {	&& (OpenRotation(records[i], oldPub, &opened) == nil || true) {	go test ./internal/e2e
+internal/e2e/approval.go	if listedFP == "" || !linked(signer, listedFP, fp) {	if listedFP == "" || (!linked(signer, listedFP, fp) && false) {	go test ./internal/e2e
+internal/e2e/approval.go	for _, env := range in.Rotations[signer] {	for _, env := range []Envelope{} {	go test ./internal/e2e
+internal/e2e/approval.go	linked := RotationLinker(in.Rotations)	linked := RotationLinker(nil)	go test ./internal/e2e
+internal/e2e/link.go	, Linked: RotationLinker(in.Rotations)})	})	go test ./internal/e2e
+internal/server/web/e2e.mjs	if (pin && pin.fp === fp) return	if (pin && false) return	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	const fresh = await pinTakenAt(user, records, fp);	const fresh = { fp, state: PIN_UNVERIFIED, rotSeq: 0, rotHead: '' };	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	err instanceof RotationForkError || err instanceof RollbackError	err instanceof RotationForkError	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	err instanceof RotationForkError || err instanceof RollbackError	false	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	err instanceof ChainError || err instanceof FormatError || err instanceof DecryptError	false	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (res.fp !== fp) return	if (false) return	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	state: PIN_UNVERIFIED, rotSeq: res.seq	state: pin.state, rotSeq: res.seq	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if ((await keyPairFp(b.new)) !== fp) continue;	if (false) continue;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (b.user === user && b.seq >= 1) {	if (b.seq >= 1) {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (b.user === user && b.seq >= 1) {	if (b.user === user) {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	await openRotation(records[i], unb64(b.old.ed25519));	void 0;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (listedFp === '' || !(await linked(signer, listedFp, k.fp))) continue;	if (listedFp === '') continue;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	for (const env of hasOwn(rotations, signer) ? rotations[signer] : []) {	for (const env of []) {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	const linked = rotationLinker(rotations);	const linked = rotationLinker(null);	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	linked: rotationLinker(input.rotations),	linked: undefined,	node --test internal/server/web/e2e_test.mjs
+
+# Rotation: client (7c)
+internal/client/rotate.go	if w.FP != old.FP {	if false {	go test ./internal/client -run 'TestRotateKeysLeavesAWrapUnderAnEarlierKey'
+internal/client/rotate.go	wraps = append(wraps, rewrapped...)	_ = rewrapped	go test ./internal/client -run 'TestRotateKeysRewrapsWhatTheCallerHolds'
+internal/client/rotate.go	Seq: last + 1,	Seq: last,	go test ./internal/client -run 'TestRotateKeysWithNothingOwnedOrHeld'
+internal/client/rotate.go	if keepEpochs {	if !keepEpochs {	go test ./internal/client -run 'TestRotateKeysMovesOrKeepsEpochs'
+internal/client/rotate.go	res.Links[a.ID] = b.change.Link	_ = b.change.Link	go test ./internal/client -run 'TestRotateKeysPublicLink'
+internal/client/rotate.go	e2e.SignRotation(old.Ed25519Seed, nk.Ed25519Seed, body, me.ID)	e2e.SignRotation(old.Ed25519Seed, old.Ed25519Seed, body, me.ID)	go test ./internal/client -run 'TestRotateKeysWithNothingOwnedOrHeld'
+internal/client/rotate.go	signNext(nk.Ed25519Seed, me.ID, va, next)	signNext(old.Ed25519Seed, me.ID, va, next)	go test ./internal/client -run 'TestRotateKeysMovesOrKeepsEpochs'
+internal/client/rotate.go	next.OwnerFP = nk.FP	next.OwnerFP = old.FP	go test ./internal/client -run 'TestRotateKeysMovesOrKeepsEpochs'
+internal/client/rotate.go	newEKKey, err := e2e.EKSealKey(nk.EK)	newEKKey, err := e2e.EKSealKey(old.EK)	go test ./internal/client -run 'TestRotateKeysMovesOrKeepsEpochs'
+internal/client/rotate.go	newKR.Rev = kr.Rev + 1	newKR.Rev = kr.Rev	go test ./internal/client -run 'TestRotateKeysWithNothingOwnedOrHeld'
+internal/client/rotate.go	newKR.Epochs[a.ID] = e2e.KeyringEpoch{	_ = e2e.KeyringEpoch{	go test ./internal/client -run 'TestRotateKeysMovesOrKeepsEpochs'
+internal/client/rotate.go	if apiErr.Status == http.StatusConflict {	if apiErr.Status == http.StatusConflict+1 {	go test ./internal/client -run 'TestRotateKeysConflictChangesNothingHere'
+internal/client/keyring.go	Linked: e2e.RotationLinker(m.Rotations),	Linked: nil,	go test ./internal/client -run 'TestVerifyArtifactFollowsTheOwnersRotation'
+internal/client/rotate.go	if err := s.doJSON("POST", "/api/me/rotate", map[string]any{	c.Anchors.SaveAnchor(me.ID, nk.FP, e2e.KeyringAnchorOf(newKR.Rev, sealedKR)); if err := s.doJSON("POST", "/api/me/rotate", map[string]any{	go test ./internal/client -run 'TestRotateKeysConflictChangesNothingHere'
+internal/client/rotate.go	kr, _, err := s.openKeyring(old)	kr, _, err := s.readKeyring(old)	go test ./internal/client -run 'TestRotateKeysConflictChangesNothingHere'
+internal/client/rotate.go	c.Token, c.Key = signedIn.Token, &key	_ = key; c.Token = signedIn.Token	go test ./internal/client -run 'TestRotateKeysWithNothingOwnedOrHeld'
+cmd/cairn/rotate_cmds.go	serr = saveConfig(cliConfig{Host: c.Host, Email: res.Email, APIKey: res.APIKey})	serr = error(nil)	go test ./cmd/cairn -run 'TestRotateKeysCommand'
+cmd/cairn/rotate_cmds.go	res, err := c.RotateKeys(password, *keepEpochs)	res, err := c.RotateKeys(password, !*keepEpochs)	go test ./cmd/cairn -run 'TestRotateKeysCommand'
+internal/client/rotate.go	return res, fmt.Errorf("the rotation request failed (%v)	return nil, fmt.Errorf("the rotation request failed (%v)	go test ./internal/client -run 'TestRotateKeysSettlesAnAmbiguousPost'
+internal/client/rotate.go	if res.APIKey == "" {	if res.APIKey == "" { res = nil	go test ./internal/client -run 'TestRotateKeysAFailureAfterTheRotation'
+internal/client/rotate.go	keep(fmt.Errorf("the keys were rotated, but signing in again failed	_ = (fmt.Errorf("the keys were rotated, but signing in again failed	go test ./internal/client -run 'TestRotateKeysAFailureAfterTheRotation'
+internal/client/rotate.go	keep(fmt.Errorf("the keys were rotated, but saving the keyring anchor failed	_ = (fmt.Errorf("the keys were rotated, but saving the keyring anchor failed	go test ./internal/client -run 'TestRotateKeysAFailureAfterTheRotation'
+internal/client/rotate.go	keep(fmt.Errorf("the keys were rotated, but unlocking the new keys failed: %w", err))	_ = fmt.Errorf("the keys were rotated, but unlocking the new keys failed: %w", err)	go test ./internal/client -run 'TestRotateKeysAFailureAfterTheRotation'
+internal/client/rotate.go	keep(fmt.Errorf("the keys were rotated, but reading artifact %s back failed: %w", id, err))	_ = fmt.Errorf("the keys were rotated, but reading artifact %s back failed: %w", id, err)	go test ./internal/client -run 'TestRotateKeysAFailureAfterTheRotation'
+internal/client/rotate.go	apiErr.Status < http.StatusInternalServerError	apiErr.Status < 600	go test ./internal/client -run 'TestRotateKeysSettlesAnAmbiguousPost'
+internal/client/rotate.go	return b.Seq == seq && b.New == keyPairOf(nk), nil	return true, nil	go test ./internal/client -run 'TestRotateKeysSettlesAnAmbiguousPost'
+internal/client/rotate.go	ans.Seq, ans.Epochs = last+1, epochs	ans.Seq, ans.Epochs = last+1, nil	go test ./internal/client -run 'TestRotateKeysSettlesAnAmbiguousPost'
+internal/client/rotate.go	held[a.ID] = heldEpochs	_ = heldEpochs	go test ./internal/client -run 'TestRotateKeysConflictWhenTheHeldWrapsMoved'
+internal/client/rotate.go	if len(was) == 0 {	if false {	go test ./internal/client -run 'TestRotateKeysConflictWhenTheHeldWrapsMoved'
+internal/client/rotate.go	"you now hold artifact " + artifactID	"hold " + artifactID	go test ./internal/client -run 'TestRotateKeysConflictWhenTheHeldWrapsMoved'
+internal/client/rotate.go	"the wraps you hold on artifact %s changed (epochs %v, were %v)"	"held %s (%v, %v)"	go test ./internal/client -run 'TestRotateKeysConflictWhenTheHeldWrapsMoved'
+internal/client/rotate.go	"you no longer own artifact "+id	"gone "+id	go test ./internal/client -run 'TestRotateConflictBranches'
+internal/client/rotate.go	what := "something the rotation checks moved"	what := "x"	go test ./internal/client -run 'TestRotateConflictBranches'
+internal/client/rotate.go	err == nil && kw.Rev != rev	err != nil || kw.Rev != rev	go test ./internal/client -run 'TestRotateConflictBranches'
+internal/client/rotate.go	"the keyring moved from rev %d to rev %d"	"keyring %d %d"	go test ./internal/client -run 'TestRotateKeysConflictChangesNothingHere|TestRotateConflictBranches'
+internal/client/rotate.go	"the rotation seq moved from %d to %d"	"seq %d %d"	go test ./internal/client -run 'TestRotateKeysConflictChangesNothingHere'
+internal/client/rotate.go	"you now own artifact "+a.ID	"own "+a.ID	go test ./internal/client -run 'TestRotateKeysConflictChangesNothingHere'
+internal/client/rotate.go	"artifact %s has a new record (%d, was %d)"	"artifact %s record (%d, %d)"	go test ./internal/client -run 'TestRotateKeysConflictChangesNothingHere'
+internal/client/rotate.go	if a.Epoch == 0 {	if false {	go test ./internal/client -run 'TestRotateKeysSkipsAnOwnedArtifactWithNoRecords'
+internal/client/rotate.go	(apiErr.Status == http.StatusForbidden || apiErr.Status == http.StatusNotFound)	false	go test ./internal/client -run 'TestRotateKeysSkipsAListedPublicArtifactWithNoWraps'
+internal/client/rotate.go	its owner can run cairn unshare	its owner can run cairn remove	go test ./internal/client -run 'TestRotateKeysNamesTheArtifactOfACorruptWrap'
+internal/client/rotate.go	for epoch := 1; epoch <= next.Epoch; epoch++ {	for epoch := 1; epoch < next.Epoch; epoch++ {	go test ./internal/client -run 'TestRotateKeysMovesOrKeepsEpochs'
+internal/client/rotate.go	newKR.Pins[user] = d.pin	newKR.Pins[user] = e2e.Pin{}	go test ./internal/client -run 'TestRotateKeysKeepsWhatTheKeyringHolds|TestRotateKeysPinsAnApprovedTeamMember'
+internal/client/rotate.go	Ack: kr.Epochs[a.ID].Ack	Ack: 0	go test ./internal/client -run 'TestRotateKeysKeepsWhatTheKeyringHolds'
+internal/client/rotate.go	linkTokenHash(aks[next.Epoch], a.ID, next.Epoch)	linkTokenHash(aks[next.Epoch], a.ID, next.Epoch+1)	go test ./internal/client -run 'TestRotateKeysPublicLink'
+cmd/cairn/rotate_cmds.go	if res == nil {	if err != nil {	go test ./cmd/cairn -run 'TestRotateKeysCommand|TestPrintRotation'
+cmd/cairn/rotate_cmds.go	os.Getenv("CAIRN_API_KEY") != "" ||	false ||	go test ./cmd/cairn -run 'TestRotateKeysCommand|TestPrintRotation'
+cmd/cairn/rotate_cmds.go	|| os.Getenv("CAIRN_HOST") != ""	|| false	go test ./cmd/cairn -run 'TestRotateKeysCommand|TestPrintRotation'
+cmd/cairn/rotate_cmds.go	printRotation(res, *keepEpochs, res.APIKey != "" && serr == nil)	printRotation(res, *keepEpochs, true)	go test ./cmd/cairn -run 'TestRotateKeysCommand|TestPrintRotation'
+cmd/cairn/rotate_cmds.go	printRotation(res, *keepEpochs, res.APIKey != "" && serr == nil)	printRotation(res, *keepEpochs, serr == nil)	go test ./cmd/cairn -run 'TestRotateKeysCommand|TestPrintRotation'
+cmd/cairn/rotate_cmds.go	epoch = "kept"	epoch = "moved"	go test ./cmd/cairn -run 'TestRotateKeysCommand|TestPrintRotation'
+cmd/cairn/rotate_cmds.go	warnings = []string{}	warnings = nil	go test ./cmd/cairn -run 'TestRotateKeysCommand|TestPrintRotation'
+cmd/cairn/rotate_cmds.go	fmt.Println("warning: " + w)	_ = w	go test ./cmd/cairn -run 'TestRotateKeysCommand|TestPrintRotation'
+cmd/cairn/rotate_cmds.go	if serr != nil {	if false {	go test ./cmd/cairn -run 'TestRotateKeysCommand|TestPrintRotation'
+cmd/cairn/rotate_cmds.go	if res.APIKey != "" {	if false {	go test ./cmd/cairn -run 'TestRotateKeysCommand|TestPrintRotation'
+cmd/cairn/rotate_cmds.go	if res.Unconfirmed {	if false {	go test ./cmd/cairn -run 'TestPrintRotation'
+internal/client/rotate.go	res.Seq, res.Epochs, res.Unconfirmed = last+1, epochs, true	res.Seq, res.Epochs, res.Unconfirmed = last+1, epochs, false	go test ./internal/client -run 'TestRotateKeysSettlesAnAmbiguousPost'
