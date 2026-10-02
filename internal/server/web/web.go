@@ -39,7 +39,7 @@ var ShellJS []byte
 // estimator. The server serves each at the path listed in appAssets.
 //
 //go:embed app.css admin.css icon.svg
-//go:embed e2e.mjs account.mjs keystore.mjs argon2-client.mjs ui.mjs
+//go:embed e2e.mjs account.mjs keystore.mjs argon2-client.mjs ui.mjs content.mjs sw.js
 //go:embed signup.js verify.js login.js forgot.js reset.js admin.js admin-init.mjs argon2-worker.js
 //go:embed vendor/zxcvbn.js
 var Assets embed.FS

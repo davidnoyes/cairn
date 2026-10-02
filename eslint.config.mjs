@@ -20,8 +20,9 @@ export default [
     },
   },
   {
-    // The account pages load their scripts with type="module".
-    files: ['internal/server/web/{admin,forgot,login,reset,signup,verify}.js'],
+    // The account pages load their scripts with type="module", and the
+    // content-origin service worker is a module worker.
+    files: ['internal/server/web/{admin,forgot,login,reset,signup,verify}.js', 'internal/server/web/sw.js'],
     languageOptions: { sourceType: 'module' },
   },
   {

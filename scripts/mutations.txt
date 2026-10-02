@@ -805,3 +805,81 @@ internal/e2e/keys.go	argon2Key = fastKDF	argon2Key = argon2.IDKey	go test ./inte
 internal/e2e/keys.go	return argon2Key(password, salt, p.Time	return argon2.IDKey(password, salt, p.Time	go test ./internal/e2e -run TestStretchUsesFastKDFAndKeepsFloor
 internal/auth/auth.go	passwordCost = bcrypt.MinCost	passwordCost = bcrypt.DefaultCost	go test ./internal/auth -run TestUseMinCostForTests
 internal/auth/auth.go	GenerateFromPassword([]byte(password), passwordCost)	GenerateFromPassword([]byte(password), bcrypt.DefaultCost)	go test ./internal/auth -run TestUseMinCostForTests
+
+# m4 service worker
+internal/server/web/content.mjs	if ((await bodyHash(body)) !== manifestHash)	if (false && (await bodyHash(body)) !== manifestHash)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (signer !== null) {	if (false) {	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (env.signer !== signer.user)	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (!(await verifyEnvelope(bytesOf(signer.ed25519), 'manifest', env))) {	if (false) {	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (m.v !== 1)	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (m.artifact !== artifact)	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (m.version !== version)	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (m.epoch !== epoch)	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (!validPath(f.path))	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (seen.has(f.path))	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (!BLOB_ID_RE.test(f.blob))	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (!SHA256_RE.test(f.sha256))	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	{ artifact, version, kind: 'manifest', name: '' }	{ artifact, version, kind: 'content', name: '' }	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (digest !== entry.sha256)	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (plain.length !== entry.size)	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	{ artifact, version, kind: 'content', name: entry.path }	{ artifact, version, kind: 'content', name: '' }	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (s === '' || s === '.' ||	if (s === '.' ||	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	s === '..' || s.includes('\0')	s === '...' || s.includes('\0')	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	s.includes('\0') || s.includes('\\') || s.includes('/')	s.includes('\\') || s.includes('/')	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	s.includes('\\') || s.includes('/'))	s.includes('/'))	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	|| s.includes('/')) return null;	) return null;	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (!UUID_RE.test(version)) return null;	if (version.length < 1) return null;	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (navigation && !hasExtension(path))	if (!hasExtension(path))	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (probe === '<!doctype')	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (type.startsWith('text/html')) h['Content-Security-Policy']	if (false) h['Content-Security-Policy']	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (idx.has(`${path}/index.html`)) return { kind: 'directory' };	if (false) return { kind: 'directory' };	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	return Response.redirect(`${origin}/${keys.version}/${enc}/`, 301);	return Response.redirect(`${origin}/${keys.version}/${enc}`, 301);	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	const enc = path.split('/').map(encodeURIComponent).join('/');	const enc = path;	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (msg.cairn !== 'keys') throw	if (false) throw	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (keys.length !== fields.length ||	if (false ||	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (msg.context.artifact.id !== msg.artifact)	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (!msg.path.startsWith('/'))	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	checkB64(msg.ak, 32, 'ak');	checkB64(msg.ak, undefined, 'ak');	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	headers.delete('Authorization');	headers.delete('X-Unused');	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	headers.delete('X-Cairn-Link-Token');	headers.delete('X-Unused');	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (keys?.token) headers.set('Authorization', `Bearer ${keys.token}`);	if (keys?.token) headers.set('Authorization', `Bearer x`);	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (url.pathname === `/api/artifacts/${keys.artifact}`)	if (url.pathname.startsWith(`/api/artifacts/${keys.artifact}`))	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (request.method === 'GET' && keys) {	if (keys) {	node --test internal/server/web/content_test.mjs
+internal/server/web/sw.js	if (!event.source || event.origin !== origin) return;	if (!event.source) return;	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	if (msg.artifact !== artifact)	if (false)	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	if (url.origin !== origin) return;	if (false) return;	node --test internal/server/web/sw_test.mjs
+internal/server/web/content.mjs	checkUuid(u.id, 'context user id');	checkString(u.id, 'context user id');	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	const res = await fetchFn(`${origin}/_cairn/${hit.name}`);	const res = await fetchFn(`${origin}/_cairn/${hit.name}`).then((r) => (r.ok ? r : new Response('x')));	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },	headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },	headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Content-Type-Options': 'nosniff' },	node --test internal/server/web/content_test.mjs
+internal/server/web/sw.js	if (!event.source || event.origin !== origin) return;	if (event.origin !== origin) return;	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	if (msg?.cairn === 'keys')	if (msg.cairn === 'keys')	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	else if (msg?.cairn === 'token')	else if (msg.cairn === 'token')	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	else if (route.kind === 'content')	else if (true)	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	done(versions.get(msg.version))	done(null)	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	cairn: 'keys-ok', version: msg.version	cairn: 'keys-ok', version: msg.artifact	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	error: err.message	error: 'failed'	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	typeof msg?.version === 'string' ? msg.version : null	null	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	const seq = ++seqCounter;	const seq = 0;	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	if (latestToken && latestToken.seq > seq)	if (latestToken)	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	if (latestToken && latestToken.seq > seq)	if (false)	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	seq: ++seqCounter	seq: 0	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	if (!held || held.seq < seq)	if (true)	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	if (seq > latestSeq) {	if (true) {	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	for (const { keys } of versions.values())	for (const { keys } of [...versions.values()].slice(0, 1))	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	const KEYS_WAIT_MS = 10000;	const KEYS_WAIT_MS = 20000;	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	  if (held) {	  if (false) {	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	const entry = { keys: msg, manifest, seq };	const entry = { keys: msg, manifest: { files: [] }, seq };	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	const client = clientId ? await self.clients.get(clientId) : null;	const client = await self.clients.get(clientId);	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	return client ? (	return true ? (	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	if (!version || !(await requestKeys(version))) return unavailable();	if (false || !(await requestKeys(version))) return unavailable();	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	!(await requestKeys(version))	(await requestKeys(version), false)	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	if (req.method !== 'GET' && req.method !== 'HEAD')	if (req.method !== 'GET')	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	if (req.method !== 'GET' && req.method !== 'HEAD')	if (false)	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	if (navigation) return fetch(	if (false) return fetch(	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	if (!entry) return unavailable();	if (false) return unavailable();	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	u.protocol === 'http:' ||	false ||	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	|| u.protocol === 'https:'	|| false	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	u.protocol === 'http:' || u.protocol === 'https:' ? u.origin	true ? u.origin	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	? u.origin : "'none'"	? u.origin : u.origin	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	return "'none'";	return 'null';	node --test internal/server/web/sw_test.mjs
