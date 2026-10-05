@@ -58,13 +58,17 @@ export default async function globalSetup() {
   writeFileSync(statePath, JSON.stringify({ tmp }));
   process.env.CAIRN_E2E_STATE = statePath;
   try {
-    execFileSync('go', ['build', '-o', bin, './cmd/cairn'], { cwd: ROOT, stdio: 'inherit' });
+    // The e2eclock build runs the server's clock ahead by the duration in
+    // clockFile, so a spec can pass the successor's waiting period.
+    execFileSync('go', ['build', '-tags', 'e2eclock', '-o', bin, './cmd/cairn'], { cwd: ROOT, stdio: 'inherit' });
+    const clockFile = path.join(tmp, 'clock-offset');
 
     const port = await freePort();
     const appOrigin = `http://localhost:${port}`;
     const env = { ...process.env };
     delete env.CAIRN_HOST;
     delete env.CAIRN_API_KEY;
+    env.CAIRN_TEST_CLOCK_FILE = clockFile;
     const logFd = openSync(logPath, 'a');
     const server = spawn(bin, [
       'serve', '--addr', `127.0.0.1:${port}`, '--public-url', appOrigin, '--data-dir', dataDir,
@@ -73,7 +77,7 @@ export default async function globalSetup() {
       '--max-db-mb', '1',
     ], { env, stdio: ['ignore', logFd, logFd] });
     // Record the pid first, so teardown can kill the server even if setup fails below.
-    const state = { tmp, bin, port, appOrigin, dataDir, logPath, pid: server.pid, users: {}, artifacts: {} };
+    const state = { tmp, bin, clockFile, port, appOrigin, dataDir, logPath, pid: server.pid, users: {}, artifacts: {} };
     writeFileSync(statePath, JSON.stringify(state, null, 2));
 
     await waitFor('server /healthz', async () => {
@@ -87,15 +91,19 @@ export default async function globalSetup() {
     // Users: sign up, confirm with the link from the log:// mailer, sign in.
     // acct-* change their password, keys and recovery code; drift-* lose their
     // keys; the owner pins and verifies peer-* keys. One of each per engine, so
-    // a later engine starts from a clean user.
+    // a later engine starts from a clean user. succ-*, dead-* and lost-* name
+    // heir-* as their successor; dead-* and lost-* are deactivated and refuse
+    // from /refuse, by password and by recovery code.
     const engines = ['chromium', 'firefox', 'webkit'];
-    const names = ['owner', 'editor', 'viewer', ...engines.flatMap((e) => [`acct-${e}`, `drift-${e}`, `peer-${e}`])];
+    const perEngine = ['acct', 'drift', 'peer', 'succ', 'heir', 'dead', 'lost'];
+    const names = ['owner', 'editor', 'viewer', ...engines.flatMap((e) => perEngine.map((n) => `${n}-${e}`))];
     for (const name of names) {
       const email = `${name}@${DOMAIN}`;
       const password = `e2e-${name}-password-Qm47vz`;
       const config = path.join(tmp, 'config', name, 'config.json');
       mkdirSync(path.dirname(config), { recursive: true });
-      runCli(bin, config, ['signup', '--host', appOrigin, '--email', email, '--password-stdin'], { input: `${password}\n` });
+      const signup = runCli(bin, config, ['signup', '--host', appOrigin, '--email', email, '--password-stdin'], { input: `${password}\n` });
+      const recovery = signup.match(/^ {2}(\S+(?:-\S+)+)$/m)?.[1];
       const re = new RegExp(`${appOrigin}/verify#token=[A-Za-z0-9_-]+`, 'g');
       const link = await waitFor(`verification link for ${email}`, () => {
         const m = readFileSync(logPath, 'utf8').match(re);
@@ -103,7 +111,7 @@ export default async function globalSetup() {
       });
       runCli(bin, config, ['confirm-email', link]);
       runCli(bin, config, ['login', '--host', appOrigin, '--email', email, '--password-stdin'], { input: `${password}\n` });
-      state.users[name] = { email, password, config };
+      state.users[name] = { email, password, config, recovery };
     }
 
     const owner = (args) => runCli(bin, state.users.owner.config, args);
@@ -131,6 +139,14 @@ export default async function globalSetup() {
       mkdirSync(path.join(fx, `acct-${e}`));
       const out = JSON.parse(runCli(bin, acct.config, ['push', template('marker', path.join(fx, `acct-${e}`), {}), '--artifact', `acct-doc-${e}`, '--create', '--json']));
       state.artifacts[`acct-doc-${e}`] = { id: out.artifact.id, version: out.version.id };
+    }
+    for (const e of engines) {
+      const succ = state.users[`succ-${e}`];
+      mkdirSync(path.join(fx, `succ-${e}`));
+      const out = JSON.parse(runCli(bin, succ.config, ['push', template('marker', path.join(fx, `succ-${e}`), {}), '--artifact', `succ-doc-${e}`, '--create', '--json']));
+      state.artifacts[`succ-doc-${e}`] = { id: out.artifact.id, version: out.version.id };
+      // Shared with succ-*, so the spec can show their successor never sees it.
+      owner(['share', 'plain-doc', succ.email]);
     }
     state.fixturesDir = fx;
 

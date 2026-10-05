@@ -12,10 +12,10 @@ import (
 
 // Every page that carries the app CSP: the signed-out pages need no session,
 // and /app needs one.
-var accountPages = []string{"/signup", "/verify", "/login", "/forgot", "/reset", "/app"}
+var accountPages = []string{"/signup", "/verify", "/login", "/forgot", "/reset", "/refuse", "/app"}
 
 // pageTemplates are the template files behind accountPages.
-var pageTemplates = []string{"signup.html", "verify.html", "login.html", "forgot.html", "reset.html", "app.html"}
+var pageTemplates = []string{"signup.html", "verify.html", "login.html", "forgot.html", "reset.html", "refuse.html", "app.html"}
 
 var (
 	scriptSrcRe = regexp.MustCompile(`<script[^>]*\ssrc="([^"]+)"`)

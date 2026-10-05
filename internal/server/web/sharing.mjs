@@ -82,7 +82,7 @@ function directoryUser(w) {
   return { id: w.id, name: w.name, email: w.email, x25519Pub, ed25519Pub, resetAt: w.resetAt ?? '' };
 }
 
-async function directory(deps) {
+export async function directory(deps) {
   const resp = await call(deps, null, 'GET', '/api/users');
   if (!Array.isArray(resp)) throw new e2e.FormatError('the directory is not a list');
   const out = [];
@@ -114,7 +114,7 @@ function checkDirectory(dir) {
 
 // findUser finds who, an email (compared normalized) or a user ID, in the
 // directory. It refuses a directory checkDirectory refuses. Mirrors FindUser.
-function findUser(dir, who) {
+export function findUser(dir, who) {
   checkDirectory(dir);
   const email = e2e.normalizeEmail(who);
   const u = dir.find((d) => d.id === who || e2e.normalizeEmail(d.email) === email);

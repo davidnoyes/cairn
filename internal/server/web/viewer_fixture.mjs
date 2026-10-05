@@ -169,6 +169,10 @@ export function makeServer(world, { who = null, linkTokenB64 = null, keyring } =
     artifact: { id: ARTIFACT, name: 'Guestbook', description: 'Sign here' },
     tokenExpiresAt: 2000000000,
     isMember: (id) => id === world.owner.id || world.members.some((m) => m.user.id === id),
+    // successor is the owner's released successor, whom the server serves
+    // the owner's estate copies; successions is GET /api/successions.
+    successor: null,
+    successions: [],
   };
   for (const u of [world.owner, ...world.members.map((m) => m.user)]) {
     server.directory.set(u.id, { id: u.id, name: u.name, email: `${u.name}@example.com`, x25519Pub: u.pair.x25519, ed25519Pub: u.pair.ed25519 });
@@ -204,7 +208,8 @@ export function makeServer(world, { who = null, linkTokenB64 = null, keyring } =
     if (m) {
       if (m[1] !== ARTIFACT) return json(404, { error: 'not found' });
       const rest = m[2] ?? '';
-      const member = server.who && server.isMember(server.who.id);
+      const heir = server.who && server.successor?.id === server.who.id;
+      const member = server.who && (server.isMember(server.who.id) || heir);
       if (rest === 'membership') {
         if (!member && !linkOk && !server.openMembership) return json(404, { error: 'not found' });
         if (server.membershipOverride) return json(200, server.membershipOverride(linkOk && !member));
@@ -224,7 +229,7 @@ export function makeServer(world, { who = null, linkTokenB64 = null, keyring } =
       if (rest === 'keys') {
         if (!member) return json(404, { error: 'not found' });
         if (server.keysOverride) return json(200, server.keysOverride);
-        if (server.who.id === world.owner.id) return json(200, { wraps: [], estate: world.estate });
+        if (server.who.id === world.owner.id || heir) return json(200, { wraps: [], estate: world.estate });
         return json(200, { wraps: world.wraps[server.who.id] ?? [], estate: [] });
       }
       if (rest === '') {
@@ -247,6 +252,7 @@ export function makeServer(world, { who = null, linkTokenB64 = null, keyring } =
         return v[2] ? new Response(ver.blob, { status: 200, headers: { 'Content-Type': 'application/octet-stream' } }) : json(200, ver.json);
       }
     }
+    if (p === '/api/successions') return json(200, server.successions);
     const u = /^\/api\/users\/([^/]+)$/.exec(p);
     if (u) {
       if (!server.who) return json(401, { error: 'unauthorized' });
@@ -276,4 +282,21 @@ export async function readServerKeyring(server, user) {
 export async function rotationRecord(user, newUser, seq = 1) {
   const body = enc.encode(JSON.stringify({ v: 1, user: user.id, seq, old: user.pair, new: newUser.pair }));
   return e2e.signRotation(user.ed.seed, newUser.ed.seed, user.id, body);
+}
+
+// succession is owner's entry in heir's GET /api/successions: the signed
+// nomination, and once released the owner's EK wrapped to heir. over changes
+// the signed body; seed signs with another key.
+export async function succession(owner, heir, { released = true, over = {}, seed = owner.ed.seed } = {}) {
+  const body = enc.encode(JSON.stringify({ v: 1, seq: 1, user: owner.id, successor: heir.id, successorFp: heir.fp, action: 'nominate', ...over }));
+  const wrapped = await e2e.wrap({ purpose: 'ek', artifact: owner.id, epoch: 0, recipientId: heir.id, recipientPub: heir.x.pub }, owner.ek);
+  return {
+    user: { id: owner.id, name: owner.name, email: `${owner.name}@example.com`, x25519Pub: owner.pair.x25519, ed25519Pub: owner.pair.ed25519 },
+    record: await e2e.newEnvelope(seed, owner.id, 'successor', body),
+    nominatedAt: '2026-10-01T09:00:00Z',
+    requestedAt: '2026-10-01T10:00:00Z',
+    releaseAt: '2026-10-15T10:00:00Z',
+    released,
+    wrapped: released ? e2e.b64(wrapped) : '',
+  };
 }

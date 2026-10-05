@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -162,6 +163,16 @@ func TestSuccessorNominateNeedsTheRightCode(t *testing.T) {
 		if err == nil || tc.want != nil && !errors.Is(err, tc.want) {
 			t.Errorf("%s: %v, want %v", tc.name, err, tc.want)
 		}
+	}
+	// A mismatch says what to do about it.
+	_, _, err := w.run(t, "ada", runSuccessor, "nominate", "bob@example.com", "--code", catCode, "--password-stdin")
+	if err == nil || !strings.Contains(err.Error(), "ask them to run cairn successor code again") || !strings.Contains(err.Error(), "wrong keys") {
+		t.Errorf("a code mismatch: %v, want it to say how to go on", err)
+	}
+	// No code is a usage error, not a malformed code.
+	_, _, err = w.run(t, "ada", runSuccessor, "nominate", "bob@example.com", "--password-stdin")
+	if err == nil || !strings.HasPrefix(err.Error(), "usage: cairn successor nominate USER --code CODE") {
+		t.Errorf("nominate without --code: %v, want the usage line", err)
 	}
 	// Nothing was sent.
 	if st := w.status(t, "ada"); st["successor"] != nil || st["nominatedAt"] != "" {
@@ -474,6 +485,45 @@ func TestSuccessorNoticeEmail(t *testing.T) {
 	}
 	if _, _, err := w.run(t, "ada", runSuccessor, "notice-email", "not an address", "--password-stdin"); err == nil {
 		t.Error("a malformed address was accepted")
+	}
+}
+
+// The user whose successor was released is told how to end it, in words.
+func TestSuccessorStatusSaysHowToEndAReleasedAccess(t *testing.T) {
+	w := newSuccWorld(t)
+	w.nominate(t)
+	w.request(t)
+	released := w.clk.Now().AddDate(0, 0, 14).UTC().Format("2006-01-02")
+	w.clk.Advance(day14)
+	got := w.mustRun(t, "ada", runSuccessor, "status")
+	if !strings.Contains(got, "were released on "+released+"; run cairn rotate-keys to end their access") {
+		t.Errorf("status printed %q, want the release date and the rotate-keys instruction", got)
+	}
+}
+
+func TestSuccessorAdviceNeedsASuccessorRun(t *testing.T) {
+	forbidden := &client.APIError{Status: http.StatusForbidden, Message: "forbidden"}
+	t.Cleanup(func() { successorOnly = false })
+
+	successorOnly = false
+	for _, err := range []error{forbidden, client.ErrCannotPush, client.ErrNotOwner} {
+		if got := successorAdvice(err); got != "" {
+			t.Errorf("an owner's or editor's refusal %v got the advice %q", err, got)
+		}
+	}
+	successorOnly = true
+	for _, err := range []error{forbidden, client.ErrCannotPush, client.ErrNotOwner} {
+		if got := successorAdvice(err); !strings.Contains(got, "only as its owner's successor") {
+			t.Errorf("a successor's refusal %v got the advice %q", err, got)
+		}
+	}
+	if got := successorAdvice(&client.APIError{Status: http.StatusNotFound}); got != "" {
+		t.Errorf("an unrelated error got the advice %q", got)
+	}
+	// A new run starts with it off.
+	watchNotices(client.New("http://example.invalid", ""))
+	if successorOnly {
+		t.Error("watchNotices left successorOnly set")
 	}
 }
 

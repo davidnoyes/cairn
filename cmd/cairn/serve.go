@@ -66,6 +66,10 @@ func runServe(args []string) error {
 		return err
 	}
 
+	clk, err := serveClock()
+	if err != nil {
+		return err
+	}
 	srv, err := server.New(server.Config{
 		Addr:          *addr,
 		DataDir:       *dataDir,
@@ -78,6 +82,7 @@ func runServe(args []string) error {
 		MaxUploadMB:   *maxUploadMB,
 		MaxDBMB:       *maxDBMB,
 		Logger:        logger,
+		Clock:         clk,
 	})
 	if err != nil {
 		return err

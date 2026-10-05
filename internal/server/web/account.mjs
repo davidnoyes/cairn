@@ -297,6 +297,54 @@ export async function resetWithRecovery(deps, { token, info, recoveryCode, passw
   });
 }
 
+// refuseWithPassword refuses a succession request with the account's
+// password, from the /refuse page. It needs no session, so it works for a
+// deactivated account. The answer is the server's 200 body.
+export async function refuseWithPassword(deps, { email, password }) {
+  if (password === '') throw new Error('The password must not be empty.');
+  email = e2e.normalizeEmail(email);
+  const kdf = parseKdf(await post(deps, '/api/auth/prelogin', { email }));
+  const stretched = await deps.stretch(password, email, kdf);
+  let authKey;
+  try {
+    ({ authKey } = await e2e.passwordCryptoKeys(stretched, 'open'));
+  } finally {
+    stretched.fill(0);
+  }
+  return post(deps, '/api/auth/refuse', { email, authKey: e2e.b64(authKey) });
+}
+
+// refuseWithRecovery refuses a succession request with the recovery code. It
+// opens MK and the signing seed from what refuse/begin sends, and signs a
+// refusal naming the request's requestedAt. For an address with no request
+// the server sends a fake of the same shape, which fails as a wrong code.
+export async function refuseWithRecovery(deps, { email, recoveryCode }) {
+  email = e2e.normalizeEmail(email);
+  let code;
+  try {
+    code = e2e.parseRecoveryCode(recoveryCode);
+  } catch {
+    throw new Error('That is not a recovery code. It has 26 letters and digits in groups of four.');
+  }
+  let recoveryKek, mk, seed, proof;
+  try {
+    const info = await post(deps, '/api/auth/refuse/begin', { email });
+    recoveryKek = await e2e.recoveryKek(code);
+    try {
+      mk = await e2e.open(recoveryKek, ['mk'], e2e.unb64(info.mkRecovery));
+    } catch (err) {
+      if (!(err instanceof e2e.DecryptError)) throw err;
+      throw new Error('That recovery code does not open this account. Check that you typed all 26 characters, in groups of four.');
+    }
+    seed = await e2e.open(await e2e.mkSealCryptoKey(mk), ['ed25519'], e2e.unb64(info.ed25519Priv));
+    const body = enc.encode(JSON.stringify({ v: 1, user: info.id, requestedAt: info.requestedAt }));
+    proof = await e2e.newEnvelope(seed, info.id, 'refusal', body);
+  } finally {
+    for (const secret of [code, recoveryKek, mk, seed]) secret?.fill(0);
+  }
+  return post(deps, '/api/auth/refuse', { email, proof });
+}
+
 // resetWithoutRecovery discards the old key material: a new MK, key pairs,
 // EK, and recovery code. Artifacts that others shared with the account stay
 // unreadable until their owners share again. It returns the new recovery code.
@@ -320,9 +368,9 @@ export function recoveryGroupMatches(display, index, typed) {
 
 // unlock proves the signed-in user knows their password right now: it
 // stretches it with the account's current parameters and opens MK from the
-// bundle. It returns the account, authKey for the server's own check, and MK
-// as raw bytes, which the caller seals again and must zero.
-async function unlock(deps, password) {
+// bundle. It returns the account, the bundle, authKey for the server's own
+// check, and MK as raw bytes, which the caller seals again and must zero.
+export async function unlock(deps, password) {
   if (password === '') throw new Error('Enter your password.');
   const me = await send(deps, 'GET', '/api/me');
   const bundle = await send(deps, 'GET', '/api/me/bundle');
@@ -331,7 +379,7 @@ async function unlock(deps, password) {
   let authKey, kek;
   try {
     ({ authKey, kek } = await e2e.passwordKeys(stretched));
-    return { me, authKey: e2e.b64(authKey), mk: await e2e.open(kek, ['mk'], e2e.unb64(bundle.mkPassword)) };
+    return { me, bundle, authKey: e2e.b64(authKey), mk: await e2e.open(kek, ['mk'], e2e.unb64(bundle.mkPassword)) };
   } catch (err) {
     if (err instanceof e2e.DecryptError) throw new Error('That password is wrong.');
     throw err;

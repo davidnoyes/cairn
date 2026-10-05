@@ -683,7 +683,7 @@ func TestSharedRoutesAndShellCSP(t *testing.T) {
 		}
 	}
 	// Every other page keeps the app policy and no frame-src.
-	for _, p := range []string{"/login", "/signup", "/verify", "/forgot", "/reset"} {
+	for _, p := range []string{"/login", "/signup", "/verify", "/forgot", "/reset", "/refuse"} {
 		resp := get(t, w.base+p, "", "text/html")
 		body(t, resp)
 		if csp := resp.Header.Get("Content-Security-Policy"); csp != appCSP || strings.Contains(csp, "frame-src") {

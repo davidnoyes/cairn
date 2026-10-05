@@ -110,7 +110,7 @@ func (s *Server) routes() {
 	// Pages. Account pages send the app CSP: scripts load only from files.
 	handle("GET /", s.handleRoot)
 	handle("GET /login", withAppCSP(s.handleLoginPage))
-	for _, page := range []string{"signup", "verify", "forgot", "reset"} {
+	for _, page := range []string{"signup", "verify", "forgot", "reset", "refuse"} {
 		handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))
 	}
 	handle("GET /app", withAppCSP(s.handleAppPage))

@@ -240,11 +240,13 @@ var appAssets = map[string]string{
 	"/login.js":          "login.js",
 	"/forgot.js":         "forgot.js",
 	"/reset.js":          "reset.js",
+	"/refuse.js":         "refuse.js",
 	"/app.mjs":           "app.mjs",
 	"/app-init.mjs":      "app-init.mjs",
 	"/data.mjs":          "data.mjs",
 	"/meta.mjs":          "meta.mjs",
 	"/sharing.mjs":       "sharing.mjs",
+	"/successor.mjs":     "successor.mjs",
 	"/argon2-worker.js":  "argon2-worker.js",
 	"/zxcvbn.js":         "vendor/zxcvbn.js",
 }

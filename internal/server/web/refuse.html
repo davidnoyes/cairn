@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Refuse a successor's request · Cairn</title>
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="wrap">
+  <main class="card">
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32">
+        <rect x="11" y="7"  width="10" height="4" rx="2" fill="#C6F135"/>
+        <rect x="8"  y="14" width="16" height="4" rx="2" fill="#C6F135" opacity=".7"/>
+        <rect x="5"  y="21" width="22" height="4" rx="2" fill="#C6F135" opacity=".45"/>
+      </svg>
+    </div>
+    <h1>cairn</h1>
+    <p class="sub">refuse a request for access</p>
+    <form id="form" method="dialog" autocomplete="on">
+      <p class="text">Use this page to refuse a request your successor made. It works even if your account is deactivated.</p>
+      <label for="email">email</label>
+      <input id="email" name="email" type="email" autocomplete="username" required autofocus>
+      <label class="choice"><input type="radio" name="mode" value="password" checked><span>Use my password.</span></label>
+      <label class="choice"><input type="radio" name="mode" value="recovery"><span>Use my recovery code.</span></label>
+      <div id="passwordRow">
+        <label for="password">password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password">
+      </div>
+      <div id="codeRow" hidden>
+        <label for="code">recovery code</label>
+        <input id="code" name="code" type="text" autocomplete="off" spellcheck="false">
+      </div>
+      <button type="submit" id="submit">Refuse the request</button>
+      <p class="error" id="error" role="alert" hidden></p>
+    </form>
+
+    <section id="done" hidden>
+      <p class="ok-text" id="done-text" role="status"></p>
+      <p class="warn" id="deactivated" hidden></p>
+    </section>
+  </main>
+  </div>
+  <script type="module" src="/refuse.js"></script>
+</body>
+</html>

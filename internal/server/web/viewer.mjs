@@ -269,6 +269,25 @@ async function checkCommit(ak, artifact, epoch, commits, what) {
   }
 }
 
+// openEstate opens the estate copies under ekKey, the seal key of the
+// owner's EK, each checked against the akCommit the verified chain lists.
+async function openEstate(ekKey, artifact, estate, commits) {
+  const aks = new Map();
+  for (const e of estate) {
+    const ak = await e2e.open(ekKey, ['estate', artifact, String(e.epoch)], e2e.unb64(e.sealed));
+    await checkCommit(ak, artifact, e.epoch, commits, 'the estate copy');
+    aks.set(e.epoch, ak);
+  }
+  return aks;
+}
+
+function requireEpochs(aks, chain) {
+  for (let epoch = 1; epoch <= chain.latest.epoch; epoch++) {
+    if (!aks.has(epoch)) throw new e2e.ChainError(`the server holds no key for you for epoch ${epoch}`);
+  }
+  return aks;
+}
+
 // callerAKs returns the AK of every epoch up to the chain's latest: for the
 // owner from the estate copies, for anyone else by opening their own wraps.
 // Each is checked against the akCommit the verified chain lists. Mirrors
@@ -276,29 +295,67 @@ async function checkCommit(ak, artifact, epoch, commits, what) {
 export async function callerAKs(deps, caller, artifact, chain) {
   const commits = epochCommits(chain);
   const keys = await call(deps, null, 'GET', `/api/artifacts/${artifact}/keys`);
-  const aks = new Map();
   if (chain.latest.owner === caller.record.userId) {
-    const ekKey = await e2e.ekSealCryptoKey(caller.record.ek);
-    for (const e of keys.estate) {
-      const ak = await e2e.open(ekKey, ['estate', artifact, String(e.epoch)], e2e.unb64(e.sealed));
-      await checkCommit(ak, artifact, e.epoch, commits, 'the estate copy');
-      aks.set(e.epoch, ak);
-    }
-  } else {
-    for (const w of keys.wraps) {
-      const ak = await e2e.unwrap(
-        caller.record.x25519,
-        { purpose: 'ak', artifact, epoch: w.epoch, recipientId: caller.record.userId, recipientPub: caller.record.x25519.publicKey },
-        e2e.unb64(w.wrapped),
-      );
-      await checkCommit(ak, artifact, w.epoch, commits, 'your wrap');
-      aks.set(w.epoch, ak);
-    }
+    return requireEpochs(await openEstate(await e2e.ekSealCryptoKey(caller.record.ek), artifact, keys.estate, commits), chain);
   }
-  for (let epoch = 1; epoch <= chain.latest.epoch; epoch++) {
-    if (!aks.has(epoch)) throw new e2e.ChainError(`the server holds no key for you for epoch ${epoch}`);
+  const aks = new Map();
+  for (const w of keys.wraps) {
+    const ak = await e2e.unwrap(
+      caller.record.x25519,
+      { purpose: 'ak', artifact, epoch: w.epoch, recipientId: caller.record.userId, recipientPub: caller.record.x25519.publicKey },
+      e2e.unb64(w.wrapped),
+    );
+    await checkCommit(ak, artifact, w.epoch, commits, 'your wrap');
+    aks.set(w.epoch, ak);
   }
-  return aks;
+  return requireEpochs(aks, chain);
+}
+
+// successorAKs opens the AKs for the owner's released successor: a caller
+// the latest record does not list, whom the server serves estate copies and
+// no wraps. It returns null for anyone else. The owner's nomination must
+// verify, under the owner's key, as naming the caller at the caller's own
+// fingerprint, before the EK the server wrapped to the caller is used.
+// Mirrors successorAKs and checkSuccession in successor.go.
+async function successorAKs(deps, caller, artifact, chain) {
+  let keys;
+  try {
+    keys = await call(deps, null, 'GET', `/api/artifacts/${artifact}/keys`);
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 403 || err.status === 404)) return null;
+    throw err;
+  }
+  if (keys.wraps.length > 0 || keys.estate.length === 0) return null;
+  const owner = chain.latest.owner;
+  const s = (await call(deps, null, 'GET', '/api/successions')).find((x) => x.user.id === owner);
+  if (!s) return null;
+  if (!s.released || !s.wrapped) throw new NoAccessError(`${s.user.email}'s artifacts are not released to you yet.`);
+  let pub = s.user.ed25519Pub;
+  try {
+    pub = (await call(deps, null, 'GET', `/api/users/${owner}`)).ed25519Pub;
+  } catch (err) {
+    if (!notFound(err)) throw err;
+  }
+  let b;
+  try {
+    b = await e2e.openEnvelope(s.record, e2e.unb64(pub), 'successor');
+  } catch (err) {
+    throw new e2e.ChainError(`the nomination record of ${s.user.email} does not verify: ${err.message}`);
+  }
+  if (b.user !== owner) throw new e2e.ChainError(`the nomination record is for ${JSON.stringify(b.user)}, not ${s.user.email}`);
+  if (b.successor !== caller.record.userId) throw new e2e.ChainError(`the nomination record of ${s.user.email} names ${JSON.stringify(b.successor)}, not you`);
+  if (b.successorFp !== caller.fp) throw new e2e.ChainError(`the nomination record of ${s.user.email} names another fingerprint than your own`);
+  if (b.action !== 'nominate') throw new e2e.ChainError(`the nomination record of ${s.user.email} has the action ${JSON.stringify(b.action)}`);
+  const ek = await e2e.unwrap(
+    caller.record.x25519,
+    { purpose: 'ek', artifact: owner, epoch: 0, recipientId: caller.record.userId, recipientPub: caller.record.x25519.publicKey },
+    e2e.unb64(s.wrapped),
+  );
+  try {
+    return requireEpochs(await openEstate(await e2e.ekSealCryptoKey(ek), artifact, keys.estate, epochCommits(chain)), chain);
+  } finally {
+    ek.fill(0);
+  }
 }
 
 // sessionUser is the user the server's session names, or null for none.
@@ -333,9 +390,11 @@ function listed(latest, userId) {
 
 // openAsMember reads the keyring, verifies the chain against it, and when the
 // caller is listed in the latest record, records the chain in the keyring and
-// opens the caller's AKs. It returns null when the server will not show the
-// caller the membership, or the caller is not listed. Mirrors VerifyArtifact
-// in keyring.go.
+// opens the caller's AKs. The owner's released successor opens too, from the
+// estate copies, and reads only: the latest record does not list them. It
+// returns null when the server will not show the caller the membership, or
+// the caller is neither listed nor the successor. Mirrors VerifyArtifact in
+// keyring.go.
 async function openAsMember(deps, caller, artifact) {
   const kr = await readKeyring(deps, caller);
   let membership;
@@ -346,9 +405,15 @@ async function openAsMember(deps, caller, artifact) {
     throw err;
   }
   const { chain, creator, newPin } = await checkArtifact(deps, caller, kr, artifact, membership);
-  if (!listed(chain.latest, caller.record.userId)) return null;
-  await recordChain(deps, caller, kr, artifact, chain, creator, newPin);
-  const aks = await callerAKs(deps, caller, artifact, chain);
+  let aks;
+  if (listed(chain.latest, caller.record.userId)) {
+    await recordChain(deps, caller, kr, artifact, chain, creator, newPin);
+    aks = await callerAKs(deps, caller, artifact, chain);
+  } else {
+    aks = await successorAKs(deps, caller, artifact, chain);
+    if (!aks) return null;
+    await recordChain(deps, caller, kr, artifact, chain, creator, newPin);
+  }
   return { mode: 'member', artifact, chain, latest: chain.latest, aks, membership, caller: caller.me, record: caller.record, linkToken: null, link: null };
 }
 

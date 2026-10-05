@@ -8,7 +8,7 @@ import { ApiError } from './account.mjs';
 import { ContentError, checkKeysMessage } from './content.mjs';
 import {
   ARTIFACT, OTHER_ARTIFACT, ORIGIN, V1, V2, buildWorld, fakeKeyStore, fakeStorage, keyStoreRecord,
-  makeServer, makeUser, makeVersion, readServerKeyring, rotationRecord, seedKeyring, vouchFor,
+  makeServer, makeUser, makeVersion, readServerKeyring, rotationRecord, seedKeyring, succession, vouchFor,
 } from './viewer_fixture.mjs';
 import {
   KeyringBusyError, LinkError, LockedError, NoAccessError, UNTRUSTED_MESSAGE, UntrustedVersionError, VersionGoneError, WriteError, canWrite, keepToken,
@@ -420,6 +420,97 @@ test('a chain already recorded is still written when the creator is not yet pinn
   await open(s);
   assert.equal(s.server.putCount, 1);
   assert.deepEqual((await readServerKeyring(s.server, U.editor)).pins[U.owner.id], pinOf(U.owner.fp));
+});
+
+// ---- the owner's released successor ----
+
+// heirScene is a scene in which the outsider is the owner's released
+// successor, with the nomination opts describes.
+async function heirScene(opts = {}) {
+  const s = await scene({ who: 'outsider' });
+  s.server.successor = U.outsider;
+  s.server.successions = [await succession(U.owner, U.outsider, opts)];
+  return s;
+}
+
+test('successor: a released successor opens the owner\'s artifact from the estate copies, reads only, and records the chain', async () => {
+  const s = await heirScene();
+  const opened = await open(s);
+  assert.equal(opened.mode, 'member');
+  assert.deepEqual(opened.aks.get(1), s.world.aks[1]);
+  assert.equal(canWrite(opened), false);
+  const kr = await readServerKeyring(s.server, U.outsider);
+  assert.equal(kr.epochs[ARTIFACT].seq, 2);
+  assert.deepEqual(kr.pins[U.owner.id], pinOf(U.owner.fp));
+});
+
+test('successor: every epoch opens, and a missing estate copy is refused', async () => {
+  const heirAt = async (s) => Object.assign(s.server, { successor: U.outsider, successions: [await succession(U.owner, U.outsider)] });
+  const full = await scene({ who: 'outsider', epoch2: true });
+  await heirAt(full);
+  assert.deepEqual((await open(full)).aks.get(2), full.world.aks[2]);
+  const short = await scene({ who: 'outsider', epoch2: true });
+  await heirAt(short);
+  short.server.keysOverride = { wraps: [], estate: short.world.estate.slice(0, 1) };
+  await assert.rejects(open(short), /no key for you for epoch 2/);
+});
+
+test('successor: an estate copy that does not match the chain akCommit is refused', async () => {
+  const s = await heirScene();
+  const other = await buildWorld({ owner: U.owner, members: STD_MEMBERS });
+  s.server.keysOverride = { wraps: [], estate: other.estate };
+  await assert.rejects(open(s), /estate copy of epoch 1 does not match/);
+});
+
+test('successor: a nomination the owner\'s key does not verify is refused', async () => {
+  const s = await heirScene({ seed: U.editor.ed.seed });
+  await assert.rejects(open(s), /nomination record of owner@example.com does not verify/);
+});
+
+test('successor: a nomination for another user, successor, fingerprint, or action is refused', async () => {
+  const cases = [
+    [{ user: U.editor.id }, /is for/],
+    [{ successor: U.editor.id }, /names .* not you/],
+    [{ successorFp: U.editor.fp }, /another fingerprint than your own/],
+    [{ action: 'remove' }, /has the action "remove"/],
+  ];
+  for (const [over, want] of cases) {
+    const s = await heirScene({ over });
+    await assert.rejects(open(s), want, JSON.stringify(over));
+  }
+});
+
+test('successor: the owner\'s key comes from the directory, else from the succession list when the directory no longer lists them', async () => {
+  const listed = await heirScene({ seed: U.editor.ed.seed });
+  listed.server.successions[0].user.ed25519Pub = U.editor.pair.ed25519;
+  await assert.rejects(open(listed), /does not verify/);
+  const gone = await heirScene();
+  gone.server.notFound.add(U.owner.id);
+  assert.equal((await open(gone)).mode, 'member');
+});
+
+test('successor: a nomination that is not released yet opens nothing', async () => {
+  const s = await heirScene({ released: false });
+  await assert.rejects(open(s), (err) => err instanceof NoAccessError && /not released to you yet/.test(err.message));
+});
+
+test('successor: estate copies with no nomination from the artifact\'s owner, or with wraps of the caller\'s own, are not the successor path', async () => {
+  const none = await heirScene();
+  none.server.successions = [];
+  await assert.rejects(open(none), NoAccessError);
+  const wraps = await heirScene();
+  wraps.server.keysOverride = { wraps: [{ epoch: 1, wrapped: e2e.b64(new Uint8Array(80)), fp: U.outsider.fp }], estate: wraps.world.estate };
+  await assert.rejects(open(wraps), NoAccessError);
+  assert.ok(!wraps.server.calls.some((c) => c.path === '/api/successions'));
+});
+
+test('successor: a caller the server serves no keys to falls back to the link', async () => {
+  const s = await scene({ who: 'outsider', isPublic: true });
+  s.server.openMembership = true;
+  s.server.successions = [await succession(U.owner, U.outsider)];
+  const opened = await open(s, linkFor(s.world));
+  assert.equal(opened.mode, 'link');
+  assert.ok(!s.server.calls.some((c) => c.path === '/api/successions'));
 });
 
 // ---- link mode ----

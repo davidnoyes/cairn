@@ -7,6 +7,7 @@ import { changePassword, createApiKey, newRecoveryCode, signOut } from './accoun
 import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { describeArtifact } from './meta.mjs';
 import { KeyChangedError, members, pin, publicLinkFor, setPublic, share, unshare } from './sharing.mjs';
+import { myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions } from './successor.mjs';
 import { describeError, pageDeps, watchStrength } from './ui.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -462,6 +463,128 @@ $('rc-form').addEventListener('submit', async (event) => {
   }
 });
 
+// ------------------------------------------------------------- successor
+const who = (u) => (u.name ? `${u.name} (${u.email})` : u.email);
+
+// showBanners shows what me says about a successor's request, on every tab: a
+// pending request, which the user can refuse, or a release, which only
+// rotating keys ends, and which the CLI does.
+function showBanners() {
+  const s = me.succession;
+  $('succession-banner').hidden = !s;
+  $('refuse-succession').hidden = !s || s.released;
+  $('rotate-banner').hidden = !me.mustRotate;
+  if (!s) return;
+  if (s.released) {
+    $('succession-text').textContent = `${who(s.successor)} can now read your artifacts.`;
+    return;
+  }
+  let text = `${who(s.successor)} asked for access to your artifacts on ${day(s.requestedAt)}. They get it on ${day(s.releaseAt)} unless you refuse.`;
+  if (s.deactivatedAt) text += ` An administrator deactivated your account on ${day(s.deactivatedAt)}.`;
+  $('succession-text').textContent = text;
+}
+
+$('refuse-succession').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await refuse(deps);
+    me.succession = null;
+    showBanners();
+    $('app-status').hidden = false;
+    status('app-status', 'You refused the request. Your successor stays named, and was told.');
+    await refreshSuccessor();
+  } catch (err) {
+    failIn('app-status')(err);
+    $('app-status').hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+const removeSuccessor = confirmButton('Remove successor', 'Remove for good?', () => remove(deps)
+  .then((u) => { status('successor-status', `${u.email} is no longer your successor.`); return refreshSuccessor(); })
+  .catch(failIn('successor-status')));
+removeSuccessor.id = 'remove-successor';
+removeSuccessor.hidden = true;
+$('successor-actions').appendChild(removeSuccessor);
+
+async function loadSuccessor({ keys }) {
+  $('my-code').textContent = await myCode(keys);
+  await refreshSuccessor();
+}
+
+async function refreshSuccessor() {
+  const [mine, named] = await Promise.all([successorStatus(deps), successions(deps)]);
+  removeSuccessor.hidden = !mine.successor;
+  $('current-successor').textContent = mine.successor ? `Your successor is ${who(mine.successor)}.` : 'You have not named a successor.';
+  const released = named.filter((n) => n.released);
+  const artifacts = released.length > 0 ? await api('/api/artifacts') : [];
+  const body = $('successions');
+  if (named.length === 0) { emptyRow(body, 3, 'Nobody has named you.'); return; }
+  body.replaceChildren(...named.map((n) => successionRow(n, artifacts.filter((a) => a.access === 'successor' && a.owner === n.user.id))));
+}
+
+function successionRow(n, owned) {
+  const tr = el('tr');
+  tr.dataset.user = n.user.id;
+  const person = el('div', 'name', n.user.name || n.user.email);
+  person.appendChild(el('div', 'sub', n.user.email));
+  if (n.released) {
+    const links = el('div', 'sub');
+    for (const a of owned) {
+      const link = el('a', 'mono', a.id);
+      link.href = '/shared/' + a.id;
+      links.append(link, el('br'));
+    }
+    person.appendChild(links);
+  }
+  const state = n.released ? 'released' : n.requestedAt ? `requested, released on ${day(n.releaseAt)}` : 'named';
+  const actions = el('div', 'actions');
+  if (!n.requestedAt) {
+    actions.appendChild(btn('Request access', '', () => requestAccess(deps, n.user.id)
+      .then((r) => { status('successor-status', `Asked for access to the artifacts ${n.user.email} owns. They were told, and can refuse. Access starts on ${day(r.releaseAt)} unless they do.`); return refreshSuccessor(); })
+      .catch(failIn('successor-status'))));
+  }
+  tr.append(td(person), td(state), td(actions));
+  return tr;
+}
+
+$('nominate-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = event.submitter;
+  const password = $('nominate-password');
+  button.disabled = true;
+  status('successor-status', 'Naming the successor…');
+  try {
+    const { user } = await nominate(deps, { who: $('nominate-user').value, code: $('nominate-code').value, password: password.value });
+    $('nominate-user').value = '';
+    $('nominate-code').value = '';
+    status('successor-status', `${user.email} is your successor. They can read your artifacts 14 days after they ask, unless you refuse.`);
+    await refreshSuccessor();
+  } catch (err) {
+    failIn('successor-status')(err);
+  } finally {
+    password.value = '';
+    button.disabled = false;
+  }
+});
+
+$('notice-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = event.submitter;
+  button.disabled = true;
+  try {
+    const address = $('notice-email').value.trim();
+    const pending = await setNoticeEmail(deps, address);
+    status('successor-status', address === '' ? 'Cleared your notice address.' : pending ? `Check ${address} for a link that verifies it. Notices go there once you follow it.` : `Notices go to ${address}.`);
+  } catch (err) {
+    failIn('successor-status')(err);
+  } finally {
+    button.disabled = false;
+  }
+});
+
 // ----------------------------------------------------------------- users
 async function loadUsers() {
   const users = await api('/api/admin/users');
@@ -492,6 +615,7 @@ async function loadUsers() {
 const lists = [
   { name: 'artifacts', status: 'artifacts-status', load: loadArtifacts },
   { name: 'API keys', status: 'keys-status', load: loadKeys },
+  { name: 'successor', status: 'successor-status', load: loadSuccessor },
   { name: 'users', status: 'users-status', load: loadUsers, admin: true },
 ];
 await startApp({
@@ -501,6 +625,7 @@ await startApp({
   lists,
   setUser(user) {
     me = user;
+    showBanners();
     $('who').textContent = user.email;
     $('tab-users').hidden = !user.isAdmin;
   },

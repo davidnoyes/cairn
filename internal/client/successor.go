@@ -19,7 +19,7 @@ import (
 var (
 	// ErrSuccessorCode means the code the user gave is not the one the
 	// directory's keys for the successor produce.
-	ErrSuccessorCode = errors.New("the code does not match the keys the server lists for that user")
+	ErrSuccessorCode = errors.New("the code does not match the keys the server lists for that user; ask them to run cairn successor code again and compare. A mismatch can also mean the server is serving the wrong keys")
 	// ErrSuccessorStale means another device signed a successor record since
 	// this one read the seq.
 	ErrSuccessorStale = errors.New("the successor record went stale: another device changed your successor since it was read; run the command again")
@@ -108,7 +108,7 @@ func (c *Client) CheckSuccessorCode(who, code string) (*DirectoryUser, error) {
 		return nil, err
 	}
 	if !bytes.Equal(want, fp[:len(want)]) {
-		return nil, fmt.Errorf("%w: %s", ErrSuccessorCode, u.Email)
+		return nil, fmt.Errorf("%s: %w", u.Email, ErrSuccessorCode)
 	}
 	return &u, nil
 }

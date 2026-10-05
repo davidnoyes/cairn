@@ -9,8 +9,10 @@ import (
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -303,36 +305,139 @@ func TestStaleSeqPassesOtherErrorsOn(t *testing.T) {
 	}
 }
 
-func TestNominateRefusesYourself(t *testing.T) {
-	s := newSucc(t)
-	code, err := s.ada.SuccessorCode()
+// spyProxy forwards to host, recording "METHOD path" of every request, and
+// lets modify change each response.
+func spyProxy(t *testing.T, host string, modify func(*http.Response)) (string, func() []string) {
+	t.Helper()
+	target, err := url.Parse(host)
 	if err != nil {
 		t.Fatal(err)
 	}
-	u, err := s.ada.CheckSuccessorCode("ada@example.com", code)
-	if err != nil {
-		t.Fatal(err)
+	var mu sync.Mutex
+	var seen []string
+	p := httputil.NewSingleHostReverseProxy(target)
+	p.ModifyResponse = func(resp *http.Response) error {
+		if modify != nil {
+			modify(resp)
+		}
+		return nil
 	}
-	if _, err := s.ada.NominateSuccessor(*u, testPassword); err == nil {
-		t.Error("ada nominated herself")
-	}
-	if _, err := s.ada.NominateSuccessor(*u, "wrong password for this account"); err == nil {
-		t.Error("a wrong password was accepted")
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		mu.Unlock()
+		p.ServeHTTP(w, r)
+	}))
+	t.Cleanup(ts.Close)
+	return ts.URL, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(seen)
 	}
 }
 
-func TestSuccessorAdminHandoverNeedsAReleasedSuccessor(t *testing.T) {
+func TestNominateRefusesYourself(t *testing.T) {
 	s := newSucc(t)
-	s.release()
-	// bob is the successor, cat is not: neither is listed.
-	if err := s.cat.DeclineTransfer(s.artifact); err == nil {
-		t.Error("cat could answer an offer on an artifact she cannot reach")
+	proxy, seen := spyProxy(t, s.host, nil)
+	ada := keyedFor(t, proxy, s.keys["ada"])
+	code, err := ada.SuccessorCode()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := s.cat.AcceptTransfer(s.artifact, AcceptTransferOptions{}); err == nil {
-		t.Error("cat accepted ownership of an artifact she cannot reach")
+	u, err := ada.CheckSuccessorCode("ada@example.com", code)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := s.bob.AcceptTransfer(s.artifact, AcceptTransferOptions{}); !errors.Is(err, ErrNoOfferToYou) {
-		t.Errorf("accepting with no offer: %v", err)
+	before := len(seen())
+	if _, err := ada.NominateSuccessor(*u, testPassword); err == nil || err.Error() != "you cannot be your own successor" {
+		t.Errorf("nominating yourself: %v", err)
+	}
+	for _, r := range seen()[before:] {
+		if strings.HasPrefix(r, "PUT ") || strings.HasPrefix(r, "POST /api/auth") {
+			t.Errorf("nominating yourself sent %s, want no sign-in and no nomination", r)
+		}
+	}
+
+	// A wrong password is refused by the sign-in, before any PUT.
+	bobCode, err := s.bob.SuccessorCode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bu, err := ada.CheckSuccessorCode("bob@example.com", bobCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var apiErr *APIError
+	if _, err := ada.NominateSuccessor(*bu, "wrong password for this account"); !errors.As(err, &apiErr) || apiErr.Status != http.StatusUnauthorized {
+		t.Errorf("a wrong password: %v, want a 401", err)
+	}
+	if slices.Contains(seen(), "PUT /api/me/successor") {
+		t.Error("a nomination was sent after a refused sign-in")
+	}
+	if st, err := s.ada.MySuccessor(); err != nil || st.Successor != nil {
+		t.Errorf("MySuccessor = %+v, %v; want none", st, err)
+	}
+}
+
+func TestSessionRequestsOfNominateReportTheNotice(t *testing.T) {
+	s := newSucc(t)
+	proxy, seen := spyProxy(t, s.host, func(resp *http.Response) {
+		if strings.HasPrefix(resp.Request.URL.Path, "/api/me/successor") {
+			resp.Header.Set(NoticeHeader, "succession-requested")
+		}
+	})
+	ada := keyedFor(t, proxy, s.keys["ada"])
+	var got []string
+	ada.OnNotice = func(n string) { got = append(got, n) }
+	code, err := s.bob.SuccessorCode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := ada.CheckSuccessorCode("bob@example.com", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ada.NominateSuccessor(*u, testPassword); err != nil {
+		t.Fatal(err)
+	}
+	// The GET and the PUT of the session client both carry it.
+	if want := []string{"succession-requested", "succession-requested"}; !slices.Equal(got, want) {
+		t.Errorf("notices %v after %v, want %v", got, seen(), want)
+	}
+}
+
+// An unlisted caller cannot take an offer: an administrator's only if they
+// are the owner's released successor, an owner's never. The cause stays
+// readable, and nothing is written. The offer is the server's real one to bob,
+// rewritten to name dan, a viewer who reads the chain but is not listed.
+func TestSuccessorAdminHandoverNeedsAReleasedSuccessor(t *testing.T) {
+	for _, tc := range []struct {
+		by        string
+		wantCause bool
+	}{{"admin", true}, {"owner", false}} {
+		t.Run(tc.by, func(t *testing.T) {
+			x := newXfer(t, nil)
+			x.offer(x.ada, "bob")
+			danID := x.id(x.dan)
+			proxy := tamperingProxy(t, x.host, "/api/artifacts/"+x.artifact, func(m map[string]json.RawMessage) {
+				var tr map[string]json.RawMessage
+				json.Unmarshal(m["transfer"], &tr)
+				tr["to"], tr["by"] = mustJSON(t, danID), mustJSON(t, tc.by)
+				tr["offer"] = json.RawMessage("null")
+				m["transfer"] = mustJSON(t, tr)
+			})
+			before := x.verify(x.cat).Chain.Latest.Seq
+			_, err := viaProxy(proxy, x.dan).AcceptTransfer(x.artifact, AcceptTransferOptions{})
+			if !errors.Is(err, ErrNotListedEditor) {
+				t.Fatalf("AcceptTransfer: %v, want ErrNotListedEditor", err)
+			}
+			if got := errors.Is(err, ErrNotSuccessor); got != tc.wantCause {
+				t.Errorf("errors.Is(err, ErrNotSuccessor) = %v, want %v: %v", got, tc.wantCause, err)
+			}
+			if got := x.verify(x.cat).Chain.Latest.Seq; got != before {
+				t.Errorf("the refused accept wrote a record: seq %d, want %d", got, before)
+			}
+		})
 	}
 }
 

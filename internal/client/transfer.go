@@ -406,7 +406,7 @@ func (c *Client) AcceptTransfer(artifactID string, opts AcceptTransferOptions) (
 	} else if _, err := c.successorEK(k, latest.Owner); err != nil {
 		// Only the owner's released successor may take an administrator's
 		// offer without being listed.
-		return nil, fmt.Errorf("%w: %v", ErrNotListedEditor, err)
+		return nil, fmt.Errorf("%w: %w", ErrNotListedEditor, err)
 	}
 	if listedFP != k.FP {
 		return nil, fmt.Errorf("%w: the latest record lists you under other keys", ErrMemberKeyChanged)

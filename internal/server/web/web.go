@@ -37,8 +37,8 @@ func buildMermaidJS() []byte {
 //
 //go:embed app.css home.css shell.css icon.svg
 //go:embed e2e.mjs account.mjs keystore.mjs argon2-client.mjs ui.mjs content.mjs sw.js shell.mjs viewer.mjs app.mjs app-init.mjs
-//go:embed data.mjs meta.mjs sharing.mjs
-//go:embed signup.js verify.js login.js forgot.js reset.js argon2-worker.js
+//go:embed data.mjs meta.mjs sharing.mjs successor.mjs
+//go:embed signup.js verify.js login.js forgot.js reset.js refuse.js argon2-worker.js
 //go:embed vendor/zxcvbn.js
 var Assets embed.FS
 

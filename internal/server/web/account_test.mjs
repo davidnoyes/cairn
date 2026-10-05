@@ -40,7 +40,7 @@ const json = (status, body) => ({ ok: status >= 200 && status < 300, status, jso
 // fakeServer records every request in server.log and answers each endpoint
 // from an in-memory account table.
 function fakeServer({ signupStatus = 202 } = {}) {
-  const server = { log: [], accounts: new Map(), tokens: new Map(), tamperMKPassword: false };
+  const server = { log: [], accounts: new Map(), tokens: new Map(), requests: new Map(), tamperMKPassword: false };
   server.fetch = async (path, options = {}) => {
     const body = options.body ? JSON.parse(options.body) : null;
     server.log.push({ path, method: options.method, headers: options.headers, body });
@@ -87,6 +87,30 @@ function fakeServer({ signupStatus = 202 } = {}) {
           server.accounts.set(email, { ...a, authKey: body.authKey, bundle: { ...a.bundle, kdf: body.kdf, mkPassword: body.mkPassword } });
         }
         return json(200, { ok: true });
+      }
+      // A refusal is pending for an account when server.requests holds its
+      // requestedAt. The proof is checked as refusalProof does; the key path
+      // as handleRefuse does, with a 409 when nothing is pending.
+      case '/api/auth/refuse/begin': {
+        const a = server.accounts.get(body.email);
+        const requestedAt = server.requests.get(body.email);
+        if (!a || !requestedAt) return json(200, { id: 'fake', mkRecovery: e2e.b64(new Uint8Array(60)), ed25519Priv: e2e.b64(new Uint8Array(60)), requestedAt: '2026-01-01T00:00:00Z' });
+        return json(200, { id: a.id, mkRecovery: a.bundle.mkRecovery, ed25519Priv: a.bundle.ed25519Priv, requestedAt });
+      }
+      case '/api/auth/refuse': {
+        const a = server.accounts.get(body.email);
+        if (!a) return json(401, { error: 'invalid email or password' });
+        if (body.proof) {
+          const parsed = body.proof.body && JSON.parse(new TextDecoder().decode(e2e.unb64(body.proof.body)));
+          const ok = body.proof.signer === a.id && await e2e.verifyEnvelope(e2e.unb64(a.bundle.ed25519Pub), 'refusal', body.proof)
+            && parsed.user === a.id && (!server.requests.get(body.email) || parsed.requestedAt === server.requests.get(body.email));
+          if (!ok) return json(401, { error: 'invalid email or password' });
+        } else if (body.authKey !== a.authKey) {
+          return json(401, { error: 'invalid email or password' });
+        }
+        const requestedAt = server.requests.get(body.email);
+        if (!requestedAt) return json(409, { error: 'no succession request is pending' });
+        return json(200, { refused: true, successor: { name: 'Bea', email: 'bea@example.com' }, requestedAt, deactivatedAt: '' });
       }
       // The signed-in account's endpoints act on server.current, the last
       // account to sign up. Each fresh-password check answers as
@@ -464,6 +488,147 @@ test('reset without the recovery code sends a fresh bundle and returns the new r
 });
 
 // ------------------------------------------------- recovery-code confirm
+
+// pendingRequest gives an account a pending succession request for the fake
+// refusal endpoints.
+function pendingRequest(server, email, requestedAt = '2026-09-20T10:11:12Z') {
+  server.requests.set(email, requestedAt);
+  return requestedAt;
+}
+
+test('refuseWithPassword posts the normalized email and authKey after a prelogin, and returns the answer', async () => {
+  const server = fakeServer();
+  await signedUp(server);
+  const requestedAt = pendingRequest(server, 'ada@example.com');
+  server.log.length = 0;
+  const answer = await account.refuseWithPassword(makeDeps(server), { email: '  Ada@Example.COM ', password: STRONG });
+
+  assert.deepEqual(server.log.map((e) => e.path), ['/api/auth/prelogin', '/api/auth/refuse']);
+  assert.equal(server.log[0].body.email, 'ada@example.com');
+  const sent = server.log[1].body;
+  assert.deepEqual(Object.keys(sent).sort(), ['authKey', 'email']);
+  assert.equal(sent.email, 'ada@example.com');
+  assert.equal(sent.authKey, server.accounts.get('ada@example.com').authKey);
+  assert.deepEqual(answer, { refused: true, successor: { name: 'Bea', email: 'bea@example.com' }, requestedAt, deactivatedAt: '' });
+});
+
+test('refuseWithPassword surfaces a 401 for a wrong password and a 409 for no pending request', async () => {
+  const server = fakeServer();
+  await signedUp(server);
+  pendingRequest(server, 'ada@example.com');
+  await assert.rejects(account.refuseWithPassword(makeDeps(server), { email: 'ada@example.com', password: 'wrong password here' }),
+    (e) => e instanceof account.ApiError && e.status === 401 && /invalid email or password/.test(e.message));
+  server.requests.clear();
+  await assert.rejects(account.refuseWithPassword(makeDeps(server), { email: 'ada@example.com', password: STRONG }),
+    (e) => e instanceof account.ApiError && e.status === 409 && /no succession request is pending/.test(e.message));
+});
+
+test('refuseWithPassword refuses an empty password without a request', async () => {
+  const server = fakeServer();
+  await assert.rejects(account.refuseWithPassword(makeDeps(server), { email: 'ada@example.com', password: '' }), /must not be empty/);
+  assert.equal(server.log.length, 0);
+});
+
+test('refuseWithRecovery makes begin then refuse requests, and returns the answer', async () => {
+  const server = fakeServer();
+  const { recoveryCode } = await signedUp(server);
+  const requestedAt = pendingRequest(server, 'ada@example.com');
+  server.log.length = 0;
+  const answer = await account.refuseWithRecovery(makeDeps(server), { email: ' ADA@example.com', recoveryCode: recoveryCode.toLowerCase() });
+
+  assert.deepEqual(server.log.map((e) => e.path), ['/api/auth/refuse/begin', '/api/auth/refuse']);
+  assert.deepEqual(server.log[0].body, { email: 'ada@example.com' });
+  assert.deepEqual(Object.keys(server.log[1].body).sort(), ['email', 'proof']);
+  assert.equal(server.log[1].body.email, 'ada@example.com');
+  assert.equal(answer.refused, true);
+  assert.equal(answer.requestedAt, requestedAt);
+});
+
+test('refuseWithRecovery proof verifies under the account key for refusal, and names user and requestedAt from begin', async () => {
+  const server = fakeServer();
+  const { recoveryCode } = await signedUp(server);
+  const requestedAt = pendingRequest(server, 'ada@example.com', '2026-09-21T01:02:03Z');
+  await account.refuseWithRecovery(makeDeps(server), { email: 'ada@example.com', recoveryCode });
+
+  const a = server.accounts.get('ada@example.com');
+  const proof = call(server, '/api/auth/refuse')[0].body.proof;
+  assert.deepEqual(Object.keys(proof).sort(), ['body', 'sig', 'signer']);
+  assert.equal(proof.signer, a.id);
+  const pub = e2e.unb64(a.bundle.ed25519Pub);
+  assert.equal(await e2e.verifyEnvelope(pub, 'refusal', proof), true);
+  assert.equal(await e2e.verifyEnvelope(pub, 'reset', proof), false);
+  const body = JSON.parse(new TextDecoder().decode(e2e.unb64(proof.body)));
+  assert.deepEqual(body, { v: 1, user: a.id, requestedAt });
+});
+
+test('refuseWithRecovery with a wrong code says it does not open the account, without reset advice, and sends no refusal', async () => {
+  const server = fakeServer();
+  await signedUp(server);
+  pendingRequest(server, 'ada@example.com');
+  const wrong = e2e.formatRecoveryCode(new Uint8Array(16));
+  await assert.rejects(account.refuseWithRecovery(makeDeps(server), { email: 'ada@example.com', recoveryCode: wrong }),
+    (e) => /That recovery code does not open this account/.test(e.message) && !/Start with new keys/.test(e.message));
+  assert.equal(call(server, '/api/auth/refuse').length, 0);
+});
+
+test('refuseWithRecovery refuses a malformed code before any request', async () => {
+  const server = fakeServer();
+  await assert.rejects(account.refuseWithRecovery(makeDeps(server), { email: 'ada@example.com', recoveryCode: 'not a code' }),
+    /That is not a recovery code\. It has 26 letters and digits in groups of four\./);
+  assert.equal(server.log.length, 0);
+});
+
+test('refuseWithRecovery against an address with no request gets a fake, which fails as a wrong code', async () => {
+  const server = fakeServer();
+  const { recoveryCode } = await signedUp(server);
+  await assert.rejects(account.refuseWithRecovery(makeDeps(server), { email: 'ada@example.com', recoveryCode }), /does not open this account/);
+  assert.equal(call(server, '/api/auth/refuse').length, 0);
+});
+
+test('refuseWithRecovery surfaces a 409 for a request that is no longer pending', async () => {
+  const server = fakeServer();
+  const { recoveryCode } = await signedUp(server);
+  pendingRequest(server, 'ada@example.com');
+  const deps = makeDeps(server, {
+    fetch: async (path, options) => {
+      if (path === '/api/auth/refuse') server.requests.set('ada@example.com', '');
+      return server.fetch(path, options);
+    },
+  });
+  await assert.rejects(account.refuseWithRecovery(deps, { email: 'ada@example.com', recoveryCode }),
+    (e) => e instanceof account.ApiError && e.status === 409 && /no succession request is pending/.test(e.message));
+});
+
+test('refuseWithRecovery surfaces a 401 for a proof the server rejects', async () => {
+  const server = fakeServer();
+  const { recoveryCode } = await signedUp(server);
+  pendingRequest(server, 'ada@example.com');
+  const deps = makeDeps(server, {
+    fetch: async (path, options) => {
+      if (path === '/api/auth/refuse') server.requests.set('ada@example.com', '2030-01-01T00:00:00Z'); // a newer request
+      return server.fetch(path, options);
+    },
+  });
+  await assert.rejects(account.refuseWithRecovery(deps, { email: 'ada@example.com', recoveryCode }),
+    (e) => e instanceof account.ApiError && e.status === 401 && /invalid email or password/.test(e.message));
+});
+
+test('refuseWithRecovery zeroes the code, its key, MK, and the seed, even when the refusal fails', async () => {
+  const server = fakeServer();
+  const { recoveryCode } = await signedUp(server);
+  pendingRequest(server, 'ada@example.com');
+  const spy = spyCrypto();
+  try {
+    const deps = makeDeps(server, {
+      fetch: async (path, options) => (path === '/api/auth/refuse' ? json(401, { error: 'invalid email or password' }) : server.fetch(path, options)),
+    });
+    await assert.rejects(account.refuseWithRecovery(deps, { email: 'ada@example.com', recoveryCode }), /invalid email or password/);
+  } finally {
+    spy.restore();
+  }
+  assert.ok(spy.decrypted.length >= 2, 'MK and the seed were opened');
+  for (const secret of [...spy.decrypted, ...spy.raws]) assert.ok(isZero(secret), 'a secret was left in memory');
+});
 
 test('the recovery confirmation picks a group, and accepts only that group, in any case', () => {
   const display = 'ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ';
