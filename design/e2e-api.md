@@ -2133,6 +2133,10 @@ Two banners appear at the top of every tab:
 - After a release, the user sees that the successor can read their
   artifacts, and that Cairn refuses their changes until they rotate keys.
 
+The page rereads `GET /api/me` at each tab change, and after a refusal the
+server turns down, so a request made, refused, or released since the page
+loaded shows without a reload.
+
 The `/refuse` page needs no session, so it works for a deactivated account.
 The user enters their email, then their password or their recovery code.
 On success the page names the successor and the request it refused, and

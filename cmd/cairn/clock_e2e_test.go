@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+// init lets the package's other tests serve under this build too: an empty
+// offset file means no offset.
+func init() {
+	os.Setenv(testClockEnv, os.DevNull)
+}
+
 func TestE2EClockReadsTheOffsetFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "offset")
 	t.Setenv(testClockEnv, path)

@@ -674,15 +674,15 @@ func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
 	// The owner's client, a released successor's, and the client of whoever an
 	// open offer names decide about approved and rotated users: the last two
 	// may take the artifact over.
-	owner := level == access.LevelOwner || level == access.LevelSuccessor
+	mayDecide := level == access.LevelOwner || level == access.LevelSuccessor
 	out := []pendingView{}
 	err := s.store.WithArtifact(a.ID, func(tx *store.ArtifactTx) error {
-		if !owner && caller != nil {
+		if !mayDecide && caller != nil {
 			o, err := tx.OpenOffer()
 			if err != nil && !errors.Is(err, store.ErrNotFound) {
 				return err
 			}
-			owner = o != nil && o.To == caller.ID
+			mayDecide = o != nil && o.To == caller.ID
 		}
 		cur, err := membership.Load(tx, membership.TxDirectory(tx))
 		if err != nil {
@@ -729,7 +729,7 @@ func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
 			if rotErr != nil {
 				return rotErr
 			}
-			if state == "" || ((state == pendingApproved || state == pendingRotated) && !owner) {
+			if state == "" || ((state == pendingApproved || state == pendingRotated) && !mayDecide) {
 				continue
 			}
 			v := pendingView{ID: u.ID, Name: u.Name, Email: u.Email, X25519Pub: e2e.B64(u.X25519Pub),

@@ -7,7 +7,7 @@ import { changePassword, createApiKey, newRecoveryCode, signOut } from './accoun
 import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { describeArtifact } from './meta.mjs';
 import { KeyChangedError, members, pin, publicLinkFor, setPublic, share, unshare } from './sharing.mjs';
-import { myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions } from './successor.mjs';
+import { bannerView, myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions } from './successor.mjs';
 import { describeError, pageDeps, watchStrength } from './ui.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -92,7 +92,12 @@ function selectTab(tab) {
     $(t.getAttribute('aria-controls')).classList.toggle('active', on);
   }
 }
-for (const t of tabs) t.addEventListener('click', () => selectTab(t));
+for (const t of tabs) {
+  t.addEventListener('click', () => {
+    selectTab(t);
+    if (me) refreshBanners();
+  });
+}
 selectTab(tabs[0]);
 
 $('signout').addEventListener('click', async (event) => {
@@ -466,22 +471,20 @@ $('rc-form').addEventListener('submit', async (event) => {
 // ------------------------------------------------------------- successor
 const who = (u) => (u.name ? `${u.name} (${u.email})` : u.email);
 
-// showBanners shows what me says about a successor's request, on every tab: a
-// pending request, which the user can refuse, or a release, which only
-// rotating keys ends, and which the CLI does.
+// showBanners shows what me says about a successor's request, on every tab.
 function showBanners() {
-  const s = me.succession;
-  $('succession-banner').hidden = !s;
-  $('refuse-succession').hidden = !s || s.released;
-  $('rotate-banner').hidden = !me.mustRotate;
-  if (!s) return;
-  if (s.released) {
-    $('succession-text').textContent = `${who(s.successor)} can now read your artifacts.`;
-    return;
-  }
-  let text = `${who(s.successor)} asked for access to your artifacts on ${day(s.requestedAt)}. They get it on ${day(s.releaseAt)} unless you refuse.`;
-  if (s.deactivatedAt) text += ` An administrator deactivated your account on ${day(s.deactivatedAt)}.`;
-  $('succession-text').textContent = text;
+  const v = bannerView(me);
+  $('succession-banner').hidden = !v.banner;
+  $('refuse-succession').hidden = !v.refuse;
+  $('rotate-banner').hidden = !v.rotate;
+  $('succession-text').textContent = v.text;
+}
+
+// refreshBanners rereads me, so a request made, refused or released since the
+// page loaded shows. It keeps what it had when the read fails.
+async function refreshBanners() {
+  me = await api('/api/me').catch(() => me);
+  showBanners();
 }
 
 $('refuse-succession').addEventListener('click', async (event) => {
@@ -489,17 +492,21 @@ $('refuse-succession').addEventListener('click', async (event) => {
   button.disabled = true;
   try {
     await refuse(deps);
-    me.succession = null;
-    showBanners();
-    $('app-status').hidden = false;
-    status('app-status', 'You refused the request. Your successor stays named, and was told.');
-    await refreshSuccessor();
   } catch (err) {
     failIn('app-status')(err);
     $('app-status').hidden = false;
+    // The banner may be stale: another device refused, or the request was
+    // released. Show what the server holds now.
+    await refreshBanners();
+    return;
   } finally {
     button.disabled = false;
   }
+  me.succession = null;
+  showBanners();
+  $('app-status').hidden = false;
+  status('app-status', 'You refused the request. Your successor stays named, and was told.');
+  await refreshSuccessor().catch(failIn('successor-status'));
 });
 
 const removeSuccessor = confirmButton('Remove successor', 'Remove for good?', () => remove(deps)

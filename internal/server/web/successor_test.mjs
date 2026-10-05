@@ -235,3 +235,36 @@ test('refuse, setNoticeEmail, successions and requestAccess call their routes', 
     ['POST', `/api/successions/${U.editor.id}/request`, undefined],
   ]);
 });
+
+test('bannerView shows nothing with no request, and the rotate banner alone once the user must rotate', () => {
+  assert.deepEqual(successor.bannerView({ succession: null, mustRotate: false }), { banner: false, refuse: false, rotate: false, text: '' });
+  assert.deepEqual(successor.bannerView({ succession: null, mustRotate: true }), { banner: false, refuse: false, rotate: true, text: '' });
+});
+
+test('bannerView offers Refuse on a pending request, and names the deactivation when there is one', () => {
+  const pending = { successor: { name: 'Heir', email: 'heir@example.com' }, requestedAt: '2026-10-01T10:00:00Z', releaseAt: '2026-10-15T10:00:00Z', released: false };
+  assert.deepEqual(successor.bannerView({ succession: pending, mustRotate: false }), {
+    banner: true, refuse: true, rotate: false,
+    text: 'Heir (heir@example.com) asked for access to your artifacts on 2026-10-01. They get it on 2026-10-15 unless you refuse.',
+  });
+  const dead = successor.bannerView({ succession: { ...pending, successor: { email: 'heir@example.com' }, deactivatedAt: '2026-10-02T09:00:00Z' } });
+  assert.equal(dead.text, 'heir@example.com asked for access to your artifacts on 2026-10-01. They get it on 2026-10-15 unless you refuse. An administrator deactivated your account on 2026-10-02.');
+});
+
+test('bannerView offers no Refuse once released, and says the successor can read', () => {
+  const released = { successor: { email: 'heir@example.com' }, requestedAt: '2026-10-01T10:00:00Z', releaseAt: '2026-10-15T10:00:00Z', released: true };
+  assert.deepEqual(successor.bannerView({ succession: released, mustRotate: true }), {
+    banner: true, refuse: false, rotate: true, text: 'heir@example.com can now read your artifacts.',
+  });
+});
+
+test('refusalView names who asked and when, and the deactivation only when there was one', () => {
+  const answer = { successor: { name: 'Heir', email: 'heir@example.com' }, requestedAt: '2026-10-01T10:00:00Z' };
+  assert.deepEqual(successor.refusalView(answer), {
+    done: 'You refused the request that Heir (heir@example.com) made on 2026-10-01. They stay your successor; to remove them, use the Successor tab or run cairn successor remove.',
+    deactivated: '',
+  });
+  const dead = successor.refusalView({ ...answer, successor: { email: 'heir@example.com' }, deactivatedAt: '2026-10-02T09:00:00Z' });
+  assert.match(dead.done, /^You refused the request that heir@example\.com made on 2026-10-01\. /);
+  assert.equal(dead.deactivated, 'An administrator deactivated your account on 2026-10-02, while the request was pending.');
+});

@@ -131,3 +131,35 @@ export function successions(deps) {
 export function requestAccess(deps, userId) {
   return call(deps, null, 'POST', `/api/successions/${userId}/request`);
 }
+
+const who = (u) => (u.name ? `${u.name} (${u.email})` : u.email);
+// day is the day of an RFC 3339 time.
+const day = (time) => time.slice(0, 10);
+
+// bannerView is what the banners at the top of every tab show for me, the
+// caller from /api/me: a pending request, which the user can refuse, or a
+// release, which only rotating keys ends, and which the CLI does.
+export function bannerView(me) {
+  const s = me.succession;
+  const view = { banner: !!s, refuse: !!s && !s.released, rotate: !!me.mustRotate, text: '' };
+  if (!s) return view;
+  if (s.released) {
+    view.text = `${who(s.successor)} can now read your artifacts.`;
+    return view;
+  }
+  view.text = `${who(s.successor)} asked for access to your artifacts on ${day(s.requestedAt)}. They get it on ${day(s.releaseAt)} unless you refuse.`;
+  if (s.deactivatedAt) view.text += ` An administrator deactivated your account on ${day(s.deactivatedAt)}.`;
+  return view;
+}
+
+// refusalView is what /refuse says once a refusal succeeds: who asked and
+// when, and the deactivation if an administrator deactivated the user while
+// the request was pending.
+export function refusalView(answer) {
+  const done = `You refused the request that ${who(answer.successor)} made on ${day(answer.requestedAt)}. ` +
+    'They stay your successor; to remove them, use the Successor tab or run cairn successor remove.';
+  const deactivated = answer.deactivatedAt
+    ? `An administrator deactivated your account on ${day(answer.deactivatedAt)}, while the request was pending.`
+    : '';
+  return { done, deactivated };
+}

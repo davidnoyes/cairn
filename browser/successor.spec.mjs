@@ -89,10 +89,13 @@ test('successor: a wrong code names nobody, and the heir\'s own code names them'
 
 test('successor: a request shows the banner on every tab, and Refuse ends it', async ({ browser, browserName: e }) => {
   const s = loadState();
-  cli(`heir-${e}`, ['successor', 'request', s.users[`succ-${e}`].email]);
   const { context, page } = await signedInContext(browser, `succ-${e}`);
   try {
     const banner = page.locator('#succession-banner');
+    await openTab(page, 'Artifacts');
+    await expect(banner).toBeHidden();
+    // A request made after the page loaded shows at the next tab change.
+    cli(`heir-${e}`, ['successor', 'request', s.users[`succ-${e}`].email]);
     for (const tab of ['Artifacts', 'API keys', 'Successor', 'Account']) {
       await openTab(page, tab);
       await expect(banner).toBeVisible();
@@ -104,6 +107,24 @@ test('successor: a request shows the banner on every tab, and Refuse ends it', a
     await expect(page.locator('#tab-successor')).toBeVisible();
     await expect(banner).toBeHidden();
     expect(JSON.parse(cli(`succ-${e}`, ['successor', 'status', '--json'])).request).toBeNull();
+  } finally {
+    await context.close();
+  }
+});
+
+test('successor: Refuse on a stale banner says why and clears the banner', async ({ browser, browserName: e }) => {
+  const s = loadState();
+  cli(`heir-${e}`, ['successor', 'request', s.users[`succ-${e}`].email]);
+  const { context, page } = await signedInContext(browser, `succ-${e}`);
+  try {
+    await page.goto(`${s.appOrigin}/app`);
+    const banner = page.locator('#succession-banner');
+    await expect(banner).toBeVisible();
+    // Another device refuses first, so this page's banner is stale.
+    cli(`succ-${e}`, ['successor', 'refuse']);
+    await page.locator('#refuse-succession').click();
+    await expect(page.locator('#app-status')).toContainText('no request is pending');
+    await expect(banner).toBeHidden();
   } finally {
     await context.close();
   }
@@ -130,18 +151,35 @@ test('successor: a deactivated user refuses from /refuse with no session, by pas
   const context = await browser.newContext();
   try {
     const page = await context.newPage();
-    for (const [user, mode] of [[`dead-${e}`, 'password'], [`lost-${e}`, 'recovery']]) {
-      const u = s.users[user];
+    const submit = async (u, mode, secret) => {
       await page.goto(`${s.appOrigin}/refuse`);
       await page.locator('#email').fill(u.email);
       await page.locator(`input[name=mode][value=${mode}]`).check();
-      if (mode === 'password') await page.locator('#password').fill(u.password);
-      else await page.locator('#code').fill(u.recovery);
+      await page.locator(mode === 'password' ? '#password' : '#code').fill(secret);
       await page.locator('#submit').click();
+    };
+    // A wrong secret refuses nothing; the right one refuses; a second try
+    // finds no request, which for a recovery code reads as a wrong code.
+    const cases = [
+      [`dead-${e}`, 'password', 'not the password', 'invalid email or password', 'no request is pending'],
+      [`lost-${e}`, 'recovery', s.users[`dead-${e}`].recovery, 'does not open this account', 'does not open this account'],
+    ];
+    for (const [user, mode, wrong, wrongError, againError] of cases) {
+      const u = s.users[user];
+      const secret = mode === 'password' ? u.password : u.recovery;
+      await submit(u, mode, wrong);
+      await expect(page.locator('#error')).toContainText(wrongError);
+      await expect(page.locator('#done')).toBeHidden();
+
+      await submit(u, mode, secret);
       await expect(page.locator('#done-text')).toContainText(`You refused the request that ${s.users[`heir-${e}`].email} made on `);
       await expect(page.locator('#deactivated')).toBeVisible();
-      await expect(page.locator('#deactivated')).toContainText('An administrator deactivated your account');
+      await expect(page.locator('#deactivated')).toHaveText(/^An administrator deactivated your account on \d{4}-\d{2}-\d{2}, while the request was pending\.$/);
       await expect(page.locator('#error')).toBeEmpty();
+
+      await submit(u, mode, secret);
+      await expect(page.locator('#error')).toContainText(againError);
+      await expect(page.locator('#done')).toBeHidden();
     }
   } finally {
     await context.close();
@@ -166,6 +204,11 @@ test('successor: once released, the heir reads the owner\'s artifacts and nothin
     await row.locator(`a[href="/shared/${doc}"]`).click();
     await expect(page).toHaveURL(`${s.appOrigin}/shared/${doc}`);
     await expect((await contentFrame(page)).locator('#marker')).toHaveText(MARKER);
+
+    // What was shared with the owner stays theirs.
+    await page.goto(`${s.appOrigin}/shared/${plain}`);
+    await expect(page.locator('#status')).toBeVisible();
+    expect(page.frames().filter((f) => f.url().includes('.localhost')), 'artifact frames').toEqual([]);
   } finally {
     await heir.context.close();
   }
@@ -174,6 +217,8 @@ test('successor: once released, the heir reads the owner\'s artifacts and nothin
   try {
     await owner.page.goto(`${s.appOrigin}/app`);
     await expect(owner.page.locator('#rotate-banner')).toBeVisible();
+    await expect(owner.page.locator('#succession-text')).toHaveText(`${s.users[`heir-${e}`].email} can now read your artifacts.`);
+    await expect(owner.page.locator('#refuse-succession')).toBeHidden();
   } finally {
     await owner.context.close();
   }

@@ -113,8 +113,8 @@ internal/membership/approval.go	Wrapped: w.Wrapped, FP: u.FP})	Wrapped: w.Wrappe
 internal/access/access.go	if act == ApproveMember && r.Artifact.Team != TeamViewer && r.Artifact.Team != TeamEditor {	if false {	go test ./internal/access
 internal/server/sharing.go	if u.ID == latest.Owner || !u.Verified || u.Disabled ||	if !u.Verified || u.Disabled ||	go test ./internal/server -run 'TestPending|TestApprov'
 internal/server/sharing.go	e2e.ExcludedMatch(latest.Excluded, u.ID, u.FP, u.Email) != nil {	false {	go test ./internal/server -run 'TestPending|TestApprov'
-internal/server/sharing.go	if state == "" || ((state == pendingApproved || state == pendingRotated) && !owner) {	if state == "" || ((state == pendingApproved || state == pendingRotated) && !owner && false) {	go test ./internal/server -run 'TestPending|TestApprov'
-internal/server/sharing.go	if state == "" || ((state == pendingApproved || state == pendingRotated) && !owner) {	if state == "" && false || ((state == pendingApproved || state == pendingRotated) && !owner) {	go test ./internal/server -run 'TestPending|TestApprov'
+internal/server/sharing.go	if state == "" || ((state == pendingApproved || state == pendingRotated) && !mayDecide) {	if state == "" || ((state == pendingApproved || state == pendingRotated) && !mayDecide && false) {	go test ./internal/server -run 'TestPending|TestApprov'
+internal/server/sharing.go	if state == "" || ((state == pendingApproved || state == pendingRotated) && !mayDecide) {	if state == "" && false || ((state == pendingApproved || state == pendingRotated) && !mayDecide) {	go test ./internal/server -run 'TestPending|TestApprov'
 internal/server/sharing.go	if isListed && m.FP != u.FP {	if false && isListed && m.FP != u.FP {	go test ./internal/server -run 'TestPending|TestApprov'
 internal/server/sharing.go	if wr.FP != u.FP {	if false && wr.FP != u.FP {	go test ./internal/server -run 'TestPending|TestApprov'
 internal/server/sharing.go	if isListed {	if false {	go test ./internal/server -run 'TestPending|TestApprov'
@@ -399,7 +399,7 @@ internal/server/rotate.go	if err := rt.RevokeAPIKeys(); err != nil {	if false {	
 internal/server/rotate.go	if err := rt.CloseOffersToUser(); err != nil {	if false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 internal/server/rotate.go	if j > i && rows[j].OldFP != rows[j-1].NewFP {	if false {	go test ./internal/server -run 'TestRotationLinked|TestPending'
 internal/server/sharing.go	if explained(oldFP) {	if false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
-internal/server/sharing.go	(state == pendingApproved || state == pendingRotated) && !owner	state == pendingApproved && !owner	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
+internal/server/sharing.go	(state == pendingApproved || state == pendingRotated) && !mayDecide	state == pendingApproved && !mayDecide	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 internal/server/sharing.go	if approval != nil && approval.FP != u.FP {	if false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 internal/server/sharing.go	if kp, ok := keysInRotations(rows, rec.OwnerFp); ok {	if kp, ok := keysInRotations(rows, rec.OwnerFp); ok && false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 internal/server/sharing.go	note(m.UserID)	_ = m	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
@@ -2144,9 +2144,18 @@ internal/server/web/account.mjs	const stretched = await deps.stretch(password, e
 internal/access/access.go	case ReadContent, ReadMembership, ReadKeys, ListPending, AnswerTransfer:	case ReadContent, ReadMembership, ReadKeys, AnswerTransfer:	go test ./internal/server -run TestSuccessorReadsThePendingList
 internal/access/access.go	case ReadContent, ReadMembership, ReadKeys, ListPending, AnswerTransfer:	case ReadContent, ReadMembership, ReadKeys, ListPending, ApproveMember, AnswerTransfer:	go test ./internal/access -run TestSuccessorMayOnlyReadAndAnswer
 internal/access/access.go	case ReadContent, ReadMembership, ReadKeys, ListPending, AnswerTransfer:	case ReadContent, ReadMembership, ReadKeys, ListPending, WriteData, AnswerTransfer:	go test ./internal/access -run TestSuccessorMayOnlyReadAndAnswer
-internal/server/sharing.go	owner := level == access.LevelOwner || level == access.LevelSuccessor	owner := level == access.LevelOwner	go test ./internal/server -run TestSuccessorReadsThePendingList
-internal/server/sharing.go	owner := level == access.LevelOwner || level == access.LevelSuccessor	owner := level != access.LevelNone	go test ./internal/server -run TestPendingStates
+internal/server/sharing.go	mayDecide := level == access.LevelOwner || level == access.LevelSuccessor	mayDecide := level == access.LevelOwner	go test ./internal/server -run TestSuccessorReadsThePendingList
+internal/server/sharing.go	mayDecide := level == access.LevelOwner || level == access.LevelSuccessor	mayDecide := level != access.LevelNone	go test ./internal/server -run TestPendingStates
 internal/client/transfer.go	pending, err := c.pendingFor(k, artifactID, va)	pending, err := []PendingUser(nil), error(nil)	go test ./internal/client -run TestSuccessorAcceptCarriesApprovedTeamMembers
-internal/server/sharing.go	owner = o != nil && o.To == caller.ID	owner = o != nil && false	go test ./internal/client -run TestAdminOfferToAnEditorCarriesApprovedTeamMembers
-internal/server/sharing.go	owner = o != nil && o.To == caller.ID	owner = o != nil	go test ./internal/client -run TestAdminOfferToAnEditorCarriesApprovedTeamMembers
-internal/server/sharing.go	if !owner && caller != nil {	if false {	go test ./internal/client -run TestAdminOfferToAnEditorCarriesApprovedTeamMembers
+internal/server/sharing.go	mayDecide = o != nil && o.To == caller.ID	mayDecide = o != nil && false	go test ./internal/client -run TestAdminOfferToAnEditorCarriesApprovedTeamMembers
+internal/server/sharing.go	mayDecide = o != nil && o.To == caller.ID	mayDecide = o != nil	go test ./internal/client -run TestAdminOfferToAnEditorCarriesApprovedTeamMembers
+internal/server/sharing.go	if !mayDecide && caller != nil {	if false {	go test ./internal/client -run TestAdminOfferToAnEditorCarriesApprovedTeamMembers
+# bannerView and refusalView: what the successor banners and /refuse say.
+internal/server/web/successor.mjs	refuse: !!s && !s.released,	refuse: !!s,	node --test internal/server/web/successor_test.mjs
+internal/server/web/successor.mjs	rotate: !!me.mustRotate,	rotate: false,	node --test internal/server/web/successor_test.mjs
+internal/server/web/successor.mjs	const view = { banner: !!s,	const view = { banner: false,	node --test internal/server/web/successor_test.mjs
+internal/server/web/successor.mjs	  if (s.released) {	  if (false) {	node --test internal/server/web/successor_test.mjs
+internal/server/web/successor.mjs	if (s.deactivatedAt) view.text +=	if (false) view.text +=	node --test internal/server/web/successor_test.mjs
+internal/server/web/successor.mjs	const who = (u) => (u.name ?	const who = (u) => (false ?	node --test internal/server/web/successor_test.mjs
+internal/server/web/successor.mjs	const day = (time) => time.slice(0, 10);	const day = (time) => time;	node --test internal/server/web/successor_test.mjs
+internal/server/web/successor.mjs	const deactivated = answer.deactivatedAt	const deactivated = false	node --test internal/server/web/successor_test.mjs
