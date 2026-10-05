@@ -581,7 +581,8 @@ test('refuseWithRecovery refuses a malformed code before any request', async () 
 test('refuseWithRecovery against an address with no request gets a fake, which fails as a wrong code', async () => {
   const server = fakeServer();
   const { recoveryCode } = await signedUp(server);
-  await assert.rejects(account.refuseWithRecovery(makeDeps(server), { email: 'ada@example.com', recoveryCode }), /does not open this account/);
+  await assert.rejects(account.refuseWithRecovery(makeDeps(server), { email: 'ada@example.com', recoveryCode }),
+    /does not open this account, or the account has no pending request\./);
   assert.equal(call(server, '/api/auth/refuse').length, 0);
 });
 

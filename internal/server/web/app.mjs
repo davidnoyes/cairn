@@ -7,7 +7,7 @@ import { changePassword, createApiKey, newRecoveryCode, signOut } from './accoun
 import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { describeArtifact } from './meta.mjs';
 import { KeyChangedError, members, pin, publicLinkFor, setPublic, share, unshare } from './sharing.mjs';
-import { bannerView, myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions } from './successor.mjs';
+import { bannerView, myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions, who } from './successor.mjs';
 import { describeError, pageDeps, watchStrength } from './ui.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -469,8 +469,6 @@ $('rc-form').addEventListener('submit', async (event) => {
 });
 
 // ------------------------------------------------------------- successor
-const who = (u) => (u.name ? `${u.name} (${u.email})` : u.email);
-
 // showBanners shows what me says about a successor's request, on every tab.
 function showBanners() {
   const v = bannerView(me);
@@ -480,10 +478,16 @@ function showBanners() {
   $('succession-text').textContent = v.text;
 }
 
+// bannerGen counts the changes to me's request, so a reread that started
+// before a later change does not undo it.
+let bannerGen = 0;
+
 // refreshBanners rereads me, so a request made, refused or released since the
 // page loaded shows. It keeps what it had when the read fails.
 async function refreshBanners() {
-  me = await api('/api/me').catch(() => me);
+  const gen = ++bannerGen;
+  const fresh = await api('/api/me').catch(() => null);
+  if (fresh && gen === bannerGen) me = fresh;
   showBanners();
 }
 
@@ -502,6 +506,7 @@ $('refuse-succession').addEventListener('click', async (event) => {
   } finally {
     button.disabled = false;
   }
+  bannerGen++;
   me.succession = null;
   showBanners();
   $('app-status').hidden = false;

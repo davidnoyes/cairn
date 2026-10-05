@@ -333,7 +333,7 @@ export async function refuseWithRecovery(deps, { email, recoveryCode }) {
       mk = await e2e.open(recoveryKek, ['mk'], e2e.unb64(info.mkRecovery));
     } catch (err) {
       throw err instanceof e2e.DecryptError
-        ? new Error('That recovery code does not open this account. Check that you typed all 26 characters, in groups of four.')
+        ? new Error('That recovery code does not open this account, or the account has no pending request. Check that you typed all 26 characters, in groups of four.')
         : err;
     }
     seed = await e2e.open(await e2e.mkSealCryptoKey(mk), ['ed25519'], e2e.unb64(info.ed25519Priv));

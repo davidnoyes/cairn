@@ -37,7 +37,13 @@ export function cliJson(user, args) {
 export async function signIn(page, email, password) {
   const s = loadState();
   await page.goto(`${s.appOrigin}/login`);
-  await page.locator('#email').fill(email);
+  try {
+    await page.locator('#email').fill(email);
+  } catch (e) {
+    // The page disables its form when the browser fails its crypto check.
+    const shown = await page.locator('#error').textContent().catch(() => '');
+    throw new Error(`the sign-in form took no input (error shown: ${JSON.stringify(shown)}): ${e.message}`);
+  }
   await page.locator('#password').fill(password);
   await page.locator('#submit').click();
   try {

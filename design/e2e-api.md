@@ -2141,6 +2141,9 @@ The `/refuse` page needs no session, so it works for a deactivated account.
 The user enters their email, then their password or their recovery code.
 On success the page names the successor and the request it refused, and
 says so when an administrator deactivated the account during the request.
+A recovery code fails the same way whether it is wrong or no request is
+pending, since the fake answer cannot tell them apart, so the error names
+both.
 
 The viewer reaches an artifact as a successor only when the caller holds no
 wrap for it and the server serves estate copies. It then reads the owner's

@@ -2028,7 +2028,7 @@ internal/store/successor.go	const SuccessionWait = 14 * 24 * time.Hour	const Suc
 internal/store/successor.go	if prev != nil && prev.Released(at) {	if false {	go test ./internal/store -run TestAReleasedNominationCannotBeReplacedOrRemoved
 internal/store/sharing.go	`WHERE s.user_id = ? AND s.successor_id = ?`, a.OwnerID, userID))	`WHERE s.user_id IN (SELECT user_id FROM artifact_members WHERE artifact_id = ?) AND s.successor_id = ?`, artifactID, userID))	go test ./internal/server -run TestReleaseAfterFourteenDays
 internal/access/access.go	m.successor = m.signedIn && r.Successor	m.successor = r.Successor	go test ./internal/access -run TestSuccessorNeedsSignedInAndNotLinkOnly
-internal/access/access.go	case ReadContent, ReadMembership, ReadKeys, AnswerTransfer:	case ReadContent, ReadMembership, ReadKeys, AnswerTransfer, WriteData:	go test ./internal/access -run TestSuccessorMayOnlyReadAndAnswer
+internal/access/access.go	case ReadContent, ReadMembership, ReadKeys, ListPending, AnswerTransfer:	case ReadContent, ReadMembership, ReadKeys, ListPending, AnswerTransfer, WriteData:	go test ./internal/access -run TestSuccessorMayOnlyReadAndAnswer
 internal/server/sharing.go	if owner || req.Successor {	if owner {	go test ./internal/server -run TestReleaseAfterFourteenDays
 internal/server/handlers_successor.go	return body.RequestedAt == sc.RequestedAt	return true	go test ./internal/server -run TestRefuseFromThePage
 internal/server/handlers_successor.go	if !sc.Released(s.clk.Now()) {	if true {	go test ./internal/server -run TestReleaseAfterFourteenDays
@@ -2059,8 +2059,8 @@ internal/server/handlers_successor.go		"DELETE /api/keys/{id}": true,		"DELETE /
 internal/server/handlers_successor.go			s.recordSignInFailure(email, ip)			_ = ip	go test ./internal/server -run TestRefuseFromThePage
 internal/server/handlers_successor.go			if v.Released {			if true {	go test ./internal/server -run TestRequestSuccession
 internal/server/handlers_users.go				err = s.store.DeactivateUser(id, s.clk.Now())				err = s.store.SetUserDisabled(id, true)	go test ./internal/server -run TestRefuseFromThePage
-internal/access/access.go			case ReadContent, ReadMembership, ReadKeys, AnswerTransfer:			case ReadContent, ReadMembership, AnswerTransfer:	go test ./internal/access
-internal/access/access.go			case ReadContent, ReadMembership, ReadKeys, AnswerTransfer:			case ReadContent, ReadMembership, ReadKeys:	go test ./internal/access
+internal/access/access.go			case ReadContent, ReadMembership, ReadKeys, ListPending, AnswerTransfer:			case ReadContent, ReadMembership, ListPending, AnswerTransfer:	go test ./internal/access
+internal/access/access.go			case ReadContent, ReadMembership, ReadKeys, ListPending, AnswerTransfer:			case ReadContent, ReadMembership, ReadKeys, ListPending:	go test ./internal/access
 internal/server/handlers_successor.go		if e2e.DecodeStrict(sc.Record.Body, &body) != nil || body.SuccessorFP != fingerprintOf(b) {		if e2e.DecodeStrict(sc.Record.Body, &body) != nil || fingerprintOf(b) == "" {	go test ./internal/server -run TestARequestNeedsTheSuccessorsCurrentKey
 internal/server/handlers_successor.go	"the request was already released; rotate your keys to end your successor's access"	"no request is pending"	go test ./internal/server -run TestReleaseAfterFourteenDays
 internal/server/handlers_successor.go		if addr, err := netmail.ParseAddress(email); req.Email != "" && (		_ = s.store.DeleteTokens(u.ID, "notice"); if addr, err := netmail.ParseAddress(email); req.Email != "" && (	go test ./internal/server -run TestNoticeEmailTypoKeepsThePendingAddress

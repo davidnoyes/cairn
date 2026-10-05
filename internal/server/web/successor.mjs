@@ -132,7 +132,8 @@ export function requestAccess(deps, userId) {
   return call(deps, null, 'POST', `/api/successions/${userId}/request`);
 }
 
-const who = (u) => (u.name ? `${u.name} (${u.email})` : u.email);
+// who names a user by name and email, or by email alone.
+export const who = (u) => (u.name ? `${u.name} (${u.email})` : u.email);
 // day is the day of an RFC 3339 time.
 const day = (time) => time.slice(0, 10);
 

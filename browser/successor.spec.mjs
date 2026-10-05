@@ -101,8 +101,12 @@ test('successor: a request shows the banner on every tab, and Refuse ends it', a
       await expect(banner).toBeVisible();
       await expect(page.locator('#succession-text')).toContainText('asked for access to your artifacts');
     }
+    // The refusal stands even when the Successor tab then fails to refresh.
+    await page.route('**/api/me/successor', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"stubbed"}' }));
     await page.locator('#refuse-succession').click();
     await expect(banner).toBeHidden();
+    await expect(page.locator('#app-status')).toHaveText('You refused the request. Your successor stays named, and was told.');
+    await page.unroute('**/api/me/successor');
     await page.reload();
     await expect(page.locator('#tab-successor')).toBeVisible();
     await expect(banner).toBeHidden();
@@ -162,7 +166,7 @@ test('successor: a deactivated user refuses from /refuse with no session, by pas
     // finds no request, which for a recovery code reads as a wrong code.
     const cases = [
       [`dead-${e}`, 'password', 'not the password', 'invalid email or password', 'no request is pending'],
-      [`lost-${e}`, 'recovery', s.users[`dead-${e}`].recovery, 'does not open this account', 'does not open this account'],
+      [`lost-${e}`, 'recovery', s.users[`dead-${e}`].recovery, 'or the account has no pending request', 'or the account has no pending request'],
     ];
     for (const [user, mode, wrong, wrongError, againError] of cases) {
       const u = s.users[user];
@@ -207,7 +211,7 @@ test('successor: once released, the heir reads the owner\'s artifacts and nothin
 
     // What was shared with the owner stays theirs.
     await page.goto(`${s.appOrigin}/shared/${plain}`);
-    await expect(page.locator('#status')).toBeVisible();
+    await expect(page.locator('#status')).toContainText("You can't open this artifact.");
     expect(page.frames().filter((f) => f.url().includes('.localhost')), 'artifact frames').toEqual([]);
   } finally {
     await heir.context.close();
