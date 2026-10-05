@@ -46,7 +46,7 @@ test('public link: renders in a fresh browser context, and the key leaves the ad
   try {
     const page = await context.newPage();
     await page.goto(s.publicLink);
-    const frame = await contentFrame(page);
+    const frame = await contentFrame(page, { url: s.publicLink });
     await expect(frame.locator('#marker')).toHaveText(MARKER);
     // The shell strips the fragment before anything else, so the key is in
     // no address, frame address, or history entry the page can still read.
@@ -117,6 +117,8 @@ test.describe('worker restart', () => {
     await cdp.send('ServiceWorker.stopAllWorkers');
 
     await frame.locator('#next').click();
+    // The shell's address does not reach page two, but contentFrame only
+    // loads it again for Firefox's lost navigation, and this runs in Chromium.
     const next = await contentFrame(ownerPage);
     await expect(next.locator('#marker')).toHaveText(PAGE2_MARKER);
   });
