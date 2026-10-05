@@ -52,10 +52,14 @@ export async function signIn(page, email, password) {
     const shown = await page.locator('#error').textContent().catch(() => '');
     throw new Error(`sign-in did not leave /login (error shown: ${JSON.stringify(shown)}): ${e.message}`);
   }
-  // The page signed in to is still fetching its lists. WebKit has, on CI, never
-  // finished a navigation started while those requests were open, so let them
-  // end before the caller moves on.
-  await page.waitForLoadState('networkidle');
+  await settle(page);
+}
+
+// settle waits for /app to finish fetching its lists. WebKit has been seen to
+// hang a navigation started while those requests were open, so a test lets
+// them end before it moves on. /app does not poll, so the network goes quiet.
+export async function settle(page) {
+  await page.waitForLoadState('networkidle', { timeout: 60_000 });
 }
 
 // contentFrame returns the artifact's frame: the one on a <uuid>.localhost

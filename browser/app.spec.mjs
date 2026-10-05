@@ -13,7 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from './test.mjs';
 import {
-  MARKER, cli, cliWithKey, contentFrame, files, loadState, logSize, mailedLink, runCli, signIn, signedInContext,
+  MARKER, cli, cliWithKey, contentFrame, files, loadState, logSize, mailedLink, runCli, settle, signIn, signedInContext,
 } from './helpers.mjs';
 
 // noNativeDialogs fails the test if the page opens alert, confirm or prompt:
@@ -38,6 +38,7 @@ test('app: / and /admin open /app when signed in, and /app sends a visitor with 
   for (const from of ['/', '/admin']) {
     await ownerPage.goto(`${s.appOrigin}${from}`);
     await expect(ownerPage).toHaveURL(`${s.appOrigin}/app`);
+    await settle(ownerPage);
   }
   const context = await browser.newContext();
   try {
