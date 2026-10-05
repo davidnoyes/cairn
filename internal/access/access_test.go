@@ -536,7 +536,7 @@ func TestSuccessorMayOnlyReadAndAnswer(t *testing.T) {
 	if got := LevelOf(r); got != LevelSuccessor {
 		t.Fatalf("level %v, want successor", got)
 	}
-	allowed := map[Action]bool{ReadContent: true, ReadMembership: true, ReadKeys: true, AnswerTransfer: true}
+	allowed := map[Action]bool{ReadContent: true, ReadMembership: true, ReadKeys: true, ListPending: true, AnswerTransfer: true}
 	for _, a := range allActions {
 		want := Forbidden
 		if allowed[a] {

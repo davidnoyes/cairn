@@ -445,12 +445,9 @@ func (c *Client) AcceptTransfer(artifactID string, opts AcceptTransferOptions) (
 	var aks map[int][]byte
 	var pins map[string]pinDecision
 	if drop {
-		// A successor may not list the team's pending approvals.
-		var pending []PendingUser
-		if i >= 0 {
-			if pending, err = c.pendingFor(k, artifactID, va); err != nil {
-				return nil, err
-			}
+		pending, err := c.pendingFor(k, artifactID, va)
+		if err != nil {
+			return nil, err
 		}
 		next.Members = members
 		b, err := c.buildNextEpoch(k, artifactID, va, dir, pending, nextEpochRecord{next: next, newOwner: k.UserID, prevOwner: latest.Owner})

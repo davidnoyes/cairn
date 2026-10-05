@@ -513,7 +513,7 @@ fails:
 | `PUT /api/artifacts/{id}/membership` | Owner | Add a membership record |
 | `GET /api/artifacts/{id}/keys` | Owner, member, team member | The caller's wraps |
 | `POST /api/artifacts/{id}/keys` | Owner, editor | Approve a team member |
-| `GET /api/artifacts/{id}/pending` | Owner, editor | Team members waiting, and changed keys |
+| `GET /api/artifacts/{id}/pending` | Owner, editor, released successor | Team members waiting, and changed keys |
 | `GET /api/artifacts/{id}/review` | Owner | Versions that need a vouch |
 | `PUT /api/artifacts/{id}/versions/{vid}/vouch` | Owner | Vouch for a version |
 | `PUT /api/artifacts/{id}/versions/{vid}/meta/{field}` | Owner, editor | Set the encrypted name or changelog |
@@ -690,16 +690,19 @@ about:
 - `new`: the record's `team` is not `none`, and this verified, active user
   holds no wrap for the current epoch, is not listed, and matches no
   `excluded` entry by user ID, fingerprint, or normalized email.
-- `approved`: shown to the owner only. The user holds a wrap for the current
-  epoch through an approval, and is not listed. `approval` is the signed
-  `approval` envelope stored with it, and is `null` in every other state.
+- `approved`: shown only to the owner, a released successor, and the user an
+  open offer names, because each of them may sign the next record. The user
+  holds a wrap for the current epoch through an approval, and is not listed.
+  `approval` is the signed `approval` envelope stored with it, and is `null`
+  in every other state.
 - `keyChanged`: the user holds a wrap, or is listed, under a fingerprint that
   is no longer theirs, or holds a wrap through an approval made for one. No
   rotation record the server holds explains the change.
-- `rotated`: shown to the owner only. As `keyChanged`, but a chain of
-  rotation records leads from the old fingerprint to the current one. The
-  owner's client asks whether to start a new epoch, in case the old keys
-  leaked, and updates `fp` in its next record.
+- `rotated`: shown only to the owner, a released successor, and the user an
+  open offer names. As `keyChanged`, but a chain of rotation records leads
+  from the old fingerprint to the current one. The owner's client asks whether
+  to start a new epoch, in case the old keys leaked, and updates `fp` in its
+  next record.
 
 The client checks `GET /api/users/{id}/rotations` itself in both changed
 states, and treats a `rotated` user whose chain does not verify as
@@ -2104,5 +2107,7 @@ successor is silent.
 | `cairn successor notice-email ADDRESS` | Sets a personal address for notices; an empty string clears it |
 
 After a release, the successor reads the user's artifacts with the usual
-commands. Every command that encrypts refuses an artifact the caller reaches
+commands. They also read each artifact's pending list, so their accept of an
+administrator's offer carries the approved team members over. They cannot
+approve anyone. Every command that encrypts refuses an artifact the caller reaches
 only as a successor.

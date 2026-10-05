@@ -274,10 +274,11 @@ func allowed(m matches, a Artifact, act Action) bool {
 			return true
 		}
 	}
-	// A released successor reads, and may accept an administrator's offer.
+	// A released successor reads, lists the pending team members, and may
+	// accept an administrator's offer.
 	if m.successor {
 		switch act {
-		case ReadContent, ReadMembership, ReadKeys, AnswerTransfer:
+		case ReadContent, ReadMembership, ReadKeys, ListPending, AnswerTransfer:
 			return true
 		}
 	}

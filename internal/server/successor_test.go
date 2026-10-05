@@ -628,6 +628,7 @@ func TestReleaseAfterFourteenDays(t *testing.T) {
 	if len(mem.Records) != 1 {
 		t.Errorf("membership records: %d", len(mem.Records))
 	}
+	w.sc.mustDo("GET", base+"/pending", nil, nil, http.StatusOK)
 	w.sc.mustDo("GET", base+"/versions", nil, nil, http.StatusOK)
 	w.sc.mustDo("GET", base+"/versions/"+vid, nil, nil, http.StatusOK)
 	w.sc.mustDo("GET", base+"/versions/"+vid+"/files", nil, nil, http.StatusOK)
@@ -641,7 +642,7 @@ func TestReleaseAfterFourteenDays(t *testing.T) {
 	// And nothing more.
 	for _, req := range []struct{ method, path string }{
 		{"PUT", base + "/membership"}, {"DELETE", base}, {"POST", base + "/versions"}, {"POST", base + "/transfer"},
-		{"GET", base + "/pending"}, {"GET", base + "/review"}, {"POST", base + "/keys"},
+		{"GET", base + "/review"}, {"POST", base + "/keys"},
 		{"PUT", base + "/versions/" + vid + "/db"}, {"PUT", base + "/versions/" + vid + "/files/abc"},
 		{"POST", base + "/resources"},
 	} {

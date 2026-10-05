@@ -2138,3 +2138,15 @@ internal/server/web/account.mjs	throw err instanceof e2e.DecryptError	throw fals
 cmd/cairn/clock_e2e.go	return time.Now().Add(d)	return time.Now().Add(d * 0)	go test -tags e2eclock ./cmd/cairn -run TestE2EClock
 cmd/cairn/clock_e2e.go	if path == "" {	if false {	go test -tags e2eclock ./cmd/cairn -run TestE2EClock
 internal/server/web/account.mjs	const stretched = await deps.stretch(password, email, parseKdf(	const stretched = await deps.stretch(password, email.toUpperCase(), parseKdf(	node --test internal/server/web/account_test.mjs
+
+# A released successor, and whoever an open offer names, read approved
+# team members, so their accept carries the team over.
+internal/access/access.go	case ReadContent, ReadMembership, ReadKeys, ListPending, AnswerTransfer:	case ReadContent, ReadMembership, ReadKeys, AnswerTransfer:	go test ./internal/server -run TestSuccessorReadsThePendingList
+internal/access/access.go	case ReadContent, ReadMembership, ReadKeys, ListPending, AnswerTransfer:	case ReadContent, ReadMembership, ReadKeys, ListPending, ApproveMember, AnswerTransfer:	go test ./internal/access -run TestSuccessorMayOnlyReadAndAnswer
+internal/access/access.go	case ReadContent, ReadMembership, ReadKeys, ListPending, AnswerTransfer:	case ReadContent, ReadMembership, ReadKeys, ListPending, WriteData, AnswerTransfer:	go test ./internal/access -run TestSuccessorMayOnlyReadAndAnswer
+internal/server/sharing.go	owner := level == access.LevelOwner || level == access.LevelSuccessor	owner := level == access.LevelOwner	go test ./internal/server -run TestSuccessorReadsThePendingList
+internal/server/sharing.go	owner := level == access.LevelOwner || level == access.LevelSuccessor	owner := level != access.LevelNone	go test ./internal/server -run TestPendingStates
+internal/client/transfer.go	pending, err := c.pendingFor(k, artifactID, va)	pending, err := []PendingUser(nil), error(nil)	go test ./internal/client -run TestSuccessorAcceptCarriesApprovedTeamMembers
+internal/server/sharing.go	owner = o != nil && o.To == caller.ID	owner = o != nil && false	go test ./internal/client -run TestAdminOfferToAnEditorCarriesApprovedTeamMembers
+internal/server/sharing.go	owner = o != nil && o.To == caller.ID	owner = o != nil	go test ./internal/client -run TestAdminOfferToAnEditorCarriesApprovedTeamMembers
+internal/server/sharing.go	if !owner && caller != nil {	if false {	go test ./internal/client -run TestAdminOfferToAnEditorCarriesApprovedTeamMembers

@@ -669,10 +669,21 @@ const (
 // approval, are for the owner only. A user who matches an excluded entry by
 // user ID, fingerprint, or normalized email never appears.
 func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
-	a := requestArtifact(r)
-	owner := access.LevelOf(requestAccess(r)) == access.LevelOwner
+	a, caller := requestArtifact(r), requestUser(r)
+	level := access.LevelOf(requestAccess(r))
+	// The owner's client, a released successor's, and the client of whoever an
+	// open offer names decide about approved and rotated users: the last two
+	// may take the artifact over.
+	owner := level == access.LevelOwner || level == access.LevelSuccessor
 	out := []pendingView{}
 	err := s.store.WithArtifact(a.ID, func(tx *store.ArtifactTx) error {
+		if !owner && caller != nil {
+			o, err := tx.OpenOffer()
+			if err != nil && !errors.Is(err, store.ErrNotFound) {
+				return err
+			}
+			owner = o != nil && o.To == caller.ID
+		}
 		cur, err := membership.Load(tx, membership.TxDirectory(tx))
 		if err != nil {
 			return err
