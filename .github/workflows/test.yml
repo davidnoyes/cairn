@@ -23,7 +23,11 @@ jobs:
       CAIRN_HOST: ""
       CAIRN_API_KEY: ""
     steps:
+      # Full history, so the e2e test can build the pre-encryption server
+      # from the commit it archives.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod

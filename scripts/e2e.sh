@@ -18,6 +18,8 @@ fail() { printf '  \033[31m✗ %s\033[0m\n' "$1"; exit 1; }
 
 cleanup() {
   [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" 2>/dev/null || true
+  [[ -n "${OLD_PID:-}" ]] && kill "$OLD_PID" 2>/dev/null || true
+  [[ -n "${IMPORT_PID:-}" ]] && kill "$IMPORT_PID" 2>/dev/null || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -608,6 +610,153 @@ echo "browser-flow-even-stronger-pw-2" | "$BIN" login --host "$HOST" --email web
   || fail "CLI login to the browser-created account"
 "$BIN" whoami | grep web@e2e.test >/dev/null || fail "whoami for the browser-created account"
 pass "CLI signs in to the account the browser created and reset"
+
+echo "== import"
+# Build the server from before encryption, fill it, take a backup, and import
+# the backup into this server as whoever the CLI is signed in as.
+OLD_PORT="${CAIRN_E2E_OLD_PORT:-8798}"
+OLD_HOST="http://127.0.0.1:$OLD_PORT"
+OLD_CFG="$WORK/old-config.json"
+OLD_BIN="$WORK/cairn-old"
+old() { CAIRN_CONFIG="$OLD_CFG" "$OLD_BIN" "$@"; }
+mkdir -p "$WORK/old-src"
+git -C "$ROOT" archive 51f555c | tar -x -C "$WORK/old-src" \
+  || fail "the old server's commit 51f555c is not reachable (a shallow clone?)"
+(cd "$WORK/old-src" && go build -o "$OLD_BIN" ./cmd/cairn)
+pass "built the pre-encryption server from 51f555c"
+
+"$OLD_BIN" serve --addr ":$OLD_PORT" --data-dir "$WORK/old-data" \
+  --admin-email old@e2e.test --admin-password old-e2e-password-1 \
+  >"$WORK/old-server.log" 2>&1 &
+OLD_PID=$!
+for i in $(seq 1 50); do
+  curl -sf "$OLD_HOST/healthz" >/dev/null 2>&1 && break
+  sleep 0.1
+done
+curl -sf "$OLD_HOST/healthz" >/dev/null || fail "the old server did not start: $(cat "$WORK/old-server.log")"
+old login --host "$OLD_HOST" --email old@e2e.test --password old-e2e-password-1 >/dev/null || fail "old login"
+
+# A: public, with a resource, two versions, a database, and a stored file.
+old artifact create --name import-guestbook-marker --description import-desc-marker --public \
+  --resource claude-session=old-sess-e2e --json > "$WORK/old-a.json" || fail "old artifact create A"
+OLD_A=$(jq -r .id "$WORK/old-a.json")
+old push "$ROOT/examples/guestbook" --artifact "$OLD_A" --name import-v1-marker --changelog import-log-1-marker --json > "$WORK/old-a1.json" \
+  || fail "old push A1"
+old push "$ROOT/examples/guestbook" --artifact "$OLD_A" --name import-v2-marker --changelog import-log-2-marker --json > "$WORK/old-a2.json" \
+  || fail "old push A2"
+OLD_A_V2=$(jq -r .version.id "$WORK/old-a2.json")
+old db query --artifact "$OLD_A" --version "$OLD_A_V2" \
+  "CREATE TABLE entries (id INTEGER PRIMARY KEY, message TEXT NOT NULL)" >/dev/null || fail "old db create"
+old db query --artifact "$OLD_A" --version "$OLD_A_V2" --params '["import-row-marker"]' \
+  "INSERT INTO entries (message) VALUES (?)" >/dev/null || fail "old db insert"
+printf 'import-file-marker' > "$WORK/old-file.txt"
+old files put "$WORK/old-file.txt" --artifact "$OLD_A" --version "$OLD_A_V2" --path notes/marker.txt >/dev/null || fail "old files put"
+# B: private, several files, no database.
+old artifact create --name import-poll-marker --json > "$WORK/old-b.json" || fail "old artifact create B"
+OLD_B=$(jq -r .id "$WORK/old-b.json")
+old push "$ROOT/examples/poll" --artifact "$OLD_B" --name import-poll-v1-marker --json > "$WORK/old-b1.json" || fail "old push B"
+# C: twenty versions, so an interrupt lands in the middle of it.
+old artifact create --name many-versions --json > "$WORK/old-c.json" || fail "old artifact create C"
+OLD_C=$(jq -r .id "$WORK/old-c.json")
+mkdir -p "$WORK/many"
+for i in $(seq 1 20); do
+  echo "<h1>many $i</h1>" > "$WORK/many/index.html"
+  old push "$WORK/many" --artifact "$OLD_C" --name "many-$i" --changelog "many-log-$i" --json >/dev/null || fail "old push C$i"
+done
+pass "filled the old server: a public artifact, a private one, and one with 20 versions"
+
+old backup --data-dir "$WORK/old-data" --out "$WORK/old-backup" >/dev/null || fail "old backup"
+kill "$OLD_PID" 2>/dev/null || true
+wait "$OLD_PID" 2>/dev/null || true
+OLD_PID=
+pass "backed up the old server while it ran, then stopped it"
+
+# A sorted listing of every file under a directory and its SHA-256, so a
+# before and after can show nothing was written or changed.
+tree_sums() {
+  python3 - "$1" <<'PY'
+import hashlib, os, sys
+root = sys.argv[1]
+rows = []
+for d, _, names in os.walk(root):
+    for n in names:
+        p = os.path.join(d, n)
+        rows.append(os.path.relpath(p, root) + "  " + hashlib.sha256(open(p, "rb").read()).hexdigest())
+print("\n".join(sorted(rows)))
+PY
+}
+tree_sums "$WORK/old-backup" > "$WORK/backup-sums.before"
+[[ $(wc -l < "$WORK/backup-sums.before") -gt 20 ]] || fail "the backup listing looks too small"
+mkdir -p "$WORK/import-tmp"
+TMPDIR="$WORK/import-tmp" "$BIN" import --json "$WORK/old-backup" > "$WORK/import.json" 2> "$WORK/import.err" \
+  || fail "import: $(cat "$WORK/import.err")"
+[[ -z "$(ls -A "$WORK/import-tmp")" ]] || fail "import left temporary files: $(ls -A "$WORK/import-tmp")"
+tree_sums "$WORK/old-backup" > "$WORK/backup-sums.after"
+cmp "$WORK/backup-sums.before" "$WORK/backup-sums.after" || fail "import changed the backup"
+pass "imported all three artifacts; no temporary files; the backup is unchanged"
+
+jq -e '.artifacts | length == 3' "$WORK/import.json" >/dev/null || fail "import --json: $(cat "$WORK/import.json")"
+NEW_A=$(jq -r --arg o "$OLD_A" '.artifacts[] | select(.oldId == $o) | .newId' "$WORK/import.json")
+NEW_B=$(jq -r --arg o "$OLD_B" '.artifacts[] | select(.oldId == $o) | .newId' "$WORK/import.json")
+NEW_C=$(jq -r --arg o "$OLD_C" '.artifacts[] | select(.oldId == $o) | .newId' "$WORK/import.json")
+[[ -n "$NEW_A" && -n "$NEW_B" && -n "$NEW_C" ]] || fail "import --json lacks an artifact: $(cat "$WORK/import.json")"
+jq -e --arg a "$NEW_A" '.artifacts[] | select(.newId == $a) | .public == true and .versions == 2 and .name == "import-guestbook-marker"' "$WORK/import.json" >/dev/null \
+  || fail "import --json for the public artifact"
+jq -e --arg b "$NEW_B" '.artifacts[] | select(.newId == $b) | .public == false and .versions == 1' "$WORK/import.json" >/dev/null \
+  || fail "import --json for the private artifact"
+
+"$BIN" artifact show "$NEW_A" --json > "$WORK/new-a.json" || fail "show A"
+jq -e '.artifact.name == "import-guestbook-marker" and .artifact.description == "import-desc-marker"
+  and (.versions | length == 2)
+  and .versions[0].name == "import-v2-marker" and .versions[0].changelog == "import-log-2-marker"
+  and .versions[1].name == "import-v1-marker" and .versions[1].changelog == "import-log-1-marker"' "$WORK/new-a.json" >/dev/null \
+  || fail "imported artifact A: $(cat "$WORK/new-a.json")"
+NEW_A_V2=$(jq -r '.versions[0].id' "$WORK/new-a.json")
+"$BIN" artifact show "$NEW_B" --json | jq -e '.artifact.name == "import-poll-marker" and (.versions | length == 1) and .versions[0].name == "import-poll-v1-marker"' >/dev/null \
+  || fail "imported artifact B"
+"$BIN" artifact show "$NEW_C" --json | jq -e '.artifact.name == "many-versions" and (.versions | length == 20)
+  and .versions[0].name == "many-20" and .versions[19].name == "many-1" and .versions[19].changelog == "many-log-1"' >/dev/null \
+  || fail "imported artifact C: versions out of order or missing"
+pass "names, descriptions, and version names and changelogs arrived, in order"
+
+"$BIN" db download --artifact "$NEW_A" --version "$NEW_A_V2" --out "$WORK/imported.db" >/dev/null || fail "db download"
+cmp "$WORK/imported.db" "$WORK/old-backup/dbs/$OLD_A/$OLD_A_V2.db" || fail "the imported database differs from the backup's"
+"$BIN" files get notes/marker.txt --artifact "$NEW_A" --version "$NEW_A_V2" --out "$WORK/imported-file.txt" >/dev/null || fail "files get"
+cmp "$WORK/imported-file.txt" "$WORK/old-backup/files/$OLD_A/$OLD_A_V2/notes/marker.txt" || fail "the imported file differs from the backup's"
+pass "the database and the stored file match the backup byte for byte"
+
+[[ $("$BIN" artifact show old-sess-e2e --json | jq -r .artifact.id) == "$NEW_A" ]] || fail "the old resource does not resolve to the imported artifact"
+pass "the resource reference resolves to the imported artifact"
+
+"$BIN" artifact list --json | jq -e '[.[] | select(.name | test("^(import-|many-)")) | .public] | length == 3 and all(. == false)' >/dev/null \
+  || fail "an imported artifact arrived public"
+pass "imported artifacts arrive private; --json names the one that was public"
+
+if grep -rlE 'import-(guestbook|poll|desc|v[12]|log-[12]|row|file)-marker|many-log-' "$WORK/data" >/dev/null 2>&1; then
+  fail "a marker string from the old server is readable under the new server's data directory"
+fi
+pass "the new server holds no marker string in the clear"
+
+# Interrupt: import again (a second copy of everything), stop it partway
+# through many-versions, and check that the partial artifact is gone.
+TMPDIR="$WORK/import-tmp" "$BIN" import "$WORK/old-backup" >/dev/null 2>"$WORK/import-int.err" &
+IMPORT_PID=$!
+seen=
+for i in $(seq 1 1200); do
+  if grep -q '"many-versions": version 2 of 20' "$WORK/import-int.err"; then seen=1; break; fi
+  kill -0 "$IMPORT_PID" 2>/dev/null || break
+  sleep 0.05
+done
+[[ -n "$seen" ]] || fail "the import never reached many-versions, version 2: $(cat "$WORK/import-int.err")"
+kill -INT "$IMPORT_PID"
+if wait "$IMPORT_PID"; then fail "an interrupted import exited 0"; fi
+grep -q interrupted "$WORK/import-int.err" || fail "the interrupted import did not say so (a lost race?): $(cat "$WORK/import-int.err")"
+[[ $("$BIN" artifact list --json | jq '[.[] | select(.name == "many-versions")] | length') == 1 ]] \
+  || fail "the interrupted import left a partial many-versions artifact, or deleted the first"
+[[ -z "$(ls -A "$WORK/import-tmp")" ]] || fail "the interrupted import left temporary files: $(ls -A "$WORK/import-tmp")"
+tree_sums "$WORK/old-backup" > "$WORK/backup-sums.after2"
+cmp "$WORK/backup-sums.before" "$WORK/backup-sums.after2" || fail "the interrupted import changed the backup"
+pass "an interrupt deletes the partial artifact, leaves no temporary files, and leaves the backup unchanged"
 
 echo
 echo "all e2e checks passed"

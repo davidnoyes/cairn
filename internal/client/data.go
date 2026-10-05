@@ -100,6 +100,15 @@ func validFilePath(p string) bool {
 	return !slices.ContainsFunc(strings.Split(p, "/"), func(s string) bool { return s == "" || s == "." || s == ".." })
 }
 
+// CheckFilePath reports whether path can be a stored file's path, by the rule
+// PutFile applies, without contacting the server.
+func CheckFilePath(path string) error {
+	if !validFilePath(path) {
+		return ErrInvalidPath
+	}
+	return nil
+}
+
 // dataChecker holds what steps 1 to 3 of "Checking data a client reads" are
 // made against.
 type dataChecker struct {

@@ -771,10 +771,19 @@ Cairn server move across by import:
    again.
 
 The import reads the snapshot directly, so the old server needs no new
-endpoint, and it keeps running until you retire it. The tool keeps temporary
-files in a private directory that it deletes on exit, including on an
-interrupt. When the import is done, delete the backup, keep it out of any
-synced folder until then, and wipe the old server.
+endpoint, and it keeps running until you retire it. The tool reads the
+snapshot in place and only reads it: it opens the metadata database read-only
+and immutable, so nothing is ever written into the backup, and it holds one
+file at a time in memory. It writes no plaintext to disk and creates no
+temporary directory. It refuses a live data directory (any `-wal` file), a
+database that is not the old schema, and a version or stored file the new
+server would refuse, all before the first upload. After uploading each
+version it reads the content, database, and stored files back through the
+normal checked read paths and compares them with the snapshot; any difference
+is an error. On a failure or an interrupt, it deletes the artifact it was
+importing and lists the ones it finished, because a second run imports
+everything again. When the import is done, delete the backup, keep it out of
+any synced folder until then, and wipe the old server.
 
 ## What breaks
 

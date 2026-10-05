@@ -2161,3 +2161,18 @@ internal/server/web/successor.mjs	const day = (time) => time.slice(0, 10);	const
 internal/server/web/successor.mjs	const deactivated = answer.deactivatedAt	const deactivated = false	node --test internal/server/web/successor_test.mjs
 internal/server/web/ui.mjs	const PROBE_ATTEMPTS = 3;	const PROBE_ATTEMPTS = 1;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	attempt < PROBE_ATTEMPTS;	attempt < PROBE_ATTEMPTS + 1;	node --test internal/server/web/ui_test.mjs
+cmd/cairn/import_cmds.go	strings.HasSuffix(e.Name(), ".db-wal")	false	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	if !have[col] {	if false {	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	"?mode=ro&immutable=1"	"?mode=rwc"	go test ./cmd/cairn -run TestImportReadsABackupItCannotWriteTo
+cmd/cairn/import_cmds.go	if err := client.CheckTree(v.contentDir); err != nil {	if err := error(nil); err != nil {	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	if err := client.CheckFilePath(rel); err != nil {	if err := error(nil); err != nil {	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	if got, ok := remote[rel]; !ok || !bytes.Equal(got, local) {	if got, ok := remote[rel]; !ok || (false && !bytes.Equal(got, local)) {	go test ./cmd/cairn -run TestImportReadBackCatchesADifference
+cmd/cairn/import_cmds.go	if len(remote) > 0 {	if false {	go test ./cmd/cairn -run TestImportReadBackCatchesADifference
+cmd/cairn/import_cmds.go	return errors.New("read-back check failed: the database differs from the backup")	return nil	go test ./cmd/cairn -run TestImportReadBackCatchesADifference
+cmd/cairn/import_cmds.go	!slices.Equal(paths, want)	false	go test ./cmd/cairn -run TestImportReadBackCatchesADifference
+cmd/cairn/import_cmds.go	return fmt.Errorf("read-back check failed: stored file %s differs from the backup", rel)	return nil	go test ./cmd/cairn -run TestImportReadBackCatchesADifference
+cmd/cairn/import_cmds.go	if derr := c.DeleteArtifact(created.ID); derr != nil {	if derr := error(nil); derr != nil {	go test ./cmd/cairn -run 'TestImportInterruptDeletesThePartialArtifact|TestImportDeletesThePartialArtifactOnAFailure|TestImportReadBackCatchesADifference'
+cmd/cairn/import_cmds.go	if ctx.Err() != nil {	if false {	go test ./cmd/cairn -run TestImportInterruptDeletesThePartialArtifact
+cmd/cairn/import_cmds.go	if a.Public {	if true {	go test ./cmd/cairn -run TestImportCommandListsPublicArtifacts
+cmd/cairn/import_cmds.go	Versions: len(a.versions), Public: a.public}	Versions: len(a.versions), Public: false}	go test ./cmd/cairn -run 'TestImportCopiesEverything|TestImportCommandJSON'
+internal/client/reseal.go	if err == nil && e2e.BodyHash(blob) != f.SHA256 {	if false {	go test ./internal/client -run TestVersionFilesChecksTheHashBeforeOpening

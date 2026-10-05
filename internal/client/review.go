@@ -282,6 +282,43 @@ func (c *Client) getBytes(path string) ([]byte, error) {
 	return data, nil
 }
 
+// VersionFiles returns the files of versionID, a map of slash path to content.
+// It verifies the artifact's chain and the version's manifest first, then
+// checks each blob's hash against the manifest and opens it under the
+// version's epoch, so the caller reads what was pushed or an error.
+func (c *Client) VersionFiles(artifactID, versionID string) (map[string][]byte, error) {
+	k, err := c.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	va, err := c.VerifyArtifact(k, artifactID, "")
+	if err != nil {
+		return nil, err
+	}
+	versions, err := c.storeVersions(artifactID)
+	if err != nil {
+		return nil, err
+	}
+	i := slices.IndexFunc(versions, func(v *store.Version) bool { return v.ID == versionID })
+	if i < 0 {
+		return nil, fmt.Errorf("version %s not found in artifact %s", versionID, artifactID)
+	}
+	v := versions[i]
+	_, manifest, err := c.verifyManifest(k, va.Chain, artifactID, v)
+	if err != nil {
+		return nil, fmt.Errorf("version %s: %w", v.ID, err)
+	}
+	aks, err := c.callerAKs(k, artifactID, va.Chain)
+	if err != nil {
+		return nil, err
+	}
+	ak := aks[v.Epoch]
+	if ak == nil {
+		return nil, fmt.Errorf("version %s: no key for epoch %d", v.ID, v.Epoch)
+	}
+	return c.openBlobs(artifactID, v, ak, manifest)
+}
+
 // Vouch signs the owner's vouch for versionID, naming the manifestHash the
 // version was pushed with, and stores it. It refuses, before asking the
 // server, a caller who is not the owner the verified chain names under the

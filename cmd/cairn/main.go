@@ -38,6 +38,7 @@ Client:
   cairn db               Run SQL on a version's database, on your own decrypted copy (query|batch|revisions|restore|download)
   cairn files            Manage a version's stored files by path (list|put|get|delete)
   cairn reseal           Seal an artifact's data again under its current epoch (ARTIFACT); runs after unshare, public off, and the like
+  cairn import           Import the artifacts of a backup from a server that predates encryption (BACKUP-DIR)
   cairn open             Print (or open) an artifact URL
 
 Run 'cairn <command> -h' for command flags. Client commands honor
@@ -104,6 +105,8 @@ func main() {
 		err = runFiles(args)
 	case "reseal":
 		err = runReseal(args)
+	case "import":
+		err = runImport(args)
 	case "open":
 		err = runOpen(args)
 	case "backup":

@@ -284,6 +284,22 @@ func (c *Client) resealVersion(k *UnlockedKeys, va *VerifiedArtifact, artifactID
 	if newAK == nil {
 		return fmt.Errorf("version %s: no key for epoch %d", v.ID, current)
 	}
+	files, err := c.openBlobs(artifactID, v, ak, manifest)
+	if err != nil {
+		skip("%v", err)
+		return nil
+	}
+	if _, err := c.uploadVersion(k, artifactID, v.ID, true, current, newAK, files); err != nil {
+		return fmt.Errorf("version %s: %w", v.ID, err)
+	}
+	res.Versions++
+	return nil
+}
+
+// openBlobs reads every file manifest lists, checks each blob's hash against
+// the manifest, and opens it under ak, the AK of v's epoch. The result maps a
+// slash path to its content.
+func (c *Client) openBlobs(artifactID string, v *store.Version, ak []byte, manifest e2e.ManifestBody) (map[string][]byte, error) {
 	files := make(map[string][]byte, len(manifest.Files))
 	for _, f := range manifest.Files {
 		blob, err := c.getBlob(artifactID, v.ID, f.Blob)
@@ -295,16 +311,11 @@ func (c *Client) resealVersion(k *UnlockedKeys, va *VerifiedArtifact, artifactID
 			plain, err = e2e.OpenBlob(ak, e2e.BlobContext{Artifact: artifactID, Version: v.ID, Kind: "content", Name: f.Path}, blob)
 		}
 		if err != nil {
-			skip("the blob of %s: %v", f.Path, err)
-			return nil
+			return nil, fmt.Errorf("the blob of %s: %w", f.Path, err)
 		}
 		files[f.Path] = plain
 	}
-	if _, err := c.uploadVersion(k, artifactID, v.ID, true, current, newAK, files); err != nil {
-		return fmt.Errorf("version %s: %w", v.ID, err)
-	}
-	res.Versions++
-	return nil
+	return files, nil
 }
 
 // editorOf reports whether user is the owner or a listed editor in latest.

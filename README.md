@@ -393,6 +393,29 @@ repo; copy the directory into any other project's `.claude/skills/` (or
 `~/.claude/skills/` for global use) to let Claude publish artifacts from
 there.
 
+## Moving from an older server
+
+A server from before end-to-end encryption cannot upgrade in place: the new
+server starts empty and never holds plaintext. `cairn import` moves your
+artifacts across from a snapshot instead.
+
+1. On the old server, take a snapshot: `cairn backup --data-dir data --out
+   backup/`. It is safe while the old server runs.
+2. On the new server, sign up, then sign in with `cairn login`.
+3. Run `cairn import backup/` (add `--json` for a script). It encrypts each
+   artifact on your machine, uploads it as a private artifact you own, and
+   reads it back to compare it with the snapshot.
+
+The import reads the snapshot in place and only reads it. It never writes into
+the snapshot, and it refuses a live data directory, so always import a
+`cairn backup` copy. If it fails or you press Ctrl-C, it deletes the artifact
+it was importing and lists the ones it finished. A second run imports
+everything again, so delete those first with `cairn artifact delete`.
+
+Artifacts that were public arrive private. The import lists them with their
+new IDs; run `cairn public <id> on` to publish one again. When you are done,
+delete the snapshot and wipe the old server.
+
 ## Operations
 
 - **Data layout** — everything lives under `--data-dir`: `cairn.db`
