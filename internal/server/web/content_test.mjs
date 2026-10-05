@@ -330,6 +330,8 @@ describe('checkKeysMessage', () => {
     bad({ epoch: '3' }, 'string epoch');
     bad({ ak: 'AAAA' }, 'short ak');
     bad({ ak: e2e.b64(randomBytes(32)) + '=' }, 'padded ak');
+    // 16 bytes is a valid AES-128 key, so only the length check refuses it.
+    assert.throws(() => c.checkKeysMessage({ ...goodKeys(), ak: e2e.b64(randomBytes(16)) }), /ak has the wrong length/);
     bad({ signer: { user: 'x', ed25519: e2e.b64(randomBytes(32)) } }, 'signer user');
     bad({ signer: { user: USER, ed25519: 'AAAA' } }, 'signer key');
     bad({ manifestHash: 'A'.repeat(64) }, 'upper hash');

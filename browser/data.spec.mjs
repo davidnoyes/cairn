@@ -89,12 +89,12 @@ test('two pages writing at once both land', async ({ ownerPage, browserName }) =
   }
 });
 
-test('a removed editor cannot write, and readers refuse the revision they wrote', async ({ ownerPage, browser, browserName }) => {
+test('a removed editor cannot write, and the change re-seals what they wrote', async ({ ownerPage, browser, browserName }) => {
   const s = loadState();
+  const { id, version } = s.artifacts['data-doc'];
   const editor = s.users.editor;
   const table = `trust_${browserName}`;
-  // Re-runnable: an earlier engine's run left the editor removed, and the
-  // latest revision theirs.
+  // Re-runnable: an earlier engine's run left the editor removed.
   cli('owner', ['share', 'data-doc', editor.email, '--role', 'editor']);
   const context = await browser.newContext();
   try {
@@ -102,22 +102,68 @@ test('a removed editor cannot write, and readers refuse the revision they wrote'
     await signIn(page, editor.email, editor.password);
     let owner = await openData(ownerPage);
     await query(owner, `CREATE TABLE IF NOT EXISTS ${table} (who TEXT)`);
+    await query(owner, `DELETE FROM ${table}`);
     const asEditor = await openData(page);
     await query(asEditor, `INSERT INTO ${table} VALUES ('editor')`);
+    const written = JSON.parse(cli('owner', ['db', 'revisions', '--artifact', id, '--version', version, '--json']))[0];
 
     cli('owner', ['share', 'data-doc', editor.email, '--role', 'viewer']);
     // The editor's page still holds the old record, so the shell signs; the
     // server is what refuses.
     expect(await queryError(asEditor, `INSERT INTO ${table} VALUES ('removed')`)).toMatch(/./);
 
+    // The demotion re-sealed the editor's revision under the new epoch, signed
+    // by the owner, so the owner reads it.
+    const resealed = JSON.parse(cli('owner', ['db', 'revisions', '--artifact', id, '--version', version, '--json']))[0];
+    expect(resealed.revision).toBeGreaterThan(written.revision);
+    expect(resealed.epoch).toBeGreaterThan(written.epoch);
     await ownerPage.reload();
     owner = await contentFrame(ownerPage);
     await expect(owner.locator('#marker')).toHaveText(MARKER);
-    expect(await queryError(owner, `SELECT * FROM ${table}`)).toMatch(/signed by someone who may not write/);
+    expect((await query(owner, `SELECT who FROM ${table}`)).rows).toEqual([['editor']]);
   } finally {
     cli('owner', ['share', 'data-doc', editor.email, '--role', 'editor']);
     await context.close();
   }
+});
+
+test('cairn db restore puts back a kept revision, and the browser reads it', async ({ ownerPage, browserName }) => {
+  const { id, version } = loadState().artifacts['data-doc'];
+  const db = ['--artifact', id, '--version', version];
+  const table = `restore_${browserName}`;
+  const frame = await openData(ownerPage);
+  await query(frame, `CREATE TABLE IF NOT EXISTS ${table} (n INTEGER)`);
+  await query(frame, `DELETE FROM ${table}`);
+  await query(frame, `INSERT INTO ${table} VALUES (1)`);
+  const kept = JSON.parse(cli('owner', ['db', 'revisions', ...db, '--json']))[0].revision;
+  await query(frame, `DELETE FROM ${table}`);
+
+  const out = JSON.parse(cli('owner', ['db', 'restore', ...db, '--revision', String(kept), '--json']));
+  expect(out.restored).toBe(kept);
+  expect(out.revision).toBeGreaterThan(kept + 1);
+  expect((await query(frame, `SELECT n FROM ${table}`)).rows).toEqual([[1]]);
+});
+
+test('cairn db query and batch read what the browser wrote, and the browser reads what they wrote', async ({ ownerPage, browserName }) => {
+  const { id, version } = loadState().artifacts['data-doc'];
+  const db = ['--artifact', id, '--version', version];
+  const table = `cli_${browserName}`;
+  const frame = await openData(ownerPage);
+  await query(frame, `CREATE TABLE IF NOT EXISTS ${table} (k TEXT, n INTEGER, x REAL, z TEXT)`);
+  await query(frame, `DELETE FROM ${table}`);
+  await query(frame, `INSERT INTO ${table} VALUES (?, ?, ?, ?)`, ['browser', 1, 1.5, null]);
+  cli('owner', ['db', 'batch', ...db], { input: JSON.stringify([
+    { sql: `INSERT INTO ${table} VALUES (?, ?, ?, ?)`, params: ['cli', 2, 2.5, null] },
+    { sql: `UPDATE ${table} SET n = n + 10 WHERE k = ?`, params: ['browser'] },
+  ]) });
+
+  const sql = `SELECT k, n, x, z FROM ${table} ORDER BY k`;
+  // Flags go before the statement: the command stops reading flags there.
+  const fromCli = JSON.parse(cli('owner', ['db', 'query', ...db, '--json', sql]));
+  const fromBrowser = await query(frame, sql);
+  expect(fromBrowser.rows).toEqual([['browser', 11, 1.5, null], ['cli', 2, 2.5, null]]);
+  expect(fromCli.columns).toEqual(fromBrowser.columns);
+  expect(fromCli.rows).toEqual(fromBrowser.rows);
 });
 
 test('the server keeps the last 10 revisions', async ({ ownerPage, browserName }) => {
