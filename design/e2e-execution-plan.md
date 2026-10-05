@@ -448,10 +448,15 @@ Browser tests written first:
 - A password prompt never appears over an artifact.
 - API keys, the recovery code, and successor settings can be managed from the
   UI.
+- No artifact name, description, changelog, or resource value appears
+  anywhere under the data directory.
 
-Steps: the artifact lists, the share dialog, key management, and account
-settings, each rendered on the client with `textContent` only and under
-Trusted Types.
+Steps, each test first: encrypted metadata fields and blind-indexed
+resources, in the server and the `cairn` tool; the artifact lists; the share
+dialog, with the owner's side of sharing and re-sealing in the browser; key
+management; and account settings. Every page renders on the client with
+`textContent` only and under Trusted Types. Successor settings arrive with
+milestone 7, which adds the successor endpoints.
 
 ## Milestone 7 — successor
 

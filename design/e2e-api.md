@@ -1736,3 +1736,110 @@ revisions the server kept. The restored copy is sealed under the current
 epoch.
 Anyone who may write data may restore, not only the owner: a restore is a
 write like any other.
+
+## Encrypted metadata and the app UI
+
+Milestone 6 encrypts the last plaintext the server holds about an artifact,
+and gives every signed-in user a page to manage artifacts, sharing, keys,
+and their account in the browser.
+
+### Metadata fields
+
+Each field is one sealed blob, covered by a signed `record`:
+
+| Scope | `version` | Fields | Who may write |
+| --- | --- | --- | --- |
+| Artifact | Empty | `name`, `description` | Owner, editor |
+| Version | Version ID | `name`, `changelog` | Owner, editor |
+
+- The plaintext is UTF-8 of at most 16 KiB (`e2e.MaxMetaPlaintext`). An empty
+  plaintext is a field with no value.
+- The blob is sealed with the current epoch's `AK`, with kind `meta`, the
+  artifact ID, `version` as in the table, and the field as `name`.
+- The `record` body is `{"v": 1, "artifact", "version", "kind": "meta",
+  "name": field, "epoch", "sha256"}`, where `sha256` is `hex(SHA-256)` of the
+  sealed blob.
+- A public writer may not write metadata, so a link holder cannot rename an
+  artifact.
+
+`PUT /api/artifacts/{id}/meta/{field}` writes an artifact field, and
+`PUT /api/artifacts/{id}/versions/{vid}/meta/{field}` a version field. Both
+take `{"record": envelope, "blob": "b64"}` and answer `200 {"ok": true}`.
+The access is the owner's or an editor's. The server refuses, with `400`, an
+unknown field, a record that does not decode strictly, names another
+artifact, version, kind, or field, or whose `sha256` is not the blob's, and a
+blob that is not a sealed blob. It refuses a blob over 17 KiB with `413`, a
+signature that does not verify under the caller's current Ed25519 key with
+`403`, and any epoch but the current one with `409`, while it holds the
+artifact's lock. A write replaces the field.
+
+The artifact views gain `"meta": {field: item}`, and each version view
+gains the same for its own fields. An item is `{"record": envelope,
+"signerKey": "b64", "blob": "b64"}`, and a field nobody wrote is absent.
+`name`, `description`, and `changelog` leave every request and answer.
+`PATCH /api/artifacts/{id}` and `PATCH /api/artifacts/{id}/versions/{vid}`
+are removed, as are the `name` and `changelog` parts of a version push.
+`POST /api/artifacts` no longer takes `name` or `description`: the client
+creates the artifact, then writes its fields. Mail that named an artifact
+names its ID instead.
+
+A client reads a field the way it reads a stored file's record. It opens the
+record under `signerKey`, and accepts the signer only when the latest
+membership record lists them as owner or editor. The key must be theirs,
+either as listed or reached through their rotation chain. It checks the blob's hash, opens the blob with
+the record's epoch's `AK`, and refuses invalid UTF-8. A field that fails any
+check, or whose epoch's `AK` the reader does not hold, shows as unreadable,
+and the artifact shows under its ID.
+
+An [epoch change](#epoch-changes) also re-seals every field the client can
+verify under the record before the change, signed by the person making the
+change. A link holder has only the current epoch's `AK`, so without this
+they could read no name.
+
+### Resources
+
+`POST /api/artifacts/{id}/resources` takes `{"type", "value"}`, where
+`value` is a [blind index](e2e-wire-formats.md#public-links-file-addresses-and-blind-indexes),
+64 lowercase `hex` characters, computed with the caller's `indexKey`. Any
+other value is `400`, so the server never holds a resource value. The
+`cairn` tool resolves a reference by computing its index under each type
+its artifacts' resources carry, then matching. Because `indexKey` comes from
+the caller's `MK`, a reference resolves only for the user who added it.
+`cairn artifact get` lists each resource by type and row ID: the value
+cannot be read back.
+
+### The app page
+
+`/app` is every signed-in user's home. `/` sends a signed-in visitor there,
+and `/admin` redirects to it. Like the other app pages it carries no user
+data: its script checks sign-in through `GET /api/me` and sends a visitor
+with no session to `/login`. It has four tabs, and a fifth for
+administrators:
+
+- **Artifacts** — *Your artifacts* and *Shared with you*. Each row opens the
+  artifact, then shows its name and description from the encrypted fields,
+  its access, whether it is public, and when it changed. The owner can open
+  the share dialog and delete the artifact.
+- **API keys** — list and revoke keys, and create one. Creating a key asks
+  for the password again, and shows the full key once.
+- **Account** — change the password, and make a new recovery code, which
+  also asks for the password and shows the code once.
+- **Successor** — added in milestone 7.
+- **Users** — administrators only, as the old `/admin` page.
+
+The share dialog lists the members with their name, email, role,
+fingerprint, and pin state. The owner can share with a user by email as
+editor or viewer, change a role, remove a member, mark a fingerprint as
+verified after comparing it, and accept a changed key after a warning. The
+public section turns the public link and public writes on and off. It
+labels the link as carrying the key, and copies it only when the owner asks.
+A change that starts a new epoch re-seals, in the browser, what
+`cairn reseal` would, and lists what it left alone.
+
+Team approval, reviewing versions, ownership transfer, and key rotation stay
+in the `cairn` tool.
+
+Every page renders names, emails, descriptions, and changelogs with
+`textContent` only, under the Trusted Types policy, which refuses any string
+assigned as markup. The shell page never asks for a password, so an
+artifact cannot appear under a password prompt.
