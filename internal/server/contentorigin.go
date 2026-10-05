@@ -111,7 +111,7 @@ func buildContentAssets() map[string]contentAsset {
 		"/_cairn/sql-wasm.js":   {data: web.SqlJS, contentType: js},
 		"/_cairn/sql-wasm.wasm": {data: web.SqlWasm, contentType: "application/wasm"},
 	}
-	for _, name := range []string{"boot.js", "sw.js", "frame.js", "content.mjs", "e2e.mjs"} {
+	for _, name := range []string{"boot.js", "sw.js", "frame.js", "content.mjs", "e2e.mjs", "data.mjs"} {
 		data, err := web.ContentAssets.ReadFile(name)
 		if err != nil {
 			panic("content asset " + name + " is not embedded: " + err.Error())

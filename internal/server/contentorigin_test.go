@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -170,6 +171,7 @@ func TestContentOriginAssets(t *testing.T) {
 		swPath(w):               "javascript",
 		"/_cairn/e2e.mjs":       "javascript",
 		"/_cairn/content.mjs":   "javascript",
+		"/_cairn/data.mjs":      "javascript",
 		"/_cairn/cairn.js":      "javascript",
 		"/_cairn/mermaid.js":    "javascript",
 		"/_cairn/sql-wasm.js":   "javascript",
@@ -206,6 +208,27 @@ func TestContentOriginAssets(t *testing.T) {
 	// The app origin does not serve /_cairn/ at all.
 	if resp := w.viaHost(t, "127.0.0.1:"+w.port, "GET", "/_cairn/boot.js", nil, nil); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("app origin /_cairn/boot.js: %d, want 404", resp.StatusCode)
+	}
+}
+
+// A browser loads a module script's imports from the same directory, so every
+// relative import of a served script must itself be served: a missing one
+// stops the worker from starting, which node --test cannot see.
+func TestContentOriginServesEveryImport(t *testing.T) {
+	importRE := regexp.MustCompile(`(?m)^\s*(?:import|export)\b[^'"]*?from\s+'\./([^']+)'|^import\s+'\./([^']+)'`)
+	for path, a := range contentAssets {
+		if !strings.HasSuffix(path, ".js") && !strings.HasSuffix(path, ".mjs") {
+			continue
+		}
+		for _, m := range importRE.FindAllStringSubmatch(string(a.data), -1) {
+			name := m[1] + m[2]
+			if contentAssets["/_cairn/"+name].data == nil {
+				t.Errorf("%s imports ./%s, which the content origin does not serve", path, name)
+			}
+		}
+	}
+	if contentAssets["/_cairn/sw.js"].data == nil || !importRE.Match(contentAssets["/_cairn/sw.js"].data) {
+		t.Fatal("found no import in sw.js: the pattern no longer matches")
 	}
 }
 

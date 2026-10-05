@@ -64,5 +64,5 @@ var WasmExecJS []byte
 // variables above. Its pages load them and the service worker never
 // intercepts them.
 //
-//go:embed boot.js sw.js frame.js content.mjs e2e.mjs
+//go:embed boot.js sw.js frame.js content.mjs e2e.mjs data.mjs
 var ContentAssets embed.FS
