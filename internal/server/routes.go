@@ -124,6 +124,7 @@ func (s *Server) routes() {
 	for path, file := range appAssets {
 		handle("GET "+path, serveAppAsset(file))
 	}
+	handle("GET /.well-known/cairn-release", s.handleWellKnownRelease)
 	handle("GET /argon2.wasm", s.serveArgon2Wasm)
 	handle("GET /wasm_exec.js", s.serveWasmExecJS)
 	handle("GET /artifacts/{id}", s.handleArtifactRedirect)

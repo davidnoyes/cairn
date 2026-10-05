@@ -1,5 +1,7 @@
 ## Builds release binaries when a v* tag is pushed and attaches them to the
 ## GitHub release, named as docs/install.sh expects: cairn-<os>-<arch>.tar.gz
+## Each binary embeds the release manifest, signed with the CAIRN_RELEASE_KEY
+## secret, so cairn verify can check a server against it.
 name: release
 
 on:
@@ -14,9 +16,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Refuse a tag that is not on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Sign the release manifest
+        env:
+          CAIRN_RELEASE_KEY: ${{ secrets.CAIRN_RELEASE_KEY }}
+        run: |
+          if [ -z "$CAIRN_RELEASE_KEY" ]; then
+            echo "::error::the CAIRN_RELEASE_KEY secret is not set; see deploy/gcp/README.md"
+            exit 1
+          fi
+          go run ./cmd/cairn-release sign -version "$GITHUB_REF_NAME"
+      - name: Check the build serves its manifest, under its compiled-in key
+        run: |
+          go build -o "$RUNNER_TEMP/cairn" ./cmd/cairn
+          "$RUNNER_TEMP/cairn" serve --addr 127.0.0.1:8790 --data-dir "$RUNNER_TEMP/data" \
+            --admin-email ci@example.com --smtp-url log:// --public-url http://127.0.0.1:8790 &
+          for _ in $(seq 1 50); do curl -sf http://127.0.0.1:8790/healthz >/dev/null && break; sleep 0.2; done
+          "$RUNNER_TEMP/cairn" verify http://127.0.0.1:8790
       - name: Build binaries
         run: |
           mkdir -p dist

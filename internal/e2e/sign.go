@@ -238,6 +238,19 @@ func CheckPublicKeys(x25519Pub, ed25519Pub []byte) error {
 	return nil
 }
 
+// CheckSigningKey refuses an Ed25519 public key that is not a canonical,
+// on-curve point of prime order: the check CheckPublicKeys makes on a
+// user's signing key, for a key that comes alone, such as a release key.
+func CheckSigningKey(pub []byte) error {
+	if len(pub) != 32 {
+		return fmt.Errorf("%w: ed25519 public key length %d, want 32", ErrFormat, len(pub))
+	}
+	if !isPrimeOrderEd25519(pub) {
+		return fmt.Errorf("%w: ed25519 public key is not a canonical point of prime order", ErrFormat)
+	}
+	return nil
+}
+
 // Envelope carries a signed record: the exact body bytes, its signature, and
 // the signer's user ID. Verification runs over the exact body bytes, so no
 // JSON canonicalization is needed. NewSig is set only for a rotation

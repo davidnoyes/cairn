@@ -11,6 +11,7 @@ const usage = `cairn — self-hosted artifact server and client
 Server:
   cairn serve            Run the server
   cairn backup           Snapshot a data directory (live-safe)
+  cairn verify           Check a server serves a signed release unchanged ([--manifest FILE] [--key KEY]... [URL])
 
 Client:
   cairn signup           Generate keys, sign up, and print the recovery code
@@ -106,6 +107,8 @@ func main() {
 		err = runReseal(args)
 	case "open":
 		err = runOpen(args)
+	case "verify":
+		err = runVerify(args)
 	case "backup":
 		err = runBackup(args)
 	case "-h", "--help", "help":

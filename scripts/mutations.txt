@@ -2159,3 +2159,32 @@ internal/server/web/successor.mjs	if (s.deactivatedAt) view.text +=	if (false) v
 internal/server/web/successor.mjs	const who = (u) => (u.name ?	const who = (u) => (false ?	node --test internal/server/web/successor_test.mjs
 internal/server/web/successor.mjs	const day = (time) => time.slice(0, 10);	const day = (time) => time;	node --test internal/server/web/successor_test.mjs
 internal/server/web/successor.mjs	const deactivated = answer.deactivatedAt	const deactivated = false	node --test internal/server/web/successor_test.mjs
+# Milestone 8: the release manifest, cairn verify, and the VM startup script.
+internal/release/manifest.go	if m.V != 1 {	if false {	go test ./internal/release
+internal/release/manifest.go	if m.Version == "" {	if false {	go test ./internal/release
+internal/release/manifest.go	if len(m.Assets) == 0 {	if false {	go test ./internal/release
+internal/release/manifest.go	if a.Origin != OriginApp && a.Origin != OriginContent {	if false {	go test ./internal/release
+internal/release/manifest.go	if !strings.HasPrefix(a.Path, "/") {	if !strings.HasPrefix(a.Path, "") {	go test ./internal/release
+internal/release/manifest.go	|| hex.EncodeToString(b) != a.SHA256 {	 {	go test ./internal/release
+internal/release/manifest.go	if seen[key] {	if false {	go test ./internal/release
+internal/release/manifest.go	if t.Name == "" {	if false {	go test ./internal/release
+internal/release/manifest.go	if names[t.Name] {	if false {	go test ./internal/release
+internal/release/manifest.go	if err = m.check(); err != nil {	if err = m.check(); false && err != nil {	go test ./internal/release
+internal/release/manifest.go	if len(keys) == 0 {	if false {	go test ./internal/release
+internal/release/manifest.go	err = e2e.CheckSigningKey(k)	err = nil	go test ./internal/release
+internal/release/verify.go	if doc.AppOrigin != origin {	if false {	go test ./internal/release
+internal/release/verify.go	if !strings.Contains(doc.ContentOrigin, "://*.") {	if false {	go test ./internal/release
+internal/release/verify.go	if got := sum(body); got != want {	if got := sum(body); false && got != want {	go test ./internal/release
+internal/release/verify.go	case status != http.StatusOK:	case false:	go test ./internal/release
+internal/release/verify.go	if p.signedIn && t.Bearer == "" {	if t.Bearer == "" {	go test ./internal/release
+internal/e2e/sign.go	if !isPrimeOrderEd25519(pub) {	if false {	go test ./internal/e2e -run TestCheckSigningKey
+cmd/cairn/verify_cmd.go	if sameOrigin(loginHost, doc.AppOrigin) && fullKey != "" {	if fullKey != "" {	go test ./cmd/cairn -run 'TestVerify'
+cmd/cairn/verify_cmd.go	strings.EqualFold(ua.Scheme, ub.Scheme) && strings.EqualFold(ua.Host, ub.Host)	strings.EqualFold(ua.Scheme, ub.Scheme)	go test ./cmd/cairn -run 'TestVerify'
+cmd/cairn/verify_cmd.go	if counts[release.StatusChanged] > 0 || counts[release.StatusFailed] > 0 {	if counts[release.StatusFailed] > 0 {	go test ./cmd/cairn -run 'TestVerify'
+cmd/cairn-release/main.go	if err == nil && len(seed) != ed25519.SeedSize {	if false {	go test ./cmd/cairn-release
+internal/server/release.go	if len(release.Signed) > 0 {	if false {	go test ./internal/server -run TestWellKnownRelease
+deploy/gcp/startup.sh	if [[ "$got" != "$want" ]]; then	if false; then	go test ./deploy/gcp
+deploy/gcp/startup.sh	[[ "$ref" =~ @sha256:[0-9a-f]{64}$ ]] || refuse	true || refuse	go test ./deploy/gcp
+deploy/gcp/startup.sh	|| refuse "$ref is not signed by the docker workflow of $REPOSITORY"	|| true	go test ./deploy/gcp
+deploy/gcp/startup.sh	|heads/main)\$"	|heads/main)"	go test ./deploy/gcp
+deploy/gcp/startup.sh	^https://github\\.com/	^https://github.com/	go test ./deploy/gcp
