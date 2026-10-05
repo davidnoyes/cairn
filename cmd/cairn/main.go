@@ -11,7 +11,7 @@ const usage = `cairn — self-hosted artifact server and client
 Server:
   cairn serve            Run the server
   cairn backup           Snapshot a data directory (live-safe)
-  cairn verify           Check a server serves a signed release unchanged ([--manifest FILE] [--key KEY]... [URL])
+  cairn verify           Check a server serves a signed release unchanged ([--manifest FILE] [--key KEY]... [--version V] [--allow-skip] [URL])
 
 Client:
   cairn signup           Generate keys, sign up, and print the recovery code
