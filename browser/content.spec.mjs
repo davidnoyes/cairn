@@ -1,27 +1,9 @@
 // Milestone 4 browser tests, written before the feature: encrypted content and
 // isolation. See design/e2e-api.md "Encrypted content and serving".
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test } from './test.mjs';
-import { MARKER, PAGE2_MARKER, TEAM_MARKER, cli, cliJson, contentFrame, loadState } from './helpers.mjs';
-
-// files lists every regular file under dir.
-function files(dir) {
-  const out = [];
-  for (const e of readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) out.push(...files(p));
-    else if (e.isFile()) out.push(p);
-  }
-  return out;
-}
-
-// openShared opens an app-origin page for an artifact and returns its content frame.
-async function openShared(page, id, base = 'shared', vid = '') {
-  const s = loadState();
-  await page.goto(`${s.appOrigin}/${base}/${id}${vid ? `/${vid}` : ''}`);
-  return contentFrame(page);
-}
+import { MARKER, PAGE2_MARKER, TEAM_MARKER, cli, cliJson, contentFrame, files, loadState, openShared } from './helpers.mjs';
 
 test('renders: a private artifact shows its content, and no stored file holds the plaintext', async ({ ownerPage }) => {
   const s = loadState();
@@ -141,12 +123,9 @@ test.describe('worker restart', () => {
 });
 
 test.describe('downloads', () => {
-  // Only Firefox sends a download link through the worker: WebKit sends it
-  // straight to the network, and Chromium cancels it. See design/e2e-api.md
-  // "The service worker".
-  test.skip(({ browserName }) => browserName !== 'firefox', 'only Firefox sends a download link through the service worker');
-
-  test('a download link to the database or a stored file carries the viewer\'s access', async ({ ownerPage }) => {
+  // frame.js takes the click, fetches the bytes through the worker, and the
+  // shell saves them, so every engine downloads the same way.
+  test('a download link to the database or a stored file saves the plaintext, in every engine', async ({ ownerPage }) => {
     const s = loadState();
     const frame = await openShared(ownerPage, s.artifacts['plain-doc'].id);
     await expect(frame.locator('#marker')).toHaveText(MARKER);

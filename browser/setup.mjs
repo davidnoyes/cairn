@@ -69,6 +69,8 @@ export default async function globalSetup() {
     const server = spawn(bin, [
       'serve', '--addr', `127.0.0.1:${port}`, '--public-url', appOrigin, '--data-dir', dataDir,
       '--smtp-url', 'log://', '--signup-domain', DOMAIN, '--admin-email', `owner@${DOMAIN}`,
+      // A small cap, so a spec can go over it.
+      '--max-db-mb', '1',
     ], { env, stdio: ['ignore', logFd, logFd] });
     // Record the pid first, so teardown can kill the server even if setup fails below.
     const state = { tmp, bin, port, appOrigin, dataDir, logPath, pid: server.pid, users: {}, artifacts: {} };
@@ -112,9 +114,12 @@ export default async function globalSetup() {
     push(template('team', fx, {}), 'team-doc');
     push(template('hostile', fx, { PORT: String(port) }), 'hostile-doc');
     push(template('links', fx, { MARKER_ID: state.artifacts['plain-doc'].id }), 'links-doc');
+    push(template('marker', fx, {}), 'data-doc');
+    for (const example of ['guestbook', 'poll', 'drive']) push(path.join(ROOT, 'examples', example), example);
 
     owner(['share', 'plain-doc', state.users.viewer.email]);
     owner(['share', 'team-doc', state.users.editor.email, '--role', 'editor']);
+    owner(['share', 'data-doc', state.users.editor.email, '--role', 'editor']);
     state.publicLink = JSON.parse(owner(['public', 'plain-doc', 'on', '--json'])).link;
     state.fixturesDir = fx;
 

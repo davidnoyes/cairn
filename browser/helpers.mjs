@@ -1,7 +1,8 @@
 // Shared by the global setup and the specs. Imports nothing from Playwright so
 // the setup can use it too.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
 
 export const MARKER = 'CAIRN-PLAINTEXT-MARKER-7f3a';
 export const PAGE2_MARKER = 'CAIRN-PAGE-TWO-MARKER-91c4';
@@ -67,4 +68,22 @@ function safeHost(url) {
   } catch {
     return '';
   }
+}
+
+// files lists every regular file under dir.
+export function files(dir) {
+  const out = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) out.push(...files(p));
+    else if (e.isFile()) out.push(p);
+  }
+  return out;
+}
+
+// openShared opens an app-origin page for an artifact and returns its content frame.
+export async function openShared(page, id, base = 'shared', vid = '') {
+  const s = loadState();
+  await page.goto(`${s.appOrigin}/${base}/${id}${vid ? `/${vid}` : ''}`);
+  return contentFrame(page);
 }
