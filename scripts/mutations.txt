@@ -983,7 +983,7 @@ internal/client/client.go	return errorFromResponse(method, path, resp)	return &A
 internal/client/review.go	if len(listed) == 0 {	if false {	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
 internal/client/review.go	if listed[hex.EncodeToString(e2e.Fingerprint(kp.x25519, kp.ed25519))] {	if true || listed[hex.EncodeToString(e2e.Fingerprint(kp.x25519, kp.ed25519))] {	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
 internal/client/review.go	if body.Artifact != artifactID || body.Version != v.ID || body.Epoch != v.Epoch {	if false {	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
-internal/client/review.go	if ak == nil {	if false {	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
+internal/client/review.go	return "", e2e.ManifestBody{}, fmt.Errorf("%w: no key for epoch %d", ErrVouchManifest, v.Epoch)	_ = v.Epoch	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
 internal/client/review.go	if !verified {	if !verified && false {	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
 internal/client/review.go	records, err := c.Rotations(signer)	var records []e2e.Envelope; var err error	go test ./internal/client -run 'TestVouchOpensARotatedEditorsManifest|TestVouchOpensTheOwnersManifestAfterTheyRotated'
 internal/client/review.go	if len(data) > maxManifestBytes {	if false {	go test ./internal/client -run TestGetBytesRefusesABodyOverTheCap

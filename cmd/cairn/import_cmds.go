@@ -136,9 +136,9 @@ func importFailed(err error, done []importedArtifact) error {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%v\nalready imported (old ID -> new ID):", err)
-	for _, a := range done {
-		fmt.Fprintf(&b, "\n  %s -> %s  %s", a.OldID, a.NewID, a.Name)
-		if a.Public {
+	for _, d := range done {
+		fmt.Fprintf(&b, "\n  %s -> %s  %s", d.OldID, d.NewID, d.Name)
+		if d.Public {
 			b.WriteString("  (public on the old server)")
 		}
 	}
