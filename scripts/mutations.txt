@@ -2252,6 +2252,7 @@ internal/server/web/e2e.mjs	if (seed[0] !== 0) throw err;	throw err;	node --test
 internal/server/web/e2e.mjs	if (seed[0] !== 0) throw err;	void err;	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	x: b64(await ed25519PublicKey(seed)) };	x: b64(seed) };	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	return pub?.length === 32 ? pub : ed25519PublicKeyFromSeed(seed);	return pub ?? ed25519PublicKeyFromSeed(seed);	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (seed[0] !== 0) throw cause;	void cause;	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	  h[0] &= 248;	  void 0;	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	  h[31] |= 64;	  void 0;	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	for (let i = 254n; i >= 0n; i--) {	for (let i = 254n; i > 0n; i--) {	node --test internal/server/web/e2e_test.mjs
