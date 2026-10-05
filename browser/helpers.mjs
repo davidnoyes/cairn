@@ -62,32 +62,41 @@ export async function signIn(page, email, password) {
 // still reported there is asked for its own location. Rarely, Firefox's driver
 // misses the navigation altogether: the content renders, but the frame keeps a
 // dead context and never answers. A frame that stays silent for five seconds
-// is that case, so the page is reloaded once for a fresh frame tree. A boot
-// page that is really stuck still answers, so it still fails. It throws when
-// none appears within the timeout.
-export async function contentFrame(page, timeout = 20_000) {
+// is that case, so the page is loaded again once, from url, for a fresh frame
+// tree. url defaults to the page's address, so a caller whose frame that
+// address alone does not reproduce (a public link, whose key the shell strips
+// from the address) passes the one it opened. A boot page that is really stuck
+// still answers, so it still fails. It throws when none appears within the
+// timeout.
+export async function contentFrame(page, { url = page.url(), timeout = 20_000 } = {}) {
   const artifactFrames = () => page.frames().filter((f) => /^[0-9a-f-]{36}\.localhost$/.test(safeHost(f.url())));
   const deadline = Date.now() + timeout;
   let silentSince = 0;
   let reloaded = false;
   while (Date.now() < deadline) {
+    let silent = false;
     for (const f of artifactFrames()) {
       if (!safePath(f.url()).startsWith('/_cairn/')) return f;
       const asked = f.evaluate(() => location.pathname).catch(() => '/_cairn/');
       const actual = await Promise.race([asked, page.waitForTimeout(1000).then(() => null)]);
       if (actual === null) {
+        silent = true;
         silentSince ||= Date.now();
         if (!reloaded && Date.now() - silentSince >= 5_000) {
           reloaded = true;
           silentSince = 0;
-          await page.reload();
+          console.warn('contentFrame: the artifact frame went silent on the boot page; loading the page again');
+          // By way of about:blank, since a url that differs from the address
+          // only in its fragment would not load the page again.
+          await page.goto('about:blank');
+          await page.goto(url, { timeout: Math.max(1000, deadline - Date.now()) });
           break;
         }
         continue;
       }
-      silentSince = 0;
       if (!actual.startsWith('/_cairn/')) return f;
     }
+    if (!silent) silentSince = 0;
     await page.waitForTimeout(250);
   }
   const seen = page.frames().map((f) => f.url()).join(', ');
