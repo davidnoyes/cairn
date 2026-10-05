@@ -236,6 +236,7 @@
             throw batch ? new Error('statement ' + (i + 1) + ': ' + e.message) : e;
           }
         });
+        if (vid !== versionId && counters(db) !== before) throw new Error("another version's database is read-only");
         db.exec('COMMIT');
       } catch (e) {
         try { db.exec('ROLLBACK'); } catch (_) { /* no transaction open */ }

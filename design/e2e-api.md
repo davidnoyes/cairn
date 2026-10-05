@@ -1642,7 +1642,9 @@ runs, `total_changes()`, `PRAGMA schema_version`, or `PRAGMA user_version`
 differs from before; it never parses the SQL. A write is exported and sent
 with `PUT .../db`. On `412` the client reloads the latest revision and runs
 the statements again, up to five times. A statement string that holds more
-than one statement is refused, as the server refused it before.
+than one statement is refused, as the server refused it before. A query that
+names another version with `{version}` may read its database but not change
+it: `cairn.js` rolls back and refuses a statement that would.
 
 sql.js loads from `/_cairn/sql-wasm.js` only, never from a CDN, so an
 artifact on a content origin works with no access to the internet.

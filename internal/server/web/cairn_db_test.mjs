@@ -350,6 +350,15 @@ test('a query for another version reads that version\'s database', async () => {
   assert.equal(w.gets()[0].url, DB(V2));
 });
 
+test('a write to another version\'s database is refused, and nothing is uploaded', async () => {
+  const w = worker();
+  w.land('CREATE TABLE t (a INTEGER); INSERT INTO t VALUES (9)', V2);
+  const { cairn } = load(w);
+  await assert.rejects(cairn.db.query('INSERT INTO t VALUES (10)', [], { version: V2 }), /another version's database is read-only/);
+  assert.equal(w.puts().length, 0);
+  assert.deepEqual((await cairn.db.query('SELECT a FROM t', [], { version: V2 })).rows, [[9]], 'the refused change is not kept');
+});
+
 test('operations run one at a time, so two writes from one page both land without a retry', async () => {
   const w = worker();
   w.land('CREATE TABLE t (a INTEGER)');

@@ -1381,3 +1381,4 @@ internal/server/web/data.mjs	if (revision < floor) throw	if (revision < (ctx.see
 internal/server/web/data.mjs	if (kept < floor) throw	if (false) throw	node --test internal/server/web/data_test.mjs
 internal/server/web/data.mjs	if (!init.headers) throw new ContentError('a 304	if (false) throw new ContentError('a 304	node --test internal/server/web/data_test.mjs
 internal/server/web/data.mjs	Math.max(revision, ctx.seen.get(keys.version) ?? 0)	revision	node --test internal/server/web/data_test.mjs
+internal/server/web/cairn.js	if (vid !== versionId && counters(db) !== before) throw	if (false) throw	node --test internal/server/web/cairn_db_test.mjs
