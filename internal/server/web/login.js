@@ -12,9 +12,10 @@ if (deps) {
   // A session whose keys this browser holds goes straight through. With no
   // session, any keys left in IndexedDB are stale: from a session that
   // expired, or a /logout link. A session without its keys signs in again.
-  const found = await signedInCaller(deps).catch(() => null);
+  // A failed check proves nothing, so it leaves the keys alone.
+  const found = await signedInCaller(deps).catch(() => undefined);
   if (found?.record) location.replace(next);
-  else if (!found) deps.keyStore.clear().catch(() => {});
+  else if (found === null) deps.keyStore.clear().catch(() => {});
 
   onSubmit(form, $('submit'), $('error'), async () => {
     await signIn(deps, { email: form.email.value, password: form.password.value });

@@ -507,7 +507,7 @@ fails:
 | `GET /api/artifacts` | Any | Artifacts the caller can read |
 | `POST /api/artifacts` | Any | Create an artifact with its first record |
 | `GET /api/artifacts/{id}` | Read | The artifact, with the caller's access |
-| `PATCH /api/artifacts/{id}` | Owner, editor | Rename, or change the description |
+| `PUT /api/artifacts/{id}/meta/{field}` | Owner, editor | Set the encrypted name or description |
 | `DELETE /api/artifacts/{id}` | Owner | Delete the artifact |
 | `GET /api/artifacts/{id}/membership` | Read | Every membership record, oldest first |
 | `PUT /api/artifacts/{id}/membership` | Owner | Add a membership record |
@@ -516,6 +516,7 @@ fails:
 | `GET /api/artifacts/{id}/pending` | Owner, editor | Team members waiting, and changed keys |
 | `GET /api/artifacts/{id}/review` | Owner | Versions that need a vouch |
 | `PUT /api/artifacts/{id}/versions/{vid}/vouch` | Owner | Vouch for a version |
+| `PUT /api/artifacts/{id}/versions/{vid}/meta/{field}` | Owner, editor | Set the encrypted name or changelog |
 | `POST /api/artifacts/{id}/transfer` | Owner | Offer ownership to an editor |
 | `DELETE /api/artifacts/{id}/transfer` | Owner, offered user | Withdraw or decline the offer |
 | `POST /api/artifacts/{id}/transfer/accept` | Offered user | Accept ownership |

@@ -1027,7 +1027,7 @@ internal/server/routes.go	handle("GET /"+mode+"/{id}/{vid}", page)	handle("GET /
 internal/server/routes.go	handle("GET /"+mode+"/{id}/{vid}/{path...}", page)	handle("GET /"+mode+"/{id}/{vid}/{path...}", s.handleRoot)	go test ./internal/server -run 'TestShellPageBody|TestSharedRoutesAndShellCSP'
 internal/server/routes.go	page := s.withShellCSP(s.handleShell(mode))	page := s.handleShell(mode)	go test ./internal/server -run TestSharedRoutesAndShellCSP
 internal/server/web/shell.html	data-path="{{.Path}}"	data-path="/"	go test ./internal/server -run TestShellPageBody
-internal/server/web/shell.html	<a id="account" href="/">	<a id="account" href="/admin">	go test ./internal/server -run TestShellPageElements
+internal/server/web/shell.html	<a id="account" href="/">	<a id="account" href="/app">	go test ./internal/server -run TestShellPageElements
 internal/server/web/shell.html	<p id="status" role="status" hidden></p>	<p id="status" role="status"></p>	go test ./internal/server -run TestShellPageElements
 cmd/cairn/client_cmds.go	if *full {	if !*full {	go test ./cmd/cairn -run TestOpenPrintsTheURL
 cmd/cairn/client_cmds.go	base := "/shared/"	base := "/full/"	go test ./cmd/cairn -run TestOpenPrintsTheURL
