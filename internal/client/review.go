@@ -101,29 +101,36 @@ const maxManifestBytes = e2e.MaxManifestBytes
 // behind (see manifestSignerKeys). The body must name this artifact,
 // version, and epoch, and hash to v's manifestHash.
 func (c *Client) checkManifest(k *UnlockedKeys, chain *e2e.Chain, artifactID string, v *store.Version) error {
+	_, _, err := c.verifyManifest(k, chain, artifactID, v)
+	return err
+}
+
+// verifyManifest is checkManifest, and returns the signer and the body it
+// verified.
+func (c *Client) verifyManifest(k *UnlockedKeys, chain *e2e.Chain, artifactID string, v *store.Version) (string, e2e.ManifestBody, error) {
 	aks, err := c.callerAKs(k, artifactID, chain)
 	if err != nil {
-		return err
+		return "", e2e.ManifestBody{}, err
 	}
 	ak := aks[v.Epoch]
 	if ak == nil {
-		return fmt.Errorf("%w: no key for epoch %d", ErrVouchManifest, v.Epoch)
+		return "", e2e.ManifestBody{}, fmt.Errorf("%w: no key for epoch %d", ErrVouchManifest, v.Epoch)
 	}
 	sealed, err := c.getBytes("/api/artifacts/" + artifactID + "/versions/" + v.ID + "/manifest")
 	if err != nil {
-		return err
+		return "", e2e.ManifestBody{}, err
 	}
 	envJSON, err := e2e.OpenBlob(ak, e2e.BlobContext{Artifact: artifactID, Version: v.ID, Kind: "manifest"}, sealed)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrVouchManifest, err)
+		return "", e2e.ManifestBody{}, fmt.Errorf("%w: %v", ErrVouchManifest, err)
 	}
 	var env e2e.Envelope
 	if err := json.Unmarshal(envJSON, &env); err != nil {
-		return fmt.Errorf("%w: %v", ErrVouchManifest, err)
+		return "", e2e.ManifestBody{}, fmt.Errorf("%w: %v", ErrVouchManifest, err)
 	}
 	keys, err := c.manifestSignerKeys(k, chain, env.Signer)
 	if err != nil {
-		return err
+		return "", e2e.ManifestBody{}, err
 	}
 	var body e2e.ManifestBody
 	verified := false
@@ -136,15 +143,15 @@ func (c *Client) checkManifest(k *UnlockedKeys, chain *e2e.Chain, artifactID str
 		}
 	}
 	if !verified {
-		return fmt.Errorf("%w: the signature does not verify under any key the chain lists for %q: %v", ErrVouchManifest, env.Signer, openErr)
+		return "", e2e.ManifestBody{}, fmt.Errorf("%w: the signature does not verify under any key the chain lists for %q: %v", ErrVouchManifest, env.Signer, openErr)
 	}
 	if body.Artifact != artifactID || body.Version != v.ID || body.Epoch != v.Epoch {
-		return fmt.Errorf("%w: it names another artifact, version, or epoch", ErrVouchManifest)
+		return "", e2e.ManifestBody{}, fmt.Errorf("%w: it names another artifact, version, or epoch", ErrVouchManifest)
 	}
 	if e2e.BodyHash(env.Body) != v.ManifestHash {
-		return ErrVouchManifest
+		return "", e2e.ManifestBody{}, ErrVouchManifest
 	}
-	return nil
+	return env.Signer, body, nil
 }
 
 // signerKeys is a pair of public keys: X25519 for wrapping, Ed25519 for

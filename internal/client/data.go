@@ -110,6 +110,10 @@ type dataChecker struct {
 	writers map[string]map[string]bool
 	// anyWriter is set while publicWrites is on: any signer is accepted.
 	anyWriter bool
+	// earlierEpochs lets a restore open a revision sealed before the
+	// version's epoch: re-sealing the latest version raises that epoch past
+	// the kept revisions.
+	earlierEpochs bool
 }
 
 func unverified(format string, a ...any) error {
@@ -140,7 +144,7 @@ func (d *dataChecker) akFor(named, epoch int) ([]byte, error) {
 	if epoch != named {
 		return nil, unverified("signed under another epoch than the server named")
 	}
-	if epoch < d.versionEpoch {
+	if epoch < d.versionEpoch && !d.earlierEpochs {
 		return nil, unverified("signed under an epoch before the version")
 	}
 	ak := d.aks[epoch]
@@ -633,14 +637,15 @@ const maxRestoreTries = 5
 
 // Restore uploads revision n's plaintext as a new revision, signed by the
 // caller. It accepts a revision signed by anyone the chain has ever listed as
-// owner or editor, and returns the new revision's number.
+// owner or editor, under any epoch the caller holds the AK of, and returns the
+// new revision's number.
 func (d *Data) Restore(n int) (int, error) {
 	writers, err := d.c.everWriterKeys(d.k, d.va.Membership, d.va.Chain)
 	if err != nil {
 		return 0, err
 	}
 	chk := *d.now
-	chk.writers = writers
+	chk.writers, chk.earlierEpochs = writers, true
 	f, err := d.fetchRevision(n)
 	if err != nil {
 		return 0, err

@@ -280,12 +280,12 @@ func epochChangeJSON(out map[string]any, ch client.EpochChange) {
 	}
 }
 
-// resealJSON is what a re-seal did: the databases and files sealed again, what
+// resealJSON is what a re-seal did: the databases, files, and versions sealed again, what
 // was left alone and why, and the error that stopped it, if one did.
 func resealJSON(res *client.ResealResult, err error) map[string]any {
-	out := map[string]any{"databases": 0, "files": 0, "skipped": []string{}, "error": ""}
+	out := map[string]any{"databases": 0, "files": 0, "versions": 0, "skipped": []string{}, "error": ""}
 	if res != nil {
-		out["databases"], out["files"] = res.Databases, res.Files
+		out["databases"], out["files"], out["versions"] = res.Databases, res.Files, res.Versions
 		if res.Skipped != nil {
 			out["skipped"] = res.Skipped
 		}
@@ -298,8 +298,8 @@ func resealJSON(res *client.ResealResult, err error) map[string]any {
 
 // printReseal says what re-sealing the data under the new epoch did.
 func printReseal(artifact string, res *client.ResealResult, err error) {
-	if res != nil && (res.Databases > 0 || res.Files > 0) {
-		fmt.Printf("sealed %d database(s) and %d file(s) again under the new epoch\n", res.Databases, res.Files)
+	if res != nil && (res.Databases > 0 || res.Files > 0 || res.Versions > 0) {
+		fmt.Printf("sealed %d database(s), %d file(s) and %d version(s) again under the new epoch\n", res.Databases, res.Files, res.Versions)
 	}
 	if res != nil {
 		for _, s := range res.Skipped {

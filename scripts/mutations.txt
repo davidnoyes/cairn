@@ -939,7 +939,7 @@ internal/server/review.go	case body.Manifest != ver.ManifestHash:	case false:	go
 internal/store/artifacts.go	FROM artifacts WHERE id = ? AND (? = 0 OR epoch = ?)	FROM artifacts WHERE id = ? AND (? = 0 OR epoch = epoch)	go test ./internal/server -run TestPushEpoch
 internal/store/artifacts.go	(? = 0 OR (SELECT epoch FROM artifacts WHERE id = ?) = ?)	(? = 0 OR (SELECT epoch FROM artifacts WHERE id = ?) = ? OR 1 = 1)	go test ./internal/server -run TestPushEpoch
 internal/store/artifacts.go	DELETE FROM version_vouches WHERE version_id = ?	DELETE FROM version_vouches WHERE version_id = ? AND 1 = 0	go test ./internal/server -run TestReplacingAVersionDropsItsVouch
-internal/client/client.go	Kind: "content", Name: f.rel	Kind: "content", Name: ""	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
+internal/client/client.go	Kind: "content", Name: rel	Kind: "content", Name: ""	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
 internal/client/client.go	Kind: "manifest"}, envJSON)	Kind: "content"}, envJSON)	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
 internal/client/client.go	e2e.NewEnvelope(k.Ed25519Seed, k.UserID, "manifest", body)	e2e.NewEnvelope(k.Ed25519Seed, k.UserID, "vouch", body)	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
 internal/client/client.go	e2e.NewEnvelope(k.Ed25519Seed, k.UserID, "manifest", body)	e2e.NewEnvelope(k.Ed25519Seed, "nobody", "manifest", body)	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
@@ -1388,7 +1388,7 @@ internal/client/data.go	if len(key) != ed25519.PublicKeySize {	if len(key) < ed2
 internal/client/data.go	if artifact != d.artifact {	if false && artifact != d.artifact {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
 internal/client/data.go	if version != d.version {	if false && version != d.version {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
 internal/client/data.go	if epoch != named {	if false && epoch != named {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
-internal/client/data.go	if epoch < d.versionEpoch {	if false && epoch < d.versionEpoch {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if epoch < d.versionEpoch && !d.earlierEpochs {	if false && epoch < d.versionEpoch {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
 internal/client/data.go	return nil, unverified("no key for epoch %d", epoch)	return nil, nil	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
 internal/client/data.go	if b.Revision != revision {	if false && b.Revision != revision {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
 internal/client/data.go	if b.Kind != kind {	if false && b.Kind != kind {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
@@ -1403,7 +1403,7 @@ internal/client/data.go	if f.epoch != epoch {	if false && f.epoch != epoch {	go 
 internal/client/data.go	if linked(user, fp, kp.fp()) {	if linked(user, fp, kp.fp()) || true {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
 internal/client/data.go	anyWriter: va.Chain.Latest.PublicWrites,	anyWriter: false,	go test ./internal/client -run TestPublicWritesAcceptAnySigner
 internal/client/data.go	if n != 0 && f.revision != n {	if false && n != 0 && f.revision != n {	go test ./internal/client -run TestRevisionReadByNumberChecksTheNumber
-internal/client/data.go	chk.writers = writers	chk.writers = d.now.writers; _ = writers	go test ./internal/client -run TestRestoreAcceptsARevisionFromARemovedEditor
+internal/client/data.go	chk.writers, chk.earlierEpochs = writers, true	chk.writers, chk.earlierEpochs = d.now.writers, true; _ = writers	go test ./internal/client -run TestRestoreAcceptsARevisionFromARemovedEditor
 internal/client/data.go	for range maxRestoreTries {	for range 1 {	go test ./internal/client -run 'TestRestoreFollowsA412|TestRestoreGivesUpAfterFiveTries'
 internal/client/data.go	base = conflict.Latest	base = conflict.Latest + 1	go test ./internal/client -run 'TestRestoreFollowsA412|TestRestoreGivesUpAfterFiveTries'
 internal/client/data.go	strconv.Itoa(base)	strconv.Itoa(0)	go test ./internal/client -run 'TestDataRevisionsRoundTrip|TestExecConcurrentWritersBothLand'
@@ -1436,3 +1436,13 @@ internal/client/dbexec.go	for range maxExecTries {	for range 1 {	go test ./inter
 internal/client/dbexec.go	const maxExecTries = 5	const maxExecTries = 50	go test ./internal/client -run TestExecGivesUpAfterFiveTries
 internal/sqlrun/sqlrun.go	if !IsSingleStatement(stmt.SQL) {	if false && !IsSingleStatement(stmt.SQL) {	go test ./internal/sqlrun ./internal/client -run 'TestRunRefuses|TestExecRefuses'
 internal/sqlrun/sqlrun.go	return isBlank(s[i+1:])	return true	go test ./internal/sqlrun -run TestSingleStatementScanner
+internal/client/reseal.go	if v == nil || v.Epoch >= current {	if v == nil {	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
+internal/client/reseal.go	if !editorOf(va.Chain.Latest, signer) {	if false && !editorOf(va.Chain.Latest, signer) {	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
+internal/client/reseal.go	return m.User == user && m.Role == "editor"	return m.User == user	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
+internal/client/review.go	if e2e.BodyHash(env.Body) != v.ManifestHash {	if false {	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
+internal/client/reseal.go	if err == nil && e2e.BodyHash(blob) != f.SHA256 {	if false {	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
+internal/client/reseal.go	if v == nil || x.Seq > v.Seq {	if v == nil || x.Seq < v.Seq {	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
+internal/client/reseal.go	newAK, files, v.Name, v.Changelog)	newAK, files, "renamed", "changed")	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
+internal/client/reseal.go	res.Versions++	res.Versions += 0	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
+internal/client/data.go	chk.writers, chk.earlierEpochs = writers, true	chk.writers, chk.earlierEpochs = writers, false	go test ./internal/client -run 'TestRestoreAcceptsARevisionFromARemovedEditor|TestResealLeavesWhatAnEarlierRemovalLeft'
+internal/client/data.go	if epoch < d.versionEpoch && !d.earlierEpochs {	if epoch < d.versionEpoch {	go test ./internal/client -run 'TestRestoreAcceptsARevisionFromARemovedEditor|TestResealLeavesWhatAnEarlierRemovalLeft'

@@ -415,7 +415,7 @@ func runReseal(args []string) error {
 		}
 		return err
 	}
-	if res.Databases == 0 && res.Files == 0 && len(res.Skipped) == 0 && err == nil {
+	if res.Databases == 0 && res.Files == 0 && res.Versions == 0 && len(res.Skipped) == 0 && err == nil {
 		fmt.Println("nothing to seal again: the data is under the current epoch")
 		return nil
 	}

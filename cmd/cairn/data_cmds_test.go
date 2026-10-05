@@ -169,7 +169,7 @@ func TestUnshareReseals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "sealed 1 database(s) and 1 file(s) again under the new epoch") {
+	if !strings.Contains(out, "sealed 1 database(s), 1 file(s) and 1 version(s) again under the new epoch") {
 		t.Errorf("cairn unshare printed %q, want the re-seal reported", out)
 	}
 	if got, err := runQuiet(t, runFiles, "get", "f.txt", "--artifact", w.artifact); err != nil || got != "keep me" {
@@ -199,7 +199,7 @@ func TestPrintResealReportsAFailure(t *testing.T) {
 	done := captureStdout(t)
 	printReseal("art1", &client.ResealResult{Databases: 1, Skipped: []string{"a file: may not write"}}, errors.New("disk on fire"))
 	out := done()
-	for _, want := range []string{"sealed 1 database(s) and 0 file(s)", "may not write", "disk on fire", "run: cairn reseal art1"} {
+	for _, want := range []string{"sealed 1 database(s), 0 file(s) and 0 version(s)", "may not write", "disk on fire", "run: cairn reseal art1"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("printReseal printed %q, want %q", out, want)
 		}

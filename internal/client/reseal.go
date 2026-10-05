@@ -1,15 +1,19 @@
 // Re-sealing data after an epoch change. A record that starts a new epoch makes
 // the new epoch's AK the only one a public link opens, so the person who made
 // it seals the data again under that AK: the latest revision of every
-// version's database, and every stored file at its new address. See "Epoch
+// version's database, every stored file at its new address, and the latest
+// version's content, as a replacement with the same version ID. See "Epoch
 // changes" in design/e2e-api.md.
 package client
 
 import (
 	"errors"
 	"fmt"
+	"io"
+	"slices"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 // ErrCannotReseal means the verified chain lists the caller as neither the
@@ -20,6 +24,7 @@ var ErrCannotReseal = errors.New("only the artifact's owner or an editor can re-
 type ResealResult struct {
 	Databases int
 	Files     int
+	Versions  int
 	Skipped   []string
 }
 
@@ -70,9 +75,10 @@ func bodyBefore(chain *e2e.Chain) (e2e.MembershipBody, bool) {
 }
 
 // reseal re-seals every version's data that verifies under the record before
-// the current epoch began. What fails a check, such as a revision signed by
-// someone the change removed, is left as it is and noted in Skipped. On an
-// error it returns what it had done.
+// the current epoch began, and the latest version's content when someone the
+// latest record still trusts signed it. What fails a check, such as a revision
+// signed by someone the change removed, is left as it is and noted in Skipped.
+// On an error it returns what it had done.
 func (c *Client) reseal(k *UnlockedKeys, va *VerifiedArtifact, artifactID string) (*ResealResult, error) {
 	res := &ResealResult{}
 	before, ok := bodyBefore(va.Chain)
@@ -105,6 +111,9 @@ func (c *Client) reseal(k *UnlockedKeys, va *VerifiedArtifact, artifactID string
 		if err := d.resealFiles(&chk, res); err != nil {
 			return res, fmt.Errorf("version %s: %w", v.ID, err)
 		}
+	}
+	if err := c.resealVersion(k, va, artifactID, aks, versions, res); err != nil {
+		return res, err
 	}
 	return res, nil
 }
@@ -182,4 +191,84 @@ func (d *Data) resealFiles(chk *dataChecker, res *ResealResult) error {
 		res.Files++
 	}
 	return nil
+}
+
+// resealVersion replaces the artifact's latest version, the one with the
+// highest Seq, with the same files sealed under the current epoch and signed
+// by the caller, under the same version ID. It does so only when the version's
+// manifest and every blob verify under its own epoch and its signer is still
+// the owner or an editor in the latest record; otherwise the version is left
+// as it is and noted in Skipped, for the owner's review.
+func (c *Client) resealVersion(k *UnlockedKeys, va *VerifiedArtifact, artifactID string, aks map[int][]byte, versions []*store.Version, res *ResealResult) error {
+	var v *store.Version
+	for _, x := range versions {
+		if v == nil || x.Seq > v.Seq {
+			v = x
+		}
+	}
+	current := va.Chain.Latest.Epoch
+	if v == nil || v.Epoch >= current {
+		return nil
+	}
+	skip := func(format string, args ...any) {
+		res.Skipped = append(res.Skipped, fmt.Sprintf("version %s waits for the owner's review: %s", v.ID, fmt.Sprintf(format, args...)))
+	}
+	signer, manifest, err := c.verifyManifest(k, va.Chain, artifactID, v)
+	if errors.Is(err, ErrVouchManifest) || errors.Is(err, ErrVouchSignerGone) {
+		skip("%v", err)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("version %s: %w", v.ID, err)
+	}
+	if !editorOf(va.Chain.Latest, signer) {
+		skip("it was signed by someone the change removed")
+		return nil
+	}
+	ak, newAK := aks[v.Epoch], aks[current]
+	if newAK == nil {
+		return fmt.Errorf("version %s: no key for epoch %d", v.ID, current)
+	}
+	files := make(map[string][]byte, len(manifest.Files))
+	for _, f := range manifest.Files {
+		blob, err := c.getBlob(artifactID, v.ID, f.Blob)
+		if err == nil && e2e.BodyHash(blob) != f.SHA256 {
+			err = errors.New("it does not match the manifest's hash")
+		}
+		var plain []byte
+		if err == nil {
+			plain, err = e2e.OpenBlob(ak, e2e.BlobContext{Artifact: artifactID, Version: v.ID, Kind: "content", Name: f.Path}, blob)
+		}
+		if err != nil {
+			skip("the blob of %s: %v", f.Path, err)
+			return nil
+		}
+		files[f.Path] = plain
+	}
+	if _, err := c.uploadVersion(k, artifactID, v.ID, true, current, newAK, files, v.Name, v.Changelog); err != nil {
+		return fmt.Errorf("version %s: %w", v.ID, err)
+	}
+	res.Versions++
+	return nil
+}
+
+// editorOf reports whether user is the owner or a listed editor in latest.
+func editorOf(latest e2e.MembershipBody, user string) bool {
+	return latest.Owner == user || slices.ContainsFunc(latest.Members, func(m e2e.Member) bool {
+		return m.User == user && m.Role == "editor"
+	})
+}
+
+// getBlob reads one stored blob of a version.
+func (c *Client) getBlob(artifactID, versionID, blob string) ([]byte, error) {
+	path := "/api/artifacts/" + artifactID + "/versions/" + versionID + "/blobs/" + blob
+	resp, err := c.send("GET", path, nil, "", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, errorFromResponse("GET", path, resp)
+	}
+	return io.ReadAll(resp.Body)
 }

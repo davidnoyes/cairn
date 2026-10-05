@@ -260,11 +260,29 @@ func (c *Client) Push(artifactID, versionID, dir, name, changelog string) (*stor
 	}
 	ak := aks[epoch]
 
-	method, path := "POST", "/api/artifacts/"+artifactID+"/versions"
-	if versionID != "" {
-		method, path = "PUT", path+"/"+versionID
-	} else {
+	replace := versionID != ""
+	if !replace {
 		versionID = uuid.NewString()
+	}
+	contents := make(map[string][]byte, len(files))
+	for _, f := range files {
+		data, err := os.ReadFile(f.abs)
+		if err != nil {
+			return nil, err
+		}
+		contents[f.rel] = data
+	}
+	return c.uploadVersion(k, artifactID, versionID, replace, epoch, ak, contents, name, changelog)
+}
+
+// uploadVersion seals files, a map of slash path to content, under ak, the AK
+// of epoch, signs the manifest listing them with k's key, and uploads them as
+// versionID: a replacement when replace is set, else a new version. The upload
+// declares epoch, so the server refuses it if the epoch has moved since.
+func (c *Client) uploadVersion(k *UnlockedKeys, artifactID, versionID string, replace bool, epoch int, ak []byte, files map[string][]byte, name, changelog string) (*store.Version, error) {
+	method, path := "POST", "/api/artifacts/"+artifactID+"/versions"
+	if replace {
+		method, path = "PUT", path+"/"+versionID
 	}
 
 	tmp, err := os.CreateTemp("", "cairn-push-*")
@@ -275,12 +293,14 @@ func (c *Client) Push(artifactID, versionID, dir, name, changelog string) (*stor
 	defer tmp.Close()
 	mw := multipart.NewWriter(tmp)
 	manifest := e2e.ManifestBody{V: 1, Artifact: artifactID, Version: versionID, Epoch: epoch, Files: make([]e2e.ManifestFile, 0, len(files))}
-	for _, f := range files {
-		data, err := os.ReadFile(f.abs)
-		if err != nil {
-			return nil, err
-		}
-		blob, err := e2e.SealBlob(rand.Reader, ak, e2e.BlobContext{Artifact: artifactID, Version: versionID, Kind: "content", Name: f.rel}, data)
+	paths := make([]string, 0, len(files))
+	for rel := range files {
+		paths = append(paths, rel)
+	}
+	slices.Sort(paths)
+	for _, rel := range paths {
+		data := files[rel]
+		blob, err := e2e.SealBlob(rand.Reader, ak, e2e.BlobContext{Artifact: artifactID, Version: versionID, Kind: "content", Name: rel}, data)
 		if err != nil {
 			return nil, err
 		}
@@ -295,7 +315,7 @@ func (c *Client) Push(artifactID, versionID, dir, name, changelog string) (*stor
 		if _, err := w.Write(blob); err != nil {
 			return nil, err
 		}
-		manifest.Files = append(manifest.Files, e2e.ManifestFile{Path: f.rel, Blob: id, Size: int64(len(data)), SHA256: e2e.BodyHash(blob)})
+		manifest.Files = append(manifest.Files, e2e.ManifestFile{Path: rel, Blob: id, Size: int64(len(data)), SHA256: e2e.BodyHash(blob)})
 	}
 	body, err := json.Marshal(manifest)
 	if err != nil {

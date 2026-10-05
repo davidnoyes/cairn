@@ -1588,7 +1588,8 @@ these hold:
    narrows a rollback without closing it.
 
 A client never accepts a revision or a file from an epoch below the
-version's own.
+version's own. A restore is the one exception; see
+[Commands in milestone 5](#commands-in-milestone-5).
 
 ### Epoch changes
 
@@ -1718,5 +1719,9 @@ Every `db` and `files` command takes `--artifact <id|name>` and
 
 A restore accepts a revision signed by anyone the membership chain has ever
 listed as owner or editor, because an old revision may predate a removal.
+For the same reason, it accepts a revision from an epoch below the
+version's own: re-sealing the latest version raises its epoch past the
+revisions the server kept. The restored copy is sealed under the current
+epoch.
 Anyone who may write data may restore, not only the owner: a restore is a
 write like any other.
