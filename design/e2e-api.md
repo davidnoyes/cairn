@@ -1580,10 +1580,12 @@ these hold:
 4. The blob opens with that `AK` and the context the body names.
 5. For metadata, `FileAddress(fileKey(epoch), path)` equals the address. A
    server that moved a metadata blob onto another file's address fails here.
-6. For a revision, the number is no lower than the highest the client has
-   seen for that version since it started. The service worker forgets this
-   when the browser stops it, so the check narrows a rollback without
-   closing it.
+6. For a revision, the number is no lower than the highest the client had
+   seen for that version, since it started, when it sent the request. A
+   write that lands while the read is in flight does not count against it.
+   A `304` is held to the same floor, for the revision it confirms. The
+   service worker forgets this when the browser stops it, so the check
+   narrows a rollback without closing it.
 
 A client never accepts a revision or a file from an epoch below the
 version's own.

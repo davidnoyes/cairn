@@ -366,6 +366,45 @@ test('db: a write counts as seen, so the server cannot serve the revision before
   assert.equal((await call('db')).status, 502);
 });
 
+test('db: a read answered before a write lands is not taken for a rollback', async () => {
+  const { srv, ctx, call } = setup();
+  await putDb(call, enc.encode('a'), 0);
+  // Another page's write of revision 2 lands while this read of 1 is in flight.
+  let raced = false;
+  ctx.fetchFn = async (req) => {
+    const res = await srv.fetch(req);
+    if (req.method === 'GET' && !raced) {
+      raced = true;
+      assert.equal((await putDb(call, enc.encode('b'), 1)).status, 200);
+    }
+    return res;
+  };
+  const res = await call('db');
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('ETag'), '"1"');
+  assert.equal(ctx.seen.get(VERSION), 2, 'the slower read does not lower what was seen');
+  srv.revisions.pop();
+  assert.equal((await call('db')).status, 502, 'a read sent after the write may not go below it');
+});
+
+test('db: a 304 for a revision below one already seen is refused', async () => {
+  const { srv, call } = setup();
+  await putDb(call, enc.encode('a'), 0);
+  await putDb(call, enc.encode('b'), 1);
+  srv.revisions.pop();
+  const res = await call('db', { headers: { 'If-None-Match': '"1"' } });
+  assert.equal(res.status, 502);
+  assert.match((await res.json()).error, /older than revision 2/);
+});
+
+test('db: a 304 to a read that named no revision is refused', async () => {
+  const { srv, call } = setup();
+  srv.hook = (req) => (req.method === 'GET' ? new Response(null, { status: 304, headers: { ETag: '"1"' } }) : undefined);
+  const res = await call('db');
+  assert.equal(res.status, 502);
+  assert.match((await res.json()).error, /a 304 to a read that named no revision/);
+});
+
 test('db: malformed headers are refused', async () => {
   for (const [name, value] of [
     ['X-Cairn-Revision', '01'],

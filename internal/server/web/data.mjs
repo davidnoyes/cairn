@@ -204,8 +204,14 @@ async function readRevision(ctx, inm) {
   const { keys } = ctx;
   const init = {};
   if (inm !== null && ETAG_RE.test(inm)) init.headers = { 'If-None-Match': inm };
+  // The floor is what was seen before asking: a write that lands while this
+  // read is in flight raises seen, but the server answered before it.
+  const floor = ctx.seen.get(keys.version) ?? 0;
   const res = await server(ctx, 'db', init);
   if (res.status === 304) {
+    if (!init.headers) throw new ContentError('a 304 to a read that named no revision');
+    const kept = Number(ETAG_RE.exec(init.headers['If-None-Match'])[1]);
+    if (kept < floor) throw new ContentError(`revision ${kept} is older than revision ${floor}, already seen`);
     const etag = res.headers.get('ETag');
     return { response: new Response(null, { status: 304, headers: headers('application/octet-stream', etag ? { ETag: etag } : {}) }) };
   }
@@ -219,9 +225,8 @@ async function readRevision(ctx, inm) {
   const epoch = parseEpoch(res.headers.get('X-Cairn-Epoch'));
   const { ak } = await checkSigned(keys, 'revision', env, res.headers.get('X-Cairn-Signer-Key'), { epoch, revision, blob });
   const plain = await openBlob(ak, { artifact: keys.artifact, version: keys.version, kind: 'database', name: String(revision) }, blob);
-  const seen = ctx.seen.get(keys.version) ?? 0;
-  if (revision < seen) throw new ContentError(`revision ${revision} is older than revision ${seen}, already seen`);
-  ctx.seen.set(keys.version, revision);
+  if (revision < floor) throw new ContentError(`revision ${revision} is older than revision ${floor}, already seen`);
+  ctx.seen.set(keys.version, Math.max(revision, ctx.seen.get(keys.version) ?? 0));
   return { revision, plain };
 }
 

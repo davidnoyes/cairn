@@ -1377,3 +1377,7 @@ internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/files":
 internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/files/{address}":    true,	"GET /api/artifacts/{id}/versions/{vid}/files/{address}":    false,	go test ./internal/server -run 'TestContentTokenRouteTable|TestContentTokenAllowsTheDataRoutesAndNotTheOldOnes'
 internal/server/content_token.go	"PUT /api/artifacts/{id}/versions/{vid}/files/{address}":    true,	"PUT /api/artifacts/{id}/versions/{vid}/files/{address}":    false,	go test ./internal/server -run 'TestContentTokenRouteTable|TestContentTokenAllowsTheDataRoutesAndNotTheOldOnes'
 internal/server/content_token.go	"DELETE /api/artifacts/{id}/versions/{vid}/files/{address}": true,	"DELETE /api/artifacts/{id}/versions/{vid}/files/{address}": false,	go test ./internal/server -run 'TestContentTokenRouteTable|TestContentTokenAllowsTheDataRoutesAndNotTheOldOnes'
+internal/server/web/data.mjs	if (revision < floor) throw	if (revision < (ctx.seen.get(keys.version) ?? 0)) throw	node --test internal/server/web/data_test.mjs
+internal/server/web/data.mjs	if (kept < floor) throw	if (false) throw	node --test internal/server/web/data_test.mjs
+internal/server/web/data.mjs	if (!init.headers) throw new ContentError('a 304	if (false) throw new ContentError('a 304	node --test internal/server/web/data_test.mjs
+internal/server/web/data.mjs	Math.max(revision, ctx.seen.get(keys.version) ?? 0)	revision	node --test internal/server/web/data_test.mjs
