@@ -121,7 +121,9 @@ test('successor: Refuse on a stale banner says why and clears the banner', async
   cli(`heir-${e}`, ['successor', 'request', s.users[`succ-${e}`].email]);
   const { context, page } = await signedInContext(browser, `succ-${e}`);
   try {
-    await page.goto(`${s.appOrigin}/app`);
+    // Signing in lands on /app; loading it again while it boots can lose its
+    // script in WebKit.
+    await expect(page).toHaveURL(`${s.appOrigin}/app`);
     const banner = page.locator('#succession-banner');
     await expect(banner).toBeVisible();
     // Another device refuses first, so this page's banner is stale.
@@ -219,7 +221,7 @@ test('successor: once released, the heir reads the owner\'s artifacts and nothin
 
   const owner = await signedInContext(browser, `succ-${e}`);
   try {
-    await owner.page.goto(`${s.appOrigin}/app`);
+    await expect(owner.page).toHaveURL(`${s.appOrigin}/app`);
     await expect(owner.page.locator('#rotate-banner')).toBeVisible();
     await expect(owner.page.locator('#succession-text')).toHaveText(`${s.users[`heir-${e}`].email} can now read your artifacts.`);
     await expect(owner.page.locator('#refuse-succession')).toBeHidden();
