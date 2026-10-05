@@ -644,3 +644,23 @@ test('checkSigned refuses a key that is not base64url or not 32 bytes', async ()
   await assert.rejects(checkSigned(baseKeys(), 'revision', env, '!!', { epoch: 4 }), /not base64url/);
   await assert.rejects(checkSigned(baseKeys(), 'revision', env, e2e.b64(new Uint8Array(16)), { epoch: 4 }), /not 32 bytes/);
 });
+
+test('db: a 304 answers with the revision the client named, whatever ETag the server sends', async () => {
+  const { srv, call } = setup();
+  await putDb(call, enc.encode('x'), 0);
+  srv.hook = (req) => (req.method === 'GET' ? new Response(null, { status: 304, headers: { ETag: '"9"' } }) : undefined);
+  const res = await call('db', { headers: { 'If-None-Match': '"1"' } });
+  assert.equal(res.status, 304);
+  assert.equal(res.headers.get('ETag'), '"1"');
+});
+
+test('files: a delete that fails part way leaves the newest copy, not an older one', async () => {
+  const { srv, call } = setup();
+  await storeAt(srv, 'x.txt', { text: 'old' });
+  await storeAt(srv, 'x.txt', { epoch: 4, ak: ak4, text: 'newer' });
+  const [older] = [...srv.files].find(([, f]) => f.epoch !== 4);
+  srv.hook = (req) => (req.method === 'DELETE' && req.url.endsWith(older) ? Response.json({ error: 'disk on fire' }, { status: 500 }) : undefined);
+  assert.notEqual((await call('files/x.txt', { method: 'DELETE' })).status, 204);
+  srv.hook = null;
+  assert.equal(new TextDecoder().decode(await bytes(await call('files/x.txt'))), 'newer');
+});

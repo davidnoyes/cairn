@@ -162,11 +162,19 @@ func TestStoredFiles(t *testing.T) {
 	if got, _ := s.StoredFileByAddress(aid, vid, "a"); string(got.Record) != "rec-2" {
 		t.Errorf("a failed replacement changed the row: %s", got.Record)
 	}
-	if err := s.DeleteStoredFile(aid, vid, "a"); err != nil {
+	// A failed remove keeps the row, so it never outlives its blob.
+	if err := s.DeleteStoredFile(aid, vid, "a", func() error { return boom }); !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want the removing error", err)
+	}
+	if got, _ := s.StoredFileByAddress(aid, vid, "a"); got == nil || string(got.Record) != "rec-2" {
+		t.Errorf("a failed delete removed the row: %+v", got)
+	}
+	if err := s.DeleteStoredFile(aid, vid, "a", noPlace); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DeleteStoredFile(aid, vid, "a"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("second delete: %v, want ErrNotFound", err)
+	removed := false
+	if err := s.DeleteStoredFile(aid, vid, "a", func() error { removed = true; return nil }); !errors.Is(err, ErrNotFound) || removed {
+		t.Errorf("second delete: %v, removed %v; want ErrNotFound and no remove", err, removed)
 	}
 	if _, err := s.StoredFileByAddress(aid, vid, "a"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("get after delete: %v, want ErrNotFound", err)

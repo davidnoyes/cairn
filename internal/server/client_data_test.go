@@ -947,3 +947,84 @@ func TestContentTokenAllowsTheDataRoutesAndNotTheOldOnes(t *testing.T) {
 		t.Errorf("contentTokenRoutes has %d entries, want 15", len(contentTokenRoutes))
 	}
 }
+
+// placeFile keeps the file it replaces until the write lands: undo puts it
+// back for a commit that fails, and keep drops the backup.
+func TestPlaceFile(t *testing.T) {
+	dir := t.TempDir()
+	final := filepath.Join(dir, "f")
+	stage := func(body string) string {
+		t.Helper()
+		p := filepath.Join(dir, "staged")
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	read := func() string {
+		t.Helper()
+		b, err := os.ReadFile(final)
+		if os.IsNotExist(err) {
+			return "<none>"
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	noBackup := func() {
+		t.Helper()
+		if _, err := os.Stat(final + ".old"); !os.IsNotExist(err) {
+			t.Errorf("the backup is still there: %v", err)
+		}
+	}
+
+	// A new address: undo leaves nothing behind.
+	undo, _, err := placeFile(stage("one"), final)
+	if err != nil || read() != "one" {
+		t.Fatalf("placed %q, %v", read(), err)
+	}
+	undo()
+	if got := read(); got != "<none>" {
+		t.Errorf("after undo on a new address: %q", got)
+	}
+
+	// A replacement: undo puts the earlier bytes back.
+	if _, keep, err := placeFile(stage("one"), final); err != nil {
+		t.Fatal(err)
+	} else {
+		keep()
+	}
+	undo, _, err = placeFile(stage("two"), final)
+	if err != nil || read() != "two" {
+		t.Fatalf("replaced with %q, %v", read(), err)
+	}
+	undo()
+	if got := read(); got != "one" {
+		t.Errorf("after undo on a replacement: %q, want the earlier bytes", got)
+	}
+	noBackup()
+
+	// A replacement that lands, over a backup an earlier crash left.
+	if err := os.WriteFile(final+".old", []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, keep, err := placeFile(stage("three"), final)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keep()
+	if got := read(); got != "three" {
+		t.Errorf("after keep: %q", got)
+	}
+	noBackup()
+
+	// A failed move leaves the file and no backup.
+	if _, _, err := placeFile(filepath.Join(dir, "missing"), final); err == nil {
+		t.Fatal("placing a missing file succeeded")
+	}
+	if got := read(); got != "three" {
+		t.Errorf("after a failed move: %q", got)
+	}
+	noBackup()
+}

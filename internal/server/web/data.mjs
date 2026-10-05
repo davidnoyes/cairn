@@ -212,8 +212,9 @@ async function readRevision(ctx, inm) {
     if (!init.headers) throw new ContentError('a 304 to a read that named no revision');
     const kept = Number(ETAG_RE.exec(init.headers['If-None-Match'])[1]);
     if (kept < floor) throw new ContentError(`revision ${kept} is older than revision ${floor}, already seen`);
-    const etag = res.headers.get('ETag');
-    return { response: new Response(null, { status: 304, headers: headers('application/octet-stream', etag ? { ETag: etag } : {}) }) };
+    // The page keeps the revision it named, so the answer names that one,
+    // whatever ETag the server sent.
+    return { response: new Response(null, { status: 304, headers: headers('application/octet-stream', { ETag: init.headers['If-None-Match'] }) }) };
   }
   if (res.status === 404) return { response: fail(404, 'no database yet') };
   if (!res.ok) return { response: await passOn(res) };
@@ -374,7 +375,9 @@ async function putFile(ctx, path, request) {
 async function deleteFile(ctx, path) {
   const { keys } = ctx;
   let found = false;
-  for (const epoch of epochsDown(keys)) {
+  // Oldest first: a delete that fails part way leaves the newest copy as the
+  // one a read finds, never an older one back from the dead.
+  for (const epoch of epochsDown(keys).reverse()) {
     const address = await addressAt(keys, akFor(keys, epoch), epoch, path);
     const res = await server(ctx, `files/${address}`, { method: 'DELETE' });
     if (res.ok) found = true;

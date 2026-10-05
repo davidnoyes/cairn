@@ -344,3 +344,126 @@ func TestResealKeepsARemovedEditorsLastRevision(t *testing.T) {
 	}
 	checkData(t, e.open(t, e.ada, true))
 }
+
+// TestResealKeepsAPublicWritersRevision: with public writes on, anyone signed
+// in may write, so turning the link off seals a non-member's revision again.
+func TestResealKeepsAPublicWritersRevision(t *testing.T) {
+	e := newDataEnv(t)
+	if _, err := e.ada.Public(e.artifact, true, ptr(true)); err != nil {
+		t.Fatal(err)
+	}
+	ada := e.open(t, e.ada, true)
+	// bob is no member: he writes as a signed-in link holder does, with the
+	// link's AK.
+	token, err := e2e.LinkToken(ada.aks[1], e.artifact, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	holder := *e.bob
+	holder.LinkToken = e2e.B64(token)
+	bob := newData(mustUnlock(t, e.bob), ada.va, e.artifact, ada.version, ada.aks, &holder, ada.now.writers)
+	if _, err := bob.PutRevision([]byte("from bob"), 0); err != nil {
+		t.Fatalf("a public writer's write: %v", err)
+	}
+	res, err := e.ada.Public(e.artifact, false, nil)
+	if err != nil || res.ResealErr != nil || res.Resealed == nil || res.Resealed.Databases != 1 || len(res.Resealed.Skipped) != 0 {
+		t.Fatalf("Public off = %+v, %v, want the public writer's database sealed again", res, err)
+	}
+	if plain, _, err := e.open(t, e.ada, false).Latest(); err != nil || string(plain) != "from bob" {
+		t.Fatalf("Latest = %q, %v", plain, err)
+	}
+}
+
+// TestResealRunAgainKeepsTheCopyItMade: a re-seal that failed after copying a
+// file leaves it at both addresses. Run again, it deletes the old address and
+// writes that path no second time.
+func TestResealRunAgainKeepsTheCopyItMade(t *testing.T) {
+	e := newDataEnv(t)
+	seedData(t, e)
+	if _, err := e.ada.Share(e.artifact, "bob@example.com", "viewer", false); err != nil {
+		t.Fatal(err)
+	}
+	failing, puts := true, 0
+	intercept(e.ada, &tamper{before: func(req *http.Request) *http.Response {
+		if !strings.Contains(req.URL.Path, "/files/") {
+			return nil
+		}
+		if failing && req.Method == "DELETE" {
+			return replyJSON(req, 500, nil, `{"error":"disk on fire"}`)
+		}
+		if req.Method == "PUT" {
+			puts++
+		}
+		return nil
+	}})
+	if res, err := e.ada.Unshare(e.artifact, "bob@example.com"); err != nil || res.ResealErr == nil {
+		t.Fatalf("Unshare = %+v, %v, want the re-seal to fail part way", res, err)
+	}
+	failing, puts = false, 0
+	done, err := e.ada.Reseal(e.artifact)
+	if err != nil || done.Files != 2 || puts != 1 {
+		t.Fatalf("Reseal = %+v, %v with %d file writes, want two files and one write", done, err, puts)
+	}
+	d := e.open(t, e.ada, true)
+	held := epochsOf(t, d)
+	if len(held) != 2 {
+		t.Fatalf("%d stored files, want 2: %v", len(held), held)
+	}
+	for addr, epoch := range held {
+		if epoch != 2 {
+			t.Errorf("file %s is still under epoch %d", addr, epoch)
+		}
+	}
+	checkData(t, d)
+}
+
+// TestDeleteFileThatFailsPartWayLeavesTheNewestCopy: a delete goes oldest
+// epoch first, so a failure part way never leaves an older copy as the one a
+// read finds.
+func TestDeleteFileThatFailsPartWayLeavesTheNewestCopy(t *testing.T) {
+	e := newDataEnv(t)
+	seedData(t, e)
+	if _, err := e.ada.Share(e.artifact, "bob@example.com", "viewer", false); err != nil {
+		t.Fatal(err)
+	}
+	failing := true
+	intercept(e.ada, &tamper{before: func(req *http.Request) *http.Response {
+		if failing && req.Method == "DELETE" && strings.Contains(req.URL.Path, "/files/") {
+			return replyJSON(req, 500, nil, `{"error":"disk on fire"}`)
+		}
+		return nil
+	}})
+	// The failed re-seal leaves one path under both epochs; write it again
+	// under the current one with other bytes.
+	if _, err := e.ada.Unshare(e.artifact, "bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	d := e.open(t, e.ada, true)
+	path := ""
+	for _, p := range []string{"notes/a.txt", "b.txt"} {
+		cur, _ := d.addressAt(2, p)
+		if _, ok := epochsOf(t, d)[cur]; ok {
+			path = p
+		}
+	}
+	if path == "" {
+		t.Fatal("the failed re-seal copied no file")
+	}
+	// The failing server keeps the older copy too: removing it is best effort.
+	if _, err := d.PutFile(path, []byte("newer")); err != nil {
+		t.Fatal(err)
+	}
+	old, _ := d.addressAt(1, path)
+	intercept(e.ada, &tamper{before: func(req *http.Request) *http.Response {
+		if req.Method == "DELETE" && strings.HasSuffix(req.URL.Path, "/files/"+old) {
+			return replyJSON(req, 500, nil, `{"error":"disk on fire"}`)
+		}
+		return nil
+	}})
+	if err := d.DeleteFile(path); err == nil || !strings.Contains(err.Error(), "disk on fire") {
+		t.Fatalf("DeleteFile = %v, want the server's failure", err)
+	}
+	if got, err := d.GetFile(path); err != nil || string(got) != "newer" {
+		t.Fatalf("GetFile after the failed delete = %q, %v, want the newest copy", got, err)
+	}
+}

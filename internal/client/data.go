@@ -970,13 +970,16 @@ func (d *Data) removeOlder(path string) {
 }
 
 // DeleteFile deletes path's address under every epoch, and returns
-// ErrFileNotFound when none had it.
+// ErrFileNotFound when none had it. It goes oldest first, so a delete that
+// fails part way leaves the newest copy as the one a read finds.
 func (d *Data) DeleteFile(path string) error {
 	if !validFilePath(path) {
 		return ErrInvalidPath
 	}
 	found := false
-	for _, epoch := range d.epochsDown() {
+	epochs := d.epochsDown()
+	slices.Reverse(epochs)
+	for _, epoch := range epochs {
 		address, err := d.addressAt(epoch, path)
 		if err != nil {
 			return err

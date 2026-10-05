@@ -264,9 +264,14 @@ cairn db query --artifact my-app --json "SELECT COUNT(*) FROM notes"
 cairn files put ./report.pdf --artifact my-app --path exports/report.pdf
 cairn files list --artifact my-app --json
 cairn files get exports/report.pdf --artifact my-app --out ./report.pdf
+cairn db batch --artifact my-app < statements.json   # [{"sql", "params"}], one transaction
+cairn db revisions --artifact my-app --json          # the 10 the server keeps
+cairn db restore --artifact my-app --revision 7      # a kept revision becomes the latest
+cairn db download --artifact my-app --out notes.db
 ```
 
-All commands accept `--json`; errors exit non-zero with a message on stderr.
+Commands that print a result accept `--json`; errors exit non-zero with a
+message on stderr.
 Associate an agent session with `cairn artifact create --resource
 claude-session=<id>` or `POST /api/artifacts/{id}/resources` — afterwards the
 session id works anywhere an artifact id or name does:
@@ -317,6 +322,13 @@ for them, or `cairn unshare` them. A member whose account was deleted blocks
 every new epoch the same way. The refusal names their user ID, and
 `cairn unshare ARTIFACT USER-ID` removes them. If the artifact is public, the
 command also prints the new public link, and the old one stops working.
+
+A new epoch also seals the artifact's data again under the new key: the
+latest database revision of every version, every stored file, and the latest
+version. The command prints what it sealed, and anything it left alone with
+the reason, for example a version waiting for the owner's review. If it stops
+part way, say on a network error, the new epoch still stands: run
+`cairn reseal ARTIFACT` to finish. It is safe to run again.
 
 `cairn team` shares an artifact with the whole team as `viewer` or `editor`,
 or stops with `none`. A new member gets nothing until the owner or an editor

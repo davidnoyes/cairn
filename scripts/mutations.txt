@@ -1446,3 +1446,17 @@ internal/client/reseal.go	newAK, files, v.Name, v.Changelog)	newAK, files, "rena
 internal/client/reseal.go	res.Versions++	res.Versions += 0	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
 internal/client/data.go	chk.writers, chk.earlierEpochs = writers, true	chk.writers, chk.earlierEpochs = writers, false	go test ./internal/client -run 'TestRestoreAcceptsARevisionFromARemovedEditor|TestResealLeavesWhatAnEarlierRemovalLeft'
 internal/client/data.go	if epoch < d.versionEpoch && !d.earlierEpochs {	if epoch < d.versionEpoch {	go test ./internal/client -run 'TestRestoreAcceptsARevisionFromARemovedEditor|TestResealLeavesWhatAnEarlierRemovalLeft'
+internal/client/reseal.go	chk.writers, chk.anyWriter = old, before.PublicWrites	chk.writers, chk.anyWriter = now, before.PublicWrites; _ = old	go test ./internal/client -run 'TestResealKeepsARemovedEditorsLastRevision|TestResealKeepsAPublicWritersRevision'
+internal/client/reseal.go	chk.writers, chk.anyWriter = old, before.PublicWrites	chk.writers, chk.anyWriter = old, false	go test ./internal/client -run 'TestResealKeepsARemovedEditorsLastRevision|TestResealKeepsAPublicWritersRevision'
+internal/client/reseal.go	if errors.Is(err, ErrNoDatabase) {	if false && errors.Is(err, ErrNoDatabase) {	go test ./internal/client -run 'TestResealReplacesTheLatestVersion|TestResealPicksTheHighestSeqWhateverTheOrder'
+internal/client/reseal.go	if !have[address] {	if true {	go test ./internal/client -run 'TestResealRunAgainKeepsTheCopyItMade'
+internal/client/data.go	slices.Reverse(epochs)	_ = slices.Reverse[[]int]	go test ./internal/client -run 'TestDeleteFileThatFailsPartWayLeavesTheNewestCopy'
+internal/server/web/data.mjs	for (const epoch of epochsDown(keys).reverse()) {	for (const epoch of epochsDown(keys)) {	node --test internal/server/web/data_test.mjs
+internal/server/web/data.mjs	{ ETag: init.headers['If-None-Match'] }	{ ETag: res.headers.get('ETag') }	node --test internal/server/web/data_test.mjs
+internal/store/clientdata.go	if err := remove(); err != nil {	if err := remove(); false && err != nil {	go test ./internal/store -run TestStoredFiles
+internal/store/clientdata.go	} else if n == 0 {	} else if n < 0 {	go test ./internal/store -run TestStoredFiles
+internal/server/handlers_files.go	os.Rename(backup, final)	os.Remove(backup)	go test ./internal/server -run TestPlaceFile
+internal/server/handlers_files.go	os.Remove(final)	_ = final	go test ./internal/server -run TestPlaceFile
+internal/server/handlers_files.go	os.Remove(backup) // left by a crash part way through an earlier write	_ = backup	go test ./internal/server -run TestPlaceFile
+internal/server/handlers_files.go	keep = func() {	keep = func() { return;	go test ./internal/server -run TestPlaceFile
+internal/server/handlers_files.go	keep()	_ = keep	go test ./internal/server -run TestStoredFileRoundTrip

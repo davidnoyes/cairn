@@ -1605,10 +1605,16 @@ under the new epoch and signed by the person running it:
   as a replacement with the same version ID.
 
 It re-seals only what it can verify under the record before the change. A
-version or a revision signed by someone the change removed is left as it
-is: the version waits for the owner's review, and the database cannot be
-read until someone writes to it again. If re-sealing fails part way,
-`cairn reseal ARTIFACT` runs it again; it is safe to run at any time.
+revision or a file signed by someone an earlier change removed is left as it
+is, and the database cannot be read until someone writes to it again or the
+owner restores a revision. The latest version is re-sealed only when the
+latest record still lists its signer as owner or editor; otherwise it waits
+for the owner's review. The command lists everything it left alone, with the
+reason, and still exits zero: what it left needs a person, not a retry.
+
+If re-sealing fails part way, `cairn reseal ARTIFACT` runs it again. It is
+safe to run at any time, and it does not write a file it already copied a
+second time.
 
 Re-sealing a removed editor's last revision means the owner signs data that
 editor wrote. They wrote it while they could write, and the server refuses
@@ -1622,13 +1628,13 @@ and `X-Content-Type-Options: nosniff`.
 
 | Method and path | Does |
 | --- | --- |
-| `GET .../db` | Returns the plaintext SQLite file, with `ETag: "<revision>"`. Answers `304` to a matching `If-None-Match`, and `404` when there is no database. |
+| `GET .../db` | Returns the plaintext SQLite file, with `ETag: "<revision>"`. Answers `304`, with the `ETag` the page sent, to a matching `If-None-Match`, and `404` when there is no database. |
 | `PUT .../db` | Takes the plaintext SQLite file with `If-Match: "<revision>"`, seals and signs it, and uploads it. Passes on the server's `412`, `409`, and `413`. |
 | `GET .../db/download` | The plaintext file as an attachment named `database.db` |
 | `GET .../files` | `[{"path", "size", "modifiedAt"}]`, one entry per path, from the highest epoch that has it. An entry that fails a check is left out, with a console warning. |
 | `GET .../files/{path...}` | The file, with a media type taken from the extension |
 | `PUT .../files/{path...}` | Seals, signs, and stores the request body under the current epoch, then deletes the same path's addresses under earlier epochs |
-| `DELETE .../files/{path...}` | Deletes the path's address under every epoch, and answers `404` when none had it |
+| `DELETE .../files/{path...}` | Deletes the path's address under every epoch, oldest first, so a delete that fails part way leaves the newest copy. Answers `404` when none had it. |
 
 `{path...}` follows the rules `cairn.files` already applies: no empty, `.`,
 or `..` segment, and no backslash. A path looks up its address under
@@ -1640,12 +1646,17 @@ keeps it with its revision. Before each query or batch it sends
 `If-None-Match`, so it runs on the latest copy. A query or batch runs in a
 transaction on that copy. The client treats it as a write when, after it
 runs, `total_changes()`, `PRAGMA schema_version`, or `PRAGMA user_version`
-differs from before; it never parses the SQL. A write is exported and sent
+differs from before; it never parses the SQL. A statement that changes only
+another header field, such as `PRAGMA application_id` or
+`PRAGMA journal_mode`, leaves all three as they were, so it is not sent. A
+write is exported and sent
 with `PUT .../db`. On `412` the client reloads the latest revision and runs
 the statements again, up to five times. A statement string that holds more
 than one statement is refused, as the server refused it before. A query that
 names another version with `{version}` may read its database but not change
-it: `cairn.js` rolls back and refuses a statement that would.
+it: `cairn.js` rolls back and refuses a statement that would. This guards
+the helper, not the data: a page may send its own `PUT` to any version it may
+write.
 
 sql.js loads from `/_cairn/sql-wasm.js` only, never from a CDN, so an
 artifact on a content origin works with no access to the internet.

@@ -181,7 +181,7 @@ func (s *Server) handleFilePut(w http.ResponseWriter, r *http.Request) {
 	}
 
 	final := s.filePath(aid, vid, address)
-	placed := false
+	var undo, keep func()
 	var writeErr error
 	err = s.store.UnderEpoch(aid, body.Epoch, func() {
 		switch {
@@ -199,9 +199,8 @@ func (s *Server) handleFilePut(w http.ResponseWriter, r *http.Request) {
 			writeErr = s.store.PutStoredFile(store.StoredFile{
 				ArtifactID: aid, VersionID: vid, Address: address, Epoch: body.Epoch, Size: staged.size,
 				Record: recordJSON, Meta: meta, MetaRecord: metaRecordJSON, SignerKey: pub, WrittenBy: u.ID,
-			}, func() error {
-				err := os.Rename(staged.path, final)
-				placed = err == nil
+			}, func() (err error) {
+				undo, keep, err = placeFile(staged.path, final)
 				return err
 			})
 		}
@@ -210,12 +209,13 @@ func (s *Server) handleFilePut(w http.ResponseWriter, r *http.Request) {
 		err = writeErr
 	}
 	if err != nil {
-		if placed {
-			os.Remove(final)
+		if undo != nil {
+			undo()
 		}
 		s.writeRefusal(w, err)
 		return
 	}
+	keep()
 	s.log.Info("file stored", "artifact", aid, "version", vid, "address", address, "by", u.Email)
 	writeJSON(w, http.StatusOK, map[string]string{"address": address})
 }
@@ -231,12 +231,48 @@ func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "version")
 		return
 	}
-	if err := s.store.DeleteStoredFile(aid, vid, address); err != nil {
+	err := s.store.DeleteStoredFile(aid, vid, address, func() error {
+		if err := os.Remove(s.filePath(aid, vid, address)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		s.writeStoreError(w, err, "file")
 		return
 	}
-	if err := os.Remove(s.filePath(aid, vid, address)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		s.log.Warn("delete stored file", "err", err)
-	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// placeFile moves staged over final. A file already at final is linked to a
+// backup first, so readers never find the address empty: undo puts it back,
+// for a write whose commit fails, and keep drops the backup once it lands.
+func placeFile(staged, final string) (undo, keep func(), err error) {
+	backup := final + ".old"
+	os.Remove(backup) // left by a crash part way through an earlier write
+	kept := true
+	if err := os.Link(final, backup); errors.Is(err, os.ErrNotExist) {
+		kept = false
+	} else if err != nil {
+		return nil, nil, err
+	}
+	if err := os.Rename(staged, final); err != nil {
+		if kept {
+			os.Remove(backup)
+		}
+		return nil, nil, err
+	}
+	undo = func() {
+		if kept {
+			os.Rename(backup, final)
+		} else {
+			os.Remove(final)
+		}
+	}
+	keep = func() {
+		if kept {
+			os.Remove(backup)
+		}
+	}
+	return undo, keep, nil
 }

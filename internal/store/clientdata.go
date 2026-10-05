@@ -1,7 +1,6 @@
 package store
 
 import (
-	"database/sql"
 	"errors"
 )
 
@@ -190,9 +189,26 @@ func (s *Store) PutStoredFile(f StoredFile, place func() error) error {
 	return tx.Commit()
 }
 
-// DeleteStoredFile removes the row at address, or returns ErrNotFound.
-func (s *Store) DeleteStoredFile(artifactID, versionID, address string) error {
-	return s.exec1(`DELETE FROM stored_files WHERE artifact_id = ? AND version_id = ? AND address = ?`, artifactID, versionID, address)
+// DeleteStoredFile removes the row at address, or returns ErrNotFound. remove
+// runs after the delete and before the commit, so a failed remove keeps the
+// row, and a write to the same address waits for both.
+func (s *Store) DeleteStoredFile(artifactID, versionID, address string, remove func() error) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`DELETE FROM stored_files WHERE artifact_id = ? AND version_id = ? AND address = ?`, artifactID, versionID, address)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNotFound
+	}
+	if err := remove(); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
-
-var _ = sql.ErrNoRows
