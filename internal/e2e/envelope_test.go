@@ -387,6 +387,24 @@ func TestCheckPublicKeysRejectsLowOrderEd25519(t *testing.T) {
 	}
 }
 
+func TestCheckSigningKey(t *testing.T) {
+	_, pub, err := GenerateEd25519(newDRBG("check-signing-key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckSigningKey(pub); err != nil {
+		t.Errorf("a genuine key: %v", err)
+	}
+	if err := CheckSigningKey(pub[:31]); !errors.Is(err, ErrFormat) {
+		t.Errorf("a short key: got %v, want ErrFormat", err)
+	}
+	for i, p := range smallOrderEd25519 {
+		if err := CheckSigningKey(p[:]); !errors.Is(err, ErrFormat) {
+			t.Errorf("small-order ed25519 #%d: got %v, want ErrFormat", i, err)
+		}
+	}
+}
+
 // TestCheckStrictNumber pins the number rule directly: a non-negative integer
 // lexeme with no leading zero, no sign, fraction or exponent, at most 2^53-1.
 func TestCheckStrictNumber(t *testing.T) {

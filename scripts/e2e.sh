@@ -20,6 +20,7 @@ cleanup() {
   [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" 2>/dev/null || true
   [[ -n "${OLD_PID:-}" ]] && kill "$OLD_PID" 2>/dev/null || true
   [[ -n "${IMPORT_PID:-}" ]] && kill "$IMPORT_PID" 2>/dev/null || true
+  [[ -n "${REL_PID:-}" ]] && kill "$REL_PID" 2>/dev/null || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -614,7 +615,7 @@ pass "CLI signs in to the account the browser created and reset"
 echo "== import"
 # Build the server from before encryption, fill it, take a backup, and import
 # the backup into this server as whoever the CLI is signed in as.
-OLD_PORT="${CAIRN_E2E_OLD_PORT:-8798}"
+OLD_PORT="${CAIRN_E2E_OLD_PORT:-$((PORT + 2))}"
 OLD_HOST="http://127.0.0.1:$OLD_PORT"
 OLD_CFG="$WORK/old-config.json"
 OLD_BIN="$WORK/cairn-old"
@@ -757,6 +758,62 @@ grep -q interrupted "$WORK/import-int.err" || fail "the interrupted import did n
 tree_sums "$WORK/old-backup" > "$WORK/backup-sums.after2"
 cmp "$WORK/backup-sums.before" "$WORK/backup-sums.after2" || fail "the interrupted import changed the backup"
 pass "an interrupt deletes the partial artifact, leaves no temporary files, and leaves the backup unchanged"
+
+echo "== release manifest"
+# A release build: sign this tree's manifest with a fresh key, build with it
+# embedded, and check the server serves it unchanged. Then change one asset,
+# build again with the same signed manifest, and check verify names the file.
+# Both builds run in a copy, so the tree's manifest.json stays empty.
+REL="$WORK/release-src"
+mkdir -p "$REL"
+(cd "$ROOT" && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf -) | tar -xf - -C "$REL"
+(cd "$REL" && go build -o "$WORK/cairn-release" ./cmd/cairn-release)
+CAIRN_RELEASE_KEY=$("$WORK/cairn-release" keygen | sed -n 's/^CAIRN_RELEASE_KEY=//p')
+export CAIRN_RELEASE_KEY
+RELEASE_PUB=$("$WORK/cairn-release" public)
+(cd "$REL" && "$WORK/cairn-release" sign -version v0.0.0-e2e && go build -o "$WORK/cairn-signed" ./cmd/cairn)
+unset CAIRN_RELEASE_KEY
+REL_PORT=$((PORT + 1))
+REL_HOST="http://127.0.0.1:$REL_PORT"
+# release_serve starts BIN on REL_PORT and waits until it answers.
+release_serve() {
+  "$1" serve --addr ":$REL_PORT" --data-dir "$WORK/release-data-$2" --admin-email admin@e2e.test --smtp-url log:// \
+    --public-url "$REL_HOST" >"$WORK/release-$2.log" 2>&1 &
+  REL_PID=$!
+  for _ in $(seq 1 50); do
+    curl -sf "$REL_HOST/healthz" >/dev/null 2>&1 && break
+    sleep 0.1
+  done
+  curl -sf "$REL_HOST/healthz" >/dev/null || fail "release server ($2) did not start: $(cat "$WORK/release-$2.log")"
+}
+release_serve "$WORK/cairn-signed" signed
+"$BIN" verify --allow-skip --key "$RELEASE_PUB" "$REL_HOST" > "$WORK/verify-ok.txt" \
+  || fail "verify failed against the release build: $(cat "$WORK/verify-ok.txt")"
+grep "release v0.0.0-e2e" "$WORK/verify-ok.txt" >/dev/null || fail "verify did not read the server's manifest: $(cat "$WORK/verify-ok.txt")"
+grep " 0 changed, 0 failed, 1 skipped" "$WORK/verify-ok.txt" >/dev/null || fail "verify totals: $(cat "$WORK/verify-ok.txt")"
+pass "cairn verify passes against the release build"
+if "$BIN" verify --key "$RELEASE_PUB" "$REL_HOST" >/dev/null 2>&1; then
+  fail "verify passed with a page skipped and no --allow-skip"
+fi
+pass "cairn verify fails on a skipped page unless --allow-skip"
+if "$BIN" verify --key "$("$WORK/cairn-release" keygen | sed -n 's/^public key: //p')" "$REL_HOST" >/dev/null 2>&1; then
+  fail "verify trusted a manifest signed by another key"
+fi
+pass "cairn verify refuses a manifest another key signed"
+kill "$REL_PID"; wait "$REL_PID" 2>/dev/null || true
+
+printf '\n/* changed */\n' >> "$REL/internal/server/web/login.js"
+(cd "$REL" && go build -o "$WORK/cairn-changed" ./cmd/cairn)
+release_serve "$WORK/cairn-changed" changed
+if "$BIN" verify --key "$RELEASE_PUB" "$REL_HOST" > "$WORK/verify-changed.txt" 2>&1; then
+  fail "verify passed a build with a changed login.js"
+fi
+grep -E "^changed +$REL_HOST/login.js:" "$WORK/verify-changed.txt" >/dev/null \
+  || fail "verify did not name login.js: $(cat "$WORK/verify-changed.txt")"
+grep " 1 changed, 0 failed" "$WORK/verify-changed.txt" >/dev/null || fail "verify totals: $(cat "$WORK/verify-changed.txt")"
+kill "$REL_PID"; wait "$REL_PID" 2>/dev/null || true
+REL_PID=
+pass "cairn verify fails, naming login.js, when one served file changes"
 
 echo
 echo "all e2e checks passed"

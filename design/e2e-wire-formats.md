@@ -387,6 +387,7 @@ surrogate.
 | `successor` | The user | `{"v":1,"user","seq","successor","successorFp","action"}` |
 | `reset` | The user, with their existing key | `{"v":1,"user","token"}` |
 | `refusal` | The user, with their existing key | `{"v":1,"user","requestedAt"}` |
+| `release` | The release key | `{"v":1,"version","assets":[{"origin","path","sha256"}],"templates":[{"name","source"}]}` |
 
 - In a membership record, `role` is `viewer` or `editor`, `team` is `none`,
   `viewer`, or `editor`, and `prev` is `hex(SHA-256)` of the previous
@@ -452,6 +453,15 @@ surrogate.
   email, "requestedAt"))[0:8]) mod W`, where `W` is 14 days in seconds, the
   fake is the latest `o + kW` seconds after the Unix epoch, for a whole
   number `k`, that is not after the current time.
+- A release manifest lists what the server sends a browser. Each asset is
+  served exactly as embedded: `origin` is `app` or `content`, `path` starts
+  with `/`, and `sha256` is `hex(SHA-256)` of its bytes. No `origin` and
+  `path` pair appears twice, and there is at least one asset. Each template
+  is an HTML template by filename, with its full source, since the server
+  renders it with values from its own configuration. The release key is a
+  lone Ed25519 key, checked as canonical and of prime order like a user's
+  signing key; the envelope's `signer` is `release` and is trusted for
+  nothing.
 - Public keys inside bodies are `b64`; fingerprints are `hex`.
 
 ## Fingerprints

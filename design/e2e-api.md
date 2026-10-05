@@ -2163,3 +2163,69 @@ membership record, and zeroes `EK` afterwards.
 - **Polling a refusal.** As described under [Refusing](#refusing), anyone who
   polls `POST /api/auth/refuse/begin` for an address can tell that a request
   is pending.
+
+## Deploy integrity
+
+Milestone 8 lets anyone check that a server sends browsers the files and pages
+of a signed release. See [Deploy integrity](e2e-trust-model.md#deploy-integrity).
+
+### Release manifest
+
+A release build embeds a manifest signed with the release key, with the
+`release` purpose in [wire formats](e2e-wire-formats.md#signatures). It lists:
+
+- Every file the server sends as embedded, by origin and path, with its
+  SHA-256. These are the app's scripts, styles, and vendored WebAssembly, and
+  the `/_cairn/` files of the content origin.
+- The source of every HTML template. A page depends on the deployment, so
+  `cairn verify` renders the template itself and compares the result.
+
+The release workflow signs the manifest with `cairn-release sign` before it
+builds, so the manifest is not one of the assets it lists. A build without
+the release key embeds no manifest.
+
+`GET /.well-known/cairn-release` needs no session and answers on the app
+origin only:
+
+```json
+{"manifest": <the signed envelope, or null>,
+ "appOrigin": "https://cairn.example.com",
+ "contentOrigin": "https://*.example-usercontent.com"}
+```
+
+Only `manifest` is signed. `appOrigin` must be the origin `cairn verify` was
+pointed at, compared in lowercase with any default port dropped.
+`contentOrigin` must have the same scheme and port as `appOrigin`, and a `*`
+label, which the check replaces with a random artifact ID.
+
+### Commands for deploy integrity
+
+| Command | Does |
+| --- | --- |
+| `cairn verify [URL]` | Checks the server at `URL`, or the logged-in server, against its signed manifest |
+| `cairn verify --manifest FILE` | Checks against a manifest file instead of the one the server serves |
+| `cairn verify --key KEY` | Trusts a release public key, base64url, as well as the compiled-in keys (repeatable) |
+| `cairn verify --version V` | Fails unless the manifest is for release `V` |
+| `cairn verify --allow-skip` | Passes even when a page was skipped for want of a login |
+| `cairn-release keygen` | Prints a new release key: the secret for `CAIRN_RELEASE_KEY`, and its public key |
+| `cairn-release public` | Prints the public key of `CAIRN_RELEASE_KEY` |
+| `cairn-release sign -version V` | Signs this tree's manifest with `CAIRN_RELEASE_KEY` into `internal/release/manifest.json` |
+
+`cairn verify` fetches every asset and every page and reports each one that
+differs, as well as each one that fails to load. It exits non-zero if any
+does, and when any page is skipped, unless `--allow-skip` is given. It
+follows no redirects, and compares bodies, not headers. Without `--version`,
+a pass means the server runs some genuine signed release, not a particular
+one. It checks these pages:
+
+- `/login`, `/signup`, `/verify`, `/forgot`, `/reset`, and `/refuse`
+- `/shared/{id}` and `/full/{id}`
+- `/_cairn/boot` on the content origin
+
+It also checks `/app` when the logged-in host is the server checked. It sends
+the login's bearer for that page alone, and to no other host. Without a login,
+it skips `/app`, and that skip fails the check unless `--allow-skip` is
+given.
+
+A server could send genuine files to the checker and altered ones to a
+target. `cairn verify` is a spot check, not the control.
