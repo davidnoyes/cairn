@@ -49,9 +49,12 @@ export async function signIn(page, email, password) {
 }
 
 // contentFrame returns the artifact's frame: the one on a <uuid>.localhost
-// origin. It throws when none appears within the timeout.
+// origin, once it has left the boot page for the content. A frame taken while
+// still on /_cairn/boot navigates under the caller, and Firefox can then hang
+// a locator on it past its own timeout. It throws when none appears within
+// the timeout.
 export async function contentFrame(page, timeout = 20_000) {
-  const find = () => page.frames().find((f) => /^[0-9a-f-]{36}\.localhost$/.test(safeHost(f.url())));
+  const find = () => page.frames().find((f) => /^[0-9a-f-]{36}\.localhost$/.test(safeHost(f.url())) && !safePath(f.url()).startsWith('/_cairn/'));
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     const f = find();
@@ -65,6 +68,14 @@ export async function contentFrame(page, timeout = 20_000) {
 function safeHost(url) {
   try {
     return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+}
+
+function safePath(url) {
+  try {
+    return new URL(url).pathname;
   } catch {
     return '';
   }
