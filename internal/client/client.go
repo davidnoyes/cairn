@@ -374,9 +374,9 @@ func checkRelPaths(rels []string) error {
 	return nil
 }
 
-// pushFiles lists the regular files under dir, sorted by path, and refuses a
-// tree the server would not take as a version: no index.html at the root, a
-// symlink or other special file, or a name that is not a valid slash path.
+// pushFiles lists the regular files under dir and refuses a tree the server
+// would not take as a version: no index.html at the root, a symlink or other
+// special file, or a name that is not a valid slash path.
 func pushFiles(dir string) ([]pushFile, error) {
 	var files []pushFile
 	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
@@ -410,6 +410,5 @@ func pushFiles(dir string) ([]pushFile, error) {
 	if !slices.ContainsFunc(files, func(f pushFile) bool { return f.rel == "index.html" }) {
 		return nil, errors.New("the directory must contain an index.html at its root")
 	}
-	slices.SortFunc(files, func(a, b pushFile) int { return strings.Compare(a.rel, b.rel) })
 	return files, nil
 }
