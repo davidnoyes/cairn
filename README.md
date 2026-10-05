@@ -25,8 +25,9 @@ be driven by AI agents.
   *resources* (e.g. a Claude session id), and a sequence of versions.
 - **Version** — uuid, name, changelog, and a directory with at least an
   `index.html`. Each version also owns a lazily-created SQLite database shared
-  by everyone who uses that version, accessed through a raw-SQL HTTP API, and
-  a **file storage** where clients upload and download arbitrary files.
+  by everyone who uses that version, and a **file storage** where clients
+  upload and download arbitrary files. The server stores both encrypted: the
+  browser, or the `cairn` command, decrypts them and runs SQL on its own copy.
   Versions can be re-uploaded in place (work-in-progress iteration) — the
   shared database and file storage survive re-uploads.
 - **Users** — sign up themselves, in the browser or with `cairn signup`, from an
@@ -146,6 +147,20 @@ version's database (read-only) — use it to migrate data forward after
 publishing a new version. `cairn.db.batch([...])` runs statements in one
 transaction.
 
+The database runs in the page. `cairn.js` loads sql.js from the server, never
+from a CDN, and fetches the latest revision of the version's database. It
+runs each query or batch on that copy, in a transaction. When a statement
+changes the database, `cairn.js` uploads the whole file as a new encrypted
+revision. If another page wrote first, it fetches the newer revision and runs
+the statements again, up to five times. So:
+
+- Keep the database small. The server refuses a revision over
+  `--max-db-mb` (50 MiB by default), and the change does not land. Put images
+  and other large data in file storage.
+- One statement per `query` call; use `batch` for scripts.
+- BLOB values come back base64-encoded.
+- The server keeps the newest 10 revisions of each version's database.
+
 Each version also has a **file storage** for binary data that does not belong
 in SQLite (images, exports, attachments):
 
@@ -158,7 +173,9 @@ await cairn.files.remove('photos/cat.png');
 ```
 
 Like the database, file storage is per-version, survives re-uploads, and is
-readable anonymously on public artifacts while writes require authentication.
+stored encrypted, with no file names on the server. Anyone who can open the
+artifact can read both. Writing needs the owner or an editor, or a signed-in
+holder of the public link while public writes are on.
 `list`/`download`/`url` accept `{version: otherVersionId}` for read-only
 access to a sibling version's files.
 
@@ -217,20 +234,19 @@ GET    /api/artifacts/{id}/versions
 POST   /api/artifacts/{id}/versions         multipart zip: archive, name, changelog
 GET|PATCH|DELETE /api/artifacts/{id}/versions/{vid}
 PUT    /api/artifacts/{id}/versions/{vid}   re-upload (data survives)
-POST   /api/artifacts/{id}/versions/{vid}/db/query   {sql, params}
-POST   /api/artifacts/{id}/versions/{vid}/db/batch   {statements: [{sql, params}]}
-GET    /api/artifacts/{id}/versions/{vid}/db/download
-GET    /api/artifacts/{id}/versions/{vid}/files      list: [{path, size, modifiedAt}]
-GET    /api/artifacts/{id}/versions/{vid}/files/{path}   download (ranges supported)
-PUT    /api/artifacts/{id}/versions/{vid}/files/{path}   raw body upload (overwrites)
-DELETE /api/artifacts/{id}/versions/{vid}/files/{path}
+GET|PUT /api/artifacts/{id}/versions/{vid}/db   latest encrypted revision; PUT needs If-Match
+GET    /api/artifacts/{id}/versions/{vid}/db/revisions        the 10 kept, newest first
+GET    /api/artifacts/{id}/versions/{vid}/db/revisions/{rev}  one kept revision
+GET    /api/artifacts/{id}/versions/{vid}/files              encrypted file metadata
+GET|PUT|DELETE /api/artifacts/{id}/versions/{vid}/files/{address}   one encrypted file
 GET    /api/admin/users|keys ...            admin management
 ```
 
-Notes on the SQL proxy: one statement per `query` call (use `batch` for
-scripts/transactions); write access is enforced at the connection level
-(anonymous requests run on a `query_only` pool), never by parsing SQL; BLOBs
-are returned base64-encoded; results are capped (`--max-query-rows`).
+The server never runs SQL and cannot read a database or a stored file. Each
+database revision and each file is sealed and signed by the client that wrote
+it, and readers check the signature before they use it. Use `cairn.js` or
+the `cairn` command, which do this for you; the wire formats are in
+[`design/e2e-api.md`](design/e2e-api.md#client-side-database-and-files).
 
 ## CLI for agents
 
@@ -364,8 +380,8 @@ there.
 
 - **Data layout** — everything lives under `--data-dir`: `cairn.db`
   (metadata), `secret.key` (JWT signing), `content/` (extracted version
-  uploads), `dbs/` (per-version shared databases), `files/` (per-version file
-  storage).
+  uploads), `dbs/` (encrypted database revisions), `files/` (encrypted
+  stored files).
 - **Backup** — `cairn backup --data-dir data --out backup/` snapshots live
   SQLite databases with `VACUUM INTO` and copies the rest. Safe while the
   server runs.
