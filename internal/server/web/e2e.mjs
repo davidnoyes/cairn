@@ -1201,7 +1201,8 @@ const ED25519_SEED_SIZE = 32;
 // back. Linux WebKit refuses the import when the seed starts with a zero byte
 // (see the prefixes above), and WebKit exports an empty "x" when it cannot
 // derive the key, so then it is computed here instead, by
-// ed25519PublicKeyFromSeed.
+// ed25519PublicKeyFromSeed. Any other failure is thrown, so that function,
+// which is not constant time, runs only where it has to.
 export async function ed25519PublicKey(seed) {
   if (seed.length !== ED25519_SEED_SIZE) {
     throw new FormatError(`seed length ${seed.length}, want ${ED25519_SEED_SIZE}`);
@@ -1210,8 +1211,8 @@ export async function ed25519PublicKey(seed) {
   try {
     const key = await subtle.importKey('pkcs8', concatBytes([ED25519_PKCS8_PREFIX, seed]), 'Ed25519', true, ['sign']);
     pub = unb64((await subtle.exportKey('jwk', key)).x);
-  } catch {
-    // Computed below.
+  } catch (cause) {
+    if (seed[0] !== 0) throw cause;
   }
   return pub?.length === 32 ? pub : ed25519PublicKeyFromSeed(seed);
 }

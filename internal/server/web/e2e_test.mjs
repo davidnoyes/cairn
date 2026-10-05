@@ -1801,13 +1801,15 @@ describe('leading zero bytes', () => {
     });
     assert.deepEqual(formats, ['pkcs8']);
     const injected = new Error('injected pkcs8 failure');
-    await withGcryptQuirks(async () => {
+    await withGcryptQuirks(async (f) => {
       await assert.rejects(e2e.importEd25519SigningKey(seed), (err) => err === injected);
+      assert.deepEqual(f, ['pkcs8'], 'and no fallback is tried');
+      await assert.rejects(e2e.ed25519PublicKey(seed), (err) => err === injected, 'nor by the slow fallback');
     }, { failPkcs8: injected });
   });
 
-  // RFC 8032 section 7.1, tests 1 to 3, and the zero-led pair: with PKCS#8
-  // refused, the public key comes from ed25519PublicKeyFromSeed alone.
+  // RFC 8032 section 7.1, tests 1 to 3, and the zero-led pair: with no x from
+  // WebCrypto, the public key comes from ed25519PublicKeyFromSeed alone.
   test('ed25519PublicKey: the fallback gives the RFC 8032 public keys', async () => {
     const cases = [
       ['9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60', 'd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a'],
@@ -1817,15 +1819,15 @@ describe('leading zero bytes', () => {
     ];
     await withGcryptQuirks(async () => {
       for (const [seed, pub] of cases) assert.equal(toHex(await e2e.ed25519PublicKey(hex(seed))), pub, seed);
-    }, { failPkcs8: new Error('pkcs8 refused') });
+    }, { emptyX: true });
   });
 
   test('ed25519PublicKey: the fallback agrees with WebCrypto on random seeds', async () => {
     const seeds = Array.from({ length: 32 }, () => crypto.getRandomValues(new Uint8Array(32)));
     const want = await Promise.all(seeds.map((s) => e2e.ed25519PublicKey(s).then(toHex)));
     await withGcryptQuirks(async () => {
-      for (const [i, s] of seeds.entries()) assert.equal(toHex(await e2e.ed25519PublicKey(s)), want[i]);
-    }, { failPkcs8: new Error('pkcs8 refused') });
+      for (const [i, s] of seeds.entries()) assert.equal(toHex(await e2e.ed25519PublicKey(s)), want[i], toHex(s));
+    }, { emptyX: true });
   });
 
   // The seed imports and the export succeeds, so this reaches the length
