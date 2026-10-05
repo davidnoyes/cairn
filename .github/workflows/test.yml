@@ -127,3 +127,10 @@ jobs:
         run: npx playwright install --with-deps chromium firefox webkit
       - name: playwright
         run: npx playwright test
+      - name: keep the traces of failed tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 14

@@ -17,7 +17,8 @@ export default defineConfig({
   expect: { timeout: 20_000 },
   reporter: [['list']],
   use: {
-    trace: 'on-first-retry',
+    // There are no retries, so keep the trace of a failure: CI uploads it.
+    trace: 'retain-on-failure',
     actionTimeout: 30_000,
     navigationTimeout: 60_000,
   },
