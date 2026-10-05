@@ -110,6 +110,8 @@ test('share: the public link carries the key, is copied only on request, and sto
   await expect(dialog.locator('#public-note')).toHaveText(/key/i);
   expect(await ownerPage.content(), 'page before copying').not.toMatch(/#[^"'<\s]*k=/);
   await dialog.getByRole('button', { name: 'Copy link' }).click();
+  // The copy handler is async, so the click can return before it has run.
+  await expect(dialog.locator('#share-status')).toHaveText('Link copied.');
   const copied = await ownerPage.evaluate(() => window.copied);
   expect(copied).toHaveLength(1);
   const link = copied[0];

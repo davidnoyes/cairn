@@ -175,6 +175,28 @@ test('shell: no password field appears over an artifact, and locked keys send th
   }
 });
 
+test('account pages: the submit button stays disabled until the page listens for it, since an earlier click is lost', async ({ page }) => {
+  const s = loadState();
+  // reset has no token here, so its form stays hidden and its button disabled.
+  for (const name of ['forgot', 'signup', 'refuse', 'reset', 'login']) {
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    await page.route(`**/${name}.js`, async (route) => { await held; await route.continue(); });
+    // Not to load: a module script holds up the load event, and here it is held.
+    await page.goto(`${s.appOrigin}/${name}`, { waitUntil: 'commit' });
+    await expect(page.locator('#submit'), name).toBeDisabled();
+    release();
+    if (name !== 'reset') await expect(page.locator('#submit'), name).toBeEnabled({ timeout: 30_000 });
+  }
+
+  // Once enabled, a click reaches the page: sign-in starts with prelogin.
+  await page.locator('#email').fill('nobody@example.com');
+  await page.locator('#password').fill('not the password');
+  const prelogin = page.waitForRequest('**/api/auth/prelogin');
+  await page.locator('#submit').click();
+  await prelogin;
+});
+
 test('keys: an API key needs the password, is shown once, works for the CLI, and stops when revoked', async ({ browser, browserName }) => {
   const s = loadState();
   const user = `acct-${browserName}`;

@@ -246,7 +246,8 @@ internal/server/web/account.mjs	stretched = await deps.stretch(password, info.em
 internal/server/web/app-init.mjs	if (!(err instanceof UnauthenticatedError)) {	if (true) {	node --test internal/server/web/app-init_test.mjs
 internal/server/web/app-init.mjs	      fail(err);	      void 0;	node --test internal/server/web/app-init_test.mjs
 internal/server/web/app-init.mjs	if (!(err instanceof UnauthenticatedError)) listFailed(name, err);	throw err;	node --test internal/server/web/app-init_test.mjs
-internal/server/web/ui.mjs	button.disabled = false;	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	} finally {	} finally { if (false)	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	button.disabled = false; // listening now	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/account.mjs	/^#token=([A-Za-z0-9_-]+)$/	/^#token=([A-Za-z0-9_-]+)/	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	/^#token=([A-Za-z0-9_-]+)$/	/#token=([A-Za-z0-9_-]+)$/	node --test internal/server/web/account_test.mjs
 internal/server/web/ui.mjs	codeEl.textContent = '';	void 0;	node --test internal/server/web/ui_test.mjs
