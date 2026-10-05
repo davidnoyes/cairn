@@ -24,7 +24,7 @@ npx playwright test      # browser e2e (browser/*.spec.mjs); install browsers fi
 ```
 
 CI (`.github/workflows/test.yml`) runs the first group on every push; fuzz,
-mutations, and Playwright only on `e2e/*` branches.
+mutations, and Playwright only on `e2e/*` branches and `feat/e2e-trust-model`.
 
 ## Map
 
