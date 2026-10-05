@@ -21,6 +21,25 @@ const emailOf = (u) => `${u.name}@example.com`;
 const wireUser = (u) => ({ id: u.id, name: u.name, email: emailOf(u), x25519Pub: u.pair.x25519, ed25519Pub: u.pair.ed25519 });
 const codeOf = (u) => e2e.successorCode(e2e.fromHex(u.fp));
 
+// keptDecrypts records every buffer SubtleCrypto decrypt returns, with a copy
+// of its bytes as returned, so a test can find a secret by value and check it
+// was zeroed afterwards. restore() removes the patch.
+function keptDecrypts() {
+  const { subtle } = crypto;
+  const realDecrypt = subtle.decrypt.bind(subtle);
+  const kept = [];
+  subtle.decrypt = async (...args) => {
+    const pt = await realDecrypt(...args);
+    kept.push({ pt, copy: new Uint8Array(pt).slice() });
+    return pt;
+  };
+  kept.restore = () => { delete subtle.decrypt; };
+  return kept;
+}
+
+const isZero = (b) => new Uint8Array(b).every((x) => x === 0);
+const sameBytes = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
 // fakeStretch stands in for Argon2id: deterministic and instant.
 async function fakeStretch(password, email, params) {
   const data = new Uint8Array([...enc.encode(password), 0, ...enc.encode(email), 0, ...params.salt]);
@@ -106,6 +125,18 @@ test('nominate signs a nominate record one seq on, wraps EK to the successor, an
   const ctx = { purpose: 'ek', artifact: U.owner.id, epoch: 0, recipientId: U.editor.id, recipientPub: U.editor.x.pub };
   const ek = await e2e.unwrap(await e2e.importX25519PrivateKey(U.editor.x.priv), ctx, wrapped);
   assert.deepEqual(ek, U.owner.ek);
+});
+
+test('nominate zeroes MK and EK once it has wrapped EK', async () => {
+  const s = scene();
+  const kept = keptDecrypts();
+  try {
+    await successor.nominate(s.deps, { who: emailOf(U.editor), code: codeOf(U.editor), password: PASSWORD });
+  } finally {
+    kept.restore();
+  }
+  assert.ok(kept.some((k) => sameBytes(k.copy, U.owner.ek)), 'EK was never decrypted');
+  for (const k of kept) assert.ok(isZero(k.pt), 'a decrypted secret was left in memory');
 });
 
 test('nominate finds the successor by ID too', async () => {

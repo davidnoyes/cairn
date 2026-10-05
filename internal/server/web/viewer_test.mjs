@@ -424,6 +424,25 @@ test('a chain already recorded is still written when the creator is not yet pinn
 
 // ---- the owner's released successor ----
 
+// keptDecrypts records every buffer SubtleCrypto decrypt returns, with a copy
+// of its bytes as returned, so a test can find a secret by value and check it
+// was zeroed afterwards. restore() removes the patch.
+function keptDecrypts() {
+  const { subtle } = crypto;
+  const realDecrypt = subtle.decrypt.bind(subtle);
+  const kept = [];
+  subtle.decrypt = async (...args) => {
+    const pt = await realDecrypt(...args);
+    kept.push({ pt, copy: new Uint8Array(pt).slice() });
+    return pt;
+  };
+  kept.restore = () => { delete subtle.decrypt; };
+  return kept;
+}
+
+const isZero = (b) => new Uint8Array(b).every((x) => x === 0);
+const sameBytes = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
 // heirScene is a scene in which the outsider is the owner's released
 // successor, with the nomination opts describes.
 async function heirScene(opts = {}) {
@@ -442,6 +461,19 @@ test('successor: a released successor opens the owner\'s artifact from the estat
   const kr = await readServerKeyring(s.server, U.outsider);
   assert.equal(kr.epochs[ARTIFACT].seq, 2);
   assert.deepEqual(kr.pins[U.owner.id], pinOf(U.owner.fp));
+});
+
+test('successor: the owner\'s EK is zeroed once the estate copies are open', async () => {
+  const s = await heirScene();
+  const kept = keptDecrypts();
+  try {
+    await open(s);
+  } finally {
+    kept.restore();
+  }
+  const ek = kept.filter((k) => sameBytes(k.copy, U.owner.ek));
+  assert.equal(ek.length, 1, 'EK was not unwrapped once');
+  assert.ok(isZero(ek[0].pt), 'the EK was left in memory');
 });
 
 test('successor: every epoch opens, and a missing estate copy is refused', async () => {

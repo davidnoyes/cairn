@@ -322,7 +322,7 @@ async function successorAKs(deps, caller, artifact, chain) {
   try {
     keys = await call(deps, null, 'GET', `/api/artifacts/${artifact}/keys`);
   } catch (err) {
-    if (err instanceof ApiError && (err.status === 403 || err.status === 404)) return null;
+    if (err instanceof ApiError && [403, 404].includes(err.status)) return null;
     throw err;
   }
   if (keys.wraps.length > 0 || keys.estate.length === 0) return null;

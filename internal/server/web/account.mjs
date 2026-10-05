@@ -303,8 +303,7 @@ export async function resetWithRecovery(deps, { token, info, recoveryCode, passw
 export async function refuseWithPassword(deps, { email, password }) {
   if (password === '') throw new Error('The password must not be empty.');
   email = e2e.normalizeEmail(email);
-  const kdf = parseKdf(await post(deps, '/api/auth/prelogin', { email }));
-  const stretched = await deps.stretch(password, email, kdf);
+  const stretched = await deps.stretch(password, email, parseKdf(await post(deps, '/api/auth/prelogin', { email })));
   let authKey;
   try {
     ({ authKey } = await e2e.passwordCryptoKeys(stretched, 'open'));
@@ -333,8 +332,9 @@ export async function refuseWithRecovery(deps, { email, recoveryCode }) {
     try {
       mk = await e2e.open(recoveryKek, ['mk'], e2e.unb64(info.mkRecovery));
     } catch (err) {
-      if (!(err instanceof e2e.DecryptError)) throw err;
-      throw new Error('That recovery code does not open this account. Check that you typed all 26 characters, in groups of four.');
+      throw err instanceof e2e.DecryptError
+        ? new Error('That recovery code does not open this account. Check that you typed all 26 characters, in groups of four.')
+        : err;
     }
     seed = await e2e.open(await e2e.mkSealCryptoKey(mk), ['ed25519'], e2e.unb64(info.ed25519Priv));
     const body = enc.encode(JSON.stringify({ v: 1, user: info.id, requestedAt: info.requestedAt }));

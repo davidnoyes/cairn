@@ -2111,3 +2111,30 @@ internal/client/successor.go	HTTP: c.HTTP, OnNotice: c.OnNotice}, ps, nil	HTTP: 
 internal/client/successor.go	if u.ID == k.UserID {	if false {	go test ./internal/client -run TestNominateRefusesYourself
 cmd/cairn/successor_cmds.go	case r.Released:	case false:	go test ./cmd/cairn -run TestSuccessorStatusSaysHowToEndAReleasedAccess
 cmd/cairn/successor_cmds.go	if *code == "" {	if false {	go test ./cmd/cairn -run TestSuccessorNominateNeedsTheRightCode
+
+# M7 browser: the viewer successor path, nomination and refusal in the
+# browser, and the e2eclock offset.
+internal/server/web/viewer.mjs	if (err instanceof ApiError && [403, 404].includes(err.status)) return null;	if (err instanceof ApiError && [403].includes(err.status)) return null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (keys.wraps.length > 0 || keys.estate.length === 0) return null;	if (keys.estate.length === 0) return null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!s.released || !s.wrapped) throw	if (false) throw	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	pub = (await call(deps, null, 'GET', `/api/users/${owner}`)).ed25519Pub;	void owner;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	b = await e2e.openEnvelope(s.record, e2e.unb64(pub), 'successor');	b = JSON.parse(new TextDecoder().decode(e2e.unb64(s.record.body)));	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (b.user !== owner) throw	if (false) throw	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (b.successor !== caller.record.userId) throw	if (false) throw	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (b.successorFp !== caller.fp) throw	if (false) throw	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (b.action !== 'nominate') throw	if (false) throw	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	    await checkCommit(ak, artifact, e.epoch, commits, 'the estate copy');	    void commits;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	    aks = await successorAKs(deps, caller, artifact, chain);	    aks = null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	    ek.fill(0);	    void ek;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/successor.mjs	if (!e2e.fromHex(u.fp).slice(0, want.length).every((b, i) => b === want[i])) {	if (false) {	node --test internal/server/web/successor_test.mjs
+internal/server/web/successor.mjs	if (u.id === record.userId) throw	if (false) throw	node --test internal/server/web/successor_test.mjs
+internal/server/web/successor.mjs	seq: seq + 1, successor: u.id, successorFp: u.fp, action: 'nominate'	seq: seq + 1, successor: u.id, successorFp: '', action: 'nominate'	node --test internal/server/web/successor_test.mjs
+internal/server/web/successor.mjs	err.message.startsWith('seq must be')) return new Error(STALE);	true) return new Error(STALE);	node --test internal/server/web/successor_test.mjs
+internal/server/web/successor.mjs	    for (const secret of [mk, ek]) secret?.fill(0);	    for (const secret of []) secret?.fill(0);	node --test internal/server/web/successor_test.mjs
+internal/server/web/account.mjs	const body = enc.encode(JSON.stringify({ v: 1, user: info.id, requestedAt: info.requestedAt }));	const body = enc.encode(JSON.stringify({ v: 1, user: info.id }));	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	proof = await e2e.newEnvelope(seed, info.id, 'refusal', body);	proof = await e2e.newEnvelope(seed, info.id, 'successor', body);	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	    for (const secret of [code, recoveryKek, mk, seed]) secret?.fill(0);	    for (const secret of []) secret?.fill(0);	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	throw err instanceof e2e.DecryptError	throw false	node --test internal/server/web/account_test.mjs
+cmd/cairn/clock_e2e.go	return time.Now().Add(d)	return time.Now().Add(d * 0)	go test -tags e2eclock ./cmd/cairn -run TestE2EClock
+cmd/cairn/clock_e2e.go	if path == "" {	if false {	go test -tags e2eclock ./cmd/cairn -run TestE2EClock
+internal/server/web/account.mjs	const stretched = await deps.stretch(password, email, parseKdf(	const stretched = await deps.stretch(password, email.toUpperCase(), parseKdf(	node --test internal/server/web/account_test.mjs
