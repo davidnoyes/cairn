@@ -59,16 +59,33 @@ export async function signIn(page, email, password) {
 // still on /_cairn/boot navigates under the caller, and Firefox can then hang
 // a locator on it past its own timeout. Firefox can also leave a frame's
 // reported URL on the boot page after the content has loaded, so a frame
-// still reported there is asked for its own location. It throws when none
-// appears within the timeout.
+// still reported there is asked for its own location. Rarely, Firefox's driver
+// misses the navigation altogether: the content renders, but the frame keeps a
+// dead context and never answers. A frame that stays silent for five seconds
+// is that case, so the page is reloaded once for a fresh frame tree. A boot
+// page that is really stuck still answers, so it still fails. It throws when
+// none appears within the timeout.
 export async function contentFrame(page, timeout = 20_000) {
   const artifactFrames = () => page.frames().filter((f) => /^[0-9a-f-]{36}\.localhost$/.test(safeHost(f.url())));
   const deadline = Date.now() + timeout;
+  let silentSince = 0;
+  let reloaded = false;
   while (Date.now() < deadline) {
     for (const f of artifactFrames()) {
       if (!safePath(f.url()).startsWith('/_cairn/')) return f;
       const asked = f.evaluate(() => location.pathname).catch(() => '/_cairn/');
-      const actual = await Promise.race([asked, page.waitForTimeout(1000).then(() => '/_cairn/')]);
+      const actual = await Promise.race([asked, page.waitForTimeout(1000).then(() => null)]);
+      if (actual === null) {
+        silentSince ||= Date.now();
+        if (!reloaded && Date.now() - silentSince >= 5_000) {
+          reloaded = true;
+          silentSince = 0;
+          await page.reload();
+          break;
+        }
+        continue;
+      }
+      silentSince = 0;
       if (!actual.startsWith('/_cairn/')) return f;
     }
     await page.waitForTimeout(250);
