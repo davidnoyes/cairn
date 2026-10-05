@@ -878,8 +878,7 @@ the previous owner's nominated successor. The client checks the record in
 `successors`: it verifies under the previous owner's key, reached through
 their rotation chain, its `user` is the previous owner, its `successor` is
 the new owner, its `successorFp` is the new owner's fingerprint, and its
-`action` is `nominate`. Successor records arrive in
-milestone 7, so until then every handover shows the notice. The client
+`action` is `nominate`. The client
 cannot tell whether the server withheld a later record that removed the
 nomination.
 
@@ -1827,8 +1826,8 @@ rotation.
 `/app` is every signed-in user's home. `/` sends a signed-in visitor there,
 and `/admin` redirects to it. Like the other app pages it carries no user
 data: its script checks sign-in through `GET /api/me` and sends a visitor
-with no session to `/login`. It has three tabs, a fourth for
-administrators, and a successor tab from milestone 7:
+with no session to `/login`. It has four tabs, and a fifth for
+administrators:
 
 - **Artifacts** — *Your artifacts* and *Shared with you*. Each row opens the
   artifact, then shows its name and description from the encrypted fields,
@@ -1838,7 +1837,10 @@ administrators, and a successor tab from milestone 7:
   for the password again, and shows the full key once.
 - **Account** — change the password, and make a new recovery code, which
   also asks for the password and shows the code once.
-- **Successor** — added in milestone 7.
+- **Successor** — the user's own successor code; their successor, who they
+  can nominate, replace, or remove; a personal address for notices; and the
+  users who nominated them, with a button to ask for access and, once
+  released, the artifacts each one owns.
 - **Users** — administrators only, as the old `/admin` page.
 
 The share dialog lists the members with their name, email, role, current
@@ -1853,6 +1855,15 @@ A change that starts a new epoch re-seals, in the browser, what
 Team approval, reviewing versions, ownership transfer, and key rotation stay
 in the `cairn` tool.
 
+A pending request shows a banner on every tab, with a **Refuse** button.
+After a release the banner says the successor has access, and that the user
+must run `cairn rotate-keys` before they can change anything.
+
+`/refuse` takes an email address and the password or the recovery code, and
+refuses a pending request, as [Refusing](#refusing) describes. It works for a
+deactivated account, and shows when an administrator deactivated it during
+the request.
+
 `/login` serves every visitor, signed in or not, because the server cannot
 tell whether the browser holds the keys that sign-in unlocked. The page's
 script sends a visitor whose session and keys it finds straight to `next`;
@@ -1862,3 +1873,192 @@ Every page renders names, emails, descriptions, and changelogs with
 `textContent` only, under the Trusted Types policy, which refuses any string
 assigned as markup. The shell page never asks for a password, so an
 artifact cannot appear under a password prompt.
+
+## Successor
+
+Milestone 7 builds the successor from the
+[trust model](e2e-trust-model.md#successor). A user nominates one other user,
+who can read the artifacts the user owns 14 days after asking, unless the
+user refuses first.
+
+### Nominating a successor
+
+1. The successor reads their [successor
+   code](e2e-wire-formats.md#successor-code) on their own device, and gives
+   it to the user.
+2. The user's client looks the successor up in the directory, and refuses
+   the code unless the served keys produce it.
+3. The client signs a `successor` record with `action` set to `nominate`,
+   wraps `EK` to the successor's X25519 key, and sends both.
+
+The wrap uses purpose `ek`, the user's own ID as `artifact`, epoch `0`, and
+the successor's ID as the recipient.
+
+### Endpoints for the successor
+
+| Method and path | Auth | Purpose |
+| --- | --- | --- |
+| `GET /api/me/successor` | Any | The caller's successor and any request |
+| `PUT /api/me/successor` | Session | Nominate a successor, or replace one |
+| `DELETE /api/me/successor` | Any | Remove the successor |
+| `DELETE /api/me/successor/request` | Any | Refuse a pending request |
+| `PUT /api/me/notice-email` | Session | Set or clear a personal address for notices |
+| `GET /api/successions` | Any | The users who nominated the caller |
+| `POST /api/successions/{user}/request` | Any | Ask for access to a user's artifacts |
+| `POST /api/auth/refuse/begin` | None | Read what a refusal with the recovery code needs |
+| `POST /api/auth/refuse` | None | Refuse from the refusal page |
+
+`GET /api/me/successor` returns:
+
+```json
+{"successor": {"id", "name", "email", "x25519Pub", "ed25519Pub"},
+ "record": envelope, "nominatedAt": "RFC 3339", "seq": 2,
+ "request": {"requestedAt", "releaseAt", "released": false,
+             "deactivatedAt": ""}}
+```
+
+`successor`, `record`, and `request` are `null` when there is none. `seq` is
+the last `successor` record the user signed, or `0`, and the next record
+uses one more.
+
+`PUT /api/me/successor` takes:
+
+```json
+{"authKey": "b64", "successor": "user ID", "record": envelope,
+ "wrapped": "b64"}
+```
+
+The server checks `authKey` as a sign-in for the rate limits. It refuses
+with `400` a successor who is the caller or is not a verified, active user,
+a wrap that is not 81 bytes, and a record that does not verify under the
+caller's current Ed25519 key. The record's `user` must be the caller, its
+`successor` the named user, its `action` `nominate`, and its `successorFp`
+the successor's current fingerprint. A `seq` other than one more than the
+last answers `409 {"error", "seq"}`. In one transaction the server replaces
+any earlier nomination, ends any pending request, and stores the record. It
+answers `200 {"seq"}`.
+
+`DELETE /api/me/successor` takes `{"record": envelope}`, a record with
+`action` set to `remove`, the current successor as `successor`, and an empty
+`successorFp`. It is checked the same way. The server deletes the
+nomination, the wrapped copy, and any pending request, and answers
+`200 {"seq"}`, or `409` when there is no successor.
+
+`PUT /api/me/notice-email` takes `{"email": "…"}`, or an empty string to
+clear it. The server emails a verification link for the new address, as at
+sign-up, and uses the address only once it is verified. It answers
+`202 {"status": "check-email"}`, or `200` when it clears the address.
+
+### Asking for access
+
+`GET /api/successions` returns, for each user whose current nomination
+names the caller:
+
+```json
+[{"user": {"id", "name", "email", "x25519Pub", "ed25519Pub"},
+  "record": envelope, "nominatedAt",
+  "requestedAt": "", "releaseAt": "", "released": false,
+  "wrapped": "b64, only once released"}]
+```
+
+The list includes a deactivated user, because that is when a successor most
+needs it. The client verifies `record` under the user's key, and checks that
+its `successor` is the caller and its `successorFp` the caller's own
+fingerprint, before it uses `wrapped`.
+
+`POST /api/successions/{user}/request` takes no body. The server records the
+time, and answers `200 {"requestedAt", "releaseAt"}`. It answers `404` when
+that user has not nominated the caller, and `409` while a request is pending
+or after a release. The server then tells the user three ways:
+
+- An email to the account address and to any verified personal address. It
+  names the successor and the release date, and links to `/refuse`.
+- `GET /api/me` adds `succession`, which the app shows as a banner on every
+  tab: `{"successor": {"id", "name", "email"}, "requestedAt", "releaseAt",
+  "released", "deactivatedAt"}`. It is `null` with no request pending or
+  released.
+- Every authenticated response to the user carries
+  `Cairn-Notice: succession-requested`, and the `cairn` tool prints a warning
+  on standard error.
+
+### Refusing
+
+A refusal ends the request; the nomination stays. The server emails the
+successor that the user refused.
+
+- **Signed in**, from any session or API key:
+  `DELETE /api/me/successor/request` answers `200 {"ok": true}`, or `409`
+  with no request pending.
+- **On the `/refuse` page**, whether or not the account is deactivated.
+  `POST /api/auth/refuse` takes `{"email", "authKey"}`, after a prelogin, or
+  `{"email", "proof"}` for the recovery code. A wrong key or proof answers
+  `401 {"error": "invalid email or password"}` and counts as a failed
+  sign-in for the rate limits.
+
+For the recovery code, `POST /api/auth/refuse/begin` with `{"email"}`
+returns `{"id", "mkRecovery", "ed25519Priv"}`. The client opens `MK` with
+the code, opens the signing key, and signs a `refusal` record naming the
+pending request's `requestedAt` as `proof`. For an address with no pending
+request, the answer has the same shape, with values derived from the server
+secret and the email under `cairn/v1/refuse-fake`, so it does not reveal
+whether a request is pending.
+
+After a correct key or proof, the page's call answers:
+
+```text
+200 {"refused": true, "successor": {"name", "email"}, "requestedAt",
+     "deactivatedAt"}
+```
+
+or `409` with no request pending. `deactivatedAt` is the time an
+administrator deactivated the account while the request was pending, or
+empty. An administrator cannot block a refusal by deactivating the user, and
+cannot hide that they did.
+
+### Release
+
+A request with no refusal is released at `requestedAt` plus 14 days, by the
+server's clock. Nothing is written at that moment; every read compares the
+time. After a release:
+
+- `GET /api/successions` returns `wrapped`. The successor's client unwraps
+  `EK`, and opens each artifact's `AK` from the estate copies.
+- The successor has `successor` access to every artifact the user owns,
+  between `team` and `link` in the order under [Access](#access). It may read
+  content, the database, files, membership, and keys, and accept an
+  administrator's offer, and nothing else. `GET /api/artifacts/{id}/keys`
+  returns the user's estate copies, and `GET /api/artifacts` lists the
+  artifacts with `access` set to `successor`. It covers the artifacts the user
+  owns, and never those shared with the user.
+- `GET /api/me` adds `mustRotate: true` for the user. Every write under
+  `/api/` from the user answers
+  `409 {"error": "rotate your keys first …"}` and carries
+  `Cairn-Notice: rotate-keys`, except rotating keys, signing out, and
+  creating and revoking API keys.
+
+A release cannot be refused, and the nomination can be neither removed nor
+replaced. Rotating keys deletes the nomination, the wrapped copy, and the
+request, which ends the successor's access. A reset without the recovery
+code archives the nomination and its wrapped copy with the bundle, and ends
+any request; an archived copy is never released.
+
+Administrator handover follows [Ownership transfer](#ownership-transfer).
+`successors` in `GET /api/artifacts/{id}/membership` now carries the
+previous owner's latest `successor` record, so a handover to a nominated
+successor is silent.
+
+### Commands for the successor
+
+| Command | Does |
+| --- | --- |
+| `cairn successor code` | Prints the user's own successor code |
+| `cairn successor status` | Shows the user's successor, any request, and who nominated the user |
+| `cairn successor nominate USER --code CODE` | Asks for the password, checks the code, and nominates the user |
+| `cairn successor remove` | Removes the successor |
+| `cairn successor refuse` | Refuses a pending request |
+| `cairn successor request USER` | Asks for access to a user's artifacts |
+| `cairn successor notice-email ADDRESS` | Sets a personal address for notices; an empty string clears it |
+
+After a release, the successor reads the user's artifacts with the usual
+commands. Every command that encrypts refuses an artifact the caller reaches
+only as a successor.

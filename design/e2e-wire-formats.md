@@ -49,6 +49,7 @@ labels. No two are equal, and a test enforces it.
 | `cairn/v1/fingerprint` | The fingerprint hash input |
 | `cairn/v1/blind` | The blind-index input |
 | `cairn/v1/prelogin` | The fake salt for an unknown account |
+| `cairn/v1/refuse-fake` | The fake keys for a refusal with nothing to refuse |
 | `cairn/v1/salt` | The Argon2id salt, bound to the account's email |
 | `cairn/v1/ak-commit` | The commitment to `AK` in a membership record |
 
@@ -385,6 +386,7 @@ surrogate.
 | `rotation` | The old and the new signing keys | `{"v":1,"user","seq","old":{"x25519","ed25519"},"new":{"x25519","ed25519"}}` |
 | `successor` | The user | `{"v":1,"user","seq","successor","successorFp","action"}` |
 | `reset` | The user, with their existing key | `{"v":1,"user","token"}` |
+| `refusal` | The user, with their existing key | `{"v":1,"user","requestedAt"}` |
 
 - In a membership record, `role` is `viewer` or `editor`, `team` is `none`,
   `viewer`, or `editor`, and `prev` is `hex(SHA-256)` of the previous
@@ -443,6 +445,8 @@ surrogate.
 - A vouch's `manifest` is `hex(SHA-256)` of the manifest envelope's body.
 - A reset's `token` is `hex(SHA-256)` of the reset token from the emailed
   link, so the proof cannot be replayed with another link.
+- A refusal's `requestedAt` is the pending request's time exactly as the
+  server sent it, so the proof cannot be replayed against a later request.
 - Public keys inside bodies are `b64`; fingerprints are `hex`.
 
 ## Fingerprints
@@ -453,6 +457,20 @@ fingerprint = SHA-256(enc("cairn/v1/fingerprint", x25519Public, ed25519Public))
 
 Shown to people as the first 20 bytes in `hex`, in ten groups of four
 characters separated by spaces.
+
+### Successor code
+
+A successor code is the first 10 bytes of a user's fingerprint, encoded as
+RFC 4648 base32 in uppercase without padding, then split into four groups of
+four with hyphens: `XXXX-XXXX-XXXX-XXXX`. Parsing follows the recovery code's
+rules for characters, case, spaces, and hyphens, and refuses anything but 16
+characters after them.
+
+The successor's client computes the code from its own keys, never from keys
+the server serves. The nominating client computes it from the keys the
+directory serves for the successor, and refuses a code that differs. The code
+is not secret. It is a fingerprint short enough to type, and 80 bits keep a
+substituted key pair out of reach.
 
 ## Public links, file addresses, and blind indexes
 
