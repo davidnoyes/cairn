@@ -11,8 +11,9 @@ load balancer. It sets up the controls from
 
 The examples use `cairn.example.com` for the app and
 `example-usercontent.com` for artifacts. The two must not share a registrable
-domain, and Cairn refuses to start if they do. Replace both, and the project
-IDs, with your own.
+domain, and Cairn refuses to start if they do. Replace both with your own,
+along with every placeholder in capitals, such as `CAIRN_PROJECT`, `REGION`,
+and `VM_ZONE`.
 
 ## People and projects
 
@@ -52,21 +53,34 @@ Until you finish this step, the release and docker workflows fail on purpose.
    ```
 
 3. Add the public key to `trustedKeys` in `internal/release/manifest.go`, and
-   merge that change to `main`. The release workflow checks its own build
-   with `cairn verify` and no `--key`, so it fails if the compiled-in key
-   doesn't match the secret.
+   merge that change to `main`. The release and docker workflows check their
+   own build with `cairn verify` and no `--key`, so they fail if the
+   compiled-in key doesn't match the secret.
 
 ## 2. Protect the build
 
 The VM accepts an image only if the `docker` workflow signed it, in a run
-from a `v*` tag or from `main`. Both workflows refuse a commit that is not on
-`main`. Set up GitHub so that only reviewed code gets there:
+from a `v*` tag or from `main`. Set up GitHub so that only reviewed code gets
+there:
 
 - A branch ruleset on `main` that requires a pull request with an approving
   review and signed commits, and blocks force pushes.
 - A tag ruleset on `v*` that limits who can create tags.
 - The package `ghcr.io/davidnoyes/cairn` set to public, so the VM can pull
   it with no credential. The image holds no secret.
+
+The tag ruleset is the control that keeps code nobody reviewed out of a
+tagged release. Both workflows refuse a tag whose commit is not on `main`, but that
+check lives in the workflow file at the tagged commit. Someone who can push a
+`v*` tag can push one on a commit whose workflow skips the check.
+
+Set up both rulesets before the first release. The VM trusts every image the
+workflow has ever signed, including any signed before the rulesets existed.
+
+The release and docker workflows pin each action they use to a commit, so
+moving a tag in an action's repository can't change what builds and signs a
+release. When you update an action, update its version comment in the same
+change.
 
 `deploy/gcp/startup.sh` names the repository in `REPOSITORY`. If you deploy
 from a fork, change that line. The script doesn't read the repository from
@@ -163,7 +177,24 @@ Certificate Manager issues one certificate for the app and a wildcard
 certificate for artifacts, using DNS authorization. Each domain needs its own
 DNS authorization.
 
-1. Create the authorizations:
+1. If the two domains have no public DNS zone in `CAIRN_PROJECT` yet, create
+   one for each:
+
+   ```sh
+   gcloud dns managed-zones create cairn-app \
+     --dns-name=cairn.example.com. --description="Cairn app"
+   gcloud dns managed-zones create cairn-content \
+     --dns-name=example-usercontent.com. --description="Cairn artifacts"
+   gcloud dns managed-zones describe cairn-app --format='value(nameServers)'
+   gcloud dns managed-zones describe cairn-content --format='value(nameServers)'
+   ```
+
+   Then delegate each domain to the name servers its zone lists. For
+   `example-usercontent.com`, set them at your registrar. For
+   `cairn.example.com`, add them as an `NS` record in the zone for
+   `example.com`. The rest of this guide calls the two zones `cairn-app` and
+   `cairn-content`.
+2. Create the authorizations:
 
    ```sh
    gcloud certificate-manager dns-authorizations create cairn-app \
@@ -172,23 +203,22 @@ DNS authorization.
      --domain=example-usercontent.com
    ```
 
-2. Read the CNAME record that each one asks for:
+3. Read the CNAME record that each one asks for:
 
    ```sh
    gcloud certificate-manager dns-authorizations describe cairn-app
    gcloud certificate-manager dns-authorizations describe cairn-content
    ```
 
-3. Add each record to the DNS zone for its domain:
+4. Add each record to the zone for its domain, `cairn-app` or
+   `cairn-content`:
 
    ```sh
-   gcloud dns record-sets transaction start --zone=ZONE
-   gcloud dns record-sets transaction add CNAME_DATA --zone=ZONE \
-     --name=CNAME_NAME --type=CNAME --ttl=300
-   gcloud dns record-sets transaction execute --zone=ZONE
+   gcloud dns record-sets create CNAME_NAME --zone=DNS_ZONE \
+     --type=CNAME --ttl=300 --rrdatas=CNAME_DATA
    ```
 
-4. Create the certificates and a certificate map:
+5. Create the certificates and a certificate map:
 
    ```sh
    gcloud certificate-manager certificates create cairn-app \
@@ -204,10 +234,23 @@ DNS authorization.
 
 ## 6. Create the virtual machine
 
-1. Create the VM with a separate data disk and no service account:
+1. Create a network for Cairn alone:
 
    ```sh
-   gcloud compute instances create cairn --zone=ZONE \
+   gcloud compute networks create cairn --subnet-mode=custom
+   gcloud compute networks subnets create cairn --network=cairn \
+     --region=REGION --range=10.10.0.0/24
+   ```
+
+   Don't use the `default` network. Its `default-allow-ssh` rule accepts SSH
+   from any address, so SSH would need no change that raises an alert. A new
+   network accepts no inbound traffic until you add a firewall rule.
+2. Create the VM with a separate data disk and no service account. `VM_ZONE`
+   is a zone in `REGION`, such as `europe-west2-a`:
+
+   ```sh
+   gcloud compute instances create cairn --zone=VM_ZONE \
+     --network=cairn --subnet=cairn \
      --machine-type=e2-small --image-family=debian-12 --image-project=debian-cloud \
      --create-disk=name=cairn-data,device-name=cairn-data,size=20GB,auto-delete=no \
      --no-service-account --no-scopes --shielded-secure-boot --tags=cairn \
@@ -215,10 +258,18 @@ DNS authorization.
      --metadata=cairn-image=ghcr.io/davidnoyes/cairn:v1.0.0,enable-oslogin=TRUE
    ```
 
-   Cairn fails to start on the first boot, because the data disk has no
-   settings yet.
-2. Set up the data disk, once. Connect over SSH through IAP, which needs a
-   temporary firewall rule for `35.235.240.0/20` on port 22. Then run:
+   On the first boot, the startup script refuses to start Cairn, because the
+   data disk is not set up yet.
+3. Set up the data disk, once. To connect over SSH through IAP, first add a
+   temporary firewall rule:
+
+   ```sh
+   gcloud compute firewall-rules create cairn-iap-ssh --network=cairn \
+     --allow=tcp:22 --source-ranges=35.235.240.0/20 --target-tags=cairn
+   gcloud compute ssh cairn --zone=VM_ZONE --tunnel-through-iap
+   ```
+
+   Then run:
 
    ```sh
    sudo mkfs.ext4 -m 0 /dev/disk/by-id/google-cairn-data
@@ -231,7 +282,7 @@ DNS authorization.
 
    The container runs as user 1000, so that user must own the data
    directory.
-3. Write the server's settings to `/mnt/disks/cairn/cairn.env`:
+4. Write the server's settings to `/mnt/disks/cairn/cairn.env`:
 
    ```sh
    CAIRN_PUBLIC_URL=https://cairn.example.com
@@ -243,11 +294,12 @@ DNS authorization.
 
    Compute Engine blocks outbound port 25, so use port 587. The Google
    Workspace SMTP relay or a provider such as SendGrid both work.
-4. Delete the SSH firewall rule, then reset the VM so the startup script
+5. Delete the SSH firewall rule, then reset the VM so the startup script
    runs again:
 
    ```sh
-   gcloud compute instances reset cairn --zone=ZONE
+   gcloud compute firewall-rules delete cairn-iap-ssh
+   gcloud compute instances reset cairn --zone=VM_ZONE
    ```
 
 ## 7. Create the load balancer
@@ -257,16 +309,16 @@ by it. Cairn reads no forwarded headers. The health check reaches
 `/healthz`, because Cairn sends any host that isn't an artifact to the app.
 
 ```sh
-gcloud compute instance-groups unmanaged create cairn --zone=ZONE
-gcloud compute instance-groups unmanaged add-instances cairn --zone=ZONE --instances=cairn
-gcloud compute instance-groups unmanaged set-named-ports cairn --zone=ZONE --named-ports=http:8787
+gcloud compute instance-groups unmanaged create cairn --zone=VM_ZONE
+gcloud compute instance-groups unmanaged add-instances cairn --zone=VM_ZONE --instances=cairn
+gcloud compute instance-groups unmanaged set-named-ports cairn --zone=VM_ZONE --named-ports=http:8787
 
 gcloud compute health-checks create http cairn --port=8787 --request-path=/healthz
 gcloud compute backend-services create cairn --global \
   --load-balancing-scheme=EXTERNAL_MANAGED --protocol=HTTP --port-name=http \
   --health-checks=cairn --timeout=300s
 gcloud compute backend-services add-backend cairn --global \
-  --instance-group=cairn --instance-group-zone=ZONE
+  --instance-group=cairn --instance-group-zone=VM_ZONE
 gcloud compute url-maps create cairn --default-service=cairn
 
 gcloud compute addresses create cairn --global
@@ -276,14 +328,20 @@ gcloud compute forwarding-rules create cairn --global \
   --load-balancing-scheme=EXTERNAL_MANAGED --address=cairn \
   --target-https-proxy=cairn --ports=443
 
-gcloud compute firewall-rules create cairn-lb --allow=tcp:8787 \
+gcloud compute firewall-rules create cairn-lb --network=cairn --allow=tcp:8787 \
   --source-ranges=130.211.0.0/22,35.191.0.0/16 --target-tags=cairn
 ```
 
-The 300-second timeout leaves room for large uploads. Last, add two A
-records with the address from `gcloud compute addresses describe cairn
---global`. One is `cairn.example.com`, and the other is
-`*.example-usercontent.com`.
+The 300-second timeout leaves room for large uploads. Last, point both
+domains at the load balancer's address:
+
+```sh
+ADDRESS=$(gcloud compute addresses describe cairn --global --format='value(address)')
+gcloud dns record-sets create cairn.example.com. --zone=cairn-app \
+  --type=A --ttl=300 --rrdatas="$ADDRESS"
+gcloud dns record-sets create '*.example-usercontent.com.' --zone=cairn-content \
+  --type=A --ttl=300 --rrdatas="$ADDRESS"
+```
 
 ## Deploy a new version
 
@@ -291,23 +349,25 @@ records with the address from `gcloud compute addresses describe cairn
 2. Point the VM at the new image, and reset it:
 
    ```sh
-   gcloud compute instances add-metadata cairn --zone=ZONE \
+   gcloud compute instances add-metadata cairn --zone=VM_ZONE \
      --metadata=cairn-image=ghcr.io/davidnoyes/cairn:v1.1.0
-   gcloud compute instances reset cairn --zone=ZONE
+   gcloud compute instances reset cairn --zone=VM_ZONE
    ```
 
-On every boot, the startup script does five things:
+On every boot, the startup script does these things in order:
 
 1. Pulls the image.
 2. Resolves the image to its digest.
 3. Checks with cosign that this repository's `docker` workflow signed that
    digest, from a `v*` tag or `main`.
-4. Runs that same digest.
-5. If any check fails, refuses to replace the container.
+4. Checks that the data disk is mounted and holds `cairn.env`. Without this
+   check, a missing disk would start Cairn on an empty directory on the boot
+   disk.
+5. Replaces the container with one that runs that same digest.
 
-Docker restarts the old container when the VM boots, so a refused deploy
-leaves the last verified image running. The serial console log shows why
-the deploy was refused.
+If any check fails, the script leaves the old container in place. Docker
+restarts it when the VM boots, so a refused deploy leaves the last verified
+image running. The serial console log shows why the deploy was refused.
 
 The deploy raises the alert from section 4, which is how you know a deploy can't
 go unseen.
@@ -318,10 +378,15 @@ To check that a server sends the files and pages of a signed release, run
 this on your own machine:
 
 ```sh
-cairn verify https://cairn.example.com
+cairn verify --version v1.1.0 https://cairn.example.com
 ```
 
-To also check `/app`, sign in to that server with `cairn login` first. See
+The check needs a session to fetch `/app`, so sign in to that server with
+`cairn login` first. Without a session, `cairn verify` skips `/app` and
+fails. To accept the skip, pass `--allow-skip`.
+
+Without `--version`, a pass means the server runs some genuine signed
+release, not necessarily the one you deployed. See
 [Deploy integrity](../../design/e2e-api.md#deploy-integrity) for what it
 checks.
 
@@ -341,3 +406,14 @@ Before you rely on these controls, test them on a staging project:
   script, and the edit raises an alert.
 - A server could send genuine files to `cairn verify` and altered ones to
   someone else. Treat it as a spot check.
+- `cairn verify` compares response bodies only. It doesn't check headers
+  such as `Content-Security-Policy`, so it can't tell when a server weakens
+  them.
+- The startup script accepts any image the `docker` workflow ever signed. A
+  deployer can roll back to an older release, even one with a known flaw.
+  The rollback raises the alert, and `cairn verify --version` shows which
+  release runs.
+- The startup script trusts a `cosign` binary already on the VM, and
+  downloads one, checked against a pinned SHA-256, only when there is none.
+  Replacing that binary needs root on the VM, which already means control of
+  Cairn.

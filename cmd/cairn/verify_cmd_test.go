@@ -94,7 +94,7 @@ func runVerifyOut(t *testing.T, args ...string) (string, error) {
 func TestVerifyPassesAgainstAnUnchangedServer(t *testing.T) {
 	host, _ := newReleaseServer(t)
 	seed, pub := releaseKey(t)
-	out, err := runVerifyOut(t, "--manifest", writeManifest(t, seed, nil), "--key", pub, host)
+	out, err := runVerifyOut(t, "--allow-skip", "--manifest", writeManifest(t, seed, nil), "--key", pub, host)
 	if err != nil {
 		t.Fatalf("runVerify: %v\n%s", err, out)
 	}
@@ -106,6 +106,62 @@ func TestVerifyPassesAgainstAnUnchangedServer(t *testing.T) {
 	}
 	if !strings.Contains(out, "skipped") || !strings.Contains(out, host+"/app") {
 		t.Errorf("output does not say /app was skipped:\n%s", out)
+	}
+}
+
+func TestVerifyFailsOnASkippedPageUnlessAllowed(t *testing.T) {
+	host, _ := newReleaseServer(t)
+	seed, pub := releaseKey(t)
+	manifest := writeManifest(t, seed, nil)
+	out, err := runVerifyOut(t, "--manifest", manifest, "--key", pub, host)
+	if err == nil {
+		t.Fatalf("runVerify passed with a page skipped and no --allow-skip:\n%s", out)
+	}
+	for _, want := range []string{"1 skipped", "cairn login", "--allow-skip"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %v, want it to mention %q", err, want)
+		}
+	}
+	if !strings.Contains(out, " 0 changed, 0 failed, 1 skipped") {
+		t.Errorf("output lost its summary line:\n%s", out)
+	}
+	if out, err := runVerifyOut(t, "--allow-skip", "--manifest", manifest, "--key", pub, host); err != nil {
+		t.Errorf("runVerify --allow-skip: %v\n%s", err, out)
+	}
+}
+
+func TestVerifyPinsTheVersion(t *testing.T) {
+	host, _ := newReleaseServer(t)
+	seed, pub := releaseKey(t)
+	manifest := writeManifest(t, seed, nil)
+	if out, err := runVerifyOut(t, "--allow-skip", "--version", "v9.9.9-test", "--manifest", manifest, "--key", pub, host); err != nil {
+		t.Errorf("runVerify with the served version: %v\n%s", err, out)
+	}
+	_, err := runVerifyOut(t, "--allow-skip", "--version", "v1.0.0", "--manifest", manifest, "--key", pub, host)
+	if err == nil || !strings.Contains(err.Error(), "v9.9.9-test") || !strings.Contains(err.Error(), "v1.0.0") {
+		t.Errorf("runVerify with another version: %v, want an error naming both", err)
+	}
+}
+
+func TestSameOrigin(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		{"http://localhost:8790", "http://localhost:8790", true},
+		{"https://Cairn.Example.com", "https://cairn.example.com", true},
+		{"https://cairn.example.com:443", "https://cairn.example.com", true},
+		{"https://cairn.example.com/path", "https://cairn.example.com", true},
+		{"https://cairn.example.com", "http://cairn.example.com", false},
+		{"https://cairn.example.com:8443", "https://cairn.example.com", false},
+		{"https://cairn.example.com", "https://other.example.com", false},
+		{"", "https://cairn.example.com", false},
+		{"", "", false},
+	}
+	for _, c := range cases {
+		if got := sameOrigin(c.a, c.b); got != c.want {
+			t.Errorf("sameOrigin(%q, %q) = %v, want %v", c.a, c.b, got, c.want)
+		}
 	}
 }
 
@@ -162,7 +218,7 @@ func TestVerifySendsNoKeyToAnotherHost(t *testing.T) {
 	}
 	seed, pub := releaseKey(t)
 	manifest := writeManifest(t, seed, nil)
-	out, err := runVerifyOut(t, "--manifest", manifest, "--key", pub, other)
+	out, err := runVerifyOut(t, "--allow-skip", "--manifest", manifest, "--key", pub, other)
 	if err != nil {
 		t.Fatalf("runVerify: %v\n%s", err, out)
 	}
@@ -205,7 +261,7 @@ func TestVerifyRefusesAMalformedKey(t *testing.T) {
 func TestVerifyNeedsAManifestFromSomewhere(t *testing.T) {
 	host, _ := newReleaseServer(t)
 	_, pub := releaseKey(t)
-	_, err := runVerifyOut(t, "--key", pub, host)
+	_, err := runVerifyOut(t, "--allow-skip", "--key", pub, host)
 	if err == nil || !strings.Contains(err.Error(), "--manifest") {
 		t.Errorf("runVerify: %v, want an error naming --manifest", err)
 	}
@@ -221,7 +277,7 @@ func TestVerifyReadsTheServersManifest(t *testing.T) {
 	old := release.Signed
 	release.Signed = signed
 	t.Cleanup(func() { release.Signed = old })
-	out, err := runVerifyOut(t, "--key", pub, host)
+	out, err := runVerifyOut(t, "--allow-skip", "--key", pub, host)
 	if err != nil {
 		t.Fatalf("runVerify: %v\n%s", err, out)
 	}

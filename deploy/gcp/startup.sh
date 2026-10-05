@@ -43,6 +43,7 @@ IDENTITY="^https://github\\.com/${REPOSITORY//./\\.}/\\.github/workflows/docker\
 command -v docker >/dev/null || { apt-get update -q && apt-get install -qy docker.io; }
 
 if [[ ! -x "$COSIGN" ]]; then
+  command -v sha256sum >/dev/null || refuse "sha256sum is not installed, so the cosign download cannot be checked"
   case "$(uname -m)" in
     x86_64) arch=amd64 want=$COSIGN_SHA256_amd64 ;;
     aarch64 | arm64) arch=arm64 want=$COSIGN_SHA256_arm64 ;;
@@ -66,6 +67,12 @@ ref="$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE" 2>/dev/
 [[ "$ref" =~ @sha256:[0-9a-f]{64}$ ]] || refuse "$IMAGE has no registry digest"
 "$COSIGN" verify --certificate-identity-regexp "$IDENTITY" --certificate-oidc-issuer "$ISSUER" "$ref" >/dev/null \
   || refuse "$ref is not signed by the docker workflow of $REPOSITORY"
+
+# The data disk is mounted nofail, so without this check docker run would
+# create the directory on the boot disk and start on empty state. Check both
+# before docker rm, so a run that cannot succeed leaves the old container.
+mountpoint -q "$DATA" || refuse "the data disk is not mounted at $DATA"
+[[ -f "$DATA/cairn.env" ]] || refuse "$DATA/cairn.env does not exist"
 
 docker rm -f cairn >/dev/null 2>&1 || true
 docker run -d --name cairn --restart unless-stopped -p 8787:8787 \

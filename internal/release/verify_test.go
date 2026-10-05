@@ -24,11 +24,13 @@ import (
 // tamper changes one response: the one for path on the app origin, or on a
 // content host when content is set. A path ending in / matches every path
 // under it. It appends a comment, as an attacker's edit would, or answers
-// 404 when missing is set.
+// 404 when missing is set, or redirects when redirect is set.
 type tamper struct {
 	content bool
 	path    string
 	missing bool // answer 404 instead
+	// redirect, when set, answers 302 to this path on the same host instead.
+	redirect string
 }
 
 // startServer runs a real server on a loopback port with a localhost content
@@ -63,6 +65,10 @@ func startServer(t *testing.T, change *tamper) string {
 			}
 			if change.missing {
 				http.NotFound(w, r)
+				return
+			}
+			if change.redirect != "" {
+				http.Redirect(w, r, change.redirect, http.StatusFound)
 				return
 			}
 			rec := httptest.NewRecorder()
@@ -227,7 +233,10 @@ func stubDocument(t *testing.T, appOrigin, contentOrigin string) string {
 			appOrigin = "http://" + r.Host
 		}
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"manifest":null,"appOrigin":"`+appOrigin+`","contentOrigin":"`+contentOrigin+`"}`)
+		// :PORT stands for the stub's own port, so a content origin can
+		// differ from the app origin in the host alone.
+		content := strings.Replace(contentOrigin, ":PORT", ":"+strings.Split(r.Host, ":")[1], 1)
+		io.WriteString(w, `{"manifest":null,"appOrigin":"`+appOrigin+`","contentOrigin":"`+content+`"}`)
 	}))
 	t.Cleanup(ts.Close)
 	return ts.URL
@@ -241,8 +250,88 @@ func TestDiscoverRefusesAnotherAppOrigin(t *testing.T) {
 }
 
 func TestDiscoverRefusesAContentOriginWithoutAWildcard(t *testing.T) {
-	u := stubDocument(t, "", "http://content.example")
+	u := stubDocument(t, "", "http://content.example:PORT")
 	if _, err := release.Discover(context.Background(), release.NewClient(), u); err == nil {
 		t.Error("Discover accepted a content origin with no * label")
+	}
+}
+
+func TestCheckRefusesToFollowARedirect(t *testing.T) {
+	// /login.js redirects to another genuine asset: following it would pass
+	// on that asset's bytes, so the redirect itself must fail the file.
+	origin := startServer(t, &tamper{path: "/login.js", redirect: "/argon2.wasm"})
+	m, _, _ := signedManifest(t)
+	results := release.Check(context.Background(), target(t, origin), m)
+	got := byStatus(results)
+	if failed := got[release.StatusFailed]; len(failed) != 1 || !strings.HasSuffix(failed[0], "/login.js") {
+		t.Fatalf("failed = %v, want only /login.js", failed)
+	}
+	for _, r := range results {
+		if r.Status == release.StatusFailed && !strings.Contains(r.Detail, "HTTP 302") {
+			t.Errorf("detail = %q, want HTTP 302", r.Detail)
+		}
+	}
+	if changed := got[release.StatusChanged]; len(changed) != 0 {
+		t.Errorf("changed = %v, want none", changed)
+	}
+}
+
+func TestDiscoverAcceptsTheSameOriginSpelledDifferently(t *testing.T) {
+	// The document names the server's own origin in another case.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := strings.ToUpper(r.Host)
+		io.WriteString(w, `{"manifest":null,"appOrigin":"HTTP://`+host+`","contentOrigin":"http://*.localhost:`+strings.Split(r.Host, ":")[1]+`"}`)
+	}))
+	t.Cleanup(ts.Close)
+	for _, server := range []string{ts.URL, ts.URL + "/", "HTTP" + strings.TrimPrefix(ts.URL, "http")} {
+		if _, err := release.Discover(context.Background(), release.NewClient(), server); err != nil {
+			t.Errorf("Discover(%q): %v", server, err)
+		}
+	}
+}
+
+func TestDiscoverRefusesAGenuinelyDifferentOrigin(t *testing.T) {
+	u := stubDocument(t, "http://other.localhost:1", "http://*.localhost:1")
+	_, err := release.Discover(context.Background(), release.NewClient(), u)
+	if !errors.Is(err, release.ErrOriginMismatch) || !strings.Contains(err.Error(), "CAIRN_PUBLIC_URL") {
+		t.Errorf("Discover: %v, want ErrOriginMismatch naming CAIRN_PUBLIC_URL", err)
+	}
+}
+
+func portOf(t *testing.T, u string) string {
+	t.Helper()
+	_, port, err := net.SplitHostPort(strings.TrimPrefix(u, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return port
+}
+
+func TestDiscoverChecksTheContentOriginAgainstTheApp(t *testing.T) {
+	// Every content origin is served from a stub whose app origin is its own
+	// address, so only the content origin varies.
+	cases := []struct {
+		name    string
+		content func(port string) string
+		ok      bool
+	}{
+		{"same scheme and port", func(p string) string { return "http://*.localhost:" + p }, true},
+		{"another scheme", func(p string) string { return "https://*.localhost:" + p }, false},
+		{"another port", func(p string) string { return "http://*.localhost:1" }, false},
+		{"no port where the app has one", func(p string) string { return "http://*.localhost" }, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var content string
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				io.WriteString(w, `{"manifest":null,"appOrigin":"http://`+r.Host+`","contentOrigin":"`+content+`"}`)
+			}))
+			t.Cleanup(ts.Close)
+			content = c.content(portOf(t, ts.URL))
+			_, err := release.Discover(context.Background(), release.NewClient(), ts.URL)
+			if (err == nil) != c.ok {
+				t.Errorf("Discover with content origin %q: %v, want ok = %v", content, err, c.ok)
+			}
+		})
 	}
 }

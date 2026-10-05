@@ -2194,8 +2194,9 @@ origin only:
 ```
 
 Only `manifest` is signed. `appOrigin` must be the origin `cairn verify` was
-pointed at, and `contentOrigin` must have a `*` label, which the check
-replaces with a random artifact ID.
+pointed at, compared in lowercase with any default port dropped.
+`contentOrigin` must have the same scheme and port as `appOrigin`, and a `*`
+label, which the check replaces with a random artifact ID.
 
 ### Commands for deploy integrity
 
@@ -2204,13 +2205,18 @@ replaces with a random artifact ID.
 | `cairn verify [URL]` | Checks the server at `URL`, or the logged-in server, against its signed manifest |
 | `cairn verify --manifest FILE` | Checks against a manifest file instead of the one the server serves |
 | `cairn verify --key KEY` | Trusts a release public key, base64url, as well as the compiled-in keys (repeatable) |
+| `cairn verify --version V` | Fails unless the manifest is for release `V` |
+| `cairn verify --allow-skip` | Passes even when a page was skipped for want of a login |
 | `cairn-release keygen` | Prints a new release key: the secret for `CAIRN_RELEASE_KEY`, and its public key |
 | `cairn-release public` | Prints the public key of `CAIRN_RELEASE_KEY` |
 | `cairn-release sign -version V` | Signs this tree's manifest with `CAIRN_RELEASE_KEY` into `internal/release/manifest.json` |
 
 `cairn verify` fetches every asset and every page and reports each one that
 differs, as well as each one that fails to load. It exits non-zero if any
-does. It follows no redirects. It checks these pages:
+does, and when any page is skipped, unless `--allow-skip` is given. It
+follows no redirects, and compares bodies, not headers. Without `--version`,
+a pass means the server runs some genuine signed release, not a particular
+one. It checks these pages:
 
 - `/login`, `/signup`, `/verify`, `/forgot`, `/reset`, and `/refuse`
 - `/shared/{id}` and `/full/{id}`
@@ -2218,7 +2224,8 @@ does. It follows no redirects. It checks these pages:
 
 It also checks `/app` when the logged-in host is the server checked. It sends
 the login's bearer for that page alone, and to no other host. Without a login,
-it skips `/app` and says so.
+it skips `/app`, and that skip fails the check unless `--allow-skip` is
+given.
 
 A server could send genuine files to the checker and altered ones to a
 target. `cairn verify` is a spot check, not the control.

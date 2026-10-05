@@ -2172,14 +2172,14 @@ internal/release/manifest.go	if names[t.Name] {	if false {	go test ./internal/re
 internal/release/manifest.go	if err = m.check(); err != nil {	if err = m.check(); false && err != nil {	go test ./internal/release
 internal/release/manifest.go	if len(keys) == 0 {	if false {	go test ./internal/release
 internal/release/manifest.go	err = e2e.CheckSigningKey(k)	err = nil	go test ./internal/release
-internal/release/verify.go	if doc.AppOrigin != origin {	if false {	go test ./internal/release
+internal/release/verify.go	if docOrigin, err := Origin(doc.AppOrigin); err != nil || docOrigin != origin {	if docOrigin, err := Origin(doc.AppOrigin); err != nil || docOrigin != origin && false {	go test ./internal/release
 internal/release/verify.go	if !strings.Contains(doc.ContentOrigin, "://*.") {	if false {	go test ./internal/release
 internal/release/verify.go	if got := sum(body); got != want {	if got := sum(body); false && got != want {	go test ./internal/release
 internal/release/verify.go	case status != http.StatusOK:	case false:	go test ./internal/release
 internal/release/verify.go	if p.signedIn && t.Bearer == "" {	if t.Bearer == "" {	go test ./internal/release
 internal/e2e/sign.go	if !isPrimeOrderEd25519(pub) {	if false {	go test ./internal/e2e -run TestCheckSigningKey
 cmd/cairn/verify_cmd.go	if sameOrigin(loginHost, doc.AppOrigin) && fullKey != "" {	if fullKey != "" {	go test ./cmd/cairn -run 'TestVerify'
-cmd/cairn/verify_cmd.go	strings.EqualFold(ua.Scheme, ub.Scheme) && strings.EqualFold(ua.Host, ub.Host)	strings.EqualFold(ua.Scheme, ub.Scheme)	go test ./cmd/cairn -run 'TestVerify'
+cmd/cairn/verify_cmd.go	return err == nil && oa == ob	return err == nil && (oa == ob || true)	go test ./cmd/cairn -run 'TestVerify|TestSameOrigin'
 cmd/cairn/verify_cmd.go	if counts[release.StatusChanged] > 0 || counts[release.StatusFailed] > 0 {	if counts[release.StatusFailed] > 0 {	go test ./cmd/cairn -run 'TestVerify'
 cmd/cairn-release/main.go	if err == nil && len(seed) != ed25519.SeedSize {	if false {	go test ./cmd/cairn-release
 internal/server/release.go	if len(release.Signed) > 0 {	if false {	go test ./internal/server -run TestWellKnownRelease
@@ -2188,3 +2188,20 @@ deploy/gcp/startup.sh	[[ "$ref" =~ @sha256:[0-9a-f]{64}$ ]] || refuse	true || re
 deploy/gcp/startup.sh	|| refuse "$ref is not signed by the docker workflow of $REPOSITORY"	|| true	go test ./deploy/gcp
 deploy/gcp/startup.sh	|heads/main)\$"	|heads/main)"	go test ./deploy/gcp
 deploy/gcp/startup.sh	^https://github\\.com/	^https://github.com/	go test ./deploy/gcp
+deploy/gcp/startup.sh	mountpoint -q "$DATA" || refuse	true || refuse	go test ./deploy/gcp/ -run TestStartupKeepsTheContainer
+deploy/gcp/startup.sh	[[ -f "$DATA/cairn.env" ]] || refuse	true || refuse	go test ./deploy/gcp/ -run TestStartupKeepsTheContainer
+deploy/gcp/startup.sh	command -v sha256sum >/dev/null || refuse	true || refuse	go test ./deploy/gcp/ -run TestStartupRefusesWithNoSha256sum
+deploy/gcp/startup.sh	arch=amd64 want=$COSIGN_SHA256_amd64	arch=amd64 want=$COSIGN_SHA256_arm64	go test ./deploy/gcp/ -run TestStartupPicksCosignByArchitecture
+deploy/gcp/startup.sh	arch=arm64 want=$COSIGN_SHA256_arm64	arch=amd64 want=$COSIGN_SHA256_arm64	go test ./deploy/gcp/ -run TestStartupPicksCosignByArchitecture
+deploy/gcp/startup.sh	*) refuse "no cosign build for	*) true "no cosign build for	go test ./deploy/gcp/ -run TestStartupRefusesAnUnsupportedArchitecture
+cmd/cairn/verify_cmd.go	n > 0 && !*allowSkip {	n > 0 && !*allowSkip && false {	go test ./cmd/cairn -run 'TestVerify'
+cmd/cairn/verify_cmd.go	if *version != "" && m.Version != *version {	if false {	go test ./cmd/cairn -run 'TestVerify'
+internal/release/verify.go	strings.ToLower(u.Scheme), strings.ToLower(u.Hostname()), u.Port()	u.Scheme, u.Hostname(), u.Port()	go test ./internal/release -run 'TestOrigin|TestDiscover'
+internal/release/verify.go	if port != "" && port != defaultPorts[scheme] {	if port != "" {	go test ./internal/release -run 'TestOrigin|TestDiscover'
+internal/release/verify.go	if scheme != appScheme || port != appPort {	if false && scheme != appScheme || port != appPort {	go test ./internal/release -run 'TestDiscover'
+internal/release/verify.go	if scheme != appScheme || port != appPort {	if scheme != appScheme || false && port != appPort {	go test ./internal/release -run 'TestDiscover'
+internal/release/verify.go	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },	CheckRedirect: nil,	go test ./internal/release -run 'TestCheckRefusesToFollowARedirect'
+internal/release/manifest.go	return ParseKeys(trustedKeys)	return ParseKeys(nil)	go test ./internal/release -run 'TestTrustedKeys'
+internal/release/manifest.go	if errors.Is(err, e2e.ErrDecrypt) {	if false {	go test ./internal/release -run 'TestOpen'
+internal/release/verify.go	u += "?app=" + url.QueryEscape(t.AppOrigin)	u += ""	go test ./internal/release -run 'TestCheck'
+internal/release/verify.go	if string(doc.Manifest) == "null" {	if false {	go test ./internal/release ./cmd/cairn -run 'TestDiscover|TestVerify'

@@ -92,15 +92,49 @@ func isLocalhostName(host string) bool {
 	return host == "localhost" || strings.HasSuffix(host, ".localhost")
 }
 
+// defaultPorts are the ports a URL without one uses.
+var defaultPorts = map[string]string{"http": "80", "https": "443"}
+
+// splitOrigin parses raw as a URL and returns its scheme and host in
+// lowercase, and its effective port: the one given, else the scheme's
+// default, else "". The host may carry a * label, which url.Parse accepts.
+func splitOrigin(raw string) (scheme, host, port string, err error) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Hostname() == "" {
+		return "", "", "", fmt.Errorf("release: %q is not a server URL", raw)
+	}
+	scheme, host, port = strings.ToLower(u.Scheme), strings.ToLower(u.Hostname()), u.Port()
+	if port == "" {
+		port = defaultPorts[scheme]
+	}
+	return scheme, host, port, nil
+}
+
+// Origin returns raw's origin as scheme://host in lowercase, with the port
+// only when it is not the scheme's default (:443 for https, :80 for http).
+func Origin(raw string) (string, error) {
+	scheme, host, port, err := splitOrigin(raw)
+	if err != nil {
+		return "", err
+	}
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if port != "" && port != defaultPorts[scheme] {
+		host += ":" + port
+	}
+	return scheme + "://" + host, nil
+}
+
 // Discover fetches the server's release document. It refuses one whose app
 // origin is not the origin of server, or whose content origin has no *
-// label for the artifact ID.
+// label for the artifact ID or is on another scheme or port than the app
+// origin.
 func Discover(ctx context.Context, client *http.Client, server string) (*Document, error) {
-	u, err := url.Parse(server)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return nil, fmt.Errorf("release: %q is not a server URL", server)
+	origin, err := Origin(server)
+	if err != nil {
+		return nil, err
 	}
-	origin := u.Scheme + "://" + u.Host
 	body, status, err := get(ctx, client, origin+"/.well-known/cairn-release", "")
 	if err != nil {
 		return nil, err
@@ -115,11 +149,19 @@ func Discover(ctx context.Context, client *http.Client, server string) (*Documen
 	if string(doc.Manifest) == "null" {
 		doc.Manifest = nil
 	}
-	if doc.AppOrigin != origin {
-		return nil, fmt.Errorf("%w: it says %q, not %q", ErrOriginMismatch, doc.AppOrigin, origin)
+	if docOrigin, err := Origin(doc.AppOrigin); err != nil || docOrigin != origin {
+		return nil, fmt.Errorf("%w: it says %q, not %q; the server's CAIRN_PUBLIC_URL must match the address given", ErrOriginMismatch, doc.AppOrigin, origin)
 	}
 	if !strings.Contains(doc.ContentOrigin, "://*.") {
 		return nil, fmt.Errorf("release: the server's content origin %q has no * label for the artifact ID", doc.ContentOrigin)
+	}
+	appScheme, _, appPort, _ := splitOrigin(origin)
+	scheme, _, port, err := splitOrigin(doc.ContentOrigin)
+	if err != nil {
+		return nil, err
+	}
+	if scheme != appScheme || port != appPort {
+		return nil, fmt.Errorf("release: the server's content origin %q is on another scheme or port than its app origin %q", doc.ContentOrigin, doc.AppOrigin)
 	}
 	return &doc, nil
 }

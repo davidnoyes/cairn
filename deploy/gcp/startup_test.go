@@ -11,11 +11,17 @@ import (
 	"testing"
 )
 
+const (
+	amd64Hash = "4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71"
+	arm64Hash = "c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a"
+)
+
 const digestRef = "ghcr.io/davidnoyes/cairn@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 // fakes writes the fake commands. Each appends its arguments to calls.log;
-// docker answers inspect with the digest in DIGEST_REF, and cosign exits with
-// COSIGN_EXIT.
+// docker answers inspect with the digest in DIGEST_REF, cosign exits with
+// COSIGN_EXIT, mountpoint exits with MOUNTPOINT_EXIT, and uname -m prints
+// UNAME_M.
 func fakes(t *testing.T) (bin, log string) {
 	t.Helper()
 	bin = t.TempDir()
@@ -25,6 +31,8 @@ func fakes(t *testing.T) (bin, log string) {
 if [ "$1 $2" = "image inspect" ]; then echo "$DIGEST_REF"; fi`,
 		"cosign": `echo "cosign $*" >> "$CALLS"
 exit "${COSIGN_EXIT:-0}"`,
+		"mountpoint": `exit "${MOUNTPOINT_EXIT:-0}"`,
+		"uname":      `echo "${UNAME_M:-x86_64}"`,
 		"curl": `echo "curl $*" >> "$CALLS"
 while [ $# -gt 0 ]; do if [ "$1" = -o ]; then echo "not cosign" > "$2"; fi; shift; done`,
 	}
@@ -48,13 +56,17 @@ func runStartup(t *testing.T, install bool, env ...string) (string, []string, er
 	if install {
 		cosign = filepath.Join(t.TempDir(), "cosign")
 	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "cairn.env"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	cmd := exec.Command("bash", "startup.sh")
 	cmd.Env = append([]string{
 		"PATH=" + bin + ":" + os.Getenv("PATH"),
 		"CALLS=" + log,
 		"TMPDIR=" + t.TempDir(),
 		"COSIGN=" + cosign,
-		"CAIRN_DATA=" + t.TempDir(),
+		"CAIRN_DATA=" + dir,
 		"CAIRN_IMAGE=ghcr.io/davidnoyes/cairn:v1.2.3",
 		"DIGEST_REF=" + digestRef,
 	}, env...)
@@ -127,6 +139,88 @@ func TestStartupRefusesACosignDownloadThatDoesNotMatch(t *testing.T) {
 	}
 	if !strings.Contains(out, "cosign download has sha256") {
 		t.Errorf("output does not name the checksum:\n%s", out)
+	}
+}
+
+// TestStartupRefusesWithNoSha256sum: without sha256sum the checksum cannot be
+// checked, so it must say so before downloading anything. PATH holds only the
+// fakes, which is all the script reaches before that check.
+func TestStartupRefusesWithNoSha256sum(t *testing.T) {
+	bin, log := fakes(t)
+	os.Remove(filepath.Join(bin, "sha256sum"))
+	cmd := exec.Command("bash", "startup.sh")
+	cmd.Env = []string{
+		"PATH=" + bin,
+		"CALLS=" + log,
+		"TMPDIR=" + t.TempDir(),
+		"COSIGN=" + filepath.Join(t.TempDir(), "cosign"),
+		"CAIRN_DATA=" + t.TempDir(),
+		"CAIRN_IMAGE=ghcr.io/davidnoyes/cairn:v1.2.3",
+	}
+	out, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "sha256sum") {
+		t.Fatalf("startup.sh with no sha256sum: %v\n%s", err, out)
+	}
+	if data, _ := os.ReadFile(log); strings.Contains(string(data), "curl") {
+		t.Errorf("downloaded cosign with no sha256sum:\n%s", data)
+	}
+}
+
+// TestStartupPicksCosignByArchitecture: each architecture downloads its own
+// asset and is held to its own pinned hash, which the mismatch message prints
+// because the fake curl serves neither.
+func TestStartupPicksCosignByArchitecture(t *testing.T) {
+	for _, tc := range []struct{ uname, asset, hash, other string }{
+		{"x86_64", "cosign-linux-amd64", amd64Hash, arm64Hash},
+		{"aarch64", "cosign-linux-arm64", arm64Hash, amd64Hash},
+		{"arm64", "cosign-linux-arm64", arm64Hash, amd64Hash},
+	} {
+		out, calls, err := runStartup(t, true, "UNAME_M="+tc.uname)
+		if err == nil {
+			t.Fatalf("%s: startup.sh installed a bad cosign:\n%s", tc.uname, out)
+		}
+		dl := called(calls, "curl -sfL -o ")
+		if len(dl) != 1 || !strings.HasSuffix(dl[0], "/"+tc.asset) {
+			t.Errorf("%s: downloads = %v, want one of %s", tc.uname, dl, tc.asset)
+		}
+		if !strings.Contains(out, "not "+tc.hash) || strings.Contains(out, tc.other) {
+			t.Errorf("%s: output does not expect %s:\n%s", tc.uname, tc.hash, out)
+		}
+	}
+}
+
+func TestStartupRefusesAnUnsupportedArchitecture(t *testing.T) {
+	out, calls, err := runStartup(t, true, "UNAME_M=riscv64")
+	if err == nil || !strings.Contains(out, "no cosign build for riscv64") {
+		t.Fatalf("startup.sh on riscv64: %v\n%s", err, out)
+	}
+	if c := called(calls, "curl"); len(c) > 0 {
+		t.Errorf("downloaded cosign for an unsupported architecture: %v", c)
+	}
+}
+
+// TestStartupKeepsTheContainerWhenTheDataIsNotThere: the data disk is mounted
+// nofail, and docker run would create the directory on the boot disk and
+// start on empty state. A missing cairn.env would fail the run after the old
+// container was removed. Either leaves the old container alone.
+func TestStartupKeepsTheContainerWhenTheDataIsNotThere(t *testing.T) {
+	for name, tc := range map[string]struct {
+		env  []string
+		want string
+	}{
+		"not mounted": {[]string{"MOUNTPOINT_EXIT=1"}, "is not mounted"},
+		"no env file": {[]string{"CAIRN_DATA=" + t.TempDir()}, "cairn.env"},
+	} {
+		out, calls, err := runStartup(t, false, tc.env...)
+		if err == nil {
+			t.Fatalf("%s: startup.sh replaced the container:\n%s", name, out)
+		}
+		if c := append(called(calls, "docker run"), called(calls, "docker rm")...); len(c) > 0 {
+			t.Errorf("%s: touched the container: %v", name, c)
+		}
+		if !strings.Contains(out, "refusing to start") || !strings.Contains(out, tc.want) {
+			t.Errorf("%s: output does not say why:\n%s", name, out)
+		}
 	}
 }
 

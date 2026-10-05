@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 
@@ -26,8 +25,10 @@ func runVerify(args []string) error {
 	manifestPath := fs.String("manifest", "", "signed manifest file (default: the one the server serves)")
 	var extra keyFlags
 	fs.Var(&extra, "key", "release public key to trust, base64url (repeatable; added to the compiled-in keys)")
+	version := fs.String("version", "", "release the server must serve, as the manifest names it (default: any)")
+	allowSkip := fs.Bool("allow-skip", false, "pass although a page was skipped for want of a login")
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "usage: cairn verify [--manifest FILE] [--key KEY]... [URL]")
+		fmt.Fprintln(fs.Output(), "usage: cairn verify [--manifest FILE] [--key KEY]... [--version V] [--allow-skip] [URL]")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -46,7 +47,7 @@ func runVerify(args []string) error {
 		server = loginHost
 	}
 	if server == "" || fs.NArg() > 1 {
-		return errors.New("usage: cairn verify [--manifest FILE] [--key KEY]... [URL]")
+		return errors.New("usage: cairn verify [--manifest FILE] [--key KEY]... [--version V] [--allow-skip] [URL]")
 	}
 
 	keys, err := release.TrustedKeys()
@@ -82,6 +83,10 @@ func runVerify(args []string) error {
 		return err
 	}
 
+	if *version != "" && m.Version != *version {
+		return fmt.Errorf("the server serves release %s, wanted %s", m.Version, *version)
+	}
+
 	t := release.Target{AppOrigin: doc.AppOrigin, ContentOrigin: doc.ContentOrigin, Client: client}
 	// The login's key goes only to the server it was made for.
 	if sameOrigin(loginHost, doc.AppOrigin) && fullKey != "" {
@@ -103,18 +108,19 @@ func runVerify(args []string) error {
 		return fmt.Errorf("%s does not serve release %s as signed: %d changed, %d failed",
 			doc.AppOrigin, m.Version, counts[release.StatusChanged], counts[release.StatusFailed])
 	}
+	if n := counts[release.StatusSkipped]; n > 0 && !*allowSkip {
+		return fmt.Errorf("%d skipped: sign in with cairn login to check them, or pass --allow-skip", n)
+	}
 	return nil
 }
 
-// sameOrigin compares two URLs' scheme and host, in lowercase.
+// sameOrigin compares two URLs' origins: scheme and host in lowercase, with
+// a default port left out.
 func sameOrigin(a, b string) bool {
-	ua, err := url.Parse(a)
+	oa, err := release.Origin(a)
 	if err != nil {
 		return false
 	}
-	ub, err := url.Parse(b)
-	if err != nil {
-		return false
-	}
-	return ua.Host != "" && strings.EqualFold(ua.Scheme, ub.Scheme) && strings.EqualFold(ua.Host, ub.Host)
+	ob, err := release.Origin(b)
+	return err == nil && oa == ob
 }

@@ -638,11 +638,15 @@ release_serve() {
   curl -sf "$REL_HOST/healthz" >/dev/null || fail "release server ($2) did not start: $(cat "$WORK/release-$2.log")"
 }
 release_serve "$WORK/cairn-signed" signed
-"$BIN" verify --key "$RELEASE_PUB" "$REL_HOST" > "$WORK/verify-ok.txt" \
+"$BIN" verify --allow-skip --key "$RELEASE_PUB" "$REL_HOST" > "$WORK/verify-ok.txt" \
   || fail "verify failed against the release build: $(cat "$WORK/verify-ok.txt")"
 grep "release v0.0.0-e2e" "$WORK/verify-ok.txt" >/dev/null || fail "verify did not read the server's manifest: $(cat "$WORK/verify-ok.txt")"
 grep " 0 changed, 0 failed, 1 skipped" "$WORK/verify-ok.txt" >/dev/null || fail "verify totals: $(cat "$WORK/verify-ok.txt")"
 pass "cairn verify passes against the release build"
+if "$BIN" verify --key "$RELEASE_PUB" "$REL_HOST" >/dev/null 2>&1; then
+  fail "verify passed with a page skipped and no --allow-skip"
+fi
+pass "cairn verify fails on a skipped page unless --allow-skip"
 if "$BIN" verify --key "$("$WORK/cairn-release" keygen | sed -n 's/^public key: //p')" "$REL_HOST" >/dev/null 2>&1; then
   fail "verify trusted a manifest signed by another key"
 fi

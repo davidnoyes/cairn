@@ -189,3 +189,54 @@ func TestEmbeddedKeysParse(t *testing.T) {
 		t.Errorf("a compiled-in release key does not parse: %v", err)
 	}
 }
+
+func TestTrustedKeysAreTheCompiledInKeys(t *testing.T) {
+	_, pub := testKey(t)
+	old := trustedKeys
+	trustedKeys = []string{e2e.B64(pub)}
+	t.Cleanup(func() { trustedKeys = old })
+	keys, err := TrustedKeys()
+	if err != nil || len(keys) != 1 || !bytes.Equal(keys[0], pub) {
+		t.Fatalf("TrustedKeys: %v, %v", keys, err)
+	}
+}
+
+func TestOpenTriesEveryKey(t *testing.T) {
+	seed, pub := testKey(t)
+	_, other := testKey(t)
+	signed, err := Sign(seed, sampleManifest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(signed, [][]byte{other, pub}); err != nil {
+		t.Errorf("Open with the signer second: %v", err)
+	}
+	if _, err := Open(signed, [][]byte{other}); !errors.Is(err, ErrUntrusted) {
+		t.Errorf("Open with only an unrelated key: %v, want ErrUntrusted", err)
+	}
+}
+
+func TestOrigin(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"https://cairn.example.com", "https://cairn.example.com"},
+		{"https://Cairn.Example.COM", "https://cairn.example.com"},
+		{"HTTPS://cairn.example.com:443", "https://cairn.example.com"},
+		{"http://cairn.example.com:80/", "http://cairn.example.com"},
+		{"https://cairn.example.com:80", "https://cairn.example.com:80"},
+		{"http://cairn.example.com:443", "http://cairn.example.com:443"},
+		{"http://localhost:8790/some/path?x=1", "http://localhost:8790"},
+		{"http://*.localhost:8790", "http://*.localhost:8790"},
+		{"http://[::1]:8790", "http://[::1]:8790"},
+	}
+	for _, c := range cases {
+		got, err := Origin(c.in)
+		if err != nil || got != c.want {
+			t.Errorf("Origin(%q) = %q, %v; want %q", c.in, got, err, c.want)
+		}
+	}
+	for _, bad := range []string{"", "cairn.example.com", "localhost:8790", "https://", "/path", "http://%zz"} {
+		if got, err := Origin(bad); err == nil {
+			t.Errorf("Origin(%q) = %q, want an error", bad, got)
+		}
+	}
+}
