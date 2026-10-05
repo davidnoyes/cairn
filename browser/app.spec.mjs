@@ -197,6 +197,20 @@ test('account pages: the submit button stays disabled until the page listens for
   await prelogin;
 });
 
+test('refuse: after a reload, the field shown matches the choice the browser restored', async ({ page, browserName }) => {
+  const s = loadState();
+  const recovery = page.locator('input[name=mode][value=recovery]');
+  await page.goto(`${s.appOrigin}/refuse`);
+  await recovery.check();
+  await expect(page.locator('#code')).toBeVisible();
+  await page.reload();
+  // Firefox restores the choice on a reload; the other engines start over.
+  const restored = await recovery.isChecked();
+  if (browserName === 'firefox') expect(restored, 'Firefox restored the choice').toBe(true);
+  await expect(page.locator('#code')).toBeVisible({ visible: restored });
+  await expect(page.locator('#password')).toBeVisible({ visible: !restored });
+});
+
 test('keys: an API key needs the password, is shown once, works for the CLI, and stops when revoked', async ({ browser, browserName }) => {
   const s = loadState();
   const user = `acct-${browserName}`;

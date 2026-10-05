@@ -15,6 +15,7 @@ if (deps) {
     $('codeRow').hidden = mode() !== 'recovery';
   };
   for (const radio of form.querySelectorAll('input[name=mode]')) radio.addEventListener('change', syncMode);
+  syncMode(); // Firefox restores the choice on a reload, with no change event
 
   onSubmit(form, $('submit'), $('error'), async () => {
     const email = form.email.value;
