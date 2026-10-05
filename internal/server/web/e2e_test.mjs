@@ -1691,3 +1691,149 @@ test('vectors.json has no section this file does not check', () => {
   const unhandled = Object.keys(vf).filter((k) => !handled.includes(k));
   assert.deepEqual(unhandled, []);
 });
+
+// Keys with a leading zero byte. Linux WebKit runs WebCrypto on libgcrypt,
+// which refuses such a key from PKCS#8 or SPKI (see the comment above
+// X25519_PKCS8_PREFIX in e2e.mjs). Node does not, so withGcryptQuirks makes it,
+// and these tests reach the fallbacks; browser/crypto.spec.mjs runs the same
+// keys on the real thing. Pairs and wrap as in that spec.
+const LZ = {
+  xPriv: '00fcb6c425cf330f7482945ff7882232ebb875c68eb1d3212f068c7df365a938',
+  xPub: '00ddfa1d09ac3b45b3f0323f51dc5cd11d0a604551dd0885de0041ddb0b68e1f',
+  edSeed: '002e61831ef4b83516a1de4106753b70b72c99c8c0951722708d7e8a13aec83d',
+  edPub: '00fc0255ade803b0bb62f60ce48c78cd3d7f5ee8b5bb29567635e23317ea0e97',
+  wrapped:
+    '0100714df6c3410642fc546607af242187ffab4ba37721f2db639f0af981aade463c8a335112a04f4d9218be80f9944d85970993738258eed140a6791180c36f392cb6230ba6d2723ac82c36c3d07c9ddb',
+  sig: '3f07dc63e78a017338eccad4b772ae58ad45b7a3c6c5a74cbfc670e426bc8d3759148e098669a2900d8904a11ae2dabcbd911530d34633d5fd4d992a7e9a530e',
+  key: '07'.repeat(32),
+  ctx: { purpose: 'test', artifact: 'a1', epoch: 1, recipientId: 'u1' },
+};
+const X25519_PKCS8_PREFIX = '302e020100300506032b656e04220420';
+
+// withGcryptQuirks runs fn with Node's WebCrypto refusing a PKCS#8 or SPKI
+// import whose key starts with a zero byte. failPkcs8, when set, refuses every
+// PKCS#8 import with that error instead. emptyX, when set, exports every
+// Ed25519 JWK with an empty x, as WebKit does when it cannot derive the
+// public key.
+async function withGcryptQuirks(fn, { failPkcs8, emptyX } = {}) {
+  const { subtle } = crypto;
+  const realImport = subtle.importKey.bind(subtle);
+  const realExport = subtle.exportKey.bind(subtle);
+  const formats = [];
+  subtle.importKey = async (format, data, ...rest) => {
+    formats.push(format);
+    if (format === 'pkcs8' && failPkcs8) throw failPkcs8;
+    if ((format === 'pkcs8' || format === 'spki') && new Uint8Array(data).at(-32) === 0) {
+      throw new DOMException('Data provided to an operation does not meet requirements', 'DataError');
+    }
+    return realImport(format, data, ...rest);
+  };
+  subtle.exportKey = async (format, key) => {
+    const out = await realExport(format, key);
+    if (format === 'jwk' && out.crv === 'Ed25519' && emptyX) out.x = '';
+    return out;
+  };
+  try {
+    return await fn(formats);
+  } finally {
+    delete subtle.importKey;
+    delete subtle.exportKey;
+  }
+}
+
+describe('leading zero bytes', () => {
+  const ctx = { ...LZ.ctx, recipientPub: hex(LZ.xPub) };
+  const body = new TextEncoder().encode('body');
+
+  test('x25519Pkcs8 sets the low bit of the first scalar byte, and changes nothing else', async () => {
+    for (const first of [0x00, 0x01, 0xf8, 0xff]) {
+      const raw = hex(LZ.xPriv);
+      raw[0] = first;
+      const before = toHex(raw);
+      const der = e2e.x25519Pkcs8(raw);
+      assert.equal(toHex(raw), before, 'the input is not edited');
+      assert.equal(toHex(der), X25519_PKCS8_PREFIX + toHex([first | 1]) + before.slice(2));
+      // X25519 clears that bit before use, so the key is the same key.
+      const plain = await crypto.subtle.importKey('pkcs8', hex(X25519_PKCS8_PREFIX + before), 'X25519', true, ['deriveBits']);
+      const { x } = await crypto.subtle.exportKey('jwk', plain);
+      assert.equal(toHex((await e2e.importX25519PrivateKey(raw)).publicKey), toHex(e2e.unb64(x)));
+    }
+  });
+
+  test('the keys and the wrap check out on Node as they are', async () => {
+    assert.equal(toHex((await e2e.importX25519PrivateKey(hex(LZ.xPriv))).publicKey), LZ.xPub);
+    assert.equal(toHex(await e2e.unwrap(hex(LZ.xPriv), ctx, hex(LZ.wrapped))), LZ.key);
+    assert.equal(toHex(await e2e.ed25519PublicKey(hex(LZ.edSeed))), LZ.edPub);
+    assert.equal(toHex(await e2e.sign(hex(LZ.edSeed), 'test', body)), LZ.sig);
+  });
+
+  test('X25519: under the quirks, the private key imports, and wraps to and from it open', async () => {
+    await withGcryptQuirks(async () => {
+      const priv = hex(LZ.xPriv);
+      const imported = await e2e.importX25519PrivateKey(priv);
+      assert.equal(toHex(imported.publicKey), LZ.xPub);
+      assert.equal(toHex(await e2e.unwrap(imported, ctx, hex(LZ.wrapped))), LZ.key);
+      assert.equal(toHex(await e2e.unwrap(priv, ctx, hex(LZ.wrapped))), LZ.key);
+      assert.equal(toHex(await e2e.unwrap(priv, ctx, await e2e.wrap(ctx, hex(LZ.key)))), LZ.key);
+      await e2e.checkPublicKeys(hex(LZ.xPub), hex(LZ.edPub));
+    });
+  });
+
+  test('Ed25519: under the quirks, the seed signs, verifies, and derives its public key', async () => {
+    await withGcryptQuirks(async () => {
+      const seed = hex(LZ.edSeed);
+      const key = await e2e.importEd25519SigningKey(seed);
+      assert.equal(key.extractable, false);
+      assert.deepEqual(key.usages, ['sign']);
+      assert.equal(toHex(await e2e.sign(key, 'test', body)), LZ.sig);
+      assert.equal(toHex(await e2e.sign(seed, 'test', body)), LZ.sig);
+      assert.equal(await e2e.verify(hex(LZ.edPub), 'test', body, hex(LZ.sig)), true);
+      assert.equal(toHex(await e2e.ed25519PublicKey(seed)), LZ.edPub);
+    });
+  });
+
+  test('Ed25519: a seed with no leading zero takes PKCS#8, and its failure is not hidden', async () => {
+    const seed = hex(LZ.edSeed);
+    seed[0] = 1;
+    const formats = await withGcryptQuirks(async (f) => {
+      await e2e.importEd25519SigningKey(seed);
+      return f;
+    });
+    assert.deepEqual(formats, ['pkcs8']);
+    const injected = new Error('injected pkcs8 failure');
+    await withGcryptQuirks(async () => {
+      await assert.rejects(e2e.importEd25519SigningKey(seed), (err) => err === injected);
+    }, { failPkcs8: injected });
+  });
+
+  // RFC 8032 section 7.1, tests 1 to 3, and the zero-led pair: with PKCS#8
+  // refused, the public key comes from ed25519PublicKeyFromSeed alone.
+  test('ed25519PublicKey: the fallback gives the RFC 8032 public keys', async () => {
+    const cases = [
+      ['9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60', 'd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a'],
+      ['4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb', '3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c'],
+      ['c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7', 'fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025'],
+      [LZ.edSeed, LZ.edPub],
+    ];
+    await withGcryptQuirks(async () => {
+      for (const [seed, pub] of cases) assert.equal(toHex(await e2e.ed25519PublicKey(hex(seed))), pub, seed);
+    }, { failPkcs8: new Error('pkcs8 refused') });
+  });
+
+  test('ed25519PublicKey: the fallback agrees with WebCrypto on random seeds', async () => {
+    const seeds = Array.from({ length: 32 }, () => crypto.getRandomValues(new Uint8Array(32)));
+    const want = await Promise.all(seeds.map((s) => e2e.ed25519PublicKey(s).then(toHex)));
+    await withGcryptQuirks(async () => {
+      for (const [i, s] of seeds.entries()) assert.equal(toHex(await e2e.ed25519PublicKey(s)), want[i]);
+    }, { failPkcs8: new Error('pkcs8 refused') });
+  });
+
+  // The seed imports and the export succeeds, so this reaches the length
+  // check, not the catch.
+  test('ed25519PublicKey: an empty x from WebCrypto is not taken as the key', async () => {
+    const seed = hex('9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60');
+    await withGcryptQuirks(async () => {
+      assert.equal(toHex(await e2e.ed25519PublicKey(seed)), 'd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a');
+    }, { emptyX: true });
+  });
+});

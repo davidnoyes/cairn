@@ -2241,3 +2241,19 @@ internal/release/verify.go	u += "?app=" + url.QueryEscape(t.AppOrigin)	u += ""	g
 internal/release/verify.go	if string(doc.Manifest) == "null" {	if false {	go test ./internal/release ./cmd/cairn -run 'TestDiscover|TestVerify'
 internal/release/verify.go	doc.AppOrigin = origin	_ = origin	go test ./internal/release -run TestDiscover
 internal/release/verify.go	port = defaultPorts[scheme]	port = ""	go test ./internal/release -run TestDiscover
+
+# Keys with a leading zero byte, which Linux WebKit (libgcrypt) refuses from
+# PKCS#8 or SPKI, and the Ed25519 public-key fallback.
+internal/server/web/e2e.mjs	der[X25519_PKCS8_PREFIX.length] |= 1;	void 0;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/keystore.mjs	const pkcs8 = x25519Pkcs8(priv);	const pkcs8 = Uint8Array.of(...x25519Pkcs8(priv).subarray(0, 16), ...priv);	node --test internal/server/web/keystore_test.mjs
+internal/server/web/e2e.mjs	return subtle.importKey('raw', raw, 'X25519', false, []);	return subtle.importKey('spki', concatBytes([fromHex('302a300506032b656e032100'), raw]), 'X25519', false, []);	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	return subtle.importKey('raw', raw, 'Ed25519', false, ['verify']);	return subtle.importKey('spki', concatBytes([fromHex('302a300506032b6570032100'), raw]), 'Ed25519', false, ['verify']);	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (seed[0] !== 0) throw err;	throw err;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (seed[0] !== 0) throw err;	void err;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	x: b64(await ed25519PublicKey(seed)) };	x: b64(seed) };	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	return pub?.length === 32 ? pub : ed25519PublicKeyFromSeed(seed);	return pub ?? ed25519PublicKeyFromSeed(seed);	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	  h[0] &= 248;	  void 0;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	  h[31] |= 64;	  void 0;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	for (let i = 254n; i >= 0n; i--) {	for (let i = 254n; i > 0n; i--) {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if ((a >> i) & 1n) R = sum;	if (((a >> i) & 1n) === 0n) R = sum;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	pub[31] |= Number(x & 1n) << 7;	void x;	node --test internal/server/web/e2e_test.mjs
