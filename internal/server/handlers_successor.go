@@ -240,7 +240,11 @@ func (s *Server) putSuccessor(w http.ResponseWriter, u, to *store.User, body e2e
 		s.writeStoreError(w, err, "successor")
 		return
 	}
-	if prev != nil && prev.Requested() {
+	switch {
+	case prev == nil || !prev.Requested():
+	case prev.SuccessorID == to.ID:
+		s.tellSuccessor(prev.SuccessorID, u, "nominated you again")
+	default:
 		s.tellSuccessor(prev.SuccessorID, u, "replaced you as their successor")
 	}
 	s.log.Info("successor nominated", "user", u.Email, "successor", to.Email, "seq", body.Seq)
@@ -309,17 +313,29 @@ func (s *Server) handleDeleteSuccessor(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRefuseRequest(w http.ResponseWriter, r *http.Request) {
 	u := requestUser(r)
 	prev, err := s.store.RefuseSuccession(u.ID, s.clk.Now())
-	if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrReleased) {
-		writeError(w, http.StatusConflict, "no request is pending")
-		return
-	}
-	if err != nil {
-		s.writeStoreError(w, err, "successor")
+	if !s.refusable(w, err) {
 		return
 	}
 	s.tellSuccessor(prev.SuccessorID, u, "refused your request")
 	s.log.Info("succession request refused", "user", u.Email)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// refusable answers a failed refusal and reports whether RefuseSuccession
+// succeeded. A release is told apart from no request: the user has no
+// refusal left, and must rotate their keys instead.
+func (s *Server) refusable(w http.ResponseWriter, err error) bool {
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeError(w, http.StatusConflict, "no request is pending")
+	case errors.Is(err, store.ErrReleased):
+		writeError(w, http.StatusConflict, "the request was already released; rotate your keys to end your successor's access")
+	case err != nil:
+		s.writeStoreError(w, err, "successor")
+	default:
+		return true
+	}
+	return false
 }
 
 // tellSuccessor emails a successor that their request ended. It is sent
@@ -388,7 +404,19 @@ func (s *Server) handleSuccessionRequest(w http.ResponseWriter, r *http.Request)
 		s.writeStoreError(w, err, "successor")
 		return
 	}
-	switch err := s.store.RequestSuccession(userID, s.clk.Now()); {
+	// A successor who rotated or reset since the nomination cannot open its
+	// wrapped copy, so a release would hand over nothing.
+	b, err := s.store.BundleFor(successor.ID)
+	if err != nil {
+		s.writeStoreError(w, err, "bundle")
+		return
+	}
+	var body e2e.SuccessorBody
+	if e2e.DecodeStrict(sc.Record.Body, &body) != nil || body.SuccessorFP != fingerprintOf(b) {
+		writeError(w, http.StatusConflict, "your keys changed since this user nominated you; ask them to nominate you again")
+		return
+	}
+	switch err := s.store.RequestSuccession(userID, successor.ID, s.clk.Now()); {
 	case errors.Is(err, store.ErrExists):
 		writeError(w, http.StatusConflict, "a request is already pending, or was released")
 		return
@@ -442,6 +470,11 @@ func (s *Server) handlePutNoticeEmail(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
+	email := normalizeEmail(req.Email)
+	if addr, err := netmail.ParseAddress(email); req.Email != "" && (err != nil || addr.Address != email || len(email) > maxNoticeEmailLen) {
+		writeError(w, http.StatusBadRequest, "malformed email address")
+		return
+	}
 	if err := s.store.DeleteTokens(u.ID, "notice"); err != nil {
 		s.writeStoreError(w, err, "account")
 		return
@@ -452,11 +485,6 @@ func (s *Server) handlePutNoticeEmail(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
-		return
-	}
-	email := normalizeEmail(req.Email)
-	if addr, err := netmail.ParseAddress(email); err != nil || addr.Address != email || len(email) > maxNoticeEmailLen {
-		writeError(w, http.StatusBadRequest, "malformed email address")
 		return
 	}
 	raw, hash, err := newLinkToken()
@@ -603,12 +631,7 @@ func (s *Server) handleRefuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prev, err := s.store.RefuseSuccession(u.ID, s.clk.Now())
-	if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrReleased) {
-		writeError(w, http.StatusConflict, "no request is pending")
-		return
-	}
-	if err != nil {
-		s.writeStoreError(w, err, "successor")
+	if !s.refusable(w, err) {
 		return
 	}
 	to, err := s.store.UserByID(prev.SuccessorID)

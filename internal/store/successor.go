@@ -33,7 +33,8 @@ type Successor struct {
 func (sc *Successor) Requested() bool { return sc.RequestedAt != "" }
 
 // ReleaseAt is when the request releases the successor: the request's time
-// plus SuccessionWait. It is the zero time when there is no request.
+// plus SuccessionWait. It is the zero time when there is no request, or when
+// the stored time does not parse, which Released treats as never.
 func (sc *Successor) ReleaseAt() time.Time {
 	t, err := time.Parse(time.RFC3339, sc.RequestedAt)
 	if err != nil {
@@ -45,7 +46,8 @@ func (sc *Successor) ReleaseAt() time.Time {
 // Released reports whether the request is at or past its release at now.
 // Nothing is stored at that moment: every read compares the time.
 func (sc *Successor) Released(now time.Time) bool {
-	return sc.Requested() && !now.Before(sc.ReleaseAt())
+	at := sc.ReleaseAt()
+	return !at.IsZero() && !now.Before(at)
 }
 
 const successorCols = `s.user_id, s.successor_id, s.record_seq, r.body, r.sig, r.signer, s.wrapped, s.nominated_at, COALESCE(s.requested_at, ''), COALESCE(s.deactivated_at, '')`
@@ -199,23 +201,31 @@ func putSuccessorRecord(tx *sql.Tx, userID string, seq int, rec Envelope, at tim
 	return err
 }
 
-// RequestSuccession records the time the successor asked. No nomination is
-// ErrNotFound; a request already made, pending or released, is ErrExists.
-func (s *Store) RequestSuccession(userID string, at time.Time) error {
-	res, err := s.db.Exec(`UPDATE successors SET requested_at = ? WHERE user_id = ? AND requested_at IS NULL`, formatTime(at), userID)
+// RequestSuccession records the time successorID asked. The check that
+// successorID is still the nominee and the write are one transaction, so a
+// request from a successor the user has just replaced never lands on the new
+// nomination. No nomination, or one naming someone else, is ErrNotFound; a
+// request already made, pending or released, is ErrExists.
+func (s *Store) RequestSuccession(userID, successorID string, at time.Time) error {
+	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
-	if n, err := res.RowsAffected(); err != nil {
-		return err
-	} else if n > 0 {
-		return nil
-	}
-	var requested bool
-	if err := s.db.QueryRow(`SELECT requested_at IS NOT NULL FROM successors WHERE user_id = ?`, userID).Scan(&requested); err != nil {
+	defer tx.Rollback()
+	sc, err := querySuccessor(tx, userID)
+	if err != nil {
 		return err
 	}
-	return ErrExists
+	switch {
+	case sc.SuccessorID != successorID:
+		return ErrNotFound
+	case sc.Requested():
+		return ErrExists
+	}
+	if _, err := tx.Exec(`UPDATE successors SET requested_at = ? WHERE user_id = ?`, formatTime(at), userID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // RefuseSuccession ends the user's pending request and keeps the nomination.
@@ -243,13 +253,30 @@ func (s *Store) RefuseSuccession(userID string, now time.Time) (prev *Successor,
 	return prev, tx.Commit()
 }
 
-// MarkSuccessionDeactivated records that an administrator deactivated the
-// user while a request is pending. It does nothing when there is none, or
-// when the time is already recorded.
-func (s *Store) MarkSuccessionDeactivated(userID string, at time.Time) error {
-	_, err := s.db.Exec(`UPDATE successors SET deactivated_at = ? WHERE user_id = ? AND requested_at IS NOT NULL AND deactivated_at IS NULL`,
-		formatTime(at), userID)
-	return err
+// DeactivateUser disables an account, as SetUserDisabled does, and in the
+// same transaction records the time on a pending request, so an
+// administrator cannot deactivate the user without it showing on the refusal
+// page. A time already recorded stays. No user is ErrNotFound.
+func (s *Store) DeactivateUser(userID string, at time.Time) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`UPDATE users SET disabled = 1, token_version = token_version + 1 WHERE id = ?`, userID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNotFound
+	}
+	if _, err := tx.Exec(`UPDATE successors SET deactivated_at = ? WHERE user_id = ? AND requested_at IS NOT NULL AND deactivated_at IS NULL`,
+		formatTime(at), userID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // DeleteSuccessor deletes the user's nomination, its wrapped copy, and any

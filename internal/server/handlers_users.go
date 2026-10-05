@@ -147,17 +147,17 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "cannot disable your own account")
 			return
 		}
-		if err := s.store.SetUserDisabled(id, *req.Disabled); err != nil {
-			s.writeStoreError(w, err, "user")
-			return
-		}
 		// A deactivation while a request is pending is on the record, so an
 		// administrator cannot hide it from the refusal page.
+		var err error
 		if *req.Disabled {
-			if err := s.store.MarkSuccessionDeactivated(id, s.clk.Now()); err != nil {
-				s.writeStoreError(w, err, "user")
-				return
-			}
+			err = s.store.DeactivateUser(id, s.clk.Now())
+		} else {
+			err = s.store.SetUserDisabled(id, false)
+		}
+		if err != nil {
+			s.writeStoreError(w, err, "user")
+			return
 		}
 	}
 	u, err = s.store.UserByID(id)

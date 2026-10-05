@@ -1971,7 +1971,13 @@ fingerprint, before it uses `wrapped`.
 `POST /api/successions/{user}/request` takes no body. The server records the
 time, and answers `200 {"requestedAt", "releaseAt"}`. It answers `404` when
 that user has not nominated the caller, and `409` while a request is pending
-or after a release. The server then tells the user three ways:
+or after a release. It also answers `409` when the nomination's
+`successorFp` is not the caller's current fingerprint: a successor who
+rotated or reset since the nomination cannot open `wrapped`, so the user
+must nominate them again. The check that the caller is still the nominee and
+the write are one transaction, so a request from a successor the user has
+just replaced never lands on the new nomination. The server then tells the
+user three ways:
 
 - An email to the account address and to any verified personal address. It
   names the successor and the release date, and links to `/refuse`.
@@ -1986,7 +1992,9 @@ or after a release. The server then tells the user three ways:
 ### Refusing
 
 A refusal ends the request; the nomination stays. The server emails the
-successor that the user refused.
+successor that the user refused. A new nomination also ends a pending
+request, and the mail says whether it replaced the successor or named them
+again.
 
 The mail about a request, to the user and to the successor, is sent without
 the per-address limit that applies to sign-up and reset mail. Anyone can
@@ -1995,7 +2003,8 @@ hears of a request cannot refuse it.
 
 - **Signed in**, from any session or API key:
   `DELETE /api/me/successor/request` answers `200 {"ok": true}`, or `409`
-  with no request pending.
+  with no request pending. After a release, the check that the user rotates
+  answers first, with its own `409`.
 - **On the `/refuse` page**, whether or not the account is deactivated.
   `POST /api/auth/refuse` takes `{"email", "authKey"}`, after a prelogin, or
   `{"email", "proof"}` for the recovery code. A wrong key or proof answers
@@ -2012,6 +2021,14 @@ whether a request is pending. The fake `requestedAt` is a time in the last
 14 days that holds for 14 days and then moves on, as a real one gives way to
 the fake at its release.
 
+The answer still changes when a request is made, at a time that need not
+fall on that 14-day boundary. Anyone who polls an address can therefore
+tell that a request is pending for it. This is accepted. Hiding it would
+mean serving the account's real `mkRecovery` and `ed25519Priv` at all times
+rather than only during a request. That would widen the window for an
+offline attack on the recovery code, which is worth more than the fact that
+a request exists, and the user is mailed about the request anyway.
+
 After a correct key or proof, the page's call answers:
 
 ```text
@@ -2019,7 +2036,9 @@ After a correct key or proof, the page's call answers:
      "deactivatedAt"}
 ```
 
-or `409` with no request pending. `deactivatedAt` is the time an
+or `409`. Its error says whether no request is pending or the request was
+already released, which only a correct key or proof learns. `deactivatedAt`
+is the time an
 administrator deactivated the account while the request was pending, or
 empty. An administrator cannot block a refusal by deactivating the user, and
 cannot hide that they did.

@@ -631,6 +631,7 @@ func TestReleaseAfterFourteenDays(t *testing.T) {
 	w.sc.mustDo("GET", base+"/versions", nil, nil, http.StatusOK)
 	w.sc.mustDo("GET", base+"/versions/"+vid, nil, nil, http.StatusOK)
 	w.sc.mustDo("GET", base+"/versions/"+vid+"/files", nil, nil, http.StatusOK)
+	w.sc.mustDo("GET", base+"/versions/"+vid+"/db/revisions", nil, nil, http.StatusOK)
 	var tok struct {
 		Token string `json:"token"`
 	}
@@ -693,7 +694,10 @@ func TestReleaseAfterFourteenDays(t *testing.T) {
 	// A release cannot be refused, signed in or on the page.
 	w.u.mustDo("DELETE", "/api/me/successor/request", nil, nil, http.StatusConflict)
 	anon := &testClient{t: t, base: w.base}
-	wantStatus(t, anon, "POST", "/api/auth/refuse", map[string]any{"email": w.u.email, "authKey": authKeyOf(w.u)}, http.StatusConflict)
+	code, out := jsonOf(anon, "POST", "/api/auth/refuse", map[string]any{"email": w.u.email, "authKey": authKeyOf(w.u)})
+	if msg, _ := out["error"].(string); code != http.StatusConflict || !strings.Contains(msg, "already released") {
+		t.Errorf("refusing a release on the page: %d %q, want 409 already released", code, msg)
+	}
 
 	// Only four writes are open to the user: rotating, signing out, and API
 	// keys. Asking for a content token is open too.
@@ -705,6 +709,8 @@ func TestReleaseAfterFourteenDays(t *testing.T) {
 	// A content token is a POST, but it only reads, so the user can still
 	// open what they own in the browser.
 	w.u.mustDo("POST", base+"/content-token", nil, nil, http.StatusOK)
+	// Signing out another session works too.
+	login(t, w.base, w.u.email, w.u.email+"-password").mustDo("POST", "/api/auth/logout", nil, nil, http.StatusOK)
 
 	// Rotating ends it all.
 	rot := newRotation(t, w.s, w.base, w.u, w.art)
@@ -1279,4 +1285,91 @@ func TestSuccessionTimeIsTheServersClock(t *testing.T) {
 	if err != nil || sc.RequestedAt != rfc3339(start) {
 		t.Fatalf("requestedAt = %q, want the fake clock's %s", sc.RequestedAt, rfc3339(start))
 	}
+}
+
+func TestARequestNeedsTheSuccessorsCurrentKey(t *testing.T) {
+	w := newSuccWorld(t)
+	w.nominate(w.sc)
+	// The successor rotates: the wrapped copy opens under no key they hold.
+	rot := newRotation(t, w.s, w.base, w.sc)
+	if code, msg, _ := rot.post(w.sc.testClient, rot.request()); code != http.StatusOK {
+		t.Fatalf("rotate: %d %s", code, msg)
+	}
+	sc2 := rot.asNew()
+	if list := successions(t, sc2.testClient); len(list) != 1 {
+		t.Fatalf("the successor no longer sees the nomination: %+v", list)
+	}
+	code, out := jsonOf(sc2.testClient, "POST", "/api/successions/"+w.u.id+"/request", nil)
+	if msg, _ := out["error"].(string); code != http.StatusConflict || !strings.Contains(msg, "nominate you again") {
+		t.Errorf("request after the successor rotated: %d %q, want 409", code, msg)
+	}
+	if m, _ := me(t, w.u.testClient); m.Succession != nil {
+		t.Errorf("the user was told of a request that was refused: %+v", m.Succession)
+	}
+	if m := mailsTo(w.s, w.u.email); len(m) != 0 {
+		t.Errorf("mail to the user: %+v", m)
+	}
+	// A nomination under the new key can be asked on.
+	w.sc = sc2
+	w.nominate(w.sc)
+	w.request()
+}
+
+func TestReactivationKeepsTheDeactivation(t *testing.T) {
+	w := newSuccWorld(t)
+	w.nominate(w.sc)
+	w.request()
+	w.clk.Advance(day)
+	at := rfc3339(w.clk.Now())
+	w.admin.mustDo("PATCH", "/api/admin/users/"+w.u.id, map[string]any{"disabled": true}, nil, http.StatusOK)
+	w.clk.Advance(day)
+	w.admin.mustDo("PATCH", "/api/admin/users/"+w.u.id, map[string]any{"disabled": false}, nil, http.StatusOK)
+	u := login(t, w.base, w.u.email, w.u.email+"-password")
+	if m, _ := me(t, u); m.Succession == nil || m.Succession.DeactivatedAt != at {
+		t.Errorf("after reactivation: %+v, want deactivatedAt %s", m.Succession, at)
+	}
+	if g := mySuccessor(t, u); g.Request == nil || g.Request.DeactivatedAt != at {
+		t.Errorf("GET /api/me/successor after reactivation: %+v", g.Request)
+	}
+	// The record lasts until the request ends: a new request starts clean.
+	u.mustDo("DELETE", "/api/me/successor/request", nil, nil, http.StatusOK)
+	w.request()
+	if m, _ := me(t, u); m.Succession == nil || m.Succession.DeactivatedAt != "" {
+		t.Errorf("a new request kept the old deactivation: %+v", m.Succession)
+	}
+}
+
+func TestRenominatingTheSameSuccessorSaysSo(t *testing.T) {
+	w := newSuccWorld(t)
+	w.nominate(w.sc)
+	w.request()
+	w.nominate(w.sc)
+	m := mailsTo(w.s, w.sc.email)
+	if len(m) != 1 || !strings.Contains(m[0].Body, "nominated you again") || strings.Contains(m[0].Body, "replaced you") {
+		t.Errorf("mail to the successor named again: %+v", m)
+	}
+	if list := successions(t, w.sc.testClient); len(list) != 1 || list[0].RequestedAt != "" {
+		t.Errorf("the request survived the new nomination: %+v", list)
+	}
+}
+
+func TestNoticeEmailTypoKeepsThePendingAddress(t *testing.T) {
+	w := newSuccWorld(t)
+	anon := &testClient{t: t, base: w.base}
+	w.u.mustDo("PUT", "/api/me/notice-email", map[string]string{"email": "n@example.com"}, nil, http.StatusAccepted)
+	tok := extractFragmentToken(t, mailsTo(w.s, "n@example.com")[0].Body)
+	wantStatus(t, w.u.testClient, "PUT", "/api/me/notice-email", map[string]string{"email": "not an address"}, http.StatusBadRequest)
+	anon.mustDo("POST", "/api/auth/verify", map[string]string{"token": tok}, nil, http.StatusOK)
+	if u, _ := w.s.store.UserByID(w.u.id); u.NoticeEmail != "n@example.com" {
+		t.Errorf("notice address = %q", u.NoticeEmail)
+	}
+}
+
+func TestNoticeEmailLinkExpires(t *testing.T) {
+	w := newSuccWorld(t)
+	anon := &testClient{t: t, base: w.base}
+	w.u.mustDo("PUT", "/api/me/notice-email", map[string]string{"email": "n@example.com"}, nil, http.StatusAccepted)
+	tok := extractFragmentToken(t, mailsTo(w.s, "n@example.com")[0].Body)
+	w.clk.Advance(24*time.Hour + time.Second)
+	anon.mustDo("POST", "/api/auth/verify", map[string]string{"token": tok}, nil, http.StatusBadRequest)
 }

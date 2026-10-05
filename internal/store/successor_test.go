@@ -36,6 +36,32 @@ func TestSuccessorReleaseIsComputed(t *testing.T) {
 	if none.Released(t0.Add(365*24*time.Hour)) || !none.ReleaseAt().IsZero() {
 		t.Error("a nomination with no request is never released")
 	}
+	// A time that does not parse never releases: release is access, so a
+	// fault must deny it.
+	bad := &Successor{RequestedAt: "2026-03-01 09:00:00"}
+	if bad.Released(t0.Add(365 * 24 * time.Hour)) {
+		t.Error("an unparsable requestedAt released the successor")
+	}
+}
+
+func TestARequestFromAReplacedSuccessorIsRefused(t *testing.T) {
+	s := testStore(t)
+	a, b, c := testAccount(t, s, "a@x.y"), testAccount(t, s, "b@x.y"), testAccount(t, s, "c@x.y")
+	nominate(t, s, a, b, 1)
+	// b read the nomination, then a replaced b with c before b's request
+	// landed. It must not become c's request.
+	if _, _, err := s.Nominate(a.ID, c.ID, 2, rec("nominate c"), []byte("wrapped"), t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RequestSuccession(a.ID, b.ID, t0); !errors.Is(err, ErrNotFound) {
+		t.Errorf("request from the replaced successor: %v, want ErrNotFound", err)
+	}
+	if sc, err := s.SuccessorOf(a.ID); err != nil || sc.SuccessorID != c.ID || sc.Requested() {
+		t.Errorf("c's nomination after b's request: %+v, %v", sc, err)
+	}
+	if err := s.RequestSuccession(a.ID, c.ID, t0); err != nil {
+		t.Errorf("c's own request: %v", err)
+	}
 }
 
 func TestNominateReplaceAndSeq(t *testing.T) {
@@ -54,7 +80,7 @@ func TestNominateReplaceAndSeq(t *testing.T) {
 		sc.NominatedAt != formatTime(t0) || sc.Requested() {
 		t.Fatalf("nomination = %+v, %v", sc, err)
 	}
-	if err := s.RequestSuccession(a.ID, t0); err != nil {
+	if err := s.RequestSuccession(a.ID, b.ID, t0); err != nil {
 		t.Fatal(err)
 	}
 	// Replacing ends the request and reports the old nomination.
@@ -104,14 +130,14 @@ func TestAReleasedNominationCannotBeReplacedOrRemoved(t *testing.T) {
 	s := testStore(t)
 	a, b, c := testAccount(t, s, "a@x.y"), testAccount(t, s, "b@x.y"), testAccount(t, s, "c@x.y")
 	nominate(t, s, a, b, 1)
-	if err := s.RequestSuccession(a.ID, t0); err != nil {
+	if err := s.RequestSuccession(a.ID, b.ID, t0); err != nil {
 		t.Fatal(err)
 	}
 	// One second short of 14 days, both still work.
 	if _, _, err := s.Nominate(a.ID, c.ID, 2, rec("replace"), []byte("w"), t0.Add(SuccessionWait-time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RequestSuccession(a.ID, t0); err != nil {
+	if err := s.RequestSuccession(a.ID, c.ID, t0); err != nil {
 		t.Fatal(err)
 	}
 	released := t0.Add(SuccessionWait)
@@ -129,23 +155,29 @@ func TestAReleasedNominationCannotBeReplacedOrRemoved(t *testing.T) {
 func TestRequestAndRefuse(t *testing.T) {
 	s := testStore(t)
 	a, b := testAccount(t, s, "a@x.y"), testAccount(t, s, "b@x.y")
-	if err := s.RequestSuccession(a.ID, t0); !errors.Is(err, ErrNotFound) {
+	if err := s.RequestSuccession(a.ID, b.ID, t0); !errors.Is(err, ErrNotFound) {
 		t.Errorf("request with no nomination: %v", err)
 	}
 	nominate(t, s, a, b, 1)
 	if _, err := s.RefuseSuccession(a.ID, t0); !errors.Is(err, ErrNotFound) {
 		t.Errorf("refuse with no request: %v", err)
 	}
-	if err := s.RequestSuccession(a.ID, t0); err != nil {
+	if err := s.RequestSuccession(a.ID, b.ID, t0); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RequestSuccession(a.ID, t0.Add(time.Hour)); !errors.Is(err, ErrExists) {
+	if err := s.RequestSuccession(a.ID, b.ID, t0.Add(time.Hour)); !errors.Is(err, ErrExists) {
 		t.Errorf("second request: %v", err)
 	}
-	if err := s.MarkSuccessionDeactivated(a.ID, t0.Add(time.Hour)); err != nil {
+	if err := s.DeactivateUser(a.ID, t0.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.MarkSuccessionDeactivated(a.ID, t0.Add(2*time.Hour)); err != nil { // keeps the first
+	if u, _ := s.UserByID(a.ID); !u.Disabled {
+		t.Error("DeactivateUser left the account active")
+	}
+	if err := s.SetUserDisabled(a.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeactivateUser(a.ID, t0.Add(2*time.Hour)); err != nil { // keeps the first
 		t.Fatal(err)
 	}
 	if sc, _ := s.SuccessorOf(a.ID); sc.DeactivatedAt != formatTime(t0.Add(time.Hour)) {
@@ -164,11 +196,41 @@ func TestRequestAndRefuse(t *testing.T) {
 		t.Errorf("after refusing the nomination stays and the request goes: %+v, %v", sc, err)
 	}
 	// A deactivation with nothing pending records nothing.
-	if err := s.MarkSuccessionDeactivated(a.ID, t0); err != nil {
+	if err := s.DeactivateUser(a.ID, t0); err != nil {
 		t.Fatal(err)
 	}
 	if sc, _ := s.SuccessorOf(a.ID); sc.DeactivatedAt != "" {
 		t.Errorf("deactivatedAt with no request: %q", sc.DeactivatedAt)
+	}
+}
+
+func TestTwoRequestsAtOnceRecordOne(t *testing.T) {
+	s := testStore(t)
+	a, b := testAccount(t, s, "a@x.y"), testAccount(t, s, "b@x.y")
+	nominate(t, s, a, b, 1)
+	errs := make(chan error, 8)
+	for i := 0; i < cap(errs); i++ {
+		go func(i int) { errs <- s.RequestSuccession(a.ID, b.ID, t0.Add(time.Duration(i)*time.Second)) }(i)
+	}
+	var ok, exists int
+	for i := 0; i < cap(errs); i++ {
+		switch err := <-errs; {
+		case err == nil:
+			ok++
+		case errors.Is(err, ErrExists):
+			exists++
+		default:
+			t.Errorf("request: %v", err)
+		}
+	}
+	if ok != 1 || exists != cap(errs)-1 {
+		t.Errorf("%d recorded and %d refused, want 1 and %d", ok, exists, cap(errs)-1)
+	}
+}
+
+func TestDeactivateUnknownUser(t *testing.T) {
+	if err := testStore(t).DeactivateUser("nobody", t0); !errors.Is(err, ErrNotFound) {
+		t.Errorf("DeactivateUser(nobody) = %v, want ErrNotFound", err)
 	}
 }
 
@@ -208,7 +270,7 @@ func TestResetArchivesTheNomination(t *testing.T) {
 		t.Fatalf("archive with no nomination: %+v", arch)
 	}
 	nominate(t, s, a, b, 1)
-	if err := s.RequestSuccession(a.ID, t0); err != nil {
+	if err := s.RequestSuccession(a.ID, b.ID, t0); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ResetAccount(a.ID, "h", testBundle("m"), t0.Add(time.Hour)); err != nil {
