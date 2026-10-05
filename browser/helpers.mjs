@@ -52,6 +52,10 @@ export async function signIn(page, email, password) {
     const shown = await page.locator('#error').textContent().catch(() => '');
     throw new Error(`sign-in did not leave /login (error shown: ${JSON.stringify(shown)}): ${e.message}`);
   }
+  // The page signed in to is still fetching its lists. WebKit has, on CI, never
+  // finished a navigation started while those requests were open, so let them
+  // end before the caller moves on.
+  await page.waitForLoadState('networkidle');
 }
 
 // contentFrame returns the artifact's frame: the one on a <uuid>.localhost
