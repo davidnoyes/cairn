@@ -148,14 +148,16 @@ func ParseLink(s string) (*Link, error) {
 // LinkChainInput is the answer of GET /api/artifacts/{id}/membership read
 // with a link's token, and the link it was read for. Keys is the link
 // scope's editor keys. Rotations are the rotation records the server serves,
-// by user ID.
+// by user ID. Successors are the successor records it serves, as for
+// ChainInput.
 type LinkChainInput struct {
-	Link      Link
-	Records   []Envelope
-	Owners    map[string]KeyPair
-	Offers    map[string]Envelope
-	Keys      map[string]KeyPair
-	Rotations map[string][]Envelope
+	Link       Link
+	Records    []Envelope
+	Owners     map[string]KeyPair
+	Offers     map[string]Envelope
+	Keys       map[string]KeyPair
+	Rotations  map[string][]Envelope
+	Successors map[string]Envelope
 }
 
 // LinkChain is what VerifyLinkChain verified: the chain, and Editors, the
@@ -179,7 +181,7 @@ type LinkChain struct {
 // writers the visitor trusts.
 // Mirrors verifyLinkChain in internal/server/web/e2e.mjs.
 func VerifyLinkChain(in LinkChainInput) (*LinkChain, error) {
-	c, err := VerifyChain(ChainInput{Artifact: in.Link.Artifact, Records: in.Records, Owners: in.Owners, Offers: in.Offers, Anchor: in.Link.Owner, Linked: RotationLinker(in.Rotations)})
+	c, err := VerifyChain(ChainInput{Artifact: in.Link.Artifact, Records: in.Records, Owners: in.Owners, Offers: in.Offers, Successors: in.Successors, Anchor: in.Link.Owner, Linked: RotationLinker(in.Rotations)})
 	if err != nil {
 		return nil, err
 	}

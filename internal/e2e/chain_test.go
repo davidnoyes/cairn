@@ -265,7 +265,7 @@ func chainCases() []chainCase {
 			return plain(t, u).add(u.alice, edit).input()
 		}
 	}
-	return []chainCase{
+	return append([]chainCase{
 		// Valid chains.
 		{name: "single-record", why: "one record, anchored at the creator", seq: 1, epoch: 1,
 			build: func(t testing.TB, u chainUsers) ChainInput { return plain(t, u).input() }},
@@ -568,7 +568,7 @@ func chainCases() []chainCase {
 			build: pinned(2, 3, func(f *chainFixture) string { return f.head(3) })},
 		{name: "pin-seq-zero", why: "a pin with seq 0", err: ErrFormat,
 			build: pinned(1, 0, func(f *chainFixture) string { return "" })},
-	}
+	}, successorChainCases()...)
 }
 
 func TestVerifyChain(t *testing.T) {
@@ -596,24 +596,6 @@ func TestVerifyChain(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestVerifyChainUnlistedHandover shows that an administrator's handover to
-// an unlisted user names the successor record it needs, rather than reading
-// like any other unlisted new owner.
-func TestVerifyChainUnlistedHandover(t *testing.T) {
-	u := newChainUsers(t)
-	for _, c := range chainCases() {
-		if c.name != "handover-to-unlisted" {
-			continue
-		}
-		_, err := VerifyChain(c.build(t, u))
-		if !errors.Is(err, ErrChain) || !strings.Contains(err.Error(), "successor record") {
-			t.Fatalf("got %v, want ErrChain naming the successor record", err)
-		}
-		return
-	}
-	t.Fatal("no handover-to-unlisted case")
 }
 
 // TestVerifyChainLinked shows that a rotation chain hook stands in for

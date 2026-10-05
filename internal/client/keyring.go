@@ -206,7 +206,7 @@ func (c *Client) checkArtifact(k *UnlockedKeys, kr *e2e.Keyring, artifactID, cur
 		}
 	}
 	chain, err := e2e.VerifyChain(e2e.ChainInput{
-		Artifact: artifactID, Records: m.Records, Owners: m.Owners, Offers: m.Offers,
+		Artifact: artifactID, Records: m.Records, Owners: m.Owners, Offers: m.Offers, Successors: m.Successors,
 		Anchor: anchor, CurrentOwnerFP: currentOwnerFP, Pin: kr.EpochPin(artifactID),
 		Linked: e2e.RotationLinker(m.Rotations),
 	})

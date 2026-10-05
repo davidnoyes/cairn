@@ -167,6 +167,9 @@ The overrides, and which primitives read them:
   - `owners`: maps a fingerprint to an `{x25519, ed25519}` key pair.
   - `offers`: maps a transfer value, the body hash of an offer, to the
     offer envelope.
+  - `successors`: maps the `seq` of a record that accepts an
+    administrator's handover, as a string, to the previous owner's
+    `successor` envelope.
   - `anchor`: the fingerprint the first record's `ownerFp` must equal.
   - `currentOwnerFp`: the fingerprint the latest record's `ownerFp` must
     equal, or empty for no check.
@@ -185,8 +188,9 @@ The overrides, and which primitives read them:
   | `format` | `ErrFormat` | `FormatError` |
   | `decrypt` | `ErrDecrypt` | `DecryptError` |
 
-  Like `signature.envelope` in the interop files, `records`, `offers`, and
-  `owners` hold the b64 wire form the membership endpoint serves, not hex.
+  Like `signature.envelope` in the interop files, `records`, `offers`,
+  `successors`, and `owners` hold the b64 wire form the membership endpoint
+  serves, not hex.
   The entries carry no `linked` hook, since a function isn't data, so every
   entry runs with the default: two fingerprints link only when they're
   equal. The Go and Node tests check `linked` directly.

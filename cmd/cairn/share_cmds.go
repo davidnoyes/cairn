@@ -59,6 +59,9 @@ func rotationAdvice(err error) string {
 // explainRefusal adds to a keyring refusal what it means and how to go on
 // once the user has checked with their admin; any other error is unchanged.
 func explainRefusal(c *client.Client, err error) error {
+	if advice := successorAdvice(err); advice != "" {
+		return fmt.Errorf("%w\n%s", err, advice)
+	}
 	if advice := rotationAdvice(err); advice != "" {
 		return fmt.Errorf("%w\n%s", err, advice)
 	}
@@ -84,6 +87,9 @@ func resolveArtifact(c *client.Client, ref string) (*client.Artifact, error) {
 	a, err := c.ResolveArtifact(ref)
 	if err != nil {
 		return nil, explainRefusal(c, err)
+	}
+	if a.Access == "successor" {
+		successorOnly = true
 	}
 	return a, nil
 }

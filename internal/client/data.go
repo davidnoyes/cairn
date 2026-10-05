@@ -426,7 +426,7 @@ func (c *Client) send(method, path string, body io.Reader, contentType string, h
 	if c.LinkToken != "" {
 		req.Header.Set("X-Cairn-Link-Token", c.LinkToken)
 	}
-	return c.HTTP.Do(req)
+	return c.roundTrip(req)
 }
 
 // fetchRecord reads the blob a revision or file answer carries, and the

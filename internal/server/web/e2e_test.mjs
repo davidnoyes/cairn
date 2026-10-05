@@ -119,6 +119,36 @@ test('recoveryCode', async () => {
   }
 });
 
+// The Go side checks the same vector: fingerprint bytes 0..31.
+test('successorCode', () => {
+  const fp = Uint8Array.from({ length: 32 }, (_, i) => i);
+  assert.equal(e2e.successorCode(fp), 'AAAQ-EAYE-AUDA-OCAJ');
+  for (const s of ['aaaq-eaye-auda-ocaj', 'AAAQ EAYE AUDA OCAJ', 'AAAQEAYEAUDAOCAJ', ' aaaq-EAYE auda-OCAJ ']) {
+    assert.equal(toHex(e2e.parseSuccessorCode(s)), toHex(fp.slice(0, 10)), s);
+  }
+  for (const s of [
+    '',
+    'AAAQ-EAYE-AUDA-OCA', // 15 characters
+    'AAAQ-EAYE-AUDA-OCAJA', // 17 characters
+    'AAAQ-EAYE-AUDA-OCA1', // outside the alphabet
+    'AAAQ-EAYE-AUDA-OCA!', // outside the character set
+    'AAAQ_EAYE_AUDA_OCAJ', // wrong separator
+    'ſAAQ-EAYE-AUDA-OCAJ', // would fold onto S under some locales
+    'AAAQ-EAYE-AUDA-OCAJ\x00', // control character
+    'AAAQ-EAYE-AUDA-OCAJ-AAAA', // a recovery-code-sized tail
+  ]) {
+    assert.throws(() => e2e.parseSuccessorCode(s), e2e.FormatError, JSON.stringify(s));
+  }
+});
+
+test('refusal body schema', () => {
+  const body = { v: 1, user: 'u1', requestedAt: '2026-10-05T12:00:00Z' };
+  const bytes = new TextEncoder().encode(JSON.stringify(body));
+  assert.deepEqual(e2e.decodeStrict(bytes, e2e.BODY_SCHEMAS.refusal), body);
+  const extra = new TextEncoder().encode(JSON.stringify({ ...body, seq: 1 }));
+  assert.throws(() => e2e.decodeStrict(extra, e2e.BODY_SCHEMAS.refusal), e2e.FormatError);
+});
+
 test('apiKey', async () => {
   for (const v of vf.apiKey) {
     const parsed = e2e.parseApiKey(v.full);
@@ -1124,6 +1154,7 @@ function chainInput(v) {
     records: v.records,
     owners: v.owners,
     offers: v.offers,
+    successors: v.successors,
     anchor: v.anchor,
     currentOwnerFp: v.currentOwnerFp,
     pin: v.pin,
@@ -1533,6 +1564,7 @@ describe('linkChain', () => {
         records: v.records,
         owners: v.owners,
         offers: v.offers,
+        successors: v.successors,
         keys: v.keys,
         rotations: v.rotations,
       };

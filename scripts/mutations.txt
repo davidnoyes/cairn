@@ -681,7 +681,7 @@ internal/access/access.go	if m.member && act == AnswerTransfer {	if act == Answe
 internal/access/access.go	ReviewVersions, Transfer, AnswerTransfer:	ReviewVersions, Transfer:	go test ./internal/access
 internal/server/routes.go	s.artifactRoute(access.AnswerTransfer, s.handleCloseTransfer)	s.artifactRoute(access.ReadContent, s.handleCloseTransfer)	go test ./internal/server -run 'TestAnsweringAnOfferNeedsAListedMember'
 internal/server/routes.go	s.artifactRoute(access.AnswerTransfer, s.handleAcceptTransfer)	s.artifactRoute(access.ReadContent, s.handleAcceptTransfer)	go test ./internal/server -run 'TestAnsweringAnOfferNeedsAListedMember'
-internal/membership/membership.go	if err := CheckNewOwner(cur, owner); err != nil {	if err := CheckNewOwner(cur, owner); false && err != nil {	go test ./internal/membership -run 'TestCheckAcceptRefusals'
+internal/membership/membership.go	err := CheckNewOwner(cur, owner)	err := CheckNewOwner(cur, owner); err = nil	go test ./internal/membership -run 'TestCheckAcceptRefusals'
 internal/membership/membership.go	case listed == nil || listed.Role != access.RoleEditor:	case listed == nil:	go test ./internal/membership -run 'TestCheckAcceptRefusals'
 internal/membership/membership.go	case !u.Active || !u.Verified:	case !u.Active:	go test ./internal/membership -run 'TestCheckAcceptRefusals'
 internal/membership/membership.go	case listed.FP != u.FP:	case false:	go test ./internal/membership -run 'TestCheckAcceptRefusals'
@@ -905,8 +905,9 @@ internal/server/content_token.go	Artifact:     a.ID,	Artifact:     a.ID + "x",	g
 internal/server/content_token.go	Link:         access.LevelOf(withoutLink) == access.LevelNone,	Link:         false,	go test ./internal/server -run TestMintContentTokenLinkScope
 internal/server/content_token.go	withoutLink.LinkToken = false	withoutLink.LinkToken = true	go test ./internal/server -run TestMintContentTokenLinkScope
 internal/server/middleware.go	LinkOnly: claims.Artifact != "" && claims.Link	LinkOnly: false	go test ./internal/server -run TestMintContentTokenLinkScope
-internal/access/access.go	m.owner, m.member, m.team = false, false, false	m.owner, m.member = false, false	go test ./internal/access -run TestLinkOnlyContentToken
-internal/access/access.go	m.owner, m.member, m.team = false, false, false	m.owner, m.team = false, false	go test ./internal/access -run TestLinkOnlyContentToken
+internal/access/access.go	m.owner, m.member, m.team, m.successor = false, false, false, false	m.owner, m.member, m.successor = false, false, false	go test ./internal/access -run 'TestLinkOnlyContentToken|TestSuccessorNeedsSignedInAndNotLinkOnly'
+internal/access/access.go	m.owner, m.member, m.team, m.successor = false, false, false, false	m.owner, m.team, m.successor = false, false, false	go test ./internal/access -run 'TestLinkOnlyContentToken|TestSuccessorNeedsSignedInAndNotLinkOnly'
+internal/access/access.go	m.owner, m.member, m.team, m.successor = false, false, false, false	m.owner, m.member, m.team = false, false, false	go test ./internal/access -run 'TestLinkOnlyContentToken|TestSuccessorNeedsSignedInAndNotLinkOnly'
 internal/server/csp.go	"://*." + s.contentDomain + s.contentPort	"://*." + s.contentDomain	go test ./internal/server -run 'TestShellCSPFollowsPublicURL|TestContentHostRoutingByConfig'
 internal/server/serving.go	http.Redirect(w, r, target, http.StatusFound)	http.Redirect(w, r, target, http.StatusMovedPermanently)	go test ./internal/server -run TestArtifactPagesRedirectToShared
 # m4 encrypted push
@@ -2063,3 +2064,41 @@ internal/access/access.go			case ReadContent, ReadMembership, ReadKeys, AnswerTr
 internal/server/handlers_successor.go		if e2e.DecodeStrict(sc.Record.Body, &body) != nil || body.SuccessorFP != fingerprintOf(b) {		if e2e.DecodeStrict(sc.Record.Body, &body) != nil || fingerprintOf(b) == "" {	go test ./internal/server -run TestARequestNeedsTheSuccessorsCurrentKey
 internal/server/handlers_successor.go	"the request was already released; rotate your keys to end your successor's access"	"no request is pending"	go test ./internal/server -run TestReleaseAfterFourteenDays
 internal/server/handlers_successor.go		if addr, err := netmail.ParseAddress(email); req.Email != "" && (		_ = s.store.DeleteTokens(u.ID, "notice"); if addr, err := netmail.ParseAddress(email); req.Email != "" && (	go test ./internal/server -run TestNoticeEmailTypoKeepsThePendingAddress
+internal/e2e/chain.go	case s.User != prev.Owner:	case false:	go test ./internal/e2e -run 'TestVerifyChain$|TestVerifyChainSuccessorRecord'
+internal/e2e/chain.go	case s.Successor != b.Owner:	case false:	go test ./internal/e2e -run 'TestVerifyChain$|TestVerifyChainSuccessorRecord'
+internal/e2e/chain.go	case s.SuccessorFP != b.OwnerFP:	case false:	go test ./internal/e2e -run 'TestVerifyChain$|TestVerifyChainSuccessorRecord'
+internal/e2e/chain.go	case s.Action != "nominate":	case false:	go test ./internal/e2e -run 'TestVerifyChain$|TestVerifyChainSuccessorRecord'
+internal/e2e/chain.go	if err := OpenEnvelope(env, pub, "successor", &s); err != nil {	if err := DecodeStrict(env.Body, &s); err != nil || len(pub) == 0 {	go test ./internal/e2e -run 'TestVerifyChain$|TestVerifyChainSuccessorRecord'
+internal/e2e/chain.go	env, ok := in.Successors[strconv.Itoa(b.Seq)]	env, ok := in.Successors[strconv.Itoa(b.Seq-1)]	go test ./internal/e2e -run 'TestVerifyChain$|TestVerifyChainSuccessorRecord'
+internal/e2e/chain.go	pub, ok := owners[prev.OwnerFP]	pub, ok := owners[b.OwnerFP]	go test ./internal/e2e -run 'TestVerifyChain$|TestVerifyChainSuccessorRecord'
+internal/e2e/chain.go	if checkSuccessor(in, owners, prev, b) != nil {	if true {	go test ./internal/e2e -run 'TestVerifyChain$|TestVerifyChainSuccessorRecord'
+internal/e2e/chain.go	if err := checkSuccessor(in, owners, prev, b); err != nil {	if err := checkSuccessor(in, owners, prev, b); err != nil && false {	go test ./internal/e2e -run 'TestVerifyChain$|TestVerifyChainSuccessorRecord'
+internal/client/keyring.go	Successors: m.Successors,	Successors: nil,	go test ./cmd/cairn -run TestSuccessorAdminHandoverIsSilent
+internal/client/successor.go	if !bytes.Equal(want, fp[:len(want)]) {	if !bytes.Equal(want, fp[:len(want)]) && false {	go test ./cmd/cairn -run TestSuccessorNominateNeedsTheRightCode
+internal/client/successor.go	case b.User != s.User.ID:	case false:	go test ./internal/client -run TestSuccessorEKRefusesATamperedRecord
+internal/client/successor.go	case b.Successor != k.UserID:	case false:	go test ./internal/client -run TestSuccessorEKRefusesATamperedRecord
+internal/client/successor.go	case b.SuccessorFP != k.FP:	case false:	go test ./internal/client -run TestSuccessorEKRefusesATamperedRecord
+internal/client/successor.go	case b.Action != "nominate":	case false:	go test ./internal/client -run TestSuccessorEKRefusesATamperedRecord
+internal/client/successor.go	if err := e2e.OpenEnvelope(s.Record, ed25519Pub, "successor", &b); err != nil {	if err := e2e.DecodeStrict(s.Record.Body, &b); err != nil {	go test ./internal/client -run TestSuccessorEKRefusesATamperedRecord
+internal/client/successor.go	if err := checkSuccession(k, s, pub); err != nil {	if err := checkSuccession(k, s, pub); err != nil && false {	go test ./internal/client -run TestSuccessorEKRefusesATamperedRecord
+internal/client/successor.go	if !s.Released || len(s.Wrapped) == 0 {	if false {	go test ./internal/client -run TestSuccessorEKBeforeTheRelease
+internal/client/approve.go	if len(keys.Wraps) == 0 && len(keys.Estate) > 0 {	if false {	go test ./internal/client -run TestSuccessorReadsTheEstateAfterTheRelease
+internal/client/client.go	c.OnNotice(n)	_ = n	go test ./internal/client -run TestNoticeHeaderReachesEveryRequestPath
+internal/client/client.go	if n := resp.Header.Get(NoticeHeader); n != "" {	if n := resp.Header.Get(NoticeHeader); n == "" {	go test ./internal/client -run TestNoticeHeaderReachesEveryRequestPath
+internal/client/data.go	return c.roundTrip(req)	return c.HTTP.Do(req)	go test ./internal/client -run TestNoticeHeaderReachesEveryRequestPath
+cmd/cairn/successor_cmds.go	if w, ok := noticeWarnings[n]; ok && !noticed[n] {	if w, ok := noticeWarnings[n]; ok && false {	go test ./cmd/cairn -run TestWatchNotices
+cmd/cairn/successor_cmds.go	noticed[n] = true	noticed[n] = false	go test ./cmd/cairn -run TestWatchNoticesPrintsEachOnceToStderr
+cmd/cairn/config.go	watchNotices(c)	_ = c	go test ./cmd/cairn -run TestSuccessorRequestWarnsTheUserOnStderr
+internal/e2e/link.go	Offers: in.Offers, Successors: in.Successors,	Offers: in.Offers,	go test ./internal/e2e -run TestVectors
+internal/client/public.go	Rotations: m.Rotations, Successors: m.Successors,	Rotations: m.Rotations,	go test ./cmd/cairn -run TestSuccessorAdminHandoverIsSilent
+internal/server/web/e2e.mjs	    successors: input.successors,	    successors: {},	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	const why = await checkSuccessor(input, owners, prev, b);	const why = '';	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	    if (why) {	    if (false) {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (await checkSuccessor(input, owners, prev, b)) handovers.push(b.seq);	handovers.push(b.seq);	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (await checkSuccessor(input, owners, prev, b)) handovers.push(b.seq);	if (false) handovers.push(b.seq);	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	  if (s.user !== prev.owner) return	  if (false) return	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	  if (s.successor !== b.owner) return	  if (false) return	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	  if (s.successorFp !== b.ownerFp) return	  if (false) return	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	  if (s.action !== 'nominate') return	  if (false) return	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	    s = await openEnvelope(input.successors[key], pub, 'successor');	    s = JSON.parse(new TextDecoder().decode(unb64(input.successors[key].body)));	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	const pub = owners.get(prev.ownerFp);	const pub = owners.get(b.ownerFp);	node --test internal/server/web/e2e_test.mjs

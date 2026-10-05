@@ -692,12 +692,18 @@ func epochCommits(chain *e2e.Chain) map[int]string {
 // epochAKs opens the owner's estate copy of each epoch's AK and checks it
 // against the akCommit the verified chain lists for that epoch.
 func (c *Client) epochAKs(k *UnlockedKeys, artifactID string, chain *e2e.Chain) (map[int][]byte, error) {
-	commits := epochCommits(chain)
 	keys, err := c.Keys(artifactID)
 	if err != nil {
 		return nil, err
 	}
-	ekKey, err := e2e.EKSealKey(k.EK)
+	return estateAKs(k.EK, artifactID, chain, keys)
+}
+
+// estateAKs is epochAKs for the estate copies in keys, which ek seals: the
+// owner's own, or a released successor's.
+func estateAKs(ek []byte, artifactID string, chain *e2e.Chain, keys *ArtifactKeys) (map[int][]byte, error) {
+	commits := epochCommits(chain)
+	ekKey, err := e2e.EKSealKey(ek)
 	if err != nil {
 		return nil, err
 	}

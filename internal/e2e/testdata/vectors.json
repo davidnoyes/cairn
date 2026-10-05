@@ -1746,6 +1746,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -1779,6 +1780,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -1812,6 +1814,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -1845,6 +1848,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -1888,6 +1892,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36",
       "pin": null,
@@ -1925,6 +1930,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -1984,6 +1990,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2014,6 +2021,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2052,6 +2060,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": {
@@ -2094,6 +2103,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": {
@@ -2115,6 +2125,7 @@
       "records": [],
       "owners": {},
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2133,6 +2144,7 @@
       ],
       "owners": {},
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2160,6 +2172,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2192,6 +2205,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2215,6 +2229,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2238,6 +2253,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2261,6 +2277,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2284,6 +2301,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2307,6 +2325,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2330,6 +2349,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2353,6 +2373,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2376,6 +2397,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2399,6 +2421,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2422,6 +2445,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2445,6 +2469,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2468,6 +2493,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2491,6 +2517,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2514,6 +2541,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2537,6 +2565,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2560,6 +2589,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2583,6 +2613,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2606,6 +2637,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2629,6 +2661,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2652,6 +2685,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2675,6 +2709,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2698,6 +2733,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2721,6 +2757,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2744,6 +2781,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2767,6 +2805,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2790,6 +2829,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36",
       "currentOwnerFp": "",
       "pin": null,
@@ -2818,6 +2858,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2846,6 +2887,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2874,6 +2916,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2907,6 +2950,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2935,6 +2979,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2963,6 +3008,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -2991,6 +3037,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3019,6 +3066,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3051,6 +3099,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3083,6 +3132,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3121,6 +3171,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3164,6 +3215,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3207,6 +3259,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3245,6 +3298,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3277,6 +3331,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3315,6 +3370,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3353,6 +3409,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3391,6 +3448,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3429,6 +3487,7 @@
           "signer": "u-mallory"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3467,6 +3526,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3505,6 +3565,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3543,6 +3604,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3581,6 +3643,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3619,6 +3682,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3657,6 +3721,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3689,6 +3754,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3721,6 +3787,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3753,6 +3820,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": null,
@@ -3791,6 +3859,7 @@
           "signer": "u-alice"
         }
       },
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "pin": null,
@@ -3824,6 +3893,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": {
@@ -3861,6 +3931,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": {
@@ -3898,6 +3969,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": {
@@ -3935,6 +4007,7 @@
         }
       },
       "offers": {},
+      "successors": {},
       "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
       "currentOwnerFp": "",
       "pin": {
@@ -3943,6 +4016,677 @@
         "head": ""
       },
       "error": "format"
+    },
+    {
+      "name": "successor-listed-valid",
+      "why": "carol is a listed editor; alice's record nominates carol",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "E9-UZeuPTmAl6BRTEEifBtwu0ld3usLBNk6JHZeuZgUG5SSFIer847O1_VYlBXVtQYrjP9Fklv7kauzynKoEAQ",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiYWQ2ZTA4Nzc0OTA3M2M0ZTk0MzcyZmNmZjk2NzMwNTAzYzlhYmZjNGUyM2E5MTM2ZjYxMGQzMzM3ZTMzNzI3MSIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "PdbJG_mgpD9202-17FZOXBudw1v7pde6xuz1-OhSHGC_Mr-H_5hXP8zJUh_Xp1ZfLWhkPp5Z8UDoQbPvVPORDw",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {
+        "2": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwic3VjY2Vzc29yIjoidS1jYXJvbCIsInN1Y2Nlc3NvckZwIjoiOWI3YTM0ODMwYzJlOGFmZTBmYmU5NDg1YTQ3NjI1NTQxOTQyOWE1NTI2YzJiNmE3NzJkN2EyYzg1ZmExNGQyMiIsImFjdGlvbiI6Im5vbWluYXRlIn0",
+          "sig": "JXWvv3RF6vF6mv0_EjBKUqyuE9ZW21DBcozTjEGl375Za38q1kFtUWCK-imurSimwkx0IhnRYVuWSDpouZIWAg",
+          "signer": "u-alice"
+        }
+      },
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "want": {
+        "head": "58dfd60b10ebefa9bf2974f4c46835735e30fd98e46cfc0289ccd36168718e6a",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": []
+      }
+    },
+    {
+      "name": "successor-unlisted-valid",
+      "why": "carol is not listed; alice's record nominates carol",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "izgdiwWrFxL5tX7Zu2WQFKEKnnkpqXbWMAS9XCCQ0N-cYQ4XyYsaqnyGVMMIS-XqEOgS9KYPKYhQ9oJUyXHBBA",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiZDdhODVlMzUyMTYxYjI0NzEwN2QxZjUzMTNmZmI2NTcxOTkyMDc2MDc0ZWU5YWVkNzJiMjljNjFjNTE5YzNmYiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "wHc89gkyOF0aWgxOqV4l9rRxPcxMbne4G8Q1j0JwRwFnhL9CxygthOjUfhTRSmVh2_W7GJ_R8NVaOe7M-34QCQ",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {
+        "2": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwic3VjY2Vzc29yIjoidS1jYXJvbCIsInN1Y2Nlc3NvckZwIjoiOWI3YTM0ODMwYzJlOGFmZTBmYmU5NDg1YTQ3NjI1NTQxOTQyOWE1NTI2YzJiNmE3NzJkN2EyYzg1ZmExNGQyMiIsImFjdGlvbiI6Im5vbWluYXRlIn0",
+          "sig": "JXWvv3RF6vF6mv0_EjBKUqyuE9ZW21DBcozTjEGl375Za38q1kFtUWCK-imurSimwkx0IhnRYVuWSDpouZIWAg",
+          "signer": "u-alice"
+        }
+      },
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "want": {
+        "head": "7c1de74a7ede5e60054635251d6fbdc116ae229b39c59627aa329321ed27db26",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": []
+      }
+    },
+    {
+      "name": "successor-listed-none",
+      "why": "carol is a listed editor; no record is served",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "E9-UZeuPTmAl6BRTEEifBtwu0ld3usLBNk6JHZeuZgUG5SSFIer847O1_VYlBXVtQYrjP9Fklv7kauzynKoEAQ",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiYWQ2ZTA4Nzc0OTA3M2M0ZTk0MzcyZmNmZjk2NzMwNTAzYzlhYmZjNGUyM2E5MTM2ZjYxMGQzMzM3ZTMzNzI3MSIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "PdbJG_mgpD9202-17FZOXBudw1v7pde6xuz1-OhSHGC_Mr-H_5hXP8zJUh_Xp1ZfLWhkPp5Z8UDoQbPvVPORDw",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {},
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "want": {
+        "head": "58dfd60b10ebefa9bf2974f4c46835735e30fd98e46cfc0289ccd36168718e6a",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": [
+          2
+        ]
+      }
+    },
+    {
+      "name": "successor-unlisted-none",
+      "why": "carol is not listed; no record is served",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "izgdiwWrFxL5tX7Zu2WQFKEKnnkpqXbWMAS9XCCQ0N-cYQ4XyYsaqnyGVMMIS-XqEOgS9KYPKYhQ9oJUyXHBBA",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiZDdhODVlMzUyMTYxYjI0NzEwN2QxZjUzMTNmZmI2NTcxOTkyMDc2MDc0ZWU5YWVkNzJiMjljNjFjNTE5YzNmYiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "wHc89gkyOF0aWgxOqV4l9rRxPcxMbne4G8Q1j0JwRwFnhL9CxygthOjUfhTRSmVh2_W7GJ_R8NVaOe7M-34QCQ",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {},
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "error": "chain"
+    },
+    {
+      "name": "successor-listed-remove",
+      "why": "carol is a listed editor; alice's record removes the nomination",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "E9-UZeuPTmAl6BRTEEifBtwu0ld3usLBNk6JHZeuZgUG5SSFIer847O1_VYlBXVtQYrjP9Fklv7kauzynKoEAQ",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiYWQ2ZTA4Nzc0OTA3M2M0ZTk0MzcyZmNmZjk2NzMwNTAzYzlhYmZjNGUyM2E5MTM2ZjYxMGQzMzM3ZTMzNzI3MSIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "PdbJG_mgpD9202-17FZOXBudw1v7pde6xuz1-OhSHGC_Mr-H_5hXP8zJUh_Xp1ZfLWhkPp5Z8UDoQbPvVPORDw",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {
+        "2": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwic3VjY2Vzc29yIjoidS1jYXJvbCIsInN1Y2Nlc3NvckZwIjoiIiwiYWN0aW9uIjoicmVtb3ZlIn0",
+          "sig": "UUHCTvkNmtYmH2K3v266Rti_ULy0OCbOqgXwimljLcQ8TDbni4Q54acHUrwAZe0vUru6CKDRPlojtnoWXDXBBA",
+          "signer": "u-alice"
+        }
+      },
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "want": {
+        "head": "58dfd60b10ebefa9bf2974f4c46835735e30fd98e46cfc0289ccd36168718e6a",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": [
+          2
+        ]
+      }
+    },
+    {
+      "name": "successor-unlisted-remove",
+      "why": "carol is not listed; alice's record removes the nomination",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "izgdiwWrFxL5tX7Zu2WQFKEKnnkpqXbWMAS9XCCQ0N-cYQ4XyYsaqnyGVMMIS-XqEOgS9KYPKYhQ9oJUyXHBBA",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiZDdhODVlMzUyMTYxYjI0NzEwN2QxZjUzMTNmZmI2NTcxOTkyMDc2MDc0ZWU5YWVkNzJiMjljNjFjNTE5YzNmYiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "wHc89gkyOF0aWgxOqV4l9rRxPcxMbne4G8Q1j0JwRwFnhL9CxygthOjUfhTRSmVh2_W7GJ_R8NVaOe7M-34QCQ",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {
+        "2": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwic3VjY2Vzc29yIjoidS1jYXJvbCIsInN1Y2Nlc3NvckZwIjoiIiwiYWN0aW9uIjoicmVtb3ZlIn0",
+          "sig": "UUHCTvkNmtYmH2K3v266Rti_ULy0OCbOqgXwimljLcQ8TDbni4Q54acHUrwAZe0vUru6CKDRPlojtnoWXDXBBA",
+          "signer": "u-alice"
+        }
+      },
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "error": "chain"
+    },
+    {
+      "name": "successor-listed-remove-keeping-fp",
+      "why": "carol is a listed editor; alice's record removes the nomination and keeps carol's fp",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "E9-UZeuPTmAl6BRTEEifBtwu0ld3usLBNk6JHZeuZgUG5SSFIer847O1_VYlBXVtQYrjP9Fklv7kauzynKoEAQ",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiYWQ2ZTA4Nzc0OTA3M2M0ZTk0MzcyZmNmZjk2NzMwNTAzYzlhYmZjNGUyM2E5MTM2ZjYxMGQzMzM3ZTMzNzI3MSIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "PdbJG_mgpD9202-17FZOXBudw1v7pde6xuz1-OhSHGC_Mr-H_5hXP8zJUh_Xp1ZfLWhkPp5Z8UDoQbPvVPORDw",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {
+        "2": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwic3VjY2Vzc29yIjoidS1jYXJvbCIsInN1Y2Nlc3NvckZwIjoiOWI3YTM0ODMwYzJlOGFmZTBmYmU5NDg1YTQ3NjI1NTQxOTQyOWE1NTI2YzJiNmE3NzJkN2EyYzg1ZmExNGQyMiIsImFjdGlvbiI6InJlbW92ZSJ9",
+          "sig": "Ogkf4-ORTh0mUAgnqZjJvEwiDwOhYBCx97gQH5AylaTv1BLk9lJULMAj4j8JXCkI_9uMH8PLVOpbhvNF9GI0DQ",
+          "signer": "u-alice"
+        }
+      },
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "want": {
+        "head": "58dfd60b10ebefa9bf2974f4c46835735e30fd98e46cfc0289ccd36168718e6a",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": [
+          2
+        ]
+      }
+    },
+    {
+      "name": "successor-unlisted-remove-keeping-fp",
+      "why": "carol is not listed; alice's record removes the nomination and keeps carol's fp",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "izgdiwWrFxL5tX7Zu2WQFKEKnnkpqXbWMAS9XCCQ0N-cYQ4XyYsaqnyGVMMIS-XqEOgS9KYPKYhQ9oJUyXHBBA",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiZDdhODVlMzUyMTYxYjI0NzEwN2QxZjUzMTNmZmI2NTcxOTkyMDc2MDc0ZWU5YWVkNzJiMjljNjFjNTE5YzNmYiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "wHc89gkyOF0aWgxOqV4l9rRxPcxMbne4G8Q1j0JwRwFnhL9CxygthOjUfhTRSmVh2_W7GJ_R8NVaOe7M-34QCQ",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {
+        "2": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwic3VjY2Vzc29yIjoidS1jYXJvbCIsInN1Y2Nlc3NvckZwIjoiOWI3YTM0ODMwYzJlOGFmZTBmYmU5NDg1YTQ3NjI1NTQxOTQyOWE1NTI2YzJiNmE3NzJkN2EyYzg1ZmExNGQyMiIsImFjdGlvbiI6InJlbW92ZSJ9",
+          "sig": "Ogkf4-ORTh0mUAgnqZjJvEwiDwOhYBCx97gQH5AylaTv1BLk9lJULMAj4j8JXCkI_9uMH8PLVOpbhvNF9GI0DQ",
+          "signer": "u-alice"
+        }
+      },
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "error": "chain"
+    },
+    {
+      "name": "successor-listed-wrong-signer",
+      "why": "carol is a listed editor; mallory signs the record",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "E9-UZeuPTmAl6BRTEEifBtwu0ld3usLBNk6JHZeuZgUG5SSFIer847O1_VYlBXVtQYrjP9Fklv7kauzynKoEAQ",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiYWQ2ZTA4Nzc0OTA3M2M0ZTk0MzcyZmNmZjk2NzMwNTAzYzlhYmZjNGUyM2E5MTM2ZjYxMGQzMzM3ZTMzNzI3MSIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "PdbJG_mgpD9202-17FZOXBudw1v7pde6xuz1-OhSHGC_Mr-H_5hXP8zJUh_Xp1ZfLWhkPp5Z8UDoQbPvVPORDw",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {
+        "2": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwic3VjY2Vzc29yIjoidS1jYXJvbCIsInN1Y2Nlc3NvckZwIjoiOWI3YTM0ODMwYzJlOGFmZTBmYmU5NDg1YTQ3NjI1NTQxOTQyOWE1NTI2YzJiNmE3NzJkN2EyYzg1ZmExNGQyMiIsImFjdGlvbiI6Im5vbWluYXRlIn0",
+          "sig": "B6zzkxdg_dqr6jvM_JPe_VEJw2v4WtBwsZVUpkJYZWVS7ZrPkcvX12N_B76qyAriMLszC-lna5CJfqaBdyJ2CQ",
+          "signer": "u-mallory"
+        }
+      },
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "want": {
+        "head": "58dfd60b10ebefa9bf2974f4c46835735e30fd98e46cfc0289ccd36168718e6a",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": [
+          2
+        ]
+      }
+    },
+    {
+      "name": "successor-unlisted-wrong-signer",
+      "why": "carol is not listed; mallory signs the record",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "izgdiwWrFxL5tX7Zu2WQFKEKnnkpqXbWMAS9XCCQ0N-cYQ4XyYsaqnyGVMMIS-XqEOgS9KYPKYhQ9oJUyXHBBA",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiZDdhODVlMzUyMTYxYjI0NzEwN2QxZjUzMTNmZmI2NTcxOTkyMDc2MDc0ZWU5YWVkNzJiMjljNjFjNTE5YzNmYiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "wHc89gkyOF0aWgxOqV4l9rRxPcxMbne4G8Q1j0JwRwFnhL9CxygthOjUfhTRSmVh2_W7GJ_R8NVaOe7M-34QCQ",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {
+        "2": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwic3VjY2Vzc29yIjoidS1jYXJvbCIsInN1Y2Nlc3NvckZwIjoiOWI3YTM0ODMwYzJlOGFmZTBmYmU5NDg1YTQ3NjI1NTQxOTQyOWE1NTI2YzJiNmE3NzJkN2EyYzg1ZmExNGQyMiIsImFjdGlvbiI6Im5vbWluYXRlIn0",
+          "sig": "B6zzkxdg_dqr6jvM_JPe_VEJw2v4WtBwsZVUpkJYZWVS7ZrPkcvX12N_B76qyAriMLszC-lna5CJfqaBdyJ2CQ",
+          "signer": "u-mallory"
+        }
+      },
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "error": "chain"
+    },
+    {
+      "name": "successor-listed-wrong-successor-fp",
+      "why": "carol is a listed editor; the record's successorFp is dave's",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "E9-UZeuPTmAl6BRTEEifBtwu0ld3usLBNk6JHZeuZgUG5SSFIer847O1_VYlBXVtQYrjP9Fklv7kauzynKoEAQ",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiYWQ2ZTA4Nzc0OTA3M2M0ZTk0MzcyZmNmZjk2NzMwNTAzYzlhYmZjNGUyM2E5MTM2ZjYxMGQzMzM3ZTMzNzI3MSIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "PdbJG_mgpD9202-17FZOXBudw1v7pde6xuz1-OhSHGC_Mr-H_5hXP8zJUh_Xp1ZfLWhkPp5Z8UDoQbPvVPORDw",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {
+        "2": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwic3VjY2Vzc29yIjoidS1jYXJvbCIsInN1Y2Nlc3NvckZwIjoiMzI4M2UwMTQ4Mzk4Nzc1ZDYxZDE5ODRkYjFiMmExMmZmODc2NTk0OTFiZTQ5MzFlMGZmN2I5ZDIxYmYzZDE4MiIsImFjdGlvbiI6Im5vbWluYXRlIn0",
+          "sig": "fmVtFvxgHRJBcZjqllsmcXLx5rlLXgXOlku2JEu-s1NGIfVdLih3i28CtD-8qGLsN_3V6xjPj3TMjmEK5l5sDw",
+          "signer": "u-alice"
+        }
+      },
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "want": {
+        "head": "58dfd60b10ebefa9bf2974f4c46835735e30fd98e46cfc0289ccd36168718e6a",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": [
+          2
+        ]
+      }
+    },
+    {
+      "name": "successor-unlisted-wrong-successor-fp",
+      "why": "carol is not listed; the record's successorFp is dave's",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "izgdiwWrFxL5tX7Zu2WQFKEKnnkpqXbWMAS9XCCQ0N-cYQ4XyYsaqnyGVMMIS-XqEOgS9KYPKYhQ9oJUyXHBBA",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiZDdhODVlMzUyMTYxYjI0NzEwN2QxZjUzMTNmZmI2NTcxOTkyMDc2MDc0ZWU5YWVkNzJiMjljNjFjNTE5YzNmYiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "wHc89gkyOF0aWgxOqV4l9rRxPcxMbne4G8Q1j0JwRwFnhL9CxygthOjUfhTRSmVh2_W7GJ_R8NVaOe7M-34QCQ",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {
+        "2": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwic3VjY2Vzc29yIjoidS1jYXJvbCIsInN1Y2Nlc3NvckZwIjoiMzI4M2UwMTQ4Mzk4Nzc1ZDYxZDE5ODRkYjFiMmExMmZmODc2NTk0OTFiZTQ5MzFlMGZmN2I5ZDIxYmYzZDE4MiIsImFjdGlvbiI6Im5vbWluYXRlIn0",
+          "sig": "fmVtFvxgHRJBcZjqllsmcXLx5rlLXgXOlku2JEu-s1NGIfVdLih3i28CtD-8qGLsN_3V6xjPj3TMjmEK5l5sDw",
+          "signer": "u-alice"
+        }
+      },
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "error": "chain"
+    },
+    {
+      "name": "successor-listed-wrong-successor",
+      "why": "carol is a listed editor; the record nominates dave",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "E9-UZeuPTmAl6BRTEEifBtwu0ld3usLBNk6JHZeuZgUG5SSFIer847O1_VYlBXVtQYrjP9Fklv7kauzynKoEAQ",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiYWQ2ZTA4Nzc0OTA3M2M0ZTk0MzcyZmNmZjk2NzMwNTAzYzlhYmZjNGUyM2E5MTM2ZjYxMGQzMzM3ZTMzNzI3MSIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "PdbJG_mgpD9202-17FZOXBudw1v7pde6xuz1-OhSHGC_Mr-H_5hXP8zJUh_Xp1ZfLWhkPp5Z8UDoQbPvVPORDw",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {
+        "2": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwic3VjY2Vzc29yIjoidS1kYXZlIiwic3VjY2Vzc29yRnAiOiI5YjdhMzQ4MzBjMmU4YWZlMGZiZTk0ODVhNDc2MjU1NDE5NDI5YTU1MjZjMmI2YTc3MmQ3YTJjODVmYTE0ZDIyIiwiYWN0aW9uIjoibm9taW5hdGUifQ",
+          "sig": "IJIu3BqYUCXN6_4WC3K4dTTAKespb0Ov-KicnzW8tejVU8104tOuWuQnTd03iHiCdJwNUV8MX9skDvylVIeUCQ",
+          "signer": "u-alice"
+        }
+      },
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "want": {
+        "head": "58dfd60b10ebefa9bf2974f4c46835735e30fd98e46cfc0289ccd36168718e6a",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": [
+          2
+        ]
+      }
+    },
+    {
+      "name": "successor-unlisted-wrong-successor",
+      "why": "carol is not listed; the record nominates dave",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "izgdiwWrFxL5tX7Zu2WQFKEKnnkpqXbWMAS9XCCQ0N-cYQ4XyYsaqnyGVMMIS-XqEOgS9KYPKYhQ9oJUyXHBBA",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiZDdhODVlMzUyMTYxYjI0NzEwN2QxZjUzMTNmZmI2NTcxOTkyMDc2MDc0ZWU5YWVkNzJiMjljNjFjNTE5YzNmYiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "wHc89gkyOF0aWgxOqV4l9rRxPcxMbne4G8Q1j0JwRwFnhL9CxygthOjUfhTRSmVh2_W7GJ_R8NVaOe7M-34QCQ",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {
+        "2": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwic3VjY2Vzc29yIjoidS1kYXZlIiwic3VjY2Vzc29yRnAiOiI5YjdhMzQ4MzBjMmU4YWZlMGZiZTk0ODVhNDc2MjU1NDE5NDI5YTU1MjZjMmI2YTc3MmQ3YTJjODVmYTE0ZDIyIiwiYWN0aW9uIjoibm9taW5hdGUifQ",
+          "sig": "IJIu3BqYUCXN6_4WC3K4dTTAKespb0Ov-KicnzW8tejVU8104tOuWuQnTd03iHiCdJwNUV8MX9skDvylVIeUCQ",
+          "signer": "u-alice"
+        }
+      },
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "error": "chain"
+    },
+    {
+      "name": "successor-listed-wrong-user",
+      "why": "carol is a listed editor; the record is bob's",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In0seyJ1c2VyIjoidS1jYXJvbCIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6IiJ9",
+          "sig": "E9-UZeuPTmAl6BRTEEifBtwu0ld3usLBNk6JHZeuZgUG5SSFIer847O1_VYlBXVtQYrjP9Fklv7kauzynKoEAQ",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiYWQ2ZTA4Nzc0OTA3M2M0ZTk0MzcyZmNmZjk2NzMwNTAzYzlhYmZjNGUyM2E5MTM2ZjYxMGQzMzM3ZTMzNzI3MSIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "PdbJG_mgpD9202-17FZOXBudw1v7pde6xuz1-OhSHGC_Mr-H_5hXP8zJUh_Xp1ZfLWhkPp5Z8UDoQbPvVPORDw",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {
+        "2": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsInN1Y2Nlc3NvciI6InUtY2Fyb2wiLCJzdWNjZXNzb3JGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJhY3Rpb24iOiJub21pbmF0ZSJ9",
+          "sig": "JYTOv76djz_nkrAk8lDX_cVFC7xjKVshoKm-d6DKOr0JgicUnS3GeeieXNI7gkMwy6GlrxagEFDtKr3_3kxRAA",
+          "signer": "u-alice"
+        }
+      },
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "want": {
+        "head": "58dfd60b10ebefa9bf2974f4c46835735e30fd98e46cfc0289ccd36168718e6a",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": [
+          2
+        ]
+      }
+    },
+    {
+      "name": "successor-unlisted-wrong-user",
+      "why": "carol is not listed; the record is bob's",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "izgdiwWrFxL5tX7Zu2WQFKEKnnkpqXbWMAS9XCCQ0N-cYQ4XyYsaqnyGVMMIS-XqEOgS9KYPKYhQ9oJUyXHBBA",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOmZhbHNlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiZDdhODVlMzUyMTYxYjI0NzEwN2QxZjUzMTNmZmI2NTcxOTkyMDc2MDc0ZWU5YWVkNzJiMjljNjFjNTE5YzNmYiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiJhZG1pbiJ9",
+          "sig": "wHc89gkyOF0aWgxOqV4l9rRxPcxMbne4G8Q1j0JwRwFnhL9CxygthOjUfhTRSmVh2_W7GJ_R8NVaOe7M-34QCQ",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "successors": {
+        "2": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsInN1Y2Nlc3NvciI6InUtY2Fyb2wiLCJzdWNjZXNzb3JGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJhY3Rpb24iOiJub21pbmF0ZSJ9",
+          "sig": "JYTOv76djz_nkrAk8lDX_cVFC7xjKVshoKm-d6DKOr0JgicUnS3GeeieXNI7gkMwy6GlrxagEFDtKr3_3kxRAA",
+          "signer": "u-alice"
+        }
+      },
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "error": "chain"
     }
   ],
   "approval": [
@@ -7642,6 +8386,7 @@
           }
         ]
       },
+      "successors": {},
       "want": {
         "head": "39b676c0a69a530b85bca3f3ca1824f59102e61aba84db1ecfeb145dc93724a3",
         "seq": 3,
@@ -7703,6 +8448,7 @@
           }
         ]
       },
+      "successors": {},
       "error": "chain"
     },
     {
@@ -7747,6 +8493,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "error": "chain"
     },
     {
@@ -7782,6 +8529,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "want": {
         "head": "c3f5a0b018f15c7837d8af7ec772e1d5bb368d97c7808feb17b62e4d1789cb59",
         "seq": 2,
@@ -7830,6 +8578,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "want": {
         "head": "8f484a7662268fc9ca7fae66a55d4848a693c5e467e8880a333c4b34045e8a16",
         "seq": 3,
@@ -7878,6 +8627,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "want": {
         "head": "291860f597a7936d8df6dd997522a00aa6c02f27d007260fc38d5c1d09f795cf",
         "seq": 3,
@@ -7925,6 +8675,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "want": {
         "head": "c3f5a0b018f15c7837d8af7ec772e1d5bb368d97c7808feb17b62e4d1789cb59",
         "seq": 2,
@@ -7968,6 +8719,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "error": "chain"
     },
     {
@@ -8003,6 +8755,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "error": "chain"
     },
     {
@@ -8038,6 +8791,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "error": "chain"
     },
     {
@@ -8073,6 +8827,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "want": {
         "head": "c3f5a0b018f15c7837d8af7ec772e1d5bb368d97c7808feb17b62e4d1789cb59",
         "seq": 2,
@@ -8109,6 +8864,7 @@
       "offers": {},
       "keys": {},
       "rotations": {},
+      "successors": {},
       "want": {
         "head": "c3f5a0b018f15c7837d8af7ec772e1d5bb368d97c7808feb17b62e4d1789cb59",
         "seq": 2,
@@ -8154,6 +8910,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "want": {
         "head": "18fd81a1877c5ca65afa5e3a7442f7d57a2aa20cbad1054f8be250e8342f31c7",
         "seq": 2,
@@ -8197,6 +8954,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "error": "chain"
     },
     {
@@ -8237,6 +8995,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "error": "staleLink"
     },
     {
@@ -8272,6 +9031,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "error": "chain"
     },
     {
@@ -8302,6 +9062,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "error": "chain"
     },
     {
@@ -8342,6 +9103,111 @@
         }
       },
       "rotations": {},
+      "successors": {},
+      "error": "chain"
+    },
+    {
+      "name": "successor-handover",
+      "why": "an administrator hands the public artifact to carol, alice's nominated successor, whom no record lists",
+      "artifact": "artifact-chain",
+      "ak": "af4a73359b502ae55ad49fb6d2b65aee836e3d83ffc08a65585407bfa7bcaf85",
+      "epoch": 1,
+      "o": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "izgdiwWrFxL5tX7Zu2WQFKEKnnkpqXbWMAS9XCCQ0N-cYQ4XyYsaqnyGVMMIS-XqEOgS9KYPKYhQ9oJUyXHBBA",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjp0cnVlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiZDdhODVlMzUyMTYxYjI0NzEwN2QxZjUzMTNmZmI2NTcxOTkyMDc2MDc0ZWU5YWVkNzJiMjljNjFjNTE5YzNmYiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "qEq7dSsQth_iDmzWgB9GwEHR1-IrXj8NTI0OUMNLw-XvL9x8tYiY5j6AYf0XEv23P-o5t9S1JkMFO6sMpORuCg",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Mywib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOnRydWUsInB1YmxpY1dyaXRlcyI6ZmFsc2UsInByZXYiOiJkMTNiYzJjZTk2OWZjMzY3ZDA0MTMzY2JlZjhjZTY0ZTM4NTVhZjQwODdjYWMyYjg0NmUyMzViMzNiYzdkZjBlIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6ImFkbWluIn0",
+          "sig": "f6tnyr21XjMwulkTE_RDMZNxr3OdtkoppSprnw5HysQSjKUMBYjAGldkDvqq3Qv7RfGHCnVHaDSJ76Eka_qGCA",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "keys": {
+        "u-bob": {
+          "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+          "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+        }
+      },
+      "rotations": {},
+      "successors": {
+        "3": {
+          "body": "eyJ2IjoxLCJ1c2VyIjoidS1hbGljZSIsInNlcSI6MSwic3VjY2Vzc29yIjoidS1jYXJvbCIsInN1Y2Nlc3NvckZwIjoiOWI3YTM0ODMwYzJlOGFmZTBmYmU5NDg1YTQ3NjI1NTQxOTQyOWE1NTI2YzJiNmE3NzJkN2EyYzg1ZmExNGQyMiIsImFjdGlvbiI6Im5vbWluYXRlIn0",
+          "sig": "JXWvv3RF6vF6mv0_EjBKUqyuE9ZW21DBcozTjEGl375Za38q1kFtUWCK-imurSimwkx0IhnRYVuWSDpouZIWAg",
+          "signer": "u-alice"
+        }
+      },
+      "want": {
+        "head": "47d1042b7f884fccf41eee5cff6ae5645cc2aa707f7dcfbc14e6050db7c101da",
+        "seq": 3,
+        "epoch": 1,
+        "handovers": [],
+        "editors": [
+          "u-bob"
+        ]
+      }
+    },
+    {
+      "name": "unlisted-handover-without-successor",
+      "why": "the same handover with no successor record served",
+      "artifact": "artifact-chain",
+      "ak": "af4a73359b502ae55ad49fb6d2b65aee836e3d83ffc08a65585407bfa7bcaf85",
+      "epoch": 1,
+      "o": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "izgdiwWrFxL5tX7Zu2WQFKEKnnkpqXbWMAS9XCCQ0N-cYQ4XyYsaqnyGVMMIS-XqEOgS9KYPKYhQ9oJUyXHBBA",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoiZWRpdG9yIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2In1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjp0cnVlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiZDdhODVlMzUyMTYxYjI0NzEwN2QxZjUzMTNmZmI2NTcxOTkyMDc2MDc0ZWU5YWVkNzJiMjljNjFjNTE5YzNmYiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "qEq7dSsQth_iDmzWgB9GwEHR1-IrXj8NTI0OUMNLw-XvL9x8tYiY5j6AYf0XEv23P-o5t9S1JkMFO6sMpORuCg",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Mywib3duZXIiOiJ1LWNhcm9sIiwib3duZXJGcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsInJvbGUiOiJlZGl0b3IiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYifSx7InVzZXIiOiJ1LWJvYiIsInJvbGUiOiJlZGl0b3IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYifV0sImV4Y2x1ZGVkIjpbXSwidGVhbSI6Im5vbmUiLCJwdWJsaWMiOnRydWUsInB1YmxpY1dyaXRlcyI6ZmFsc2UsInByZXYiOiJkMTNiYzJjZTk2OWZjMzY3ZDA0MTMzY2JlZjhjZTY0ZTM4NTVhZjQwODdjYWMyYjg0NmUyMzViMzNiYzdkZjBlIiwidHJhbnNmZXIiOiIiLCJoYW5kb3ZlciI6ImFkbWluIn0",
+          "sig": "f6tnyr21XjMwulkTE_RDMZNxr3OdtkoppSprnw5HysQSjKUMBYjAGldkDvqq3Qv7RfGHCnVHaDSJ76Eka_qGCA",
+          "signer": "u-carol"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+          "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+        }
+      },
+      "offers": {},
+      "keys": {
+        "u-bob": {
+          "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+          "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+        }
+      },
+      "rotations": {},
+      "successors": {},
       "error": "chain"
     },
     {
@@ -8377,6 +9243,7 @@
         }
       },
       "rotations": {},
+      "successors": {},
       "error": "chain"
     }
   ],

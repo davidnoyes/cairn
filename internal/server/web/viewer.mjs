@@ -221,6 +221,7 @@ export async function checkArtifact(deps, caller, kr, artifact, membership, curr
     records,
     owners: membership.owners,
     offers: membership.offers,
+    successors: membership.successors,
     anchor,
     currentOwnerFp,
     pin: epoch && { epoch: epoch.epoch, seq: epoch.seq, head: epoch.head },
@@ -375,6 +376,7 @@ async function openAsLink(deps, caller, artifact, link) {
     records: membership.records,
     owners: membership.owners,
     offers: membership.offers,
+    successors: membership.successors,
     rotations: membership.rotations,
   });
   return {

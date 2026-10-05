@@ -560,7 +560,7 @@ func artifactUpdate(args []string) error {
 		fields["description"] = *description
 	}
 	if err := c.UpdateArtifact(a.ID, fields); err != nil {
-		return err
+		return explainRefusal(c, err)
 	}
 	if *jsonOut {
 		updated, err := c.GetArtifact(a.ID)

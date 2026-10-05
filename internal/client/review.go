@@ -264,7 +264,7 @@ func (c *Client) getBytes(path string) ([]byte, error) {
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.roundTrip(req)
 	if err != nil {
 		return nil, err
 	}

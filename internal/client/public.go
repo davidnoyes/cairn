@@ -188,7 +188,7 @@ func (c *Client) OpenLink(l *e2e.Link) (*OpenedLink, error) {
 		return nil, err
 	}
 	verified, err := e2e.VerifyLinkChain(e2e.LinkChainInput{
-		Link: *l, Records: m.Records, Owners: m.Owners, Offers: m.Offers, Keys: m.Keys, Rotations: m.Rotations,
+		Link: *l, Records: m.Records, Owners: m.Owners, Offers: m.Offers, Keys: m.Keys, Rotations: m.Rotations, Successors: m.Successors,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("the link's artifact %s does not verify: %w", l.Artifact, err)

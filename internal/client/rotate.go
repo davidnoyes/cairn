@@ -122,7 +122,7 @@ func (c *Client) RotateKeys(password string, keepEpochs bool) (*RotateResult, er
 		return nil, err
 	}
 	// The endpoint is session-only, and every read below uses the session too.
-	s := &Client{Host: c.Host, Token: ps.Token, HTTP: c.HTTP, Anchors: c.Anchors}
+	s := &Client{Host: c.Host, Token: ps.Token, HTTP: c.HTTP, Anchors: c.Anchors, OnNotice: c.OnNotice}
 	old, err := openKeys(me.ID, ps.MK, ps.Bundle)
 	if err != nil {
 		return nil, err

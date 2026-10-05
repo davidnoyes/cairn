@@ -532,6 +532,31 @@ export function parseRecoveryCode(s) {
   return code;
 }
 
+// Successor codes: the first 10 bytes of a fingerprint, shown as four groups
+// of four base32 characters. 80 bits leave no unused trailing bits, so unlike
+// a recovery code there is no trailing-bit check.
+const SUCCESSOR_CODE_BYTES = 10;
+
+// successorCode renders the first 10 bytes of a fingerprint as a successor
+// code, in the shape XXXX-XXXX-XXXX-XXXX.
+export function successorCode(fp) {
+  return formatRecoveryCode(fp.slice(0, SUCCESSOR_CODE_BYTES));
+}
+
+// parseSuccessorCode parses a displayed successor code by the recovery
+// code's character rules and returns the 10 bytes it names. Anything but 16
+// characters after the spaces and hyphens are dropped is refused.
+export function parseSuccessorCode(s) {
+  for (let i = 0; i < s.length; i++) {
+    if (!isRecoveryCodeByte(s[i])) throw new FormatError(`invalid character at ${i}`);
+  }
+  const cleaned = s.toUpperCase().replace(/[- ]/g, '');
+  if (cleaned.length !== (SUCCESSOR_CODE_BYTES * 8) / 5) throw new FormatError('wrong length');
+  const code = base32Decode(cleaned);
+  if (code.length !== SUCCESSOR_CODE_BYTES) throw new FormatError('wrong decoded length');
+  return code;
+}
+
 // recoveryKek derives the key that seals MK under the recovery code.
 export async function recoveryKek(code) {
   return derive(code, null, LABELS.recovery);
@@ -1774,6 +1799,11 @@ export const BODY_SCHEMAS = {
     user: field('string'),
     token: field('string'),
   },
+  refusal: {
+    v: field('number'),
+    user: field('string'),
+    requestedAt: field('string'),
+  },
 };
 
 // FILE_META_SCHEMA is the plaintext of a stored file's file-meta blob.
@@ -2121,19 +2151,21 @@ async function checkNextRecord(input, owners, linked, prev, prevHash, b, handove
   if (b.handover !== '' && b.handover !== 'admin') throw new ChainError(`handover ${b.handover}`);
   const listed = prev.members.find((m) => m.user === b.owner);
   if (!listed) {
-    if (b.handover !== '') {
+    if (b.handover === '') throw new ChainError('the new owner is not listed in the previous record');
+    const why = await checkSuccessor(input, owners, prev, b);
+    if (why) {
       throw new ChainError(
-        'a handover to a user the previous record does not list needs a successor record, which this client does not check yet',
+        `a handover to a user the previous record does not list needs the previous owner's successor record: ${why}`,
       );
     }
-    throw new ChainError('the new owner is not listed in the previous record');
+    return;
   }
   if (listed.role !== 'editor') throw new ChainError(`the new owner is listed as ${listed.role}, not editor`);
   if (!(await linked(b.owner, listed.fp, b.ownerFp))) {
     throw new ChainError('ownerFp does not follow from the fp the previous record lists for the new owner');
   }
   if (b.handover !== '') {
-    handovers.push(b.seq);
+    if (await checkSuccessor(input, owners, prev, b)) handovers.push(b.seq);
     return;
   }
 
@@ -2147,6 +2179,29 @@ async function checkNextRecord(input, owners, linked, prev, prevHash, b, handove
   if (t.to !== b.owner) throw new ChainError(`offer to ${t.to}, not the new owner`);
   if (t.toFp !== listed.fp) throw new ChainError("offer's toFp is not the fp listed for the new owner");
   if (t.prev !== prevHash) throw new ChainError("offer's prev is not the previous record's hash");
+}
+
+// checkSuccessor checks the successor record served for the handover b: it
+// verifies under the previous owner's key, the one prev's ownerFp names, and
+// nominates b's owner, under the fingerprint b lists for them. It returns
+// why the record does not count, or '' when it does.
+// Mirrors checkSuccessor in internal/e2e/chain.go.
+async function checkSuccessor(input, owners, prev, b) {
+  const key = String(b.seq);
+  if (!input.successors || !hasOwn(input.successors, key)) return 'no successor record';
+  const pub = owners.get(prev.ownerFp);
+  if (!pub) return 'no key for the previous owner';
+  let s;
+  try {
+    s = await openEnvelope(input.successors[key], pub, 'successor');
+  } catch (err) {
+    return `successor record: ${err.message}`;
+  }
+  if (s.user !== prev.owner) return `successor record for ${JSON.stringify(s.user)}, not the previous owner`;
+  if (s.successor !== b.owner) return `successor record names ${JSON.stringify(s.successor)}, not the new owner`;
+  if (s.successorFp !== b.ownerFp) return "successor record's successorFp is not the new owner's fingerprint";
+  if (s.action !== 'nominate') return `successor record's action is ${JSON.stringify(s.action)}`;
+  return '';
 }
 
 // verifyChain checks every record of a membership chain, as the client
@@ -2370,6 +2425,7 @@ export async function verifyLinkChain(input) {
     records: input.records,
     owners: input.owners,
     offers: input.offers,
+    successors: input.successors,
     anchor: link.o,
     linked: rotationLinker(input.rotations),
   });

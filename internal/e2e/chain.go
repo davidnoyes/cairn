@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 )
 
 // Sentinel errors for a membership chain the client refuses. A record that
@@ -42,6 +43,9 @@ type ChainInput struct {
 	Owners map[string]KeyPair
 	// Offers maps a transfer body hash to the offer envelope.
 	Offers map[string]Envelope
+	// Successors maps the seq of an accepting record, as a string, to the
+	// previous owner's latest successor record.
+	Successors map[string]Envelope
 	// Anchor is the fingerprint the first record's ownerFp must reach: the
 	// client's pin for the creator, or a public link's o.
 	Anchor string
@@ -62,7 +66,8 @@ type Chain struct {
 	// Head is the body hash of the latest record, for the keyring.
 	Head string
 	// Handovers are the seqs of the records that accept an administrator's
-	// handover, for the notice.
+	// handover to anyone but the previous owner's nominated successor, for
+	// the notice.
 	Handovers []int
 }
 
@@ -263,10 +268,13 @@ func checkNextRecord(c *Chain, in ChainInput, owners map[string][]byte, linked f
 		}
 	}
 	if listed == nil {
-		if b.Handover != "" {
-			return fmt.Errorf("%w: a handover to a user the previous record does not list needs a successor record, which this client does not check yet", ErrChain)
+		if b.Handover == "" {
+			return fmt.Errorf("%w: the new owner is not listed in the previous record", ErrChain)
 		}
-		return fmt.Errorf("%w: the new owner is not listed in the previous record", ErrChain)
+		if err := checkSuccessor(in, owners, prev, b); err != nil {
+			return fmt.Errorf("%w: a handover to a user the previous record does not list needs the previous owner's successor record: %v", ErrChain, err)
+		}
+		return nil
 	}
 	if listed.Role != "editor" {
 		return fmt.Errorf("%w: the new owner is listed as %q, not editor", ErrChain, listed.Role)
@@ -275,7 +283,9 @@ func checkNextRecord(c *Chain, in ChainInput, owners map[string][]byte, linked f
 		return fmt.Errorf("%w: ownerFp does not follow from the fp the previous record lists for the new owner", ErrChain)
 	}
 	if b.Handover != "" {
-		c.Handovers = append(c.Handovers, b.Seq)
+		if checkSuccessor(in, owners, prev, b) != nil {
+			c.Handovers = append(c.Handovers, b.Seq)
+		}
 		return nil
 	}
 
@@ -298,6 +308,35 @@ func checkNextRecord(c *Chain, in ChainInput, owners map[string][]byte, linked f
 		return fmt.Errorf("%w: offer's toFp is not the fp listed for the new owner", ErrChain)
 	case t.Prev != prevHash:
 		return fmt.Errorf("%w: offer's prev is not the previous record's hash", ErrChain)
+	}
+	return nil
+}
+
+// checkSuccessor checks the successor record served for the handover b: it
+// verifies under the previous owner's key, the one prev's ownerFp names, and
+// nominates b's owner, under the fingerprint b lists for them.
+func checkSuccessor(in ChainInput, owners map[string][]byte, prev, b MembershipBody) error {
+	env, ok := in.Successors[strconv.Itoa(b.Seq)]
+	if !ok {
+		return errors.New("no successor record")
+	}
+	pub, ok := owners[prev.OwnerFP]
+	if !ok {
+		return errors.New("no key for the previous owner")
+	}
+	var s SuccessorBody
+	if err := OpenEnvelope(env, pub, "successor", &s); err != nil {
+		return fmt.Errorf("successor record: %w", err)
+	}
+	switch {
+	case s.User != prev.Owner:
+		return fmt.Errorf("successor record for %q, not the previous owner", s.User)
+	case s.Successor != b.Owner:
+		return fmt.Errorf("successor record names %q, not the new owner", s.Successor)
+	case s.SuccessorFP != b.OwnerFP:
+		return errors.New("successor record's successorFp is not the new owner's fingerprint")
+	case s.Action != "nominate":
+		return fmt.Errorf("successor record's action is %q", s.Action)
 	}
 	return nil
 }

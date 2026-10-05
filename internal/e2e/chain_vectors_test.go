@@ -9,8 +9,8 @@ import (
 
 // chainVec is one membership chain that VerifyChain and verifyChain must
 // both accept, with the result in Want, or both refuse with the error kind
-// in Error. Records, Owners, and Offers are in the wire form the membership
-// endpoint serves, not hex.
+// in Error. Records, Owners, Offers, and Successors are in the wire form the
+// membership endpoint serves, not hex.
 type chainVec struct {
 	Name           string              `json:"name"`
 	Why            string              `json:"why"`
@@ -18,6 +18,7 @@ type chainVec struct {
 	Records        []Envelope          `json:"records"`
 	Owners         map[string]KeyPair  `json:"owners"`
 	Offers         map[string]Envelope `json:"offers"`
+	Successors     map[string]Envelope `json:"successors"`
 	Anchor         string              `json:"anchor"`
 	CurrentOwnerFP string              `json:"currentOwnerFp"`
 	Pin            *chainPinVec        `json:"pin"`
@@ -70,7 +71,7 @@ func chainVectors(t testing.TB) []chainVec {
 		in := c.build(t, u)
 		v := chainVec{
 			Name: c.name, Why: c.why, Artifact: in.Artifact, Records: in.Records,
-			Owners: in.Owners, Offers: in.Offers, Anchor: in.Anchor, CurrentOwnerFP: in.CurrentOwnerFP,
+			Owners: in.Owners, Offers: in.Offers, Successors: in.Successors, Anchor: in.Anchor, CurrentOwnerFP: in.CurrentOwnerFP,
 		}
 		if v.Records == nil {
 			v.Records = []Envelope{}
@@ -80,6 +81,9 @@ func chainVectors(t testing.TB) []chainVec {
 		}
 		if v.Offers == nil {
 			v.Offers = map[string]Envelope{}
+		}
+		if v.Successors == nil {
+			v.Successors = map[string]Envelope{}
 		}
 		if in.Pin != nil {
 			v.Pin = &chainPinVec{Epoch: in.Pin.Epoch, Seq: in.Pin.Seq, Head: in.Pin.Head}
@@ -109,7 +113,7 @@ func checkChainVectors(t *testing.T, vs []chainVec) {
 	}
 	for _, v := range parsed {
 		in := ChainInput{
-			Artifact: v.Artifact, Records: v.Records, Owners: v.Owners, Offers: v.Offers,
+			Artifact: v.Artifact, Records: v.Records, Owners: v.Owners, Offers: v.Offers, Successors: v.Successors,
 			Anchor: v.Anchor, CurrentOwnerFP: v.CurrentOwnerFP,
 		}
 		if v.Pin != nil {

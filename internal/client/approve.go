@@ -317,7 +317,8 @@ func approverOf(latest e2e.MembershipBody, k *UnlockedKeys) bool {
 }
 
 // callerAKs returns the AK of every epoch up to the chain's latest, for the
-// owner from the estate copies, for an editor by opening the caller's own
+// owner from the estate copies, for the owner's released successor from the
+// same copies under the owner's EK, for an editor by opening the caller's own
 // wraps. Each is checked against the akCommit the verified chain lists.
 func (c *Client) callerAKs(k *UnlockedKeys, artifactID string, chain *e2e.Chain) (map[int][]byte, error) {
 	if chain.Latest.Owner == k.UserID {
@@ -327,6 +328,11 @@ func (c *Client) callerAKs(k *UnlockedKeys, artifactID string, chain *e2e.Chain)
 	keys, err := c.Keys(artifactID)
 	if err != nil {
 		return nil, err
+	}
+	// A caller with estate copies and no wraps of their own is the owner's
+	// released successor.
+	if len(keys.Wraps) == 0 && len(keys.Estate) > 0 {
+		return c.successorAKs(k, artifactID, chain, keys)
 	}
 	aks := map[int][]byte{}
 	for _, w := range keys.Wraps {

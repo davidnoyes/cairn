@@ -32,6 +32,7 @@ Client:
   cairn public           Turn the public link on or off (ARTIFACT on|off [--writes on|off])
   cairn pin              Pin a user's fingerprint in your keyring (--verified once compared)
   cairn transfer         Offer ownership to an editor (ARTIFACT USER), or answer an offer (accept|decline|withdraw ARTIFACT)
+  cairn successor        Name a successor, or ask for access as one (code|status|nominate|remove|refuse|request|notice-email)
   cairn rotate-keys      Replace your keys, move your artifacts to a new epoch (--keep-epochs: stay), and print the new recovery code
   cairn push             Upload a directory as a new (or replaced) version (--create: new artifact)
   cairn db               Run SQL on a version's database, on your own decrypted copy (query|batch|revisions|restore|download)
@@ -91,6 +92,8 @@ func main() {
 		err = runPin(args)
 	case "transfer":
 		err = runTransfer(args)
+	case "successor":
+		err = runSuccessor(args)
 	case "rotate-keys":
 		err = runRotateKeys(args)
 	case "push":

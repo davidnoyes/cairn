@@ -46,8 +46,11 @@ type linkChainVec struct {
 	Keys     map[string]KeyPair  `json:"keys"`
 	// Rotations are the rotation records the server serves, by user ID.
 	Rotations map[string][]Envelope `json:"rotations"`
-	Want      *linkChainWantVec     `json:"want,omitempty"`
-	Error     string                `json:"error,omitempty"`
+	// Successors are the successor records the server serves, by the seq
+	// of the record that accepts an administrator's handover.
+	Successors map[string]Envelope `json:"successors"`
+	Want       *linkChainWantVec   `json:"want,omitempty"`
+	Error      string              `json:"error,omitempty"`
 }
 
 // linkChainWantVec is the chain's result plus Editors, the sorted user IDs
@@ -189,6 +192,8 @@ type linkChainCase struct {
 	editors   []string // user IDs whose keys verify; the trusted writers
 	// rotations is the rotation records the server serves, if any.
 	rotations func(t testing.TB, u chainUsers) map[string][]Envelope
+	// successors is the successor records the server serves, if any.
+	successors func(t testing.TB, u chainUsers) map[string]Envelope
 }
 
 func linkChainCases() []linkChainCase {
@@ -213,6 +218,14 @@ func linkChainCases() []linkChainCase {
 	rotatedOwner := func(t testing.TB, u chainUsers) (*chainFixture, []byte, string, map[string]KeyPair) {
 		alice2 := newChainUser(t, "u-alice", "rot")
 		f := public(t, u).add(alice2, func(b *MembershipBody) { b.OwnerFP = alice2.fp })
+		return f, ak(1), u.alice.fp, map[string]KeyPair{u.bob.id: u.bob.keys}
+	}
+	// handedToCarol is a public chain that an administrator hands from alice
+	// to carol, whom no record lists, in record 3.
+	handedToCarol := func(t testing.TB, u chainUsers) (*chainFixture, []byte, string, map[string]KeyPair) {
+		f := newChain(t, u.alice, []Member{editor(u.bob)}, nil).
+			add(u.alice, func(b *MembershipBody) { b.Public = true }).
+			add(u.carol, newOwner(u.alice, u.carol, setHandover("admin")))
 		return f, ak(1), u.alice.fp, map[string]KeyPair{u.bob.id: u.bob.keys}
 	}
 	rotatedOwnerRecords := func(t testing.TB, u chainUsers) map[string][]Envelope {
@@ -299,6 +312,13 @@ func linkChainCases() []linkChainCase {
 				f := public(t, u).add(u.alice, func(b *MembershipBody) { b.Public = false })
 				return f, ak(1), u.alice.fp, map[string]KeyPair{u.bob.id: u.bob.keys}
 			}},
+		{name: "successor-handover", why: "an administrator hands the public artifact to carol, alice's nominated successor, whom no record lists", seq: 3, headEpoch: 1, editors: []string{"u-bob"},
+			build: handedToCarol,
+			successors: func(t testing.TB, u chainUsers) map[string]Envelope {
+				return map[string]Envelope{"3": succRecord(t, u.alice, nil)}
+			}},
+		{name: "unlisted-handover-without-successor", why: "the same handover with no successor record served", err: ErrChain,
+			build: handedToCarol},
 		{name: "broken-chain", why: "chain rules still apply: the second record's prev is wrong", err: ErrChain,
 			build: with(func(u chainUsers, f *chainFixture, _ *[]byte, _ *string, _ map[string]KeyPair) *chainFixture {
 				return newChain(f.t, u.alice, []Member{editor(u.bob), viewer(u.carol)}, nil).
@@ -320,9 +340,13 @@ func linkChainVectors(t testing.TB) []linkChainVec {
 		v := linkChainVec{
 			Name: c.name, Why: c.why, Artifact: chainArtifact, AK: hexEnc(ak), Epoch: epoch, O: o,
 			Records: f.records, Owners: f.owners, Offers: f.offers, Keys: keys, Rotations: map[string][]Envelope{},
+			Successors: map[string]Envelope{},
 		}
 		if c.rotations != nil {
 			v.Rotations = c.rotations(t, u)
+		}
+		if c.successors != nil {
+			v.Successors = c.successors(t, u)
 		}
 		if c.err != nil {
 			v.Error = linkChainErrorKind(t, c.err)
@@ -351,6 +375,7 @@ func checkLinkChainVectors(t *testing.T, vs []linkChainVec) {
 		res, err := VerifyLinkChain(LinkChainInput{
 			Link:    Link{Artifact: v.Artifact, AK: hexDec(t, v.AK), Epoch: v.Epoch, Owner: v.O},
 			Records: v.Records, Owners: v.Owners, Offers: v.Offers, Keys: v.Keys, Rotations: v.Rotations,
+			Successors: v.Successors,
 		})
 		if v.Error != "" {
 			want := chainErrorKinds[v.Error]

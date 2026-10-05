@@ -662,6 +662,12 @@ whose `ownerFp` differs from `o` verifies only when a rotation chain links
 `o` to it. So a link made before the owner ran `cairn rotate-keys
 --keep-epochs` still opens.
 
+Link verification checks administrator handovers the same way. The answer
+carries `successors` in link scope too, and `VerifyLinkChain` and
+`verifyLinkChain` apply the member's successor check. A handover to a user
+the preceding record does not list verifies only with the previous owner's
+successor record. Without that record, the link refuses the chain.
+
 #### Keys
 
 `GET /api/artifacts/{id}/keys` returns the caller's own wraps, or for the
@@ -878,9 +884,13 @@ the previous owner's nominated successor. The client checks the record in
 `successors`: it verifies under the previous owner's key, reached through
 their rotation chain, its `user` is the previous owner, its `successor` is
 the new owner, its `successorFp` is the new owner's fingerprint, and its
-`action` is `nominate`. The client
-cannot tell whether the server withheld a later record that removed the
-nomination.
+`action` is `nominate`. The key is the one whose fingerprint is the
+preceding record's `ownerFp`. A nomination signed before the previous owner
+rotated keys therefore no longer counts. That case fails safe: a listed new
+owner gets the notice, and an unlisted one is refused. A rotation deletes the
+successor's copy anyway, so the owner nominates again after rotating. The
+client cannot tell whether the server withheld a later record that removed
+the nomination.
 
 Otherwise every member's client, on every device, shows this notice on the
 artifact each time it opens it:

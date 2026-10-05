@@ -398,10 +398,16 @@ func (c *Client) AcceptTransfer(artifactID string, opts AcceptTransferOptions) (
 	}
 	latest := va.Chain.Latest
 	i := slices.IndexFunc(latest.Members, func(m e2e.Member) bool { return m.User == k.UserID && m.Role == "editor" })
-	if i < 0 {
+	listedFP := k.FP
+	if i >= 0 {
+		listedFP = latest.Members[i].FP
+	} else if open.By != "admin" {
 		return nil, ErrNotListedEditor
+	} else if _, err := c.successorEK(k, latest.Owner); err != nil {
+		// Only the owner's released successor may take an administrator's
+		// offer without being listed.
+		return nil, fmt.Errorf("%w: %v", ErrNotListedEditor, err)
 	}
-	listedFP := latest.Members[i].FP
 	if listedFP != k.FP {
 		return nil, fmt.Errorf("%w: the latest record lists you under other keys", ErrMemberKeyChanged)
 	}
@@ -439,9 +445,12 @@ func (c *Client) AcceptTransfer(artifactID string, opts AcceptTransferOptions) (
 	var aks map[int][]byte
 	var pins map[string]pinDecision
 	if drop {
-		pending, err := c.pendingFor(k, artifactID, va)
-		if err != nil {
-			return nil, err
+		// A successor may not list the team's pending approvals.
+		var pending []PendingUser
+		if i >= 0 {
+			if pending, err = c.pendingFor(k, artifactID, va); err != nil {
+				return nil, err
+			}
 		}
 		next.Members = members
 		b, err := c.buildNextEpoch(k, artifactID, va, dir, pending, nextEpochRecord{next: next, newOwner: k.UserID, prevOwner: latest.Owner})

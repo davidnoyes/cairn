@@ -45,6 +45,10 @@ type Client struct {
 	// administrator's handover in an artifact's chain, acknowledged or not,
 	// so a command can show the notice.
 	OnHandover func(artifactID string, n HandoverNotice)
+	// OnNotice, when set, is called with the value of the Cairn-Notice header
+	// of every response that carries one: "succession-requested" or
+	// "rotate-keys".
+	OnNotice func(notice string)
 }
 
 func New(host, token string) *Client {
@@ -98,7 +102,7 @@ func (c *Client) doWithHeaders(method, path string, body io.Reader, contentType 
 	if c.LinkToken != "" {
 		req.Header.Set("X-Cairn-Link-Token", c.LinkToken)
 	}
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.roundTrip(req)
 	if err != nil {
 		return err
 	}
@@ -110,6 +114,22 @@ func (c *Client) doWithHeaders(method, path string, body io.Reader, contentType 
 		return json.NewDecoder(resp.Body).Decode(out)
 	}
 	return nil
+}
+
+// NoticeHeader is the response header that tells a user their successor asked
+// for access, or was released.
+const NoticeHeader = "Cairn-Notice"
+
+// roundTrip sends req and reports the response's notice, if any, to
+// c.OnNotice. Every request goes through it, so no command misses a notice.
+func (c *Client) roundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := c.HTTP.Do(req)
+	if err == nil && c.OnNotice != nil {
+		if n := resp.Header.Get(NoticeHeader); n != "" {
+			c.OnNotice(n)
+		}
+	}
+	return resp, err
 }
 
 // errorFromResponse is the APIError for a response with a status of 400 or

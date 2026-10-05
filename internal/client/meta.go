@@ -46,6 +46,9 @@ type Artifact struct {
 	Name        string              `json:"name"`
 	Description string              `json:"description"`
 	Meta        map[string]MetaItem `json:"-"`
+	// Access is the level the server gave the caller, such as "owner" or
+	// "successor".
+	Access string `json:"-"`
 }
 
 // Title is the name the artifact displays under: its name, or its ID when it
@@ -70,7 +73,8 @@ type Version struct {
 // own fields, and the sealed fields beside them.
 type artifactWire struct {
 	store.Artifact
-	Meta map[string]MetaItem `json:"meta"`
+	Access string              `json:"access"`
+	Meta   map[string]MetaItem `json:"meta"`
 }
 
 type versionWire struct {
@@ -78,8 +82,10 @@ type versionWire struct {
 	Meta map[string]MetaItem `json:"meta"`
 }
 
-func (w artifactWire) artifact() *Artifact { return &Artifact{Artifact: w.Artifact, Meta: w.Meta} }
-func (w versionWire) version() *Version    { return &Version{Version: w.Version, Meta: w.Meta} }
+func (w artifactWire) artifact() *Artifact {
+	return &Artifact{Artifact: w.Artifact, Meta: w.Meta, Access: w.Access}
+}
+func (w versionWire) version() *Version { return &Version{Version: w.Version, Meta: w.Meta} }
 
 // listArtifacts reads the artifacts the caller can see, with no field opened.
 func (c *Client) listArtifacts() ([]*Artifact, error) {

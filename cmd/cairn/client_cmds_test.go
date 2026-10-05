@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/aloisdeniel/cairn/internal/client"
+	"github.com/aloisdeniel/cairn/internal/clock"
 	"github.com/aloisdeniel/cairn/internal/e2e"
 	"github.com/aloisdeniel/cairn/internal/mail"
 	"github.com/aloisdeniel/cairn/internal/server"
@@ -202,8 +203,16 @@ func TestRunKeysUnknownSubcommand(t *testing.T) {
 // so not reusable across packages).
 func newTestServer(t *testing.T) (host string, m *mail.Capture) {
 	t.Helper()
+	return newTestServerAt(t, nil)
+}
+
+// newTestServerAt is newTestServer on clk, which a test moves to pass the
+// server's waiting periods; nil is the wall clock.
+func newTestServerAt(t *testing.T, clk clock.Clock) (host string, m *mail.Capture) {
+	t.Helper()
 	m = &mail.Capture{}
 	s, err := server.New(server.Config{
+		Clock:         clk,
 		DataDir:       t.TempDir(),
 		SignupDomains: []string{"example.com"},
 		AdminEmail:    "admin@example.com",
