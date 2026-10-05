@@ -181,6 +181,9 @@ test('share: a change still running when the dialog closes stays with its own ar
   const second = pushDoc(`race-b-${browserName}`);
   const viewer = s.users[`peer-${browserName}`];
   const dialog = await openShare(ownerPage, first.id);
+  // The list reads names one at a time; a read still queued when the held
+  // write starts would wait for it, and the dialog would show the ID.
+  await expect(ownerPage.locator(`#own tr[data-id="${second.id}"] td.name`)).toContainText(`race-b-${browserName}`);
 
   // Hold the first artifact's membership write until the dialog shows the
   // second one.
