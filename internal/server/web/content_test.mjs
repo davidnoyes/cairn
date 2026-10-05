@@ -370,6 +370,7 @@ describe('checkKeysMessage', () => {
     bad({ writers: [] }, 'array writers');
     bad({ writers: { x: [] } }, 'writer not a uuid');
     bad({ writers: { [USER]: key() } }, 'writer keys not an array');
+    bad({ writers: { [USER]: '' } }, 'writer keys an empty string, which has no elements to refuse');
     bad({ writers: { [USER]: ['AAAA'] } }, 'short writer key');
     bad({ publicWrites: 'false' }, 'string publicWrites');
     bad({ publicWrites: null }, 'null publicWrites');

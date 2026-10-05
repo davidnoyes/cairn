@@ -387,6 +387,10 @@ test('a download with no name takes the Content-Disposition filename, else the l
   click(c.doc, fakeAnchor({ href: 'files/bad%E0', download: '' }));
   await flush();
   assert.equal(c.win.parent.posted[0][0].name, 'bad%E0');
+  const d = setup({ win: { fetch: async () => new Response('x', { headers: { 'Content-Disposition': 'attachment; filename=""' } }) } });
+  click(d.doc, fakeAnchor({ href: 'files/real.txt', download: '' }));
+  await flush();
+  assert.equal(d.win.parent.posted[0][0].name, 'real.txt', 'an empty filename is not a name');
 });
 
 test('a blob: download is handed to the shell', async () => {
@@ -397,6 +401,11 @@ test('a blob: download is handed to the shell', async () => {
   await flush();
   assert.deepEqual(win.fetched, [url]);
   assert.equal(win.parent.posted[0][0].name, 'export.json');
+  const opaque = setup();
+  const ev2 = click(opaque.doc, fakeAnchor({ href: 'blob:null/0b0e5b1e-0000-4000-8000-000000000000', download: 'o.json' }));
+  assert.equal(ev2.defaultPrevented, true, 'a blob: URL of an opaque origin too');
+  await flush();
+  assert.equal(opaque.win.parent.posted[0][0].name, 'o.json');
 });
 
 test('a download from another origin, or with no app origin, is left to the browser', async () => {
@@ -464,6 +473,22 @@ test('sign from the worker is relayed to the parent at the app origin, with its 
   container.dispatchEvent(ev);
   assert.deepEqual(win.parent.posted, [[{ cairn: 'sign', purpose: 'revision', bodies: [{ a: 1 }] }, APP]]);
   assert.deepEqual(win.parent.transfers, [[port]]);
+});
+
+test('sign is relayed with its own purpose and bodies, and no other message from the worker takes a port', () => {
+  const { win, container, controller } = setup();
+  const port = { port: true };
+  const rec = msg({ cairn: 'sign', purpose: 'record', bodies: [{ a: 1 }, { b: 2 }] }, controller, undefined);
+  rec.ports = [port];
+  container.dispatchEvent(rec);
+  assert.deepEqual(win.parent.posted, [[{ cairn: 'sign', purpose: 'record', bodies: [{ a: 1 }, { b: 2 }] }, APP]]);
+  win.parent.posted.length = 0;
+  for (const cairn of ['bogus', 'keys', 'token', 'signed', 'download']) {
+    const ev = msg({ cairn, purpose: 'revision', bodies: [] }, controller, undefined);
+    ev.ports = [{}];
+    container.dispatchEvent(ev);
+  }
+  assert.deepEqual(win.parent.posted, []);
 });
 
 test('sign with no port, or from another source, is not relayed', () => {

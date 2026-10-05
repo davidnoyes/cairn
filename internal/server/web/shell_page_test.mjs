@@ -560,6 +560,8 @@ test('download: the bytes are saved as an octet-stream file under the name asked
   assert.deepEqual(p.window.URL.revoked, [`blob:${ORIGIN}/1`]);
   await p.post({ cairn: 'download', name: 'x.bin', bytes: new Uint8Array([1, 2]) });
   assert.equal(p.window.URL.created.length, 2, 'a typed array is accepted too');
+  await p.post({ cairn: 'download', name: '../../etc/my file.bin', bytes: new Uint8Array([3]) });
+  assert.equal(p.dom.document.body.children[2].download, 'my file.bin', 'a path is cut to its last segment');
 });
 
 test('download: anything that is not bytes, or not from the frame, saves nothing', async () => {
@@ -577,6 +579,7 @@ test('downloadName keeps the last segment, without control characters, or falls 
   assert.equal(downloadName('a\\b\\report.csv'), 'report.csv');
   assert.equal(downloadName('re\u0000po\u001frt\u007f.txt'), 'report.txt');
   assert.equal(downloadName('  spaced.txt  '), 'spaced.txt');
+  assert.equal(downloadName('my report.txt'), 'my report.txt');
   assert.equal(downloadName('x'.repeat(300)).length, 200);
   for (const bad of ['', '/', 'a/', '.', '..', 'a/..', '\u0001', 5, null, undefined]) assert.equal(downloadName(bad), 'download', String(bad));
 });

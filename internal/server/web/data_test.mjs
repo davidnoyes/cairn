@@ -48,13 +48,26 @@ function fakeServer() {
     calls: [],
     signerKey: e2e.b64(writer.pub),
     hook: null, // (req) => Response | undefined
+    extraItems: [], // appended to the file list as the server sent them
   };
+  srv.listItem = (address, f) => ({
+    address,
+    epoch: f.epoch,
+    size: f.blob.length,
+    updatedAt: '2026-10-05T00:00:00Z',
+    record: JSON.parse(f.record),
+    meta: e2e.b64(f.meta),
+    metaRecord: JSON.parse(f.metaRecord),
+    signerKey: f.signerKey,
+  });
   srv.fetch = async (req) => {
     srv.calls.push(req);
     const hooked = srv.hook && (await srv.hook(req));
     if (hooked) return hooked;
     const url = new URL(req.url);
-    const rest = url.pathname.slice(new URL(API).pathname.length);
+    const prefix = new URL(API).pathname;
+    if (!url.pathname.startsWith(`${prefix}/`)) return Response.json({ error: 'unexpected' }, { status: 500 });
+    const rest = url.pathname.slice(prefix.length);
     const latest = srv.revisions.at(-1);
     if (rest === '/db' && req.method === 'GET') {
       if (!latest) return Response.json({ error: 'no database' }, { status: 404 });
@@ -80,18 +93,7 @@ function fakeServer() {
       return Response.json({ revision: body.revision });
     }
     if (rest === '/files' && req.method === 'GET') {
-      return Response.json(
-        [...srv.files.entries()].map(([address, f]) => ({
-          address,
-          epoch: f.epoch,
-          size: f.blob.length,
-          updatedAt: '2026-10-05T00:00:00Z',
-          record: JSON.parse(f.record),
-          meta: e2e.b64(f.meta),
-          metaRecord: JSON.parse(f.metaRecord),
-          signerKey: f.signerKey,
-        })),
-      );
+      return Response.json([...[...srv.files.entries()].map(([address, f]) => srv.listItem(address, f)), ...srv.extraItems]);
     }
     const m = /^\/files\/([0-9a-f]{64})$/.exec(rest);
     if (m) {
@@ -176,6 +178,12 @@ test('parseDataPath picks out the database and file routes, and nothing else', (
     `${p}/files/a%2Fb`,
     `${p}/files/a%5Cb`,
     `${p}/files/a%00b`,
+    `${p}/files/a/./b`,
+    `${p}/files/.`,
+    `${p}/dbx`,
+    `${p}/filesx`,
+    `/api/artifacts/${ARTIFACT}-zz/versions/${VERSION}/db`,
+    `/api/artifacts/${ARTIFACT}/versions/${VERSION.slice(0, -1)}/db`,
     `${p}/files/%E0%A4%A`,
     `${p}/manifest`,
     `/api/artifacts/${ARTIFACT}/versions/AAAAAAAA-2222-4222-8222-222222222222/db`,
@@ -188,7 +196,9 @@ test('parseDataPath picks out the database and file routes, and nothing else', (
 
 test('db: a write is sealed and signed, and reads back as plaintext with its revision', async () => {
   const { srv, call } = setup();
-  assert.equal((await call('db')).status, 404);
+  const none = await call('db');
+  assert.equal(none.status, 404);
+  assert.deepEqual(await none.json(), { error: 'no database yet' });
   const res = await putDb(call, enc.encode('first'), 0);
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { revision: 1 });
@@ -204,6 +214,8 @@ test('db: a write is sealed and signed, and reads back as plaintext with its rev
   assert.equal(got.headers.get('ETag'), '"1"');
   assert.equal(got.headers.get('Content-Security-Policy'), CSP);
   assert.equal(got.headers.get('X-Content-Type-Options'), 'nosniff');
+  assert.equal(got.headers.get('Cache-Control'), 'no-store');
+  assert.equal(got.headers.get('Content-Disposition'), null, 'only a download is an attachment');
   assert.equal(new TextDecoder().decode(await bytes(got)), 'first');
 });
 
@@ -214,6 +226,28 @@ test('db: a matching If-None-Match is a 304, and the record is not fetched again
   assert.equal(res.status, 304);
   assert.equal(res.headers.get('ETag'), '"1"');
   assert.equal((await call('db', { headers: { 'If-None-Match': '"0"' } })).status, 200);
+});
+
+test('db: only an If-None-Match naming a revision is passed to the server', async () => {
+  const { srv, call } = setup();
+  await putDb(call, enc.encode('x'), 0);
+  for (const inm of ['W/"1"', '1', '"1"x', 'x"1"', '"01"', '*', '"12345678901234567"']) {
+    await call('db', { headers: { 'If-None-Match': inm } });
+    assert.equal(srv.calls.at(-1).headers.get('If-None-Match'), null, inm);
+  }
+  for (const inm of ['"1"', '"0"']) {
+    await call('db', { headers: { 'If-None-Match': inm } });
+    assert.equal(srv.calls.at(-1).headers.get('If-None-Match'), inm);
+  }
+});
+
+test('db: a 304 with no ETag answers with the revision the client named', async () => {
+  const { srv, call } = setup();
+  srv.hook = (req) => (req.method === 'GET' ? new Response(null, { status: 304 }) : undefined);
+  const res = await call('db', { headers: { 'If-None-Match': '"1"' } });
+  assert.equal(res.status, 304);
+  assert.equal(res.headers.get('ETag'), '"1"');
+  assert.equal(res.headers.get('Content-Security-Policy'), CSP);
 });
 
 test('db: download is the plaintext as database.db', async () => {
@@ -227,7 +261,7 @@ test('db: download is the plaintext as database.db', async () => {
 });
 
 test('db: a write needs If-Match naming a revision, and sends nothing without one', async () => {
-  for (const h of [undefined, '1', '"x"', '"01"', 'W/"1"']) {
+  for (const h of [undefined, '1', '"x"', '"01"', 'W/"1"', '"1"x', 'x"1"', '"12345678901234567"']) {
     const { srv, call } = setup();
     const res = await call('db', { method: 'PUT', headers: h === undefined ? {} : { 'If-Match': h }, body: 'x' });
     assert.equal(res.status, 428, String(h));
@@ -263,11 +297,52 @@ test('db: the revision signed is the one after If-Match', async () => {
 test('db: other server refusals pass on with their message', async () => {
   for (const status of [409, 413, 403]) {
     const { srv, call } = setup();
-    srv.hook = (req) => (req.method === 'PUT' ? Response.json({ error: `nope ${status}` }, { status }) : undefined);
+    srv.hook = (req) => (req.method === 'PUT' ? Response.json({ error: `nope ${status}` }, { status, headers: { ETag: '"9"' } }) : undefined);
     const res = await putDb(call, enc.encode('x'), 0);
     assert.equal(res.status, status);
+    assert.equal(res.headers.get('ETag'), null, 'only a 412 carries the latest ETag');
     assert.deepEqual(await res.json(), { error: `nope ${status}` });
   }
+});
+
+test('db: a 412 with no ETag passes on none, and a refusal that is not JSON keeps its status', async () => {
+  const { srv, call } = setup();
+  srv.hook = (req) => (req.method === 'PUT' ? Response.json({ error: 'stale' }, { status: 412 }) : undefined);
+  const res = await putDb(call, enc.encode('x'), 0);
+  assert.equal(res.status, 412);
+  assert.equal(res.headers.get('ETag'), null);
+  for (const [body, status] of [['<html>', 502], [JSON.stringify({ error: 5 }), 403], ['null', 500]]) {
+    srv.hook = () => new Response(body, { status });
+    const got = await call('db');
+    assert.equal(got.status, status);
+    assert.deepEqual(await got.json(), { error: `the server answered ${status}` });
+  }
+});
+
+test('db: a write lower than a revision already read leaves the highest seen', async () => {
+  const { srv, call } = setup();
+  await sealedRevision(srv, { revision: 5 });
+  assert.equal((await call('db')).status, 200);
+  srv.hook = (req) => (req.method === 'PUT' ? Response.json({ revision: 2 }) : undefined);
+  assert.equal((await putDb(call, enc.encode('x'), 1)).status, 200);
+  srv.hook = null;
+  srv.revisions.length = 0;
+  await sealedRevision(srv, { revision: 4 });
+  assert.equal((await call('db')).status, 502);
+});
+
+test('db: a read counts as seen, so the server cannot serve the revision before it', async () => {
+  const { srv, call } = setup();
+  await sealedRevision(srv, { revision: 2 });
+  assert.equal((await call('db')).status, 200);
+  srv.revisions.length = 0;
+  await sealedRevision(srv, { revision: 1 });
+  const res = await call('db');
+  assert.equal(res.status, 502);
+  assert.match((await res.json()).error, /older than revision 2/);
+  srv.revisions.length = 0;
+  await sealedRevision(srv, { revision: 2 });
+  assert.equal((await call('db')).status, 200, 'the same revision again is fine');
 });
 
 test('db: the shell refusing to sign is a 403, and nothing is sent', async () => {
@@ -283,7 +358,7 @@ test('db: the shell refusing to sign is a 403, and nothing is sent', async () =>
 });
 
 test('db: an answer from the shell that is not envelopes is a 403', async () => {
-  for (const answer of [null, [], [{ body: 'x', sig: 'y' }], [{ body: 1, sig: 'y', signer: USER }], 'x']) {
+  for (const answer of [null, [], [null], [{ body: 'x', sig: 'y' }], [{ body: 1, sig: 'y', signer: USER }], [{ body: 'x', sig: 1, signer: USER }], 'x']) {
     const { srv, call } = setup({ sign: async () => answer });
     assert.equal((await putDb(call, enc.encode('x'), 0)).status, 403, JSON.stringify(answer));
     assert.equal(srv.calls.length, 0);
@@ -305,13 +380,13 @@ test('db: a revision passes every check, under an earlier epoch too', async () =
 });
 
 const refusals = {
-  'a signer who is not a writer': { user: OTHER },
-  'a key not listed for the signer': { key: stranger },
-  'another artifact': { body: { artifact: OTHER } },
-  'another version': { body: { version: V2 } },
-  'another revision than the header': { body: { revision: 2 } },
-  'another epoch than the header': { body: { epoch: 3 } },
-  'a sha256 that is not the blob': { body: { sha256: '0'.repeat(64) } },
+  'a signer who is not a writer': { user: OTHER, msg: /may not write/ },
+  'a key not listed for the signer': { key: stranger, msg: /may not write/ },
+  'another artifact': { body: { artifact: OTHER }, msg: /another artifact/ },
+  'another version': { body: { version: V2 }, msg: /another version/ },
+  'another revision than the header': { body: { revision: 2 }, msg: /another revision/ },
+  'another epoch than the header': { body: { epoch: 3 }, msg: /another epoch than the server named/ },
+  'a sha256 that is not the blob': { body: { sha256: '0'.repeat(64) }, msg: /does not match its signature/ },
   'a blob sealed for another revision': { ctx: { name: '2' } },
   'a blob sealed under another AK': { ak: ak3 },
   'a body version that is not 1': { body: { v: 2 } },
@@ -322,7 +397,9 @@ for (const [what, over] of Object.entries(refusals)) {
     await sealedRevision(srv, over);
     const res = await call('db');
     assert.equal(res.status, 502);
-    assert.match((await res.json()).error, /could not be verified/);
+    const { error } = await res.json();
+    assert.match(error, /could not be verified/);
+    if (over.msg) assert.match(error, over.msg);
   });
 }
 
@@ -405,16 +482,23 @@ test('db: a 304 to a read that named no revision is refused', async () => {
   assert.match((await res.json()).error, /a 304 to a read that named no revision/);
 });
 
-test('db: malformed headers are refused', async () => {
-  for (const [name, value] of [
-    ['X-Cairn-Revision', '01'],
-    ['X-Cairn-Revision', null],
-    ['X-Cairn-Epoch', 'x'],
-    ['X-Cairn-Epoch', null],
-    ['X-Cairn-Record', '!!'],
-    ['X-Cairn-Record', null],
-    ['X-Cairn-Signer-Key', '!!'],
-    ['X-Cairn-Signer-Key', e2e.b64(new Uint8Array(31))],
+test('db: malformed headers are refused, each for its own reason', async () => {
+  for (const [name, value, why] of [
+    ['X-Cairn-Revision', '01', /revision is not a number/],
+    ['X-Cairn-Revision', '1x', /revision is not a number/],
+    ['X-Cairn-Revision', '12345678901234567', /revision is not a number/],
+    ['X-Cairn-Revision', null, /revision is not a number/],
+    ['X-Cairn-Epoch', 'x', /epoch is not a number/],
+    ['X-Cairn-Epoch', '04', /epoch is not a number/],
+    ['X-Cairn-Epoch', '4x', /epoch is not a number/],
+    ['X-Cairn-Epoch', '+4', /epoch is not a number/],
+    ['X-Cairn-Epoch', '12345678901234567', /epoch is not a number/],
+    ['X-Cairn-Epoch', null, /epoch is not a number/],
+    ['X-Cairn-Record', '!!', /./],
+    ['X-Cairn-Record', null, /no record/],
+    ['X-Cairn-Signer-Key', '!!', /not base64url/],
+    ['X-Cairn-Signer-Key', e2e.b64(new Uint8Array(31)), /not 32 bytes/],
+    ['X-Cairn-Signer-Key', e2e.b64(new Uint8Array(33)), /not 32 bytes/],
   ]) {
     const { srv, call } = setup();
     await putDb(call, enc.encode('a'), 0);
@@ -425,7 +509,9 @@ test('db: malformed headers are refused', async () => {
     else h.set(name, value);
     const blob = await res0.arrayBuffer();
     srv.hook = (req) => (req.method === 'GET' ? new Response(blob, { headers: h }) : undefined);
-    assert.equal((await call('db')).status, 502, `${name}: ${value}`);
+    const res = await call('db');
+    assert.equal(res.status, 502, `${name}: ${value}`);
+    assert.match((await res.json()).error, why, `${name}: ${value}`);
   }
 });
 
@@ -446,6 +532,8 @@ test('methods a route does not take are refused', async () => {
     ['files', 'PUT'],
     ['files/a.txt', 'POST'],
     ['files/a.txt', 'HEAD'],
+    ['db', 'constructor'],
+    ['files/a.txt', 'toString'],
   ]) {
     const res = await call(path, { method, body: method === 'HEAD' ? undefined : method === 'POST' || method === 'PUT' ? 'x' : undefined });
     assert.equal(res.status, 405, `${method} ${path}`);
@@ -498,11 +586,11 @@ test('files: list, get, and delete by path', async () => {
 
 // storeAt stores a file the test builds itself, under epoch and ak, with
 // overrides for each refusal.
-async function storeAt(srv, path, { epoch = 3, ak = ak3, key = writer, user = USER, text = 'old', metaPath = path, record = {}, metaRecord = {}, address = null } = {}) {
+async function storeAt(srv, path, { epoch = 3, ak = ak3, key = writer, user = USER, text = 'old', metaPath = path, record = {}, metaRecord = {}, metaOver = {}, address = null } = {}) {
   const addr = address ?? (await e2e.fileAddress(await e2e.fileKey(ak, ARTIFACT, epoch), path));
   const c = (kind) => ({ artifact: ARTIFACT, version: VERSION, kind, name: addr });
   const blob = await e2e.sealBlob(ak, c('file'), enc.encode(text));
-  const meta = await e2e.sealBlob(ak, c('file-meta'), enc.encode(JSON.stringify({ v: 1, path: metaPath, size: text.length, modifiedAt: 't' })));
+  const meta = await e2e.sealBlob(ak, c('file-meta'), enc.encode(JSON.stringify({ v: 1, path: metaPath, size: text.length, modifiedAt: 't', ...metaOver })));
   const envOf = async (kind, b, over) =>
     JSON.stringify(
       await e2e.newEnvelope(
@@ -560,32 +648,59 @@ test('files: a delete the server refuses passes on', async () => {
   assert.equal((await call('files/x.txt', { method: 'DELETE' })).status, 403);
 });
 
-test('files: an entry that fails a check is left out of the list, with a warning', async () => {
+// listedAs moves a stored file's list entry under another address, as a
+// server that lies about it would.
+async function listedAs(srv, path, change) {
+  const a = await storeAt(srv, path);
+  const f = srv.files.get(a);
+  srv.files.delete(a);
+  srv.extraItems.push({ ...srv.listItem(a, f), ...change(a) });
+}
+
+test('files: an entry that fails a check is left out of the list, with a warning that names it', async () => {
   const cases = {
-    'metadata moved onto another address': async (srv) => {
-      const a = await storeAt(srv, 'a.txt');
-      const b = await storeAt(srv, 'b.txt');
-      const fa = srv.files.get(a);
-      const fb = srv.files.get(b);
-      srv.files.set(a, { ...fa, meta: fb.meta, metaRecord: fb.metaRecord });
-      srv.files.delete(b);
-    },
-    'metadata naming a path whose address is another': async (srv) => {
-      const addr = await e2e.fileAddress(await e2e.fileKey(ak3, ARTIFACT, 3), 'real.txt');
-      await storeAt(srv, 'real.txt', { metaPath: 'fake.txt', address: addr });
-    },
-    'a signer who is not a writer': (srv) => storeAt(srv, 'a.txt', { user: OTHER, key: stranger }),
-    'a record of the wrong kind': (srv) => storeAt(srv, 'a.txt', { record: { kind: 'file-meta' } }),
-    'a meta record of the wrong kind': (srv) => storeAt(srv, 'a.txt', { metaRecord: { kind: 'file' } }),
-    'a record for another address': (srv) => storeAt(srv, 'a.txt', { record: { name: 'f'.repeat(64) } }),
-    'a meta sha256 that is not the blob': (srv) => storeAt(srv, 'a.txt', { metaRecord: { sha256: '0'.repeat(64) } }),
-    'an invalid path': (srv) => storeAt(srv, '../a.txt'),
-    'an epoch the entry does not match': async (srv) => {
-      const a = await storeAt(srv, 'a.txt');
-      srv.files.get(a).epoch = 4;
-    },
+    'metadata moved onto another address': [
+      async (srv) => {
+        const a = await storeAt(srv, 'a.txt');
+        const b = await storeAt(srv, 'b.txt');
+        const fa = srv.files.get(a);
+        const fb = srv.files.get(b);
+        srv.files.set(a, { ...fa, meta: fb.meta, metaRecord: fb.metaRecord });
+        srv.files.delete(b);
+      },
+      /signed for another address/,
+    ],
+    'metadata naming a path whose address is another': [
+      async (srv) => {
+        const addr = await e2e.fileAddress(await e2e.fileKey(ak3, ARTIFACT, 3), 'real.txt');
+        await storeAt(srv, 'real.txt', { metaPath: 'fake.txt', address: addr });
+      },
+      /belongs to another file/,
+    ],
+    'a signer who is not a writer': [(srv) => storeAt(srv, 'a.txt', { user: OTHER, key: stranger }), /may not write/],
+    'a record of the wrong kind': [(srv) => storeAt(srv, 'a.txt', { record: { kind: 'file-meta' } }), /another kind/],
+    'a meta record of the wrong kind': [(srv) => storeAt(srv, 'a.txt', { metaRecord: { kind: 'file' } }), /another kind/],
+    'a record for another address': [(srv) => storeAt(srv, 'a.txt', { record: { name: 'f'.repeat(64) } }), /another address/],
+    'a meta sha256 that is not the blob': [(srv) => storeAt(srv, 'a.txt', { metaRecord: { sha256: '0'.repeat(64) } }), /does not match its signature/],
+    'an invalid path': [(srv) => storeAt(srv, '../a.txt'), /path is not valid/],
+    'an epoch the entry does not match': [
+      async (srv) => {
+        const a = await storeAt(srv, 'a.txt');
+        srv.files.get(a).epoch = 4;
+      },
+      /another epoch than the server named/,
+    ],
+    'an epoch that is not a number': [(srv) => listedAs(srv, 'a.txt', () => ({ epoch: '3' })), /epoch is not a number/],
+    'metadata of another version': [(srv) => storeAt(srv, 'a.txt', { metaOver: { v: 2 } }), /metadata version unsupported/],
+    'an entry that is null': [(srv) => srv.extraItems.push(null), /not an object/],
+    'an entry that is a number': [(srv) => srv.extraItems.push(5), /not an object/],
+    'an address that is short': [(srv) => listedAs(srv, 'a.txt', (a) => ({ address: a.slice(0, 32) })), /address is not 64 hex/],
+    'an address that is long': [(srv) => listedAs(srv, 'a.txt', (a) => ({ address: `${a}0` })), /address is not 64 hex/],
+    'an address with a prefix': [(srv) => listedAs(srv, 'a.txt', (a) => ({ address: `x${a}` })), /address is not 64 hex/],
+    'an address in capitals': [(srv) => listedAs(srv, 'a.txt', (a) => ({ address: a.toUpperCase() })), /address is not 64 hex/],
+    'an address that is not a string': [(srv) => listedAs(srv, 'a.txt', () => ({ address: 5 })), /address is not 64 hex/],
   };
-  for (const [what, build] of Object.entries(cases)) {
+  for (const [what, [build, why]] of Object.entries(cases)) {
     const { srv, call, warnings } = setup();
     await build(srv);
     await storeAt(srv, 'good.txt');
@@ -595,14 +710,46 @@ test('files: an entry that fails a check is left out of the list, with a warning
       ['good.txt'],
       what,
     );
-    assert.ok(warnings.length >= 1, `${what}: no warning`);
+    assert.equal(warnings.length, 1, `${what}: ${warnings}`);
+    assert.match(warnings[0], why, what);
   }
+});
+
+test('files: an empty file is listed with size 0, and a list in any order comes out sorted', async () => {
+  for (const order of [
+    ['c.txt', 'a.txt', 'b.txt'],
+    ['b.txt', 'c.txt', 'a.txt'],
+    ['a.txt', 'b.txt', 'c.txt'],
+    ['c.txt', 'b.txt', 'a.txt'],
+  ]) {
+    const { srv, call } = setup();
+    for (const path of order) await storeAt(srv, path, { text: path === 'a.txt' ? '' : 'x' });
+    const list = await (await call('files')).json();
+    assert.deepEqual(
+      list.map((f) => [f.path, f.size]),
+      [
+        ['a.txt', 0],
+        ['b.txt', 1],
+        ['c.txt', 1],
+      ],
+      order.join(),
+    );
+  }
+});
+
+test('files: a path stored under two epochs lists the newer, whichever comes first', async () => {
+  const { srv, call } = setup();
+  await storeAt(srv, 'x.txt', { epoch: 4, ak: ak4, text: 'newer' });
+  await storeAt(srv, 'x.txt', { text: 'old' });
+  assert.deepEqual(await (await call('files')).json(), [{ path: 'x.txt', size: 5, modifiedAt: 't' }]);
 });
 
 test('files: a list that is not a list, or a refused list, fails', async () => {
   const { srv, call } = setup();
   srv.hook = () => Response.json({ not: 'a list' });
-  assert.equal((await call('files')).status, 502);
+  const res = await call('files');
+  assert.equal(res.status, 502);
+  assert.match((await res.json()).error, /not a list/);
   srv.hook = () => Response.json({ error: 'x' }, { status: 403 });
   assert.equal((await call('files')).status, 403);
 });
@@ -643,6 +790,58 @@ test('checkSigned refuses a key that is not base64url or not 32 bytes', async ()
   const env = await e2e.newEnvelope(writer.seed, USER, 'revision', enc.encode('{}'));
   await assert.rejects(checkSigned(baseKeys(), 'revision', env, '!!', { epoch: 4 }), /not base64url/);
   await assert.rejects(checkSigned(baseKeys(), 'revision', env, e2e.b64(new Uint8Array(16)), { epoch: 4 }), /not 32 bytes/);
+  await assert.rejects(checkSigned(baseKeys(), 'revision', env, e2e.b64(new Uint8Array(33)), { epoch: 4 }), /not 32 bytes/);
+});
+
+test('files: an epoch the keys hold no AK for is skipped, and one before the version is not read', async () => {
+  const ak2 = randomBytes(32);
+  const { srv, call } = setup({ keys: baseKeys({ aks: { 4: e2e.b64(ak4) } }) });
+  assert.equal((await call('files/a.txt')).status, 404);
+  assert.equal((await call('files/a.txt', { method: 'DELETE' })).status, 404);
+  const below = setup({ keys: baseKeys({ aks: { 2: e2e.b64(ak2), 3: e2e.b64(ak3), 4: e2e.b64(ak4) } }) });
+  await storeAt(below.srv, 'a.txt', { epoch: 2, ak: ak2 });
+  assert.equal((await below.call('files/a.txt')).status, 404, 'read from before the version');
+  assert.equal((await below.call('files/a.txt', { method: 'DELETE' })).status, 404);
+  assert.equal(below.srv.files.size, 1, 'deleted from before the version');
+  assert.equal(srv.calls.length, 2, 'asked for an address it holds no key for');
+});
+
+test('files: a read the server refuses passes on', async () => {
+  const { srv, call } = setup();
+  srv.hook = (req) => (req.method === 'GET' ? Response.json({ error: 'denied' }, { status: 403 }) : undefined);
+  const res = await call('files/a.txt');
+  assert.equal(res.status, 403);
+  assert.deepEqual(await res.json(), { error: 'denied' });
+});
+
+test('files: a delete finds the file under one epoch, either one', async () => {
+  for (const [epoch, ak] of [
+    [3, ak3],
+    [4, ak4],
+  ]) {
+    const { srv, call } = setup();
+    await storeAt(srv, 'x.txt', { epoch, ak });
+    assert.equal((await call('files/x.txt', { method: 'DELETE' })).status, 204, `epoch ${epoch}`);
+    assert.equal(srv.files.size, 0);
+    assert.equal((await call('files/x.txt', { method: 'DELETE' })).status, 404);
+  }
+});
+
+test('files: a write whose cleanup of older copies fails still succeeds', async () => {
+  const { srv, call } = setup();
+  const old = await storeAt(srv, 'a.txt');
+  srv.hook = (req) => {
+    if (req.method === 'DELETE') throw new TypeError('network down');
+    return undefined;
+  };
+  const res = await call('files/a.txt', { method: 'PUT', body: 'new' });
+  assert.equal(res.status, 200);
+  assert.ok(srv.files.has(old));
+});
+
+test('checkSigned looks a signer up as its own entry, not through the prototype', async () => {
+  const env = await e2e.newEnvelope(writer.seed, 'constructor', 'revision', enc.encode('{}'));
+  await assert.rejects(checkSigned(baseKeys(), 'revision', env, e2e.b64(writer.pub), { epoch: 4 }), /may not write/);
 });
 
 test('db: a 304 answers with the revision the client named, whatever ETag the server sends', async () => {

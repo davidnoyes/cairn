@@ -880,6 +880,11 @@ test('canWrite: a caller with no key-store record cannot', async () => {
   assert.equal(canWrite({ ...s.opened, record: null }), false);
 });
 
+test('canWrite: a caller the page has not signed in cannot, whatever its record holds', async () => {
+  const s = await trustScene({ who: 'owner' });
+  assert.equal(canWrite({ ...s.opened, caller: null }), false);
+});
+
 const H = (c) => c.repeat(64);
 const revisionBody = (over = {}) => ({ artifact: ARTIFACT, version: V2, revision: 3, epoch: 1, sha256: H('a'), ...over });
 const recordBody = (over = {}) => ({ artifact: ARTIFACT, version: V2, kind: 'file', name: H('b'), epoch: 1, sha256: H('c'), ...over });
@@ -940,6 +945,46 @@ test('signBodies refuses a body it was not built to sign', async () => {
   }
   // A good first body does not carry a bad second one.
   await assert.rejects(signBodies(s.opened, 'record', [...rec({}), ...rec({ artifact: OTHER_ARTIFACT })]), WriteError);
+});
+
+test('signBodies signs the first revision, and in schema order whatever order the body came in', async () => {
+  const s = await trustScene({ who: 'owner', epoch2: true });
+  const reversed = Object.fromEntries(Object.entries(revisionBody({ epoch: 2, revision: 1 })).reverse());
+  const [env] = await signBodies(s.opened, 'revision', [reversed]);
+  assert.equal(
+    new TextDecoder().decode(e2e.unb64(env.body)),
+    JSON.stringify({ v: 1, artifact: ARTIFACT, version: V2, revision: 1, epoch: 2, sha256: H('a') }),
+  );
+});
+
+test('signBodies names why it will not sign a body, and a value that only looks like a string does not pass', async () => {
+  const s = await trustScene({ who: 'owner', epoch2: true });
+  const rev = (over) => [revisionBody({ epoch: 2, ...over })];
+  const rec = (over) => [recordBody({ epoch: 2, ...over })];
+  const upperFirst = `AAAAAAAA${V2.slice(8)}`;
+  const cases = [
+    ['revision', ['x'], /not an object/],
+    ['revision', [null], /not an object/],
+    ['revision', [[1]], /not an object/],
+    ['revision', rev({ zzz: 1 }), /wrong fields/],
+    ['revision', rev({ version: [V2] }), /names no version/],
+    ['revision', rev({ version: `${V2}a` }), /names no version/],
+    ['revision', rev({ version: `g${V2}` }), /names no version/],
+    ['revision', rev({ version: upperFirst }), /names no version/],
+    ['revision', rev({ sha256: [H('a')] }), /no sha256/],
+    ['revision', rev({ sha256: 'a'.repeat(65) }), /no sha256/],
+    ['revision', rev({ sha256: `g${H('a')}` }), /no sha256/],
+    ['revision', rev({ revision: 0 }), /no revision/],
+    ['record', rec({ name: [H('b')] }), /names no address/],
+    ['record', rec({ name: 'b'.repeat(65) }), /names no address/],
+    ['record', rec({ name: `g${H('b')}` }), /names no address/],
+    ['record', rec({ kind: 'database' }), /wrong kind/],
+  ];
+  for (const [purpose, bodies, why] of cases) {
+    await assert.rejects(signBodies(s.opened, purpose, bodies), (err) => err instanceof WriteError && why.test(err.message), `${JSON.stringify(bodies)}`);
+  }
+  assert.equal((await signBodies(s.opened, 'record', rec({ kind: 'file' }))).length, 1);
+  assert.equal((await signBodies(s.opened, 'record', rec({ kind: 'file-meta' }))).length, 1);
 });
 
 test('loadContext lists the owner and members from the directory, and nobody for a visitor', async () => {

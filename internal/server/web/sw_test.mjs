@@ -534,6 +534,17 @@ test('data: a navigation that is not a GET is refused, and nothing is sent', asy
   assert.equal(calls.length, 0);
 });
 
+test('data: a GET navigation (a download link) is answered, and only a GET', async () => {
+  await fresh();
+  await send(await keysFor(f));
+  const base = calls.length;
+  const res = await dispatch(`${DATA}/db/download`, { mode: 'navigate' });
+  assert.equal(res.status, 404, 'answered by the data routes: no database yet');
+  assert.equal(calls.length, base + 1);
+  assert.equal((await dispatch(`${DATA}/db`, { mode: 'navigate', method: 'POST', body: 'x' })).status, 405);
+  assert.equal(calls.length, base + 1);
+});
+
 test('data: without keys it asks the page, then answers 503 after 10 seconds', async () => {
   await fresh();
   await fakeTimers(async () => {
@@ -578,6 +589,78 @@ test('data: a write is signed through the page that made it, then sent with the 
   assert.deepEqual(JSON.parse((await put.formData()).get('record')), ENVELOPE);
 });
 
+test('data: a file write is signed as two records, and is stamped with the time it was made', async () => {
+  await fresh();
+  await send(await keysFor(f));
+  const asked = [];
+  signHook = (m, port) => {
+    asked.push(m);
+    port.postMessage({ cairn: 'signed', envelopes: [ENVELOPE, ENVELOPE] });
+  };
+  netHook = async (req) => (req.method === 'PUT' ? new Response(null, { status: 204 }) : undefined);
+  const before = Date.now();
+  const res = await dispatch(`${DATA}/files/a.txt`, { method: 'PUT', body: 'hi' });
+  assert.equal(res.status, 200);
+  const { path, size, modifiedAt } = await res.json();
+  assert.deepEqual([path, size], ['a.txt', 2]);
+  assert.ok(Date.parse(modifiedAt) >= before && Date.parse(modifiedAt) <= Date.now(), modifiedAt);
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].purpose, 'record');
+  assert.deepEqual(
+    asked[0].bodies.map((b) => b.kind),
+    ['file', 'file-meta'],
+  );
+});
+
+// serveRevision makes the server answer a read with revision n, sealed and
+// signed as the worker's keys expect.
+async function serveRevision(n) {
+  const blob = await e2e.sealBlob(f.ak, { artifact: ARTIFACT, version: VERSION, kind: 'database', name: String(n) }, enc.encode(`db ${n}`));
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', blob));
+  const body = { v: 1, artifact: ARTIFACT, version: VERSION, revision: n, epoch: 3, sha256: e2e.toHex(digest) };
+  const env = await e2e.newEnvelope(f.key.seed, USER, 'revision', enc.encode(JSON.stringify(body)));
+  netHook = async (req) =>
+    req.method === 'GET' && req.url === `${DATA}/db`
+      ? new Response(blob, {
+          headers: {
+            'X-Cairn-Revision': String(n),
+            'X-Cairn-Epoch': '3',
+            'X-Cairn-Record': e2e.b64(enc.encode(JSON.stringify(env))),
+            'X-Cairn-Signer-Key': e2e.b64(f.key.pub),
+          },
+        })
+      : undefined;
+}
+
+test('data: a revision older than one the worker already served is refused, across requests', async () => {
+  await fresh();
+  await send(await keysFor(f));
+  await serveRevision(2);
+  const first = await dispatch(`${DATA}/db`);
+  assert.equal(first.status, 200);
+  assert.equal(await first.text(), 'db 2');
+  await serveRevision(1);
+  const second = await dispatch(`${DATA}/db`);
+  assert.equal(second.status, 502);
+  assert.match(await second.text(), /older than revision 2/);
+});
+
+test('data: a stored file left out of a list is warned about on the console', async () => {
+  await fresh();
+  await send(await keysFor(f));
+  netHook = async (req) => (req.method === 'GET' && req.url === `${DATA}/files` ? Response.json([null]) : undefined);
+  const warn = mock.method(console, 'warn', () => {});
+  try {
+    const res = await dispatch(`${DATA}/files`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), []);
+    assert.equal(warn.mock.calls.length, 1);
+    assert.match(warn.mock.calls[0].arguments[0], /a stored file was left out: not an object/);
+  } finally {
+    warn.mock.restore();
+  }
+});
+
 test('data: a write the shell refuses is a 403 that carries its reason', async () => {
   await fresh();
   await send(await keysFor(f));
@@ -595,6 +678,17 @@ test('data: an answer that is neither signed nor a sign error is refused', async
   const res = await dispatch(`${DATA}/db`, { method: 'PUT', headers: { 'If-Match': '"0"' }, body: 'db' });
   assert.equal(res.status, 403);
   assert.match(await res.text(), /the shell did not sign/);
+});
+
+test('data: only a sign-error carries its reason, whatever else the shell answers with', async () => {
+  await fresh();
+  await send(await keysFor(f));
+  signHook = (m, port) => port.postMessage({ cairn: 'bogus', error: 'leaked reason' });
+  const res = await dispatch(`${DATA}/db`, { method: 'PUT', headers: { 'If-Match': '"0"' }, body: 'db' });
+  assert.equal(res.status, 403);
+  const text = await res.text();
+  assert.match(text, /the shell did not sign/);
+  assert.doesNotMatch(text, /leaked/);
 });
 
 test('data: a write with no page to sign through is a 403', async () => {
