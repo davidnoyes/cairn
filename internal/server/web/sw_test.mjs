@@ -707,14 +707,18 @@ test('data: a shell that does not answer is a 403 after 30 seconds', async () =>
   await fresh();
   await send(await keysFor(f));
   let asked = 0;
-  signHook = () => asked++;
+  let wasAsked;
+  const askedOnce = new Promise((r) => (wasAsked = r));
+  signHook = () => { asked++; wasAsked(); };
   await fakeTimers(async () => {
     let done = false;
     const p = dispatch(`${DATA}/db`, { method: 'PUT', headers: { 'If-Match': '"0"' }, body: 'db' }).then((r) => {
       done = true;
       return r;
     });
-    for (let i = 0; i < 20 && asked === 0; i++) await tick();
+    // The worker hashes and seals before it asks, which takes a slow runner
+    // more than a few turns of the event loop.
+    await askedOnce;
     assert.equal(asked, 1);
     mock.timers.tick(29999);
     await tick();
