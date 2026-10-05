@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -277,15 +278,22 @@ func TestCheckRefusesToFollowARedirect(t *testing.T) {
 }
 
 func TestDiscoverAcceptsTheSameOriginSpelledDifferently(t *testing.T) {
-	// The document names the server's own origin in another case.
+	// The document names the server's own origin in another case, with a
+	// trailing slash. Check builds URLs on the app origin, so Discover hands
+	// back the origin alone.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := strings.ToUpper(r.Host)
-		io.WriteString(w, `{"manifest":null,"appOrigin":"HTTP://`+host+`","contentOrigin":"http://*.localhost:`+strings.Split(r.Host, ":")[1]+`"}`)
+		io.WriteString(w, `{"manifest":null,"appOrigin":"HTTP://`+host+`/","contentOrigin":"http://*.localhost:`+strings.Split(r.Host, ":")[1]+`"}`)
 	}))
 	t.Cleanup(ts.Close)
 	for _, server := range []string{ts.URL, ts.URL + "/", "HTTP" + strings.TrimPrefix(ts.URL, "http")} {
-		if _, err := release.Discover(context.Background(), release.NewClient(), server); err != nil {
+		doc, err := release.Discover(context.Background(), release.NewClient(), server)
+		if err != nil {
 			t.Errorf("Discover(%q): %v", server, err)
+			continue
+		}
+		if doc.AppOrigin != ts.URL {
+			t.Errorf("Discover(%q).AppOrigin = %q, want %q", server, doc.AppOrigin, ts.URL)
 		}
 	}
 }
@@ -335,3 +343,43 @@ func TestDiscoverChecksTheContentOriginAgainstTheApp(t *testing.T) {
 		})
 	}
 }
+
+func TestDiscoverTreatsTheDefaultPortAsStated(t *testing.T) {
+	// The client dials every address at the stub, so the server can be named
+	// without a port, as a real https deployment is.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"manifest":null,"appOrigin":"`+r.URL.Query().Get("app")+`","contentOrigin":"`+r.URL.Query().Get("content")+`"}`)
+	}))
+	t.Cleanup(ts.Close)
+	client := &http.Client{Transport: &http.Transport{
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, ts.Listener.Addr().String())
+		},
+	}}
+	stub := func(app, content string) http.RoundTripper {
+		return roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			r.URL.RawQuery = url.Values{"app": {app}, "content": {content}}.Encode()
+			return client.Transport.RoundTrip(r)
+		})
+	}
+	cases := []struct{ server, app, content string }{
+		{"http://cairn.localhost", "http://cairn.localhost", "http://*.cairn.localhost:80"},
+		{"http://cairn.localhost:80", "http://cairn.localhost:80", "http://*.cairn.localhost"},
+		{"http://cairn.localhost", "http://cairn.localhost:80", "http://*.cairn.localhost"},
+	}
+	for _, c := range cases {
+		hc := &http.Client{Transport: stub(c.app, c.content)}
+		doc, err := release.Discover(context.Background(), hc, c.server)
+		if err != nil {
+			t.Errorf("Discover(%q) with app %q, content %q: %v", c.server, c.app, c.content, err)
+			continue
+		}
+		if doc.AppOrigin != "http://cairn.localhost" {
+			t.Errorf("Discover(%q).AppOrigin = %q, want http://cairn.localhost", c.server, doc.AppOrigin)
+		}
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

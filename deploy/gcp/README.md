@@ -45,12 +45,15 @@ Until you finish this step, the release and docker workflows fail on purpose.
    ```
 
    It prints the secret as `CAIRN_RELEASE_KEY=…`, and the public key.
-2. Store the secret in the repository, then delete it from your terminal
-   history:
+2. Store the secret in the repository. When `gh` asks for the value, paste
+   only the part after `CAIRN_RELEASE_KEY=`:
 
    ```sh
    gh secret set CAIRN_RELEASE_KEY
    ```
+
+   Then clear your terminal's scrollback, so the secret no longer shows on
+   screen.
 
 3. Add the public key to `trustedKeys` in `internal/release/manifest.go`, and
    merge that change to `main`. The release and docker workflows check their
@@ -260,8 +263,9 @@ DNS authorization.
 
    On the first boot, the startup script refuses to start Cairn, because the
    data disk is not set up yet.
-3. Set up the data disk, once. To connect over SSH through IAP, first add a
-   temporary firewall rule:
+3. Set up the data disk, once. To connect over SSH through IAP, your account
+   needs `roles/iap.tunnelResourceAccessor` and `roles/compute.osAdminLogin`
+   in `CAIRN_PROJECT`. First add a temporary firewall rule:
 
    ```sh
    gcloud compute firewall-rules create cairn-iap-ssh --network=cairn \
@@ -282,7 +286,9 @@ DNS authorization.
 
    The container runs as user 1000, so that user must own the data
    directory.
-4. Write the server's settings to `/mnt/disks/cairn/cairn.env`:
+4. Write the server's settings to `/mnt/disks/cairn/cairn.env`. Root owns
+   the file, so open it with `sudoedit /mnt/disks/cairn/cairn.env`, which
+   keeps its owner and mode:
 
    ```sh
    CAIRN_PUBLIC_URL=https://cairn.example.com
@@ -397,7 +403,8 @@ Before you rely on these controls, test them on a staging project:
 - Set `cairn-image` to an image you built and pushed yourself, then reset
   the VM. The startup script must refuse it.
 - Change a DNS record, and confirm the alert email arrives.
-- Run `cairn verify` against the staging server, and confirm it passes.
+- Run `cairn login` against the staging server, then `cairn verify`, and
+  confirm it passes with nothing skipped.
 
 ## Accepted limits
 
@@ -413,6 +420,9 @@ Before you rely on these controls, test them on a staging project:
   deployer can roll back to an older release, even one with a known flaw.
   The rollback raises the alert, and `cairn verify --version` shows which
   release runs.
+- The `docker` workflow runs `cairn verify` against a server it builds on
+  the runner from the same commit, not against the image it pushes. The
+  image comes from the same source, and its signature ties it to that run.
 - The startup script trusts a `cosign` binary already on the VM, and
   downloads one, checked against a pinned SHA-256, only when there is none.
   Replacing that binary needs root on the VM, which already means control of

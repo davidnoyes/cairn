@@ -2205,3 +2205,5 @@ internal/release/manifest.go	return ParseKeys(trustedKeys)	return ParseKeys(nil)
 internal/release/manifest.go	if errors.Is(err, e2e.ErrDecrypt) {	if false {	go test ./internal/release -run 'TestOpen'
 internal/release/verify.go	u += "?app=" + url.QueryEscape(t.AppOrigin)	u += ""	go test ./internal/release -run 'TestCheck'
 internal/release/verify.go	if string(doc.Manifest) == "null" {	if false {	go test ./internal/release ./cmd/cairn -run 'TestDiscover|TestVerify'
+internal/release/verify.go	doc.AppOrigin = origin	_ = origin	go test ./internal/release -run TestDiscover
+internal/release/verify.go	port = defaultPorts[scheme]	port = ""	go test ./internal/release -run TestDiscover

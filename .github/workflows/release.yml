@@ -38,7 +38,7 @@ jobs:
           "$RUNNER_TEMP/cairn" serve --addr 127.0.0.1:8790 --data-dir "$RUNNER_TEMP/data" \
             --admin-email ci@example.com --smtp-url log:// --public-url http://127.0.0.1:8790 &
           for _ in $(seq 1 50); do curl -sf http://127.0.0.1:8790/healthz >/dev/null && break; sleep 0.2; done
-          "$RUNNER_TEMP/cairn" verify --allow-skip http://127.0.0.1:8790
+          "$RUNNER_TEMP/cairn" verify --allow-skip --version "$GITHUB_REF_NAME" http://127.0.0.1:8790
       - name: Build binaries
         run: |
           mkdir -p dist

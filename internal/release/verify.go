@@ -152,6 +152,8 @@ func Discover(ctx context.Context, client *http.Client, server string) (*Documen
 	if docOrigin, err := Origin(doc.AppOrigin); err != nil || docOrigin != origin {
 		return nil, fmt.Errorf("%w: it says %q, not %q; the server's CAIRN_PUBLIC_URL must match the address given", ErrOriginMismatch, doc.AppOrigin, origin)
 	}
+	// Check builds URLs on the app origin, so it gets the origin alone.
+	doc.AppOrigin = origin
 	if !strings.Contains(doc.ContentOrigin, "://*.") {
 		return nil, fmt.Errorf("release: the server's content origin %q has no * label for the artifact ID", doc.ContentOrigin)
 	}

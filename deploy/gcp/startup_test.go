@@ -211,16 +211,18 @@ func TestStartupKeepsTheContainerWhenTheDataIsNotThere(t *testing.T) {
 		"not mounted": {[]string{"MOUNTPOINT_EXIT=1"}, "is not mounted"},
 		"no env file": {[]string{"CAIRN_DATA=" + t.TempDir()}, "cairn.env"},
 	} {
-		out, calls, err := runStartup(t, false, tc.env...)
-		if err == nil {
-			t.Fatalf("%s: startup.sh replaced the container:\n%s", name, out)
-		}
-		if c := append(called(calls, "docker run"), called(calls, "docker rm")...); len(c) > 0 {
-			t.Errorf("%s: touched the container: %v", name, c)
-		}
-		if !strings.Contains(out, "refusing to start") || !strings.Contains(out, tc.want) {
-			t.Errorf("%s: output does not say why:\n%s", name, out)
-		}
+		t.Run(name, func(t *testing.T) {
+			out, calls, err := runStartup(t, false, tc.env...)
+			if err == nil {
+				t.Fatalf("startup.sh replaced the container:\n%s", out)
+			}
+			if c := append(called(calls, "docker run"), called(calls, "docker rm")...); len(c) > 0 {
+				t.Errorf("touched the container: %v", c)
+			}
+			if !strings.Contains(out, "refusing to start") || !strings.Contains(out, tc.want) {
+				t.Errorf("output does not say why:\n%s", out)
+			}
+		})
 	}
 }
 

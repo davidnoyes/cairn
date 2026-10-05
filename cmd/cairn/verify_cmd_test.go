@@ -141,6 +141,23 @@ func TestVerifyPinsTheVersion(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "v9.9.9-test") || !strings.Contains(err.Error(), "v1.0.0") {
 		t.Errorf("runVerify with another version: %v, want an error naming both", err)
 	}
+	// The right version passes nothing else: a skipped page still needs
+	// --allow-skip, and a changed file still fails.
+	_, err = runVerifyOut(t, "--version", "v9.9.9-test", "--manifest", manifest, "--key", pub, host)
+	if err == nil || !strings.Contains(err.Error(), "--allow-skip") {
+		t.Errorf("runVerify --version with a page skipped: %v, want the skip refused", err)
+	}
+	changed := writeManifest(t, seed, func(m *release.Manifest) {
+		for i := range m.Assets {
+			if m.Assets[i].Path == "/login.js" {
+				m.Assets[i].SHA256 = strings.Repeat("0", 64)
+			}
+		}
+	})
+	_, err = runVerifyOut(t, "--allow-skip", "--version", "v9.9.9-test", "--manifest", changed, "--key", pub, host)
+	if err == nil || !strings.Contains(err.Error(), "1 changed") {
+		t.Errorf("runVerify --version with a changed file: %v, want the change counted", err)
+	}
 }
 
 func TestSameOrigin(t *testing.T) {
