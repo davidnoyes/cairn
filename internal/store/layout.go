@@ -11,8 +11,8 @@ import (
 //	  cairn.db                                metadata database
 //	  secret.key                              JWT signing secret
 //	  content/{artifactID}/{contentDir}/...   a pushed version: manifest and blobs/{blobID}, all ciphertext
-//	  dbs/{artifactID}/{versionID}.db         per-version shared databases
-//	  files/{artifactID}/{versionID}/...      per-version file storage
+//	  dbs/{artifactID}/{versionID}/{revision} one encrypted database revision
+//	  files/{artifactID}/{versionID}/{address} one encrypted stored file
 //	  tmp/                                    upload staging (same volume => atomic rename)
 //
 // Version databases and file storage live outside the content tree so
@@ -51,8 +51,14 @@ func (l Layout) ArtifactContentRoot(artifactID string) string {
 	return filepath.Join(l.ContentRoot(), artifactID)
 }
 
+// VersionDB is the single-file database internal/versiondb still opens, kept
+// until that package goes. The server no longer uses it.
 func (l Layout) VersionDB(artifactID, versionID string) string {
 	return filepath.Join(l.DBRoot(), artifactID, versionID+".db")
+}
+
+func (l Layout) VersionDBDir(artifactID, versionID string) string {
+	return filepath.Join(l.DBRoot(), artifactID, versionID)
 }
 
 func (l Layout) ArtifactDBRoot(artifactID string) string {

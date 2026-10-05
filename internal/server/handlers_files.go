@@ -1,210 +1,242 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
-	"io"
-	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
-	"time"
+
+	"github.com/aloisdeniel/cairn/internal/e2e"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
-// fileInfo is the JSON shape of one stored file.
+// A stored file is two sealed blobs under one address: the file, kept under
+// files/{artifact}/{version}/{address}, and its metadata, kept in the row.
+// The server never sees a path: it is inside the sealed metadata.
+
+// fileInfo is the JSON shape of one stored file in a listing.
 type fileInfo struct {
-	Path       string `json:"path"`
-	Size       int64  `json:"size"`
-	ModifiedAt string `json:"modifiedAt"`
+	Address    string          `json:"address"`
+	Epoch      int             `json:"epoch"`
+	Size       int64           `json:"size"`
+	UpdatedAt  string          `json:"updatedAt"`
+	Record     json.RawMessage `json:"record"`
+	Meta       string          `json:"meta"`
+	MetaRecord json.RawMessage `json:"metaRecord"`
+	SignerKey  string          `json:"signerKey"`
 }
 
-func fileModTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
+func (s *Server) filePath(aid, vid, address string) string {
+	return filepath.Join(s.layout.VersionFilesDir(aid, vid), address)
+}
 
-// filePathParam validates the {path...} segment of file routes: a clean,
-// relative, slash-separated path (the mux normalizes literal "..", but
-// percent-encoded dots arrive intact, so fs.ValidPath is load-bearing).
-func filePathParam(r *http.Request) (string, bool) {
-	p := r.PathValue("path")
-	if p == "" || p == "." || !fs.ValidPath(p) || strings.Contains(p, `\`) {
+// fileAddress validates the {address} segment, answering 404 when it is not
+// 64 lowercase hex characters.
+func fileAddress(w http.ResponseWriter, r *http.Request) (string, bool) {
+	a := r.PathValue("address")
+	if !addressPattern.MatchString(a) {
+		writeError(w, http.StatusNotFound, "file not found")
 		return "", false
 	}
-	return p, true
+	return a, true
 }
 
-// resolveVersionFile validates the version and file path, returning the
-// version's file storage root and the target's absolute path.
-func (s *Server) resolveVersionFile(w http.ResponseWriter, r *http.Request) (root, target string, ok bool) {
-	aid, ok := s.resolveVersion(w, r)
-	if !ok {
-		return "", "", false
-	}
-	rel, ok := filePathParam(r)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid file path")
-		return "", "", false
-	}
-	root = s.layout.VersionFilesDir(aid, r.PathValue("vid"))
-	return root, filepath.Join(root, filepath.FromSlash(rel)), true
-}
-
-// handleFileList returns every stored file of a version; a version that was
-// never written to lists as empty.
+// handleFileList lists a version's stored files; a version that was never
+// written to lists as empty.
 func (s *Server) handleFileList(w http.ResponseWriter, r *http.Request) {
-	aid, ok := s.resolveVersion(w, r)
-	if !ok {
+	aid, vid := requestArtifact(r).ID, r.PathValue("vid")
+	if _, err := s.store.VersionByID(aid, vid); err != nil {
+		s.writeStoreError(w, err, "version")
 		return
 	}
-	root := s.layout.VersionFilesDir(aid, r.PathValue("vid"))
-	files := []fileInfo{}
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				return filepath.SkipAll
-			}
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil {
-			return err
-		}
-		files = append(files, fileInfo{
-			Path:       filepath.ToSlash(rel),
-			Size:       info.Size(),
-			ModifiedAt: fileModTime(info.ModTime()),
+	files, err := s.store.ListStoredFiles(aid, vid)
+	if err != nil {
+		s.writeStoreError(w, err, "files")
+		return
+	}
+	out := make([]fileInfo, 0, len(files))
+	for _, f := range files {
+		out = append(out, fileInfo{
+			Address: f.Address, Epoch: f.Epoch, Size: f.Size, UpdatedAt: f.UpdatedAt,
+			Record: f.Record, Meta: e2e.B64(f.Meta), MetaRecord: f.MetaRecord, SignerKey: e2e.B64(f.SignerKey),
 		})
-		return nil
-	})
-	if err != nil {
-		s.log.Error("list files", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
 	}
-	writeJSON(w, http.StatusOK, paginate(r, files))
+	writeJSON(w, http.StatusOK, out)
 }
 
-// handleFileDownload streams one stored file (range requests supported, type
-// derived from the extension).
-func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
-	_, target, ok := s.resolveVersionFile(w, r)
+// handleFileGet returns one stored file's blob.
+func (s *Server) handleFileGet(w http.ResponseWriter, r *http.Request) {
+	aid, vid := requestArtifact(r).ID, r.PathValue("vid")
+	address, ok := fileAddress(w, r)
 	if !ok {
 		return
 	}
-	f, err := os.Open(target)
+	if _, err := s.store.VersionByID(aid, vid); err != nil {
+		s.writeStoreError(w, err, "version")
+		return
+	}
+	f, err := s.store.StoredFileByAddress(aid, vid, address)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "file not found")
+		s.writeStoreError(w, err, "file")
 		return
 	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil || !st.Mode().IsRegular() {
-		writeError(w, http.StatusNotFound, "file not found")
-		return
-	}
-	http.ServeContent(w, r, filepath.Base(target), st.ModTime(), f)
+	setRecordHeaders(w, f.Epoch, f.Record, f.SignerKey)
+	s.serveBlobFile(w, r, s.filePath(aid, vid, address))
 }
 
-// handleFileUpload stores the raw request body at the given path, overwriting
-// any previous content. The file is staged in tmp/ and renamed into place
-// (same volume) so concurrent readers never see a partial write.
-func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
-	declared, ok := declaredEpoch(w, r)
+// handleFilePut stores or replaces one file. See design/e2e-api.md (Stored
+// files) for the refusals.
+func (s *Server) handleFilePut(w http.ResponseWriter, r *http.Request) {
+	aid, vid := requestArtifact(r).ID, r.PathValue("vid")
+	address, ok := fileAddress(w, r)
 	if !ok {
 		return
 	}
-	_, target, ok := s.resolveVersionFile(w, r)
-	if !ok {
+	if _, err := s.store.VersionByID(aid, vid); err != nil {
+		s.writeStoreError(w, err, "version")
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, s.maxUploadBytes())
-	tmp, err := os.CreateTemp(s.layout.TmpRoot(), "file-*")
-	if err != nil {
-		s.log.Error("stage file upload", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
+	u := requestUser(r)
+	if u == nil {
+		writeError(w, http.StatusForbidden, "sign in to write")
 		return
 	}
-	defer os.Remove(tmp.Name())
-	n, err := io.Copy(tmp, r.Body)
-	tmp.Close()
+	pub, err := s.callerKey(u)
 	if err != nil {
-		var maxErr *http.MaxBytesError
-		if errors.As(err, &maxErr) {
-			writeError(w, http.StatusRequestEntityTooLarge, "file exceeds the maximum upload size")
-			return
+		s.writeStoreError(w, err, "key bundle")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, s.maxUploadBytes()+2*maxRecordBytes+maxMetaBytes+multipartSlack)
+	mr, err := r.MultipartReader()
+	if err != nil {
+		s.writeRefusal(w, refuse(http.StatusBadRequest, "invalid multipart request: "+err.Error()))
+		return
+	}
+	part, err := nextPart(mr, "record")
+	if err != nil {
+		s.writeRefusal(w, err)
+		return
+	}
+	env, err := readEnvelope(part, "record")
+	if err != nil {
+		s.writeRefusal(w, err)
+		return
+	}
+	if part, err = nextPart(mr, "blob"); err != nil {
+		s.writeRefusal(w, err)
+		return
+	}
+	staged, err := receiveBlob(part, s.layout.VersionFilesDir(aid, vid), s.maxUploadBytes(), "blob")
+	if err != nil {
+		s.writeRefusal(w, err)
+		return
+	}
+	defer os.Remove(staged.path) // fails harmlessly once renamed into place
+	if part, err = nextPart(mr, "metaRecord"); err != nil {
+		s.writeRefusal(w, err)
+		return
+	}
+	metaEnv, err := readEnvelope(part, "metaRecord")
+	if err != nil {
+		s.writeRefusal(w, err)
+		return
+	}
+	if part, err = nextPart(mr, "meta"); err != nil {
+		s.writeRefusal(w, err)
+		return
+	}
+	meta, err := readSmall(part, maxMetaBytes, "meta")
+	if err != nil {
+		s.writeRefusal(w, err)
+		return
+	}
+	if len(meta) < e2e.BlobMinSize || !e2e.HasBlobHeader(meta) {
+		s.writeRefusal(w, refuse(http.StatusBadRequest, "the 'meta' part "+errBlobShape.Error()))
+		return
+	}
+	if err := noMoreParts(mr); err != nil {
+		s.writeRefusal(w, err)
+		return
+	}
+	var body, metaBody e2e.RecordBody
+	if err := openRecord(u, pub, env, "record", &body); err != nil {
+		s.writeRefusal(w, err)
+		return
+	}
+	if err := openRecord(u, pub, metaEnv, "record", &metaBody); err != nil {
+		s.writeRefusal(w, err)
+		return
+	}
+	recordJSON, err := json.Marshal(env)
+	if err != nil {
+		s.writeStoreError(w, err, "record")
+		return
+	}
+	metaRecordJSON, err := json.Marshal(metaEnv)
+	if err != nil {
+		s.writeStoreError(w, err, "record")
+		return
+	}
+
+	final := s.filePath(aid, vid, address)
+	placed := false
+	var writeErr error
+	err = s.store.UnderEpoch(aid, body.Epoch, func() {
+		switch {
+		case metaBody.Epoch != body.Epoch:
+			writeErr = refuse(http.StatusConflict, "the two records name different epochs")
+		case body.Artifact != aid || body.Version != vid || metaBody.Artifact != aid || metaBody.Version != vid:
+			writeErr = refuse(http.StatusBadRequest, "a record names another artifact or version")
+		case body.Kind != "file" || metaBody.Kind != "file-meta":
+			writeErr = refuse(http.StatusBadRequest, "the records must have kinds 'file' and 'file-meta'")
+		case body.Name != address || metaBody.Name != address:
+			writeErr = refuse(http.StatusBadRequest, "a record's name is not the file's address")
+		case body.SHA256 != staged.sum || metaBody.SHA256 != e2e.BodyHash(meta):
+			writeErr = refuse(http.StatusBadRequest, "a record's sha256 is not its blob's")
+		default:
+			writeErr = s.store.PutStoredFile(store.StoredFile{
+				ArtifactID: aid, VersionID: vid, Address: address, Epoch: body.Epoch, Size: staged.size,
+				Record: recordJSON, Meta: meta, MetaRecord: metaRecordJSON, SignerKey: pub, WrittenBy: u.ID,
+			}, func() error {
+				err := os.Rename(staged.path, final)
+				placed = err == nil
+				return err
+			})
 		}
-		s.log.Error("receive file upload", "err", err)
-		writeError(w, http.StatusInternalServerError, "failed to receive file")
-		return
-	}
-	os.Chmod(tmp.Name(), 0o644)
-	// The body is staged above, outside the lock; only the move into place
-	// holds it.
-	var conflict string
-	if err := s.underEpoch(requestArtifact(r).ID, declared, func() {
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			conflict = "path conflicts with an existing file"
-		} else if err := os.Rename(tmp.Name(), target); err != nil {
-			conflict = "path conflicts with an existing directory"
-		}
-	}); err != nil {
-		s.writeStoreError(w, err, "artifact")
-		return
-	}
-	if conflict != "" {
-		writeError(w, http.StatusConflict, conflict)
-		return
-	}
-	writeJSON(w, http.StatusOK, fileInfo{
-		Path:       r.PathValue("path"),
-		Size:       n,
-		ModifiedAt: fileModTime(time.Now()),
 	})
+	if err == nil {
+		err = writeErr
+	}
+	if err != nil {
+		if placed {
+			os.Remove(final)
+		}
+		s.writeRefusal(w, err)
+		return
+	}
+	s.log.Info("file stored", "artifact", aid, "version", vid, "address", address, "by", u.Email)
+	writeJSON(w, http.StatusOK, map[string]string{"address": address})
 }
 
+// handleFileDelete deletes one stored file. A delete carries no signature.
 func (s *Server) handleFileDelete(w http.ResponseWriter, r *http.Request) {
-	declared, ok := declaredEpoch(w, r)
+	aid, vid := requestArtifact(r).ID, r.PathValue("vid")
+	address, ok := fileAddress(w, r)
 	if !ok {
 		return
 	}
-	root, target, ok := s.resolveVersionFile(w, r)
-	if !ok {
+	if _, err := s.store.VersionByID(aid, vid); err != nil {
+		s.writeStoreError(w, err, "version")
 		return
 	}
-	var status int
-	var removeErr error
-	if err := s.underEpoch(requestArtifact(r).ID, declared, func() {
-		st, err := os.Lstat(target)
-		if err != nil || st.IsDir() {
-			status = http.StatusNotFound
-			return
-		}
-		if removeErr = os.Remove(target); removeErr != nil {
-			return
-		}
-		// Prune now-empty parent directories (they are invisible to the API).
-		for dir := filepath.Dir(target); len(dir) > len(root); dir = filepath.Dir(dir) {
-			if os.Remove(dir) != nil {
-				break
-			}
-		}
-	}); err != nil {
-		s.writeStoreError(w, err, "artifact")
+	if err := s.store.DeleteStoredFile(aid, vid, address); err != nil {
+		s.writeStoreError(w, err, "file")
 		return
 	}
-	if status == http.StatusNotFound {
-		writeError(w, http.StatusNotFound, "file not found")
-		return
+	if err := os.Remove(s.filePath(aid, vid, address)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		s.log.Warn("delete stored file", "err", err)
 	}
-	if removeErr != nil {
-		s.log.Error("delete file", "err", removeErr)
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	w.WriteHeader(http.StatusNoContent)
 }

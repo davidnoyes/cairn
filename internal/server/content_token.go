@@ -20,13 +20,14 @@ var contentTokenRoutes = map[string]bool{
 	"GET /api/artifacts/{id}/versions/{vid}":                    true,
 	"GET /api/artifacts/{id}/versions/{vid}/manifest":           true,
 	"GET /api/artifacts/{id}/versions/{vid}/blobs/{blob}":       true,
-	"POST /api/artifacts/{id}/versions/{vid}/db/query":          true,
-	"POST /api/artifacts/{id}/versions/{vid}/db/batch":          true,
-	"GET /api/artifacts/{id}/versions/{vid}/db/download":        true,
+	"GET /api/artifacts/{id}/versions/{vid}/db":                 true,
+	"PUT /api/artifacts/{id}/versions/{vid}/db":                 true,
+	"GET /api/artifacts/{id}/versions/{vid}/db/revisions":       true,
+	"GET /api/artifacts/{id}/versions/{vid}/db/revisions/{rev}": true,
 	"GET /api/artifacts/{id}/versions/{vid}/files":              true,
-	"GET /api/artifacts/{id}/versions/{vid}/files/{path...}":    true,
-	"PUT /api/artifacts/{id}/versions/{vid}/files/{path...}":    true,
-	"DELETE /api/artifacts/{id}/versions/{vid}/files/{path...}": true,
+	"GET /api/artifacts/{id}/versions/{vid}/files/{address}":    true,
+	"PUT /api/artifacts/{id}/versions/{vid}/files/{address}":    true,
+	"DELETE /api/artifacts/{id}/versions/{vid}/files/{address}": true,
 }
 
 // carriesContentToken reports whether r presents a validly signed sign-in JWT

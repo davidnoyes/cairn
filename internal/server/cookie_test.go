@@ -28,7 +28,6 @@ func cookieTestServer(t *testing.T, publicURL string) *Server {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		s.dbs.Close()
 		s.store.Close()
 	})
 	return s

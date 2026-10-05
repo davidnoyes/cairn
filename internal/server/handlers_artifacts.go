@@ -125,20 +125,12 @@ func (s *Server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 // deleteArtifact removes a's row with del, then its content, databases, and
 // files, and answers the request. by is who asked, for the log.
 func (s *Server) deleteArtifact(w http.ResponseWriter, a *store.Artifact, by string, del func(id string) error) {
-	versions, err := s.store.ListVersions(a.ID)
-	if err != nil {
-		s.writeStoreError(w, err, "versions")
-		return
-	}
 	if err := del(a.ID); errors.Is(err, store.ErrOwnerActive) {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	} else if err != nil {
 		s.writeStoreError(w, err, "artifact")
 		return
-	}
-	for _, v := range versions {
-		s.dbs.Invalidate(a.ID, v.ID)
 	}
 	os.RemoveAll(s.layout.ArtifactContentRoot(a.ID))
 	os.RemoveAll(s.layout.ArtifactDBRoot(a.ID))
@@ -252,9 +244,7 @@ func (s *Server) handleDeleteVersion(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "version")
 		return
 	}
-	if err := s.dbs.DeleteDatabase(v.ArtifactID, v.ID); err != nil && !errors.Is(err, os.ErrNotExist) {
-		s.log.Warn("delete version db", "err", err)
-	}
+	os.RemoveAll(s.layout.VersionDBDir(v.ArtifactID, v.ID))
 	os.RemoveAll(s.layout.ContentDir(v.ArtifactID, v.ContentDir))
 	os.RemoveAll(s.layout.VersionFilesDir(v.ArtifactID, v.ID))
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})

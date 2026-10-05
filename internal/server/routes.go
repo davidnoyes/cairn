@@ -87,17 +87,16 @@ func (s *Server) routes() {
 	handle("PATCH /api/artifacts/{id}/versions/{vid}", s.artifactRoute(access.Rename, s.handleUpdateVersionMeta))
 	handle("DELETE /api/artifacts/{id}/versions/{vid}", s.artifactRoute(access.Delete, s.handleDeleteVersion))
 
-	// Shared per-version database (raw SQL proxy). A query runs on the
-	// read-write pool only for a caller who may write data.
-	handle("POST /api/artifacts/{id}/versions/{vid}/db/query", s.artifactRoute(access.ReadContent, s.handleDBQuery))
-	handle("POST /api/artifacts/{id}/versions/{vid}/db/batch", s.artifactRoute(access.WriteData, s.handleDBBatch))
-	handle("GET /api/artifacts/{id}/versions/{vid}/db/download", s.artifactRoute(access.ReadContent, s.handleDBDownload))
-
-	// Per-version file storage
+	// Per-version database revisions and stored files: client-encrypted
+	// blobs the server cannot read.
+	handle("GET /api/artifacts/{id}/versions/{vid}/db", s.artifactRoute(access.ReadContent, s.handleGetDB))
+	handle("PUT /api/artifacts/{id}/versions/{vid}/db", s.artifactRoute(access.WriteData, s.handlePutDB))
+	handle("GET /api/artifacts/{id}/versions/{vid}/db/revisions", s.artifactRoute(access.ReadContent, s.handleListDBRevisions))
+	handle("GET /api/artifacts/{id}/versions/{vid}/db/revisions/{rev}", s.artifactRoute(access.ReadContent, s.handleGetDBRevision))
 	handle("GET /api/artifacts/{id}/versions/{vid}/files", s.artifactRoute(access.ReadContent, s.handleFileList))
-	handle("GET /api/artifacts/{id}/versions/{vid}/files/{path...}", s.artifactRoute(access.ReadContent, s.handleFileDownload))
-	handle("PUT /api/artifacts/{id}/versions/{vid}/files/{path...}", s.artifactRoute(access.WriteData, s.handleFileUpload))
-	handle("DELETE /api/artifacts/{id}/versions/{vid}/files/{path...}", s.artifactRoute(access.WriteData, s.handleFileDelete))
+	handle("GET /api/artifacts/{id}/versions/{vid}/files/{address}", s.artifactRoute(access.ReadContent, s.handleFileGet))
+	handle("PUT /api/artifacts/{id}/versions/{vid}/files/{address}", s.artifactRoute(access.WriteData, s.handleFilePut))
+	handle("DELETE /api/artifacts/{id}/versions/{vid}/files/{address}", s.artifactRoute(access.WriteData, s.handleFileDelete))
 
 	// Pages. Account pages send the app CSP: scripts load only from files.
 	handle("GET /", s.handleRoot)

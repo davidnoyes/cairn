@@ -18,7 +18,6 @@ import (
 	"github.com/aloisdeniel/cairn/internal/e2e"
 	"github.com/aloisdeniel/cairn/internal/mail"
 	"github.com/aloisdeniel/cairn/internal/store"
-	"github.com/aloisdeniel/cairn/internal/versiondb"
 )
 
 // Config carries everything `cairn serve` resolves from flags and CAIRN_* env
@@ -32,7 +31,8 @@ type Config struct {
 	SignupDomains []string    // email domains allowed to self-signup, besides AdminEmail
 	AdminEmail    string      // may always sign up, and becomes an administrator when it does
 	Mail          mail.Mailer // required: sign-up and reset cannot work without it
-	MaxUploadMB   int64       // size cap per pushed version, encrypted bytes
+	MaxUploadMB   int64       // size cap per pushed version or stored file, encrypted bytes
+	MaxDBMB       int64       // size cap per database revision, encrypted bytes
 	QueryTimeout  time.Duration
 	MaxQueryRows  int
 	Logger        *slog.Logger
@@ -51,6 +51,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.MaxUploadMB == 0 {
 		c.MaxUploadMB = 256
+	}
+	if c.MaxDBMB == 0 {
+		c.MaxDBMB = 50
 	}
 	if c.QueryTimeout == 0 {
 		c.QueryTimeout = 10 * time.Second
@@ -78,7 +81,6 @@ type Server struct {
 	layout         store.Layout
 	secret         []byte
 	preloginSecret []byte
-	dbs            *versiondb.Manager
 	mux            *http.ServeMux
 	patterns       []string // every pattern routes registered, in order; read only by tests
 	secure         bool     // serve behind https (from PublicURL)
@@ -131,7 +133,6 @@ func New(cfg Config) (*Server, error) {
 		layout:         layout,
 		secret:         secret,
 		preloginSecret: preloginSecret,
-		dbs:            versiondb.NewManager(layout, cfg.QueryTimeout, cfg.MaxQueryRows),
 		mux:            http.NewServeMux(),
 		clk:            cfg.Clock,
 		mail:           cfg.Mail,
@@ -177,7 +178,6 @@ func (s *Server) Run(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	err := srv.Shutdown(shutdownCtx)
-	s.dbs.Close()
 	s.store.Close()
 	return err
 }

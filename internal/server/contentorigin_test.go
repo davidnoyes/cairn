@@ -49,7 +49,6 @@ func newHostWorld(t *testing.T) *hostWorld {
 	ts.Start()
 	t.Cleanup(func() {
 		ts.Close()
-		s.dbs.Close()
 		s.store.Close()
 	})
 	return &hostWorld{contentWorld: buildContentWorld(t, s, ts.URL), port: port}
@@ -251,14 +250,12 @@ func TestContentOriginAPIAllowlist(t *testing.T) {
 	bvid := pushVersion(t, w.owner.testClient, b.id)
 	w.owner.mustDo("POST", "/api/artifacts/"+w.art.id+"/resources",
 		map[string]string{"type": "claude-session", "value": "w-session"}, nil, http.StatusCreated)
-	w.owner.mustDo("POST", w.vbase+"/db/batch",
-		map[string]any{"statements": []map[string]any{{"sql": "CREATE TABLE IF NOT EXISTS t (x)"}}}, nil, http.StatusOK)
 
 	for pattern := range contentTokenRoutes {
-		method, path, body := contentRouteRequest(pattern, w.art.id, w.vid, w.blob, w.editor.id)
 		w.putFile(t)
-		if resp := w.onContent(t, method, path, bearer(tok), body); resp.StatusCode != http.StatusOK {
-			t.Errorf("%s on its host: %d %s, want 200", pattern, resp.StatusCode, resp.body)
+		rq := w.contentRouteRequest(t, pattern, w.art.id, w.vid, w.blob, w.addr, w.editor.id)
+		if resp := w.onContent(t, rq.method, rq.path, rq.withHeader(bearer(tok)), rq.body); resp.StatusCode >= 300 {
+			t.Errorf("%s on its host: %d %s, want success", pattern, resp.StatusCode, resp.body)
 		}
 		if !strings.Contains(pattern, " /api/artifacts/{id}") {
 			continue // /api/me and /api/users/{id} name no artifact
@@ -266,8 +263,8 @@ func TestContentOriginAPIAllowlist(t *testing.T) {
 		// Another artifact's {id}, by ID or by resource value, and this
 		// artifact reached by its own resource value, are all refused.
 		for _, ref := range []string{b.id, "w-session"} {
-			method, path, body := contentRouteRequest(pattern, ref, bvid, strings.Repeat("a", 32), "")
-			if resp := w.onContent(t, method, path, bearer(tok), body); resp.StatusCode != http.StatusNotFound {
+			rq := w.contentRouteRequest(t, pattern, ref, bvid, strings.Repeat("a", 32), strings.Repeat("b", 64), "")
+			if resp := w.onContent(t, rq.method, rq.path, rq.withHeader(bearer(tok)), rq.body); resp.StatusCode != http.StatusNotFound {
 				t.Errorf("%s with {id} %s: %d %s, want 404", pattern, ref, resp.StatusCode, resp.body)
 			}
 		}
@@ -287,9 +284,9 @@ func TestContentOriginAPIAllowlist(t *testing.T) {
 		if contentTokenRoutes[pattern] || !strings.Contains(pattern, "/api/") {
 			continue
 		}
-		method, path, body := contentRouteRequest(pattern, w.art.id, w.vid, w.blob, w.editor.id)
+		rq := w.contentRouteRequest(t, pattern, w.art.id, w.vid, w.blob, w.addr, w.editor.id)
 		for name, hdr := range creds {
-			resp := w.onContent(t, method, path, hdr, body)
+			resp := w.onContent(t, rq.method, rq.path, rq.withHeader(hdr), rq.body)
 			if resp.StatusCode != http.StatusNotFound {
 				t.Errorf("%s with %s on a content host: %d %s, want 404", pattern, name, resp.StatusCode, resp.body)
 			}
@@ -317,23 +314,20 @@ func TestContentOriginAPIAllowlist(t *testing.T) {
 func TestAPIResponsesCannotBecomeDocuments(t *testing.T) {
 	w := newHostWorld(t)
 	tok := mintContentToken(t, w.s, w.owner.id, w.art.id)
-	if r := w.owner.doRaw("PUT", w.vbase+"/files/x.html", []byte("<script>alert(1)</script>")); r.StatusCode != http.StatusOK {
-		t.Fatalf("seed file: %d", r.StatusCode)
-	}
 	check := func(where string, status int, h http.Header) {
 		t.Helper()
 		if got := h.Get("Content-Security-Policy"); got != apiCSP {
 			t.Errorf("%s (%d): Content-Security-Policy %q, want %q", where, status, got, apiCSP)
 		}
 	}
-	for _, p := range []string{w.vbase + "/files/x.html", "/api/me", "/api/nothing"} {
+	for _, p := range []string{w.vbase + "/files/" + w.addr, "/api/me", "/api/nothing"} {
 		resp := w.onContent(t, "GET", p, bearer(tok), nil)
 		check("content host GET "+p, resp.StatusCode, resp.Header)
 	}
-	if resp := w.onContent(t, "GET", w.vbase+"/files/x.html", bearer(tok), nil); resp.StatusCode != http.StatusOK {
+	if resp := w.onContent(t, "GET", w.vbase+"/files/"+w.addr, bearer(tok), nil); resp.StatusCode != http.StatusOK {
 		t.Errorf("content host file: %d, want 200", resp.StatusCode)
 	}
-	for _, p := range []string{w.vbase + "/files/x.html", "/api/me", "/api/nothing"} {
+	for _, p := range []string{w.vbase + "/files/" + w.addr, "/api/me", "/api/nothing"} {
 		resp := w.owner.doRaw("GET", p, nil)
 		resp.Body.Close()
 		check("app GET "+p, resp.StatusCode, resp.Header)
@@ -360,7 +354,7 @@ func (w *hostWorld) createAPIKey(t *testing.T) string {
 func TestContentOriginAuthorization(t *testing.T) {
 	w := newHostWorld(t)
 	other := newArtifact(t, w.owner, "other")
-	files := w.vbase + "/files/a.txt"
+	files := w.vbase + "/files/" + w.addr
 	good := mintContentToken(t, w.s, w.owner.id, w.art.id)
 	now := time.Now().Unix()
 	expired, err := auth.SignJWT(w.s.secret, auth.Claims{UserID: w.owner.id, Artifact: w.art.id, IssuedAt: now - 600, ExpiresAt: now - 300})
@@ -425,14 +419,16 @@ func TestContentOriginAuthorization(t *testing.T) {
 func TestContentOriginLinkTokenAloneIsAnonymousAccess(t *testing.T) {
 	w := newHostWorld(t)
 	link := w.art.makePublic()
-	files := w.vbase + "/files/a.txt"
+	files := w.vbase + "/files/" + w.addr
 	if resp := w.onContent(t, "GET", files, map[string]string{"X-Cairn-Link-Token": link}, nil); resp.StatusCode != http.StatusOK {
 		t.Errorf("anonymous with the link token: %d %s, want 200", resp.StatusCode, resp.body)
 	}
 	if resp := w.onContent(t, "GET", files, nil, nil); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("anonymous without it: %d, want 404", resp.StatusCode)
 	}
-	if resp := w.onContent(t, "PUT", files, map[string]string{"X-Cairn-Link-Token": link, "Content-Type": "application/octet-stream"}, []byte("x")); resp.StatusCode != http.StatusForbidden {
+	q := newFile(t, w.owner, w.art.id, w.vid, 1, "anon.txt", "x")
+	ct, body := q.wire(t)
+	if resp := w.onContent(t, "PUT", q.path(), map[string]string{"X-Cairn-Link-Token": link, "Content-Type": ct}, body); resp.StatusCode != http.StatusForbidden {
 		t.Errorf("anonymous write without public writes: %d %s, want 403", resp.StatusCode, resp.body)
 	}
 }
@@ -474,13 +470,17 @@ func TestMintContentToken(t *testing.T) {
 	// The token carries the caller's own role onto the content host.
 	_, viewerTok, _ := mint(t, w.viewer.testClient, w.art.id)
 	_, editorTok, _ := mint(t, w.editor.testClient, w.art.id)
-	put := map[string]string{"Content-Type": "application/octet-stream"}
-	put["Authorization"] = "Bearer " + viewerTok
-	if resp := w.onContent(t, "PUT", w.vbase+"/files/b.txt", put, []byte("x")); resp.StatusCode != http.StatusForbidden {
+	put := func(tok string, as actor) contentResp {
+		q := newFile(t, as, w.art.id, w.vid, 1, "b.txt", "x")
+		ct, body := q.wire(t)
+		h := bearer(tok)
+		h["Content-Type"] = ct
+		return w.onContent(t, "PUT", q.path(), h, body)
+	}
+	if resp := put(viewerTok, w.viewer); resp.StatusCode != http.StatusForbidden {
 		t.Errorf("viewer's token writes: %d, want 403", resp.StatusCode)
 	}
-	put["Authorization"] = "Bearer " + editorTok
-	if resp := w.onContent(t, "PUT", w.vbase+"/files/b.txt", put, []byte("x")); resp.StatusCode != http.StatusOK {
+	if resp := put(editorTok, w.editor); resp.StatusCode != http.StatusOK {
 		t.Errorf("editor's token writes: %d, want 200", resp.StatusCode)
 	}
 	// ...and only for its own artifact.
@@ -543,7 +543,7 @@ func TestMintContentTokenRefusals(t *testing.T) {
 func TestMintContentTokenLinkScope(t *testing.T) {
 	w := newHostWorld(t)
 	link := w.art.makePublic()
-	files := w.vbase + "/files/a.txt"
+	files := w.vbase + "/files/" + w.addr
 
 	// A signed-in caller with no access but the link gets a link-scope token.
 	c := &testClient{t: t, base: w.base, token: w.outside.token, link: link}
@@ -566,8 +566,10 @@ func TestMintContentTokenLinkScope(t *testing.T) {
 		t.Errorf("link-scope token without the link: %d, want 404", resp.StatusCode)
 	}
 	// A link holder does not write while public writes are off.
-	hdr["Content-Type"] = "application/octet-stream"
-	if resp := w.onContent(t, "PUT", w.vbase+"/files/c.txt", hdr, []byte("x")); resp.StatusCode != http.StatusForbidden {
+	qc := newFile(t, w.outside, w.art.id, w.vid, 1, "c.txt", "x")
+	ct, body := qc.wire(t)
+	hdr["Content-Type"] = ct
+	if resp := w.onContent(t, "PUT", qc.path(), hdr, body); resp.StatusCode != http.StatusForbidden {
 		t.Errorf("link-scope write: %d, want 403", resp.StatusCode)
 	}
 
@@ -597,8 +599,10 @@ func TestMintContentTokenLinkScope(t *testing.T) {
 	}{"link scope": {ownerLink, http.StatusForbidden}, "plain": {ownerPlain, http.StatusOK}} {
 		h := bearer(tc.tok)
 		h["X-Cairn-Link-Token"] = link
-		h["Content-Type"] = "application/octet-stream"
-		if resp := w.onContent(t, "PUT", w.vbase+"/files/d.txt", h, []byte("x")); resp.StatusCode != tc.want {
+		qd := newFile(t, w.owner, w.art.id, w.vid, 1, "d.txt", "x")
+		ct, body := qd.wire(t)
+		h["Content-Type"] = ct
+		if resp := w.onContent(t, "PUT", qd.path(), h, body); resp.StatusCode != tc.want {
 			t.Errorf("owner's %s token writes: %d, want %d", name, resp.StatusCode, tc.want)
 		}
 	}

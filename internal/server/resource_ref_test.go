@@ -42,8 +42,15 @@ func TestResourceReferenceResolution(t *testing.T) {
 	if len(versions) != 1 || versions[0].ID != vid {
 		t.Fatalf("versions via reference: %+v", versions)
 	}
-	admin.mustDo("POST", "/api/artifacts/sess-123/versions/"+vid+"/db/query",
-		map[string]any{"sql": "CREATE TABLE t (n INTEGER)"}, nil, http.StatusOK)
+	admin.mustDo("GET", "/api/artifacts/sess-123/versions/"+vid+"/files", nil, nil, http.StatusOK)
+	q := newRevision(t, placeholderActor(t, admin), aid, vid, 1, 1, "via reference")
+	q.aid = "sess-123" // the path names the reference; the signed record names the artifact
+	if r := q.send(t); r.StatusCode != http.StatusOK {
+		t.Fatalf("db write via reference: %d", r.StatusCode)
+	}
+	if got := placeholderActor(t, admin).latestRevision(t, aid, vid); got != 1 {
+		t.Errorf("revision written via reference = %d, want 1 on the right artifact", got)
+	}
 
 	// Upload through the reference lands on the right artifact
 	resp := admin.upload("POST", "/api/artifacts/sess-123/versions",

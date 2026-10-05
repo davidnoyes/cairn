@@ -291,16 +291,8 @@ internal/server/web/account.mjs	x25519Raw?.fill(0);	;	node --test internal/serve
 internal/server/web/account.mjs	ed25519Raw?.fill(0);	;	node --test internal/server/web/account_test.mjs
 internal/store/artifacts.go	FROM artifacts WHERE id = ? AND (? = 0 OR epoch = ?)	FROM artifacts WHERE id = ? AND (? = 0 OR epoch = epoch OR ? = 0)	go test ./internal/store -run TestVersionWritesDeclareTheirEpoch
 internal/store/artifacts.go	AND (? = 0 OR (SELECT epoch FROM artifacts WHERE id = ?) = ?)	AND (? = 0 OR (SELECT epoch FROM artifacts WHERE id = ?) = ? OR 1)	go test ./internal/store -run TestVersionWritesDeclareTheirEpoch
-internal/server/epoch.go	return s.store.UnderEpoch(artifactID, declared, write)	return s.store.UnderEpoch(artifactID, 0, write)	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
-internal/server/epoch.go	if declared == 0 {	if declared >= 0 {	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
-internal/server/epoch.go	v[0] == '0'	v[0] == 'z'	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
-internal/server/epoch.go	len(vals) == 0	len(vals) == 0 || vals[0] == ""	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
 internal/server/upload.go	p.Changelog, contentDir, requestUser(r).ID, p.ManifestHash, p.Epoch)	p.Changelog, contentDir, requestUser(r).ID, p.ManifestHash, p.Epoch*0)	go test ./internal/server -run TestPushEpoch
 internal/server/upload.go	changelog, requestUser(r).ID, p.ManifestHash, p.Epoch)	changelog, requestUser(r).ID, p.ManifestHash, p.Epoch*0)	go test ./internal/server -run TestPushEpoch
-internal/server/handlers_db.go	var execErr error	var execErr error; declared = 0	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
-internal/server/handlers_db.go	var batchErr error	var batchErr error; declared = 0	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
-internal/server/handlers_files.go	var conflict string	var conflict string; declared = 0	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
-internal/server/handlers_files.go	var removeErr error	var removeErr error; declared = 0	go test ./internal/server -run 'TestDeclaredEpoch|TestStaleDeclaredEpoch'
 internal/client/client.go	"epoch": epoch, "manifestHash"	"epoch": epoch + 1, "manifestHash"	go test ./internal/client -run 'TestPushDeclaresTheChainEpoch|TestPushNamesAMovedEpoch'
 internal/client/client.go	return nil, ErrEpochMoved	return nil, err	go test ./internal/client -run 'TestPushDeclaresTheChainEpoch|TestPushNamesAMovedEpoch'
 internal/server/review.go	case body.Artifact != artifact:	case false:	go test ./internal/server -run 'TestVouchRefusals'
@@ -327,8 +319,6 @@ internal/client/client.go	&& strings.Contains(apiErr.Message, "moved to a new ep
 
 # Review and epoch writes: QA fixes (deleted pushers, reader queries, header twice, CLI output)
 internal/store/sharing.go	WHERE artifact_id = ? AND (pushed_by IS NULL	WHERE artifact_id = ? AND (0	go test ./internal/server -run TestReviewListsAVersionWhosePusherWasDeleted
-internal/server/handlers_db.go	declared = 0	_ = 0	go test ./internal/server -run TestStaleEpochOnAQueryHoldsOnlyWriters
-internal/server/epoch.go	len(vals) > 1 || err != nil	err != nil	go test ./internal/server -run TestDeclaredEpochTwiceIs400
 cmd/cairn/share_cmds.go	dir, _ := c.Directory()	dir, err := c.Directory(); if err != nil { return err }	go test ./cmd/cairn -run TestReviewCommandOneEntryWithoutTheDirectory
 cmd/cairn/share_cmds.go	if len(list) == 1 {	if false {	go test ./cmd/cairn -run TestReviewCommandOneEntryWithoutTheDirectory
 # Next-epoch records: unshare, demotion, team none, public off
@@ -628,18 +618,12 @@ internal/server/content_token.go	if s.carriesContentToken(r) {	if false && s.car
 internal/server/content_token.go	err == nil && claims.Artifact != ""	err == nil && claims.Artifact == ""	go test ./internal/server -run 'TestContentTokenRouteTable'
 internal/server/content_token.go	"GET /api/me":	"GET /bogus":	go test ./internal/server -run 'TestContentTokenRouteTable'
 internal/server/content_token.go	"GET /api/users/{id}":	"GET /bogus":	go test ./internal/server -run 'TestContentTokenRouteTable'
-internal/server/content_token.go	"POST /api/artifacts/{id}/versions/{vid}/db/batch":	"GET /bogus":	go test ./internal/server -run 'TestContentTokenRouteTable'
-internal/server/content_token.go	"PUT /api/artifacts/{id}/versions/{vid}/files/{path...}":	"GET /bogus":	go test ./internal/server -run 'TestContentTokenRouteTable'
-internal/server/content_token.go	"DELETE /api/artifacts/{id}/versions/{vid}/files/{path...}":	"GET /bogus":	go test ./internal/server -run 'TestContentTokenRouteTable'
 internal/server/content_token.go	st.Artifact.OwnerID != userID && st.Member == nil	st.Member == nil	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
 internal/server/content_token.go	st.Artifact.OwnerID != userID && st.Member == nil	st.Artifact.OwnerID != userID	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
 internal/server/content_token.go	"GET /api/artifacts/{id}/membership":                        true,	"GET /api/artifacts/{id}/membership":                        false,	go test ./internal/server -run 'TestContentTokenRouteTable'
 internal/server/content_token.go	"GET /api/artifacts/{id}/versions":                          true,	"GET /api/artifacts/{id}/versions":                          false,	go test ./internal/server -run 'TestContentTokenRouteTable'
 internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}":                    true,	"GET /api/artifacts/{id}/versions/{vid}":                    false,	go test ./internal/server -run 'TestContentTokenRouteTable'
-internal/server/content_token.go	"POST /api/artifacts/{id}/versions/{vid}/db/query":          true,	"POST /api/artifacts/{id}/versions/{vid}/db/query":          false,	go test ./internal/server -run 'TestContentTokenRouteTable'
-internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/db/download":        true,	"GET /api/artifacts/{id}/versions/{vid}/db/download":        false,	go test ./internal/server -run 'TestContentTokenRouteTable'
 internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/files":              true,	"GET /api/artifacts/{id}/versions/{vid}/files":              false,	go test ./internal/server -run 'TestContentTokenRouteTable'
-internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/files/{path...}":    true,	"GET /api/artifacts/{id}/versions/{vid}/files/{path...}":    false,	go test ./internal/server -run 'TestContentTokenRouteTable'
 internal/server/content_token.go	"GET /api/me":	"GET /api/users": true, "GET /api/me":	go test ./internal/server -run 'TestContentTokenRouteTable'
 internal/server/content_token.go	writeError(w, http.StatusNotFound, "not found")	writeError(w, http.StatusNotFound, "no route")	go test ./internal/server -run 'TestContentTokenRouteTable'
 internal/server/content_token.go	if st.Artifact.OwnerID != userID && st.Member == nil {	if st.Artifact.OwnerID != userID && st.Member == nil && false {	go test ./internal/server -run 'TestContentTokenReadsOnlyListedUsers'
@@ -1307,3 +1291,57 @@ internal/server/web/shell.mjs	} else if (validVersion(msg.version) && contentTar
 internal/server/web/sw.js	if (event.request.mode === 'navigate' && event.request.method !== 'GET') {	if (false) {	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	if (event.request.mode === 'navigate' && event.request.method !== 'GET') {	if (event.request.mode === 'navigate') {	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	const out = apiRequest(event.request, latest);	const out = apiRequest(event.request, { ...latest, token: '' });	node --test internal/server/web/sw_test.mjs
+internal/store/clientdata.go	if latest != ifMatch {	if false {	go test ./internal/server -run TestDBConcurrentPutsHaveOneWinner
+internal/server/handlers_db.go	if errors.Is(err, store.ErrRevisionMismatch) {	if false {	go test ./internal/server -run 'TestDBConcurrentPutsHaveOneWinner|TestDBPutPreconditions'
+internal/server/handlers_db.go	if m == nil {	if false {	go test ./internal/server -run 'TestDBPutRefusals|TestDBPutPreconditions|TestDBPutSignedByAnOldKey'
+internal/server/handlers_db.go	^"(0|[1-9][0-9]{0,8})"$	^"?(0|[1-9][0-9]{0,8})"?$	go test ./internal/server -run 'TestDBPutRefusals|TestDBPutPreconditions|TestDBPutSignedByAnOldKey'
+internal/server/handlers_db.go	err = s.store.UnderEpoch(aid, body.Epoch, func() {	err = s.store.UnderEpoch(aid, 1, func() {	go test ./internal/server -run 'TestDBPutRefusals|TestStaleEpochWritesNothing'
+internal/server/handlers_files.go	err = s.store.UnderEpoch(aid, body.Epoch, func() {	err = s.store.UnderEpoch(aid, 1, func() {	go test ./internal/server -run 'TestStoredFilePutRefusals|TestStaleEpochWritesNothing'
+internal/server/handlers_files.go	case metaBody.Epoch != body.Epoch:	case false:	go test ./internal/server -run 'TestStoredFilePutRefusals|TestStoredFileRoundTrip'
+internal/server/handlers_db.go	if env.Signer != u.ID {	if false {	go test ./internal/server -run 'TestDBPutRefusals|TestStoredFilePutRefusals'
+internal/server/handlers_db.go	if errors.Is(err, e2e.ErrDecrypt) {	if false {	go test ./internal/server -run 'TestDBPutRefusals|TestStoredFilePutRefusals|TestDBPutSignedByAnOldKey'
+internal/server/handlers_db.go	case body.SHA256 != staged.sum:	case false:	go test ./internal/server -run 'TestDBPutRefusals|TestDBPutPreconditions|TestDBPutSignedByAnOldKey'
+internal/server/handlers_db.go	case body.Revision != ifMatch+1:	case false:	go test ./internal/server -run 'TestDBPutRefusals|TestDBPutPreconditions|TestDBPutSignedByAnOldKey'
+internal/server/handlers_db.go	case body.Artifact != aid || body.Version != vid:	case false:	go test ./internal/server -run 'TestDBPutRefusals|TestDBPutPreconditions|TestDBPutSignedByAnOldKey'
+internal/server/handlers_files.go	case body.Artifact != aid || body.Version != vid || metaBody.Artifact != aid || metaBody.Version != vid:	case false:	go test ./internal/server -run 'TestStoredFilePutRefusals|TestStoredFileRoundTrip'
+internal/server/handlers_files.go	|| metaBody.Version != vid:	|| false:	go test ./internal/server -run 'TestStoredFilePutRefusals|TestStoredFileRoundTrip'
+internal/server/handlers_files.go	|| metaBody.Artifact != aid ||	|| false ||	go test ./internal/server -run 'TestStoredFilePutRefusals|TestStoredFileRoundTrip'
+internal/server/handlers_files.go	case body.Kind != "file" ||	case false ||	go test ./internal/server -run 'TestStoredFilePutRefusals|TestStoredFileRoundTrip'
+internal/server/handlers_files.go	|| metaBody.Kind != "file-meta":	|| false:	go test ./internal/server -run 'TestStoredFilePutRefusals|TestStoredFileRoundTrip'
+internal/server/handlers_files.go	case body.Name != address ||	case false ||	go test ./internal/server -run 'TestStoredFilePutRefusals|TestStoredFileRoundTrip'
+internal/server/handlers_files.go	|| metaBody.Name != address:	|| false:	go test ./internal/server -run 'TestStoredFilePutRefusals|TestStoredFileRoundTrip'
+internal/server/handlers_files.go	case body.SHA256 != staged.sum ||	case false ||	go test ./internal/server -run 'TestStoredFilePutRefusals|TestStoredFileRoundTrip'
+internal/server/handlers_files.go	|| metaBody.SHA256 != e2e.BodyHash(meta):	|| false:	go test ./internal/server -run 'TestStoredFilePutRefusals|TestStoredFileRoundTrip'
+internal/server/handlers_files.go	if len(meta) < e2e.BlobMinSize || !e2e.HasBlobHeader(meta) {	if false {	go test ./internal/server -run 'TestStoredFilePutRefusals|TestStoredFileRoundTrip'
+internal/server/handlers_db.go	if !e2e.HasBlobHeader(head) {	if false {	go test ./internal/server -run 'TestDBPutRefusals|TestDBPutPreconditions|TestDBPutSignedByAnOldKey'
+internal/server/handlers_db.go	if n < int64(e2e.BlobMinSize) {	if false {	go test ./internal/server -run 'TestDBPutRefusals|TestDBPutPreconditions|TestDBPutSignedByAnOldKey'
+internal/server/handlers_files.go	if !addressPattern.MatchString(a) {	if false {	go test ./internal/server -run TestStoredFileAddressMustBeLowercaseHex
+internal/server/handlers_db.go	^[0-9a-f]{64}$	^[0-9a-fA-F]{64}$	go test ./internal/server -run TestStoredFileAddressMustBeLowercaseHex
+internal/store/clientdata.go	const DBRevisionsKept = 10	const DBRevisionsKept = 11	go test ./internal/server -run TestDBRetention
+internal/server/handlers_db.go	if n > max {	if n > max+1 {	go test ./internal/server -run 'TestDBPutSizeCap|TestStoredFilePutPartShapeAndSize|TestStoredFilePutRefusals'
+internal/server/handlers_db.go	s.maxDBBytes(), "blob")	s.maxDBBytes()*2, "blob")	go test ./internal/server -run 'TestDBPutSizeCap|TestStoredFilePutPartShapeAndSize|TestStoredFilePutRefusals'
+internal/server/handlers_files.go	s.maxUploadBytes(), "blob")	s.maxUploadBytes()*2, "blob")	go test ./internal/server -run 'TestDBPutSizeCap|TestStoredFilePutPartShapeAndSize|TestStoredFilePutRefusals'
+internal/server/handlers_files.go	readSmall(part, maxMetaBytes, "meta")	readSmall(part, maxMetaBytes*2, "meta")	go test ./internal/server -run TestStoredFilePutRefusals
+internal/server/handlers_db.go	if int64(len(b)) > limit {	if false {	go test ./internal/server -run 'TestDBPutSizeCap|TestStoredFilePutPartShapeAndSize|TestStoredFilePutRefusals'
+internal/server/handlers_db.go	if part.FormName() != name {	if false {	go test ./internal/server -run 'TestDBPutPartShape|TestStoredFilePutPartShapeAndSize'
+internal/server/handlers_db.go	return refuse(http.StatusBadRequest, "unexpected part "+part.FormName())	_ = part; return nil	go test ./internal/server -run 'TestDBPutPartShape|TestStoredFilePutPartShapeAndSize'
+internal/server/handlers_db.go	Record: recordJSON, SignerKey: pub, WrittenBy: u.ID,	Record: recordJSON, SignerKey: nil, WrittenBy: u.ID,	go test ./internal/server -run 'TestDBRevisionRoundTrip|TestDBPutSignedByAnOldKey'
+internal/server/handlers_db.go	SignerKey: pub, WrittenBy: u.ID,	SignerKey: pub, WrittenBy: "",	go test ./internal/server -run TestDBRevisionRoundTrip
+internal/server/handlers_files.go	MetaRecord: metaRecordJSON, SignerKey: pub,	MetaRecord: metaRecordJSON, SignerKey: nil,	go test ./internal/server -run TestStoredFileRoundTrip
+internal/server/routes.go	s.artifactRoute(access.WriteData, s.handlePutDB)	s.artifactRoute(access.ReadContent, s.handlePutDB)	go test ./internal/server -run 'TestDataWriteAccess|TestPublicLinkReadsDataButCannotWrite'
+internal/server/routes.go	s.artifactRoute(access.WriteData, s.handleFilePut)	s.artifactRoute(access.ReadContent, s.handleFilePut)	go test ./internal/server -run 'TestDataWriteAccess|TestPublicLinkReadsDataButCannotWrite'
+internal/server/routes.go	s.artifactRoute(access.WriteData, s.handleFileDelete)	s.artifactRoute(access.ReadContent, s.handleFileDelete)	go test ./internal/server -run 'TestDataWriteAccess|TestPublicLinkReadsDataButCannotWrite'
+internal/server/handlers_artifacts.go	os.RemoveAll(s.layout.VersionDBDir(v.ArtifactID, v.ID))	_ = v.ID	go test ./internal/server -run TestDeletingAVersionRemovesItsData
+internal/server/handlers_artifacts.go	os.RemoveAll(s.layout.VersionFilesDir(v.ArtifactID, v.ID))	_ = v.ID	go test ./internal/server -run TestDeletingAVersionRemovesItsData
+internal/server/handlers_artifacts.go	os.RemoveAll(s.layout.ArtifactDBRoot(a.ID))	_ = a.ID	go test ./internal/server -run TestDeletingAVersionRemovesItsData
+internal/server/handlers_artifacts.go	os.RemoveAll(s.layout.ArtifactFilesRoot(a.ID))	_ = a.ID	go test ./internal/server -run TestDeletingAVersionRemovesItsData
+internal/store/migrations/008_client_data.sql	PRIMARY KEY (version_id, revision)	PRIMARY KEY (revision)	go test ./internal/server -run TestDeletingAVersionRemovesItsData
+internal/store/migrations/008_client_data.sql	PRIMARY KEY (version_id, address)	PRIMARY KEY (address)	go test ./internal/server -run TestDeletingAVersionRemovesItsData
+internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/db":                 true,	"GET /api/artifacts/{id}/versions/{vid}/db":                 false,	go test ./internal/server -run 'TestContentTokenRouteTable|TestContentTokenAllowsTheDataRoutesAndNotTheOldOnes'
+internal/server/content_token.go	"PUT /api/artifacts/{id}/versions/{vid}/db":                 true,	"PUT /api/artifacts/{id}/versions/{vid}/db":                 false,	go test ./internal/server -run 'TestContentTokenRouteTable|TestContentTokenAllowsTheDataRoutesAndNotTheOldOnes'
+internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/db/revisions":       true,	"GET /api/artifacts/{id}/versions/{vid}/db/revisions":       false,	go test ./internal/server -run 'TestContentTokenRouteTable|TestContentTokenAllowsTheDataRoutesAndNotTheOldOnes'
+internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/db/revisions/{rev}": true,	"GET /api/artifacts/{id}/versions/{vid}/db/revisions/{rev}": false,	go test ./internal/server -run 'TestContentTokenRouteTable|TestContentTokenAllowsTheDataRoutesAndNotTheOldOnes'
+internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/files":              true,	"GET /api/artifacts/{id}/versions/{vid}/files":              false,	go test ./internal/server -run 'TestContentTokenRouteTable|TestContentTokenAllowsTheDataRoutesAndNotTheOldOnes'
+internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/files/{address}":    true,	"GET /api/artifacts/{id}/versions/{vid}/files/{address}":    false,	go test ./internal/server -run 'TestContentTokenRouteTable|TestContentTokenAllowsTheDataRoutesAndNotTheOldOnes'
+internal/server/content_token.go	"PUT /api/artifacts/{id}/versions/{vid}/files/{address}":    true,	"PUT /api/artifacts/{id}/versions/{vid}/files/{address}":    false,	go test ./internal/server -run 'TestContentTokenRouteTable|TestContentTokenAllowsTheDataRoutesAndNotTheOldOnes'
+internal/server/content_token.go	"DELETE /api/artifacts/{id}/versions/{vid}/files/{address}": true,	"DELETE /api/artifacts/{id}/versions/{vid}/files/{address}": false,	go test ./internal/server -run 'TestContentTokenRouteTable|TestContentTokenAllowsTheDataRoutesAndNotTheOldOnes'

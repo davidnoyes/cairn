@@ -38,8 +38,8 @@ func mintContentTokenVersion(t *testing.T, s *Server, userID, artifactID string,
 	return tok
 }
 
-// contentWorld is an owner with an artifact that has a version, a database,
-// and a file, a listed editor and viewer, and a user with no access.
+// contentWorld is an owner with an artifact that has a version, a database
+// revision, and a file, a listed editor and viewer, and a user with no access.
 type contentWorld struct {
 	s       *Server
 	base    string
@@ -52,6 +52,8 @@ type contentWorld struct {
 	vbase   string
 	// blob is the ID of a blob the version holds.
 	blob string
+	// addr is the address of the stored file putFile keeps.
+	addr string
 }
 
 func newContentWorld(t *testing.T) *contentWorld {
@@ -76,15 +78,15 @@ func buildContentWorld(t *testing.T, s *Server, base string) *contentWorld {
 	w.vid = decode[pushed](t, w.owner.send("POST", "/api/artifacts/"+w.art.id+"/versions", p)).ID
 	w.blob = p.Blobs[0].ID
 	w.vbase = "/api/artifacts/" + w.art.id + "/versions/" + w.vid
+	w.owner.mustWriteDB(t, w.art.id, w.vid)
 	w.putFile(t)
 	return w
 }
 
+// putFile stores the file a.txt, replacing any there.
 func (w *contentWorld) putFile(t *testing.T) {
 	t.Helper()
-	if r := w.owner.doRaw("PUT", w.vbase+"/files/a.txt", []byte("hi")); r.StatusCode != http.StatusOK {
-		t.Fatalf("seed file: %d", r.StatusCode)
-	}
+	w.addr = w.owner.mustWriteFile(t, w.art.id, w.vid, "a.txt", "hi")
 }
 
 // token is a client sending a content token for the world's artifact, minted
@@ -103,29 +105,45 @@ func wantCode(t *testing.T, c *testClient, method, path string, want int) {
 	}
 }
 
-// contentRouteRequest fills pattern's wildcards, with artID for an artifact's
-// {id} and userID for a user's, and gives it a body that succeeds.
-func contentRouteRequest(pattern, artID, vid, blob, userID string) (method, path string, body []byte) {
+// routeReq is a request to one route.
+type routeReq struct {
+	method, path string
+	body         []byte
+	header       map[string]string
+}
+
+// contentRouteRequest fills pattern's wildcards, with ref for an artifact's
+// {id}, vid, blob and address for the rest, and userID for a user's, and
+// gives it a body that succeeds against w's own artifact. A write is signed
+// by w's owner, and names the next revision of w's database.
+func (w *contentWorld) contentRouteRequest(t *testing.T, pattern, ref, vid, blob, address, userID string) routeReq {
+	t.Helper()
 	method, path, found := strings.Cut(pattern, " ")
 	if !found {
 		method, path = "GET", pattern
 	}
-	path = strings.NewReplacer("{vid}", vid, "{blob}", blob, "{rid}", "r1", "{path...}", "a.txt").Replace(path)
+	path = strings.NewReplacer("{vid}", vid, "{blob}", blob, "{rid}", "r1", "{rev}", "1", "{address}", address).Replace(path)
 	if strings.HasPrefix(path, "/api/users/{id}") || strings.HasPrefix(path, "/api/admin/users/{id}") {
 		path = strings.Replace(path, "{id}", userID, 1)
 	}
-	path = strings.Replace(path, "{id}", artID, 1)
+	path = strings.Replace(path, "{id}", ref, 1)
+	rq := routeReq{method: method, path: path, header: map[string]string{}}
 	switch {
-	case strings.HasSuffix(pattern, "/db/query"):
-		body = []byte(`{"sql":"SELECT 1"}`)
-	case strings.HasSuffix(pattern, "/db/batch"):
-		body = []byte(`{"statements":[{"sql":"CREATE TABLE IF NOT EXISTS pwned (x)"}]}`)
-	case strings.HasSuffix(pattern, "/files/{path...}") && method == "PUT":
-		body = []byte("hello")
+	case method == "PUT" && strings.HasSuffix(pattern, "/db"):
+		q := newRevision(t, w.owner, w.art.id, w.vid, 1, w.owner.latestRevision(t, w.art.id, w.vid)+1, "next")
+		var ct string
+		ct, rq.body = q.wire(t)
+		rq.header["Content-Type"], rq.header["If-Match"] = ct, q.ifMatch
+	case method == "PUT" && strings.HasSuffix(pattern, "/files/{address}"):
+		q := newFile(t, w.owner, w.art.id, w.vid, 1, "a.txt", "hello")
+		var ct string
+		ct, rq.body = q.wire(t)
+		rq.header["Content-Type"] = ct
 	case method != "GET" && method != "DELETE":
-		body = []byte(`{}`)
+		rq.body = []byte(`{}`)
+		rq.header["Content-Type"] = "application/json"
 	}
-	return method, path, body
+	return rq
 }
 
 // send makes one request with c's credentials and returns the status and body.
@@ -146,6 +164,38 @@ func send(t *testing.T, c *testClient, method, path string, body []byte) (int, s
 	return resp.StatusCode, strings.TrimSpace(string(msg))
 }
 
+// sendReq makes the request with c's credentials.
+func sendReq(t *testing.T, c *testClient, rq routeReq) (int, string) {
+	t.Helper()
+	req, err := http.NewRequest(rq.method, c.base+rq.path, bytes.NewReader(rq.body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range rq.header {
+		req.Header.Set(k, v)
+	}
+	c.setHeaders(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	msg, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, strings.TrimSpace(string(msg))
+}
+
+// withHeader is hdr and rq's headers together.
+func (rq routeReq) withHeader(hdr map[string]string) map[string]string {
+	out := map[string]string{}
+	for k, v := range rq.header {
+		out[k] = v
+	}
+	for k, v := range hdr {
+		out[k] = v
+	}
+	return out
+}
+
 // gateRefusal is the body of the gate's 404.
 const gateRefusal = `{"error":"not found"}`
 
@@ -160,13 +210,14 @@ func TestContentTokenRouteTable(t *testing.T) {
 		"GET /api/artifacts/{id}/versions/{vid}":                    true,
 		"GET /api/artifacts/{id}/versions/{vid}/manifest":           true,
 		"GET /api/artifacts/{id}/versions/{vid}/blobs/{blob}":       true,
-		"POST /api/artifacts/{id}/versions/{vid}/db/query":          true,
-		"POST /api/artifacts/{id}/versions/{vid}/db/batch":          true,
-		"GET /api/artifacts/{id}/versions/{vid}/db/download":        true,
+		"GET /api/artifacts/{id}/versions/{vid}/db":                 true,
+		"PUT /api/artifacts/{id}/versions/{vid}/db":                 true,
+		"GET /api/artifacts/{id}/versions/{vid}/db/revisions":       true,
+		"GET /api/artifacts/{id}/versions/{vid}/db/revisions/{rev}": true,
 		"GET /api/artifacts/{id}/versions/{vid}/files":              true,
-		"GET /api/artifacts/{id}/versions/{vid}/files/{path...}":    true,
-		"PUT /api/artifacts/{id}/versions/{vid}/files/{path...}":    true,
-		"DELETE /api/artifacts/{id}/versions/{vid}/files/{path...}": true,
+		"GET /api/artifacts/{id}/versions/{vid}/files/{address}":    true,
+		"PUT /api/artifacts/{id}/versions/{vid}/files/{address}":    true,
+		"DELETE /api/artifacts/{id}/versions/{vid}/files/{address}": true,
 	}
 	if !reflect.DeepEqual(contentTokenRoutes, want) {
 		t.Errorf("contentTokenRoutes = %v, want %v", contentTokenRoutes, want)
@@ -176,16 +227,15 @@ func TestContentTokenRouteTable(t *testing.T) {
 	tok := w.token(t, w.owner.id)
 	seen := map[string]bool{}
 	for _, pattern := range w.s.patterns {
-		method, path, body := contentRouteRequest(pattern, w.art.id, w.vid, w.blob, w.editor.id)
 		allowed := contentTokenRoutes[pattern]
 		if allowed {
 			seen[pattern] = true
 			w.putFile(t)
 		}
-		code, msg := send(t, tok, method, path, body)
+		code, msg := sendReq(t, tok, w.contentRouteRequest(t, pattern, w.art.id, w.vid, w.blob, w.addr, w.editor.id))
 		switch {
-		case allowed && code != http.StatusOK:
-			t.Errorf("%s with a content token: %d %s, want 200", pattern, code, msg)
+		case allowed && code >= 300:
+			t.Errorf("%s with a content token: %d %s, want success", pattern, code, msg)
 		case !allowed && (code != http.StatusNotFound || msg != gateRefusal):
 			t.Errorf("%s with a content token: %d %s, want 404 %s", pattern, code, msg, gateRefusal)
 		}
@@ -232,45 +282,31 @@ func TestContentTokenIsScopedToOneArtifact(t *testing.T) {
 	b := newArtifact(t, w.owner, "other")
 	bvid := pushVersion(t, w.owner.testClient, b.id)
 	bbase := "/api/artifacts/" + b.id + "/versions/" + bvid
-	if r := w.owner.doRaw("PUT", bbase+"/files/a.txt", []byte("keep")); r.StatusCode != http.StatusOK {
-		t.Fatalf("seed b's file: %d", r.StatusCode)
-	}
+	baddr := w.owner.mustWriteFile(t, b.id, bvid, "a.txt", "keep")
 	w.owner.mustDo("POST", "/api/artifacts/"+b.id+"/resources",
 		map[string]string{"type": "claude-session", "value": "b-session"}, nil, http.StatusCreated)
-	// The database is created lazily, so seed it, or db/download is a 404
-	// whenever the loop reaches it first.
-	w.owner.mustDo("POST", w.vbase+"/db/batch",
-		map[string]any{"statements": []map[string]any{{"sql": "CREATE TABLE IF NOT EXISTS t (x)"}}}, nil, http.StatusOK)
+	before := readBody(t, w.owner.doRaw("GET", bbase+"/files/"+baddr, nil))
 	tok := w.token(t, w.owner.id)
 	for pattern := range contentTokenRoutes {
 		if !strings.Contains(pattern, " /api/artifacts/{id}") {
 			continue
 		}
 		for _, ref := range []string{b.id, "b-session"} {
-			method, path, body := contentRouteRequest(pattern, ref, bvid, strings.Repeat("a", 32), "")
-			if code, msg := send(t, tok, method, path, body); code != http.StatusNotFound {
+			if code, msg := sendReq(t, tok, w.contentRouteRequest(t, pattern, ref, bvid, strings.Repeat("a", 32), baddr, "")); code != http.StatusNotFound {
 				t.Errorf("%s on another artifact (%s): %d %s, want 404", pattern, ref, code, msg)
 			}
 		}
-		method, path, body := contentRouteRequest(pattern, w.art.id, w.vid, w.blob, "")
 		w.putFile(t)
-		if code, msg := send(t, tok, method, path, body); code != http.StatusOK {
-			t.Errorf("%s on its own artifact: %d %s, want 200", pattern, code, msg)
+		if code, msg := sendReq(t, tok, w.contentRouteRequest(t, pattern, w.art.id, w.vid, w.blob, w.addr, "")); code >= 300 {
+			t.Errorf("%s on its own artifact: %d %s, want success", pattern, code, msg)
 		}
 	}
-	got := w.owner.doRaw("GET", bbase+"/files/a.txt", nil)
-	data, _ := io.ReadAll(got.Body)
-	got.Body.Close()
-	if got.StatusCode != http.StatusOK || string(data) != "keep" {
-		t.Errorf("b's file after the token's requests: %d %q, want 200 \"keep\"", got.StatusCode, data)
+	got := w.owner.doRaw("GET", bbase+"/files/"+baddr, nil)
+	if after := readBody(t, got); got.StatusCode != http.StatusOK || !bytes.Equal(before, after) {
+		t.Errorf("b's file after the token's requests: %d, changed %v, want 200 and unchanged", got.StatusCode, !bytes.Equal(before, after))
 	}
-	var rows struct {
-		Rows [][]any `json:"rows"`
-	}
-	w.owner.mustDo("POST", bbase+"/db/query", map[string]any{"sql": "SELECT name FROM sqlite_master WHERE name = 'pwned'"},
-		&rows, http.StatusOK)
-	if len(rows.Rows) != 0 {
-		t.Errorf("b's database has the token's table: %v", rows.Rows)
+	if r := w.owner.doRaw("GET", bbase+"/db", nil); r.StatusCode != http.StatusNotFound {
+		t.Errorf("b's database after the token's requests: %d, want none", r.StatusCode)
 	}
 }
 
@@ -301,7 +337,7 @@ func TestContentTokenGateEdges(t *testing.T) {
 	}
 
 	bearer := &testClient{t: t, base: w.base, token: tok}
-	wantCode(t, bearer, "HEAD", w.vbase+"/files/a.txt", http.StatusOK)
+	wantCode(t, bearer, "HEAD", w.vbase+"/files/"+w.addr, http.StatusOK)
 	wantCode(t, bearer, "OPTIONS", "/api/me", http.StatusNotFound)
 	wantCode(t, bearer, "GET", "/api/artifacts/"+w.art.id+"/../../keys", http.StatusNotFound)
 	wantCode(t, bearer, "GET", "/api/me/", http.StatusNotFound)
@@ -361,13 +397,19 @@ func TestContentTokenMe(t *testing.T) {
 func TestContentTokenKeepsTheRole(t *testing.T) {
 	w := newContentWorld(t)
 	tok := w.token(t, w.viewer.id)
-	wantCode(t, tok, "GET", w.vbase+"/files/a.txt", http.StatusOK)
+	wantCode(t, tok, "GET", w.vbase+"/files/"+w.addr, http.StatusOK)
 	wantCode(t, tok, "GET", "/api/artifacts/"+w.art.id+"/membership", http.StatusOK)
-	if r := tok.doRaw("PUT", w.vbase+"/files/b.txt", []byte("x")); r.StatusCode != http.StatusForbidden {
-		t.Errorf("viewer token file put: %d, want 403", r.StatusCode)
+	put := func(c *testClient, as actor) int {
+		q := newFile(t, as, w.art.id, w.vid, 1, "b.txt", "x")
+		ct, body := q.wire(t)
+		code, _ := sendReq(t, c, routeReq{method: "PUT", path: q.path(), body: body, header: map[string]string{"Content-Type": ct}})
+		return code
 	}
-	if r := w.token(t, w.editor.id).doRaw("PUT", w.vbase+"/files/b.txt", []byte("x")); r.StatusCode != http.StatusOK {
-		t.Errorf("editor token file put: %d, want 200", r.StatusCode)
+	if got := put(tok, w.viewer); got != http.StatusForbidden {
+		t.Errorf("viewer token file put: %d, want 403", got)
+	}
+	if got := put(w.token(t, w.editor.id), w.editor); got != http.StatusOK {
+		t.Errorf("editor token file put: %d, want 200", got)
 	}
 }
 
@@ -463,12 +505,14 @@ func TestContentTokenLinkScope(t *testing.T) {
 	}
 	c := &testClient{t: t, base: w.base, token: tok, link: link}
 	abase := "/api/artifacts/" + w.art.id
-	for _, path := range []string{abase + "/membership", abase + "/versions", w.vbase + "/files/a.txt"} {
+	for _, path := range []string{abase + "/membership", abase + "/versions", w.vbase + "/files/" + w.addr} {
 		if code, msg := send(t, c, "GET", path, nil); code != http.StatusOK {
 			t.Errorf("link-scope token GET %s: %d %s, want 200", path, code, msg)
 		}
 	}
-	if code, msg := send(t, c, "PUT", w.vbase+"/files/new.txt", []byte("x")); code != http.StatusForbidden {
+	q := newFile(t, w.outside, w.art.id, w.vid, 1, "new.txt", "x")
+	ct, body := q.wire(t)
+	if code, msg := sendReq(t, c, routeReq{method: "PUT", path: q.path(), body: body, header: map[string]string{"Content-Type": ct}}); code != http.StatusForbidden {
 		t.Errorf("link-scope token PUT a file: %d %s, want 403", code, msg)
 	}
 	if code, msg := send(t, c, "GET", abase+"/keys", nil); code != http.StatusNotFound || msg != gateRefusal {

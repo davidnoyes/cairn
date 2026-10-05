@@ -346,9 +346,7 @@ func TestShareAndRevoke(t *testing.T) {
 	vid := pushVersion(t, a.testClient, o.id)
 	base := "/api/artifacts/" + o.id
 	vbase := base + "/versions/" + vid
-	a.mustDo("POST", vbase+"/db/batch", map[string]any{"statements": []map[string]any{
-		{"sql": "CREATE TABLE t (x INTEGER)"}, {"sql": "INSERT INTO t VALUES (1)"},
-	}}, nil, http.StatusOK)
+	a.mustWriteDB(t, o.id, vid)
 
 	// Before sharing, B sees nothing at all.
 	if _, ok := listIDs(t, b.testClient)[o.id]; ok {
@@ -356,12 +354,14 @@ func TestShareAndRevoke(t *testing.T) {
 	}
 	for _, req := range []struct{ method, path string }{
 		{"GET", base}, {"GET", base + "/versions"}, {"GET", vbase},
-		{"GET", vbase + "/files"}, {"GET", base + "/membership"}, {"GET", base + "/keys"},
+		{"GET", vbase + "/files"}, {"GET", vbase + "/db"}, {"GET", vbase + "/db/revisions"},
+		{"GET", base + "/membership"}, {"GET", base + "/keys"},
 	} {
 		wantStatus(t, b.testClient, req.method, req.path, nil, http.StatusNotFound)
 	}
-	wantStatus(t, b.testClient, "POST", vbase+"/db/query", map[string]any{"sql": "SELECT x FROM t"}, http.StatusNotFound)
-	wantStatus(t, b.testClient, "POST", vbase+"/db/batch", map[string]any{"statements": []map[string]any{{"sql": "DELETE FROM t"}}}, http.StatusNotFound)
+	if r := b.writeDB(t, o.id, vid); r.StatusCode != http.StatusNotFound {
+		t.Errorf("B's db write before sharing: %d, want 404", r.StatusCode)
+	}
 
 	// Shared as an editor through a signed record, B reads and writes.
 	o.share("editor", b)
@@ -373,8 +373,8 @@ func TestShareAndRevoke(t *testing.T) {
 	if view.Access != "editor" {
 		t.Errorf("B's access: %q", view.Access)
 	}
-	b.mustDo("POST", vbase+"/db/query", map[string]any{"sql": "SELECT x FROM t"}, nil, http.StatusOK)
-	b.mustDo("POST", vbase+"/db/batch", map[string]any{"statements": []map[string]any{{"sql": "INSERT INTO t VALUES (2)"}}}, nil, http.StatusOK)
+	b.mustDo("GET", vbase+"/db", nil, nil, http.StatusOK)
+	b.mustWriteDB(t, o.id, vid)
 
 	// Removed at the next epoch, B loses access.
 	next := o.nextEpoch()
@@ -385,7 +385,10 @@ func TestShareAndRevoke(t *testing.T) {
 		t.Error("B still lists the artifact after removal")
 	}
 	wantStatus(t, b.testClient, "GET", base, nil, http.StatusNotFound)
-	wantStatus(t, b.testClient, "POST", vbase+"/db/query", map[string]any{"sql": "SELECT x FROM t"}, http.StatusNotFound)
+	wantStatus(t, b.testClient, "GET", vbase+"/db", nil, http.StatusNotFound)
+	if r := newRevision(t, b, o.id, vid, 1, 3, "after removal").send(t); r.StatusCode != http.StatusNotFound {
+		t.Errorf("B's db write after removal: %d, want 404", r.StatusCode)
+	}
 	wantStatus(t, b.testClient, "GET", base+"/keys", nil, http.StatusNotFound)
 }
 
@@ -400,22 +403,23 @@ func TestViewerAndEditorPowers(t *testing.T) {
 	o.share("editor", editor)
 	base := "/api/artifacts/" + o.id
 	vbase := base + "/versions/" + vid
-	a.mustDo("POST", vbase+"/db/batch", map[string]any{"statements": []map[string]any{{"sql": "CREATE TABLE t (x INTEGER)"}}}, nil, http.StatusOK)
-	batch := map[string]any{"statements": []map[string]any{{"sql": "INSERT INTO t VALUES (1)"}}}
+	a.mustWriteDB(t, o.id, vid)
 	files := map[string]string{"index.html": "v2"}
 
 	// A viewer reads but cannot write anything.
 	viewer.mustDo("GET", base, nil, nil, http.StatusOK)
 	viewer.mustDo("GET", base+"/versions", nil, nil, http.StatusOK)
 	viewer.mustDo("GET", base+"/membership", nil, nil, http.StatusOK)
-	viewer.mustDo("POST", vbase+"/db/query", map[string]any{"sql": "SELECT count(*) FROM t"}, nil, http.StatusOK)
-	// The query endpoint gives a viewer the read-only pool.
-	wantStatus(t, viewer.testClient, "POST", vbase+"/db/query", map[string]any{"sql": "INSERT INTO t VALUES (9)"}, http.StatusBadRequest)
-	wantStatus(t, viewer.testClient, "POST", vbase+"/db/batch", batch, http.StatusForbidden)
-	if r := viewer.doRaw("PUT", vbase+"/files/x.txt", []byte("x")); r.StatusCode != http.StatusForbidden {
+	viewer.mustDo("GET", vbase+"/db", nil, nil, http.StatusOK)
+	viewer.mustDo("GET", vbase+"/db/revisions", nil, nil, http.StatusOK)
+	if r := viewer.writeDB(t, o.id, vid); r.StatusCode != http.StatusForbidden {
+		t.Errorf("viewer db write: %d", r.StatusCode)
+	}
+	if r := viewer.writeFile(t, o.id, vid, "x.txt", "x"); r.StatusCode != http.StatusForbidden {
 		t.Errorf("viewer file put: %d", r.StatusCode)
 	}
-	wantStatus(t, viewer.testClient, "DELETE", vbase+"/files/x.txt", nil, http.StatusForbidden)
+	xAddr := testAddress(t, o.id, 1, "x.txt")
+	wantStatus(t, viewer.testClient, "DELETE", vbase+"/files/"+xAddr, nil, http.StatusForbidden)
 	if r := viewer.upload("POST", base+"/versions", files, nil); r.StatusCode != http.StatusForbidden {
 		t.Errorf("viewer push: %d", r.StatusCode)
 	}
@@ -426,28 +430,14 @@ func TestViewerAndEditorPowers(t *testing.T) {
 	wantStatus(t, viewer.testClient, "POST", base+"/resources", map[string]any{"type": "t", "value": "v"}, http.StatusForbidden)
 	wantStatus(t, viewer.testClient, "PATCH", vbase, map[string]any{"name": "x"}, http.StatusForbidden)
 	wantStatus(t, viewer.testClient, "DELETE", vbase, nil, http.StatusForbidden)
-	wantStatus(t, viewer.testClient, "DELETE", vbase+"/files/x.txt", nil, http.StatusForbidden)
 	wantStatus(t, viewer.testClient, "DELETE", base, nil, http.StatusForbidden)
 
 	// An editor pushes and writes.
-	editor.mustDo("POST", vbase+"/db/query", map[string]any{"sql": "INSERT INTO t VALUES (2)"}, nil, http.StatusOK)
-	editor.mustDo("POST", vbase+"/db/batch", batch, nil, http.StatusOK)
-	put := func(c *testClient, path string) int {
-		req, _ := http.NewRequest("PUT", c.base+path, strings.NewReader("hello"))
-		req.Header.Set("Content-Type", "application/octet-stream")
-		c.setHeaders(req)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		return resp.StatusCode
-	}
-	if got := put(editor.testClient, vbase+"/files/e.txt"); got != http.StatusOK {
-		t.Errorf("editor file put: %d", got)
-	}
-	if got := put(viewer.testClient, vbase+"/files/v.txt"); got != http.StatusForbidden {
-		t.Errorf("viewer file put: %d", got)
+	editor.mustWriteDB(t, o.id, vid)
+	editor.mustWriteDB(t, o.id, vid)
+	eAddr := editor.mustWriteFile(t, o.id, vid, "e.txt", "hello")
+	if r := viewer.writeFile(t, o.id, vid, "v.txt", "hello"); r.StatusCode != http.StatusForbidden {
+		t.Errorf("viewer file put: %d", r.StatusCode)
 	}
 	r := editor.upload("POST", base+"/versions", files, nil)
 	if r.StatusCode != http.StatusCreated {
@@ -483,7 +473,7 @@ func TestViewerAndEditorPowers(t *testing.T) {
 	wantStatus(t, viewer.testClient, "DELETE", base+"/resources/"+res.ID, nil, http.StatusForbidden)
 	editor.mustDo("DELETE", base+"/resources/"+res.ID, nil, nil, http.StatusOK)
 	editor.mustDo("PATCH", vbase, map[string]any{"name": "first"}, nil, http.StatusOK)
-	editor.mustDo("DELETE", vbase+"/files/e.txt", nil, nil, http.StatusOK)
+	editor.mustDo("DELETE", vbase+"/files/"+eAddr, nil, nil, http.StatusNoContent)
 
 	// But cannot share, delete, or change membership.
 	wantStatus(t, editor.testClient, "PUT", base+"/membership", o.change(o.next()), http.StatusForbidden)
@@ -519,7 +509,7 @@ func TestTeamWrapGrantsRead(t *testing.T) {
 	if view.Access != "team" || view.Team != "editor" {
 		t.Errorf("team member's view: %+v", view)
 	}
-	withWrap.mustDo("POST", vbase+"/db/query", map[string]any{"sql": "SELECT 1"}, nil, http.StatusOK)
+	withWrap.mustDo("GET", vbase+"/files", nil, nil, http.StatusOK)
 	var keys struct {
 		Wraps []map[string]any `json:"wraps"`
 	}
@@ -527,7 +517,9 @@ func TestTeamWrapGrantsRead(t *testing.T) {
 	if len(keys.Wraps) != 1 {
 		t.Errorf("team member's wraps: %+v", keys.Wraps)
 	}
-	wantStatus(t, withWrap.testClient, "POST", vbase+"/db/batch", map[string]any{"statements": []map[string]any{{"sql": "CREATE TABLE t (x)"}}}, http.StatusForbidden)
+	if r := withWrap.writeDB(t, o.id, vid); r.StatusCode != http.StatusForbidden {
+		t.Errorf("team member db write: %d", r.StatusCode)
+	}
 	if r := withWrap.upload("POST", base+"/versions", map[string]string{"index.html": "x"}, nil); r.StatusCode != http.StatusForbidden {
 		t.Errorf("team member push: %d", r.StatusCode)
 	}
@@ -569,11 +561,12 @@ func TestPublicLink(t *testing.T) {
 	right.mustDo("GET", base+"/membership", nil, nil, http.StatusOK)
 	// Every content read is open to the link, though the keys are not.
 	vbase := base + "/versions/" + vid
-	a.mustDo("POST", vbase+"/db/batch", map[string]any{"statements": []map[string]any{{"sql": "CREATE TABLE t (x)"}}}, nil, http.StatusOK)
+	a.mustWriteDB(t, o.id, vid)
 	right.mustDo("GET", vbase, nil, nil, http.StatusOK)
 	right.mustDo("GET", vbase+"/files", nil, nil, http.StatusOK)
-	if r := right.doRaw("GET", vbase+"/db/download", nil); r.StatusCode != http.StatusOK {
-		t.Errorf("link db download: %d", r.StatusCode)
+	right.mustDo("GET", vbase+"/db/revisions", nil, nil, http.StatusOK)
+	if r := right.doRaw("GET", vbase+"/db", nil); r.StatusCode != http.StatusOK {
+		t.Errorf("link db read: %d", r.StatusCode)
 	}
 	// A link holder holds no wraps.
 	wantStatus(t, right, "GET", base+"/keys", nil, http.StatusForbidden)
@@ -633,30 +626,38 @@ func TestPublicWrites(t *testing.T) {
 	o := newArtifact(t, a, "guestbook")
 	vid := pushVersion(t, a.testClient, o.id)
 	vbase := "/api/artifacts/" + o.id + "/versions/" + vid
-	a.mustDo("POST", vbase+"/db/batch", map[string]any{"statements": []map[string]any{{"sql": "CREATE TABLE t (x INTEGER)"}}}, nil, http.StatusOK)
+	a.mustWriteDB(t, o.id, vid)
 	link := o.makePublic()
-	batch := map[string]any{"statements": []map[string]any{{"sql": "INSERT INTO t VALUES (1)"}}}
-	insert := map[string]any{"sql": "INSERT INTO t VALUES (2)"}
 
 	// Switch off: a signed-in link holder still cannot write.
 	b.link = link
-	wantStatus(t, b.testClient, "POST", vbase+"/db/batch", batch, http.StatusForbidden)
-	wantStatus(t, b.testClient, "POST", vbase+"/db/query", insert, http.StatusBadRequest)
+	if r := b.writeDB(t, o.id, vid); r.StatusCode != http.StatusForbidden {
+		t.Errorf("link holder db write, switch off: %d, want 403", r.StatusCode)
+	}
 
 	next := o.next()
 	next.PublicWrites = true
 	o.apply(next)
 
 	// Switch on: the token and a session together write.
-	b.mustDo("POST", vbase+"/db/batch", batch, nil, http.StatusOK)
-	b.mustDo("POST", vbase+"/db/query", insert, nil, http.StatusOK)
+	b.mustWriteDB(t, o.id, vid)
+	b.mustWriteFile(t, o.id, vid, "note.txt", "hi")
 	// The token alone does not.
-	anon := anonWithLink(t, ts.URL, link)
-	wantStatus(t, anon, "POST", vbase+"/db/batch", batch, http.StatusForbidden)
-	wantStatus(t, anon, "POST", vbase+"/db/query", insert, http.StatusBadRequest)
+	anon := actor{testClient: anonWithLink(t, ts.URL, link), id: b.id, keys: b.keys}
+	// Without an Authorization header, protectMutations refuses a multipart
+	// body before access is checked, so the anonymous write never gets that far.
+	if r := anon.writeDB(t, o.id, vid); r.StatusCode != http.StatusUnsupportedMediaType {
+		t.Errorf("link token alone db write: %d, want 415", r.StatusCode)
+	}
+	if r := anon.writeFile(t, o.id, vid, "anon.txt", "x"); r.StatusCode != http.StatusUnsupportedMediaType {
+		t.Errorf("link token alone file write: %d, want 415", r.StatusCode)
+	}
+	anon.mustDo("GET", vbase+"/db", nil, nil, http.StatusOK)
 	// Nor does the session alone.
 	b.link = ""
-	wantStatus(t, b.testClient, "POST", vbase+"/db/batch", batch, http.StatusNotFound)
+	if r := b.writeDB(t, o.id, vid); r.StatusCode != http.StatusNotFound {
+		t.Errorf("session alone db write: %d, want 404", r.StatusCode)
+	}
 	// Public writes do not extend to pushing a version.
 	b.link = link
 	if r := b.upload("POST", "/api/artifacts/"+o.id+"/versions", map[string]string{"index.html": "x"}, nil); r.StatusCode != http.StatusForbidden {
@@ -672,24 +673,26 @@ func TestChangedKeyReadsButCannotWrite(t *testing.T) {
 	vid := pushVersion(t, a.testClient, o.id)
 	o.share("editor", e)
 	vbase := "/api/artifacts/" + o.id + "/versions/" + vid
-	batch := map[string]any{"statements": []map[string]any{{"sql": "CREATE TABLE t (x)"}}}
 
+	newKeys := newUserKeys(t)
 	hash, err := auth.HashPassword(string(testAuthKey("e@example.com-password")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.store.ResetAccount(e.id, hash, bundleFor(t, newUserKeys(t)), time.Now()); err != nil {
+	if err := s.store.ResetAccount(e.id, hash, bundleFor(t, newKeys), time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	relogged := login(t, ts.URL, "e@example.com", "e@example.com-password")
+	relogged := actor{testClient: login(t, ts.URL, "e@example.com", "e@example.com-password"), id: e.id, email: e.email, keys: newKeys}
 	var view gotArtifact
 	relogged.mustDo("GET", "/api/artifacts/"+o.id, nil, &view, http.StatusOK)
 	if view.Access != "editor" {
 		t.Errorf("access after key change: %q", view.Access)
 	}
-	relogged.mustDo("POST", vbase+"/db/query", map[string]any{"sql": "SELECT 1"}, nil, http.StatusOK)
-	wantStatus(t, relogged, "POST", vbase+"/db/batch", batch, http.StatusForbidden)
-	wantStatus(t, relogged, "PATCH", "/api/artifacts/"+o.id, map[string]any{"name": "x"}, http.StatusForbidden)
+	relogged.mustDo("GET", vbase+"/files", nil, nil, http.StatusOK)
+	if r := relogged.writeDB(t, o.id, vid); r.StatusCode != http.StatusForbidden {
+		t.Errorf("changed-key db write: %d, want 403", r.StatusCode)
+	}
+	wantStatus(t, relogged.testClient, "PATCH", "/api/artifacts/"+o.id, map[string]any{"name": "x"}, http.StatusForbidden)
 	if r := relogged.upload("POST", "/api/artifacts/"+o.id+"/versions", map[string]string{"index.html": "x"}, nil); r.StatusCode != http.StatusForbidden {
 		t.Errorf("changed-key push: %d", r.StatusCode)
 	}

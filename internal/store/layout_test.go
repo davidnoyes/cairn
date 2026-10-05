@@ -37,6 +37,9 @@ func TestLayout(t *testing.T) {
 	if l.VersionDB("a1", "v1") != filepath.Join(root, "dbs", "a1", "v1.db") {
 		t.Errorf("VersionDB: %q", l.VersionDB("a1", "v1"))
 	}
+	if l.VersionDBDir("a1", "v1") != filepath.Join(root, "dbs", "a1", "v1") {
+		t.Errorf("VersionDBDir: %q", l.VersionDBDir("a1", "v1"))
+	}
 	if l.ArtifactDBRoot("a1") != filepath.Join(root, "dbs", "a1") {
 		t.Errorf("ArtifactDBRoot: %q", l.ArtifactDBRoot("a1"))
 	}

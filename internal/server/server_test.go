@@ -109,7 +109,6 @@ func newTestServer(t *testing.T, cfg func(*Config)) (*Server, *httptest.Server) 
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(func() {
 		ts.Close()
-		s.dbs.Close()
 		s.store.Close()
 	})
 	return s, ts

@@ -552,10 +552,12 @@ func TestApproveStoresWrapsAndLetsTheUserRead(t *testing.T) {
 	if view.Access != "team" {
 		t.Errorf("access after approval: %q", view.Access)
 	}
-	w.team1.mustDo("POST", vbase+"/db/query", map[string]any{"sql": "SELECT 1"}, nil, http.StatusOK)
+	w.team1.mustDo("GET", vbase+"/files", nil, nil, http.StatusOK)
 
 	// An approved team member reads but cannot write, share, or approve.
-	wantStatus(t, w.team1.testClient, "POST", vbase+"/db/batch", map[string]any{"statements": []map[string]any{{"sql": "CREATE TABLE t (x)"}}}, http.StatusForbidden)
+	if r := w.team1.writeDB(t, w.o.id, vid); r.StatusCode != http.StatusForbidden {
+		t.Errorf("approved team member db write: %d", r.StatusCode)
+	}
 	if r := w.team1.upload("POST", base+"/versions", map[string]string{"index.html": "x"}, nil); r.StatusCode != http.StatusForbidden {
 		t.Errorf("approved team member push: %d", r.StatusCode)
 	}
@@ -571,7 +573,7 @@ func TestApproveStoresWrapsAndLetsTheUserRead(t *testing.T) {
 	if view.Access != "editor" {
 		t.Errorf("access once listed: %q", view.Access)
 	}
-	w.team1.mustDo("POST", vbase+"/db/batch", map[string]any{"statements": []map[string]any{{"sql": "CREATE TABLE t (x)"}}}, nil, http.StatusOK)
+	w.team1.mustWriteDB(t, w.o.id, vid)
 }
 
 // An approval that races a next-epoch record loses: the record lands first
