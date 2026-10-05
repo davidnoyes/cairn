@@ -42,6 +42,7 @@
     <input id="message" placeholder="Leave a note…" maxlength="280" required>
     <button>Sign</button>
   </form>
+  <p class="empty" id="error" hidden></p>
   <div id="entries"><p class="empty">Loading…</p></div>
 
 <script src="./cairn.js"></script>
@@ -88,11 +89,18 @@
       if (!me) { cairn.login(); return; }
       const message = $('message').value.trim();
       if (!message) return;
-      await cairn.db.query(
-        'INSERT INTO entries (message, author, created_at) VALUES (?, ?, ?)',
-        [message, me.name || me.email, new Date().toISOString()]);
-      $('message').value = '';
-      await refresh();
+      $('error').hidden = true;
+      try {
+        await cairn.db.query(
+          'INSERT INTO entries (message, author, created_at) VALUES (?, ?, ?)',
+          [message, me.name || me.email, new Date().toISOString()]);
+        $('message').value = '';
+        await refresh();
+      } catch (err) {
+        // Keep the note in the box so it can be sent again.
+        $('error').textContent = 'Not saved: ' + err.message;
+        $('error').hidden = false;
+      }
     });
     await refresh();
   }

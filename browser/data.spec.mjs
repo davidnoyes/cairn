@@ -50,6 +50,30 @@ test('guestbook: a note lands and survives a reload, with nothing fetched from o
   expect(outside).toEqual([]);
 });
 
+test('guestbook: a viewer is told their note was not saved, and keeps it', async ({ ownerPage, browser, browserName }) => {
+  const s = loadState();
+  const viewer = s.users.viewer;
+  cli('owner', ['share', 'guestbook', viewer.email, '--role', 'viewer']);
+  // The owner's visit creates the table; a viewer's migration could not.
+  const owned = await openShared(ownerPage, s.artifacts.guestbook.id);
+  await expect(owned.locator('#who')).not.toHaveText('…');
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await signIn(page, viewer.email, viewer.password);
+    const frame = await openShared(page, s.artifacts.guestbook.id);
+    await expect(frame.locator('#who')).not.toHaveText('…');
+    const note = `refused-${browserName}-${Date.now()}`;
+    await frame.locator('#message').fill(note);
+    await frame.locator('#message').press('Enter');
+    await expect(frame.locator('#error')).toContainText('Not saved');
+    await expect(frame.locator('#message')).toHaveValue(note);
+    await expect(frame.locator('#entries')).not.toContainText(note);
+  } finally {
+    await context.close();
+  }
+});
+
 test('poll: a vote is counted', async ({ ownerPage }) => {
   const frame = await openShared(ownerPage, loadState().artifacts.poll.id);
   const option = frame.locator('button.option').first();
