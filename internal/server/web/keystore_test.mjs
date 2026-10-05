@@ -145,3 +145,28 @@ test('a dropped save never leaves the previous record in place', async () => {
   await assert.rejects(store.save({ userId: 'dropped' }), /did not store/);
   assert.equal(await store.load(), undefined);
 });
+
+// Linux WebKit refuses a PKCS#8 X25519 key whose scalar starts with a zero
+// byte, which one key in 256 does, so the wrapped copy holds x25519Pkcs8's
+// form, whose first scalar byte is never zero. It is wiped once encrypted.
+test('the wrapped copy holds the PKCS#8 form with no leading zero, and wipes it', async () => {
+  const priv = crypto.getRandomValues(new Uint8Array(32));
+  priv[0] = 0;
+  const { subtle } = crypto;
+  const realEncrypt = subtle.encrypt.bind(subtle);
+  let plaintext;
+  let seen;
+  subtle.encrypt = (algorithm, key, data) => {
+    plaintext = data;
+    seen = Uint8Array.from(data);
+    return realEncrypt(algorithm, key, data);
+  };
+  try {
+    await wrapX25519(priv);
+  } finally {
+    delete subtle.encrypt;
+  }
+  assert.deepEqual(seen, e2e.x25519Pkcs8(priv));
+  assert.equal(seen[16], 1);
+  assert.ok(plaintext.every((b) => b === 0), 'the PKCS#8 copy is wiped');
+});

@@ -968,19 +968,33 @@ export async function openBlob(ak, ctx, blob) {
   return concatBytes(parts);
 }
 
-// PKCS#8/SPKI DER prefixes for a raw 32-byte X25519 or Ed25519 key, so a
-// private scalar/seed or a public key can be imported directly by WebCrypto.
+// PKCS#8 DER prefixes for a raw 32-byte X25519 private scalar or Ed25519
+// seed, so WebCrypto can import one. Public keys go in raw.
+//
+// Linux WebKit runs WebCrypto on libgcrypt, which reads a key out of PKCS#8
+// (or SPKI) as a big number and writes it back without its leading zero
+// bytes, then refuses the 31-byte key that is left. One key in 256 starts with
+// a zero byte, so each private import below avoids that: see x25519Pkcs8 and
+// importEd25519Priv. A raw or JWK import keeps the bytes as they are.
 const X25519_PKCS8_PREFIX = fromHex('302e020100300506032b656e04220420');
-const X25519_SPKI_PREFIX = fromHex('302a300506032b656e032100');
 const ED25519_PKCS8_PREFIX = fromHex('302e020100300506032b657004220420');
-const ED25519_SPKI_PREFIX = fromHex('302a300506032b6570032100');
+
+// x25519Pkcs8 is the PKCS#8 form of a raw private scalar, for import. It sets
+// the lowest bit of the scalar's first byte, so that byte is never zero: X25519
+// clears the three lowest bits before it uses a scalar (RFC 7748, section 5),
+// so the key is the same key.
+export function x25519Pkcs8(raw) {
+  const der = concatBytes([X25519_PKCS8_PREFIX, raw]);
+  der[X25519_PKCS8_PREFIX.length] |= 1;
+  return der;
+}
 
 async function importX25519Priv(raw, extractable, usages) {
-  return subtle.importKey('pkcs8', concatBytes([X25519_PKCS8_PREFIX, raw]), 'X25519', extractable, usages);
+  return subtle.importKey('pkcs8', x25519Pkcs8(raw), 'X25519', extractable, usages);
 }
 
 async function importX25519Pub(raw) {
-  return subtle.importKey('spki', concatBytes([X25519_SPKI_PREFIX, raw]), 'X25519', false, []);
+  return subtle.importKey('raw', raw, 'X25519', false, []);
 }
 
 // x25519PublicFromPrivate derives the public key for a raw private scalar by
@@ -1149,12 +1163,23 @@ export async function unwrap(privOrKeyObj, ctx, wrapped) {
   return pt;
 }
 
+// importEd25519Priv imports a 32-byte seed as an Ed25519 private key, from
+// PKCS#8. Linux WebKit refuses a seed with a leading zero byte in that form
+// (see the prefixes above), so such a seed goes in as a JWK instead, which
+// needs the public key. The JWK holds the seed in a string, which cannot be
+// zeroed, so it is the fallback rather than the only way in.
 async function importEd25519Priv(seed, extractable, usages) {
-  return subtle.importKey('pkcs8', concatBytes([ED25519_PKCS8_PREFIX, seed]), 'Ed25519', extractable, usages);
+  try {
+    return await subtle.importKey('pkcs8', concatBytes([ED25519_PKCS8_PREFIX, seed]), 'Ed25519', extractable, usages);
+  } catch (err) {
+    if (seed[0] !== 0) throw err;
+  }
+  const jwk = { kty: 'OKP', crv: 'Ed25519', d: b64(seed), x: b64(await ed25519PublicKey(seed)) };
+  return subtle.importKey('jwk', jwk, 'Ed25519', extractable, usages);
 }
 
 async function importEd25519Pub(raw) {
-  return subtle.importKey('spki', concatBytes([ED25519_SPKI_PREFIX, raw]), 'Ed25519', false, ['verify']);
+  return subtle.importKey('raw', raw, 'Ed25519', false, ['verify']);
 }
 
 // generateEd25519 reads a fresh 32-byte seed and derives an Ed25519 key pair
@@ -1162,9 +1187,7 @@ async function importEd25519Pub(raw) {
 export async function generateEd25519() {
   const seed = new Uint8Array(32);
   crypto.getRandomValues(seed);
-  const privKey = await importEd25519Priv(seed, true, ['sign']);
-  const jwk = await subtle.exportKey('jwk', privKey);
-  return { seed, pub: unb64(jwk.x) };
+  return { seed, pub: await ed25519PublicKey(seed) };
 }
 
 function sigMessage(purpose, body) {
@@ -1172,6 +1195,26 @@ function sigMessage(purpose, body) {
 }
 
 const ED25519_SEED_SIZE = 32;
+
+// ed25519PublicKey derives the public key for a 32-byte seed. WebCrypto
+// derives it, through a transient extractable import whose JWK "x" is read
+// back. Linux WebKit refuses the import when the seed starts with a zero byte
+// (see the prefixes above), and WebKit exports an empty "x" when it cannot
+// derive the key, so then it is computed here instead, by
+// ed25519PublicKeyFromSeed.
+export async function ed25519PublicKey(seed) {
+  if (seed.length !== ED25519_SEED_SIZE) {
+    throw new FormatError(`seed length ${seed.length}, want ${ED25519_SEED_SIZE}`);
+  }
+  let pub;
+  try {
+    const key = await subtle.importKey('pkcs8', concatBytes([ED25519_PKCS8_PREFIX, seed]), 'Ed25519', true, ['sign']);
+    pub = unb64((await subtle.exportKey('jwk', key)).x);
+  } catch {
+    // Computed below.
+  }
+  return pub?.length === 32 ? pub : ed25519PublicKeyFromSeed(seed);
+}
 
 // importEd25519SigningKey imports a 32-byte seed as a non-extractable
 // Ed25519 signing CryptoKey, so a long-term signing key can be held without
@@ -1258,11 +1301,12 @@ function isNonCanonicalX25519(pub) {
   return leBytesToBigInt(pub) >= ED25519_P;
 }
 
-// --- Minimal edwards25519 arithmetic, for the torsion check only. ---
+// --- Minimal edwards25519 arithmetic, for the torsion check. ---
 //
 // WebCrypto exposes no point operations, so deciding whether a key or a
-// signature's R is torsion-free needs this. It runs only on public values,
-// so it makes no attempt at constant time. The curve is -x^2 + y^2 = 1 +
+// signature's R is torsion-free needs this. It runs on public values, so it
+// makes no attempt at constant time; ed25519PublicKeyFromSeed, which works on
+// a secret, is the exception, and says so. The curve is -x^2 + y^2 = 1 +
 // d x^2 y^2 over GF(p), and points are in extended coordinates (X:Y:Z:T)
 // with x = X/Z, y = Y/Z, xy = T/Z (Hisil, Wong, Carter, Dawson 2008).
 
@@ -1345,6 +1389,42 @@ function edMul(n, P) {
     if ((n >> i) & 1n) R = edAdd(R, P);
   }
   return R;
+}
+
+// ED25519_B is the base point, from RFC 8032 section 5.1.
+const ED25519_B = (() => {
+  const x = 15112221349535400772501151409588531511454012693041857206046113283949847762202n;
+  const y = 46316835694926478169428394003475163141307993866256225615783033603165251855960n;
+  return { X: x, Y: y, Z: 1n, T: (x * y) % ED25519_P };
+})();
+
+// ed25519PublicKeyFromSeed is RFC 8032 section 5.1.5 by hand: the public key
+// is the clamped low half of SHA-512(seed) times the base point. The scalar is
+// secret, so every scalar takes the same doublings and additions, but BigInt
+// arithmetic is not constant time. It runs only where WebCrypto cannot derive
+// the key (see ed25519PublicKey), once per key.
+async function ed25519PublicKeyFromSeed(seed) {
+  const h = new Uint8Array(await subtle.digest('SHA-512', seed));
+  h[0] &= 248;
+  h[31] &= 127;
+  h[31] |= 64;
+  const a = leBytesToBigInt(h.subarray(0, 32));
+  h.fill(0); // best-effort zeroing: the scalar is in a now
+  let R = { X: 0n, Y: 1n, Z: 1n, T: 0n };
+  for (let i = 254n; i >= 0n; i--) {
+    R = edDouble(R);
+    const sum = edAdd(R, ED25519_B);
+    if ((a >> i) & 1n) R = sum;
+  }
+  // Encode (RFC 8032 section 5.1.2): y little-endian, with the low bit of x
+  // as the top bit.
+  const zInv = fpow(R.Z, ED25519_P - 2n);
+  const x = (R.X * zInv) % ED25519_P;
+  let y = (R.Y * zInv) % ED25519_P;
+  const pub = new Uint8Array(32);
+  for (let i = 0; i < 32; i++, y >>= 8n) pub[i] = Number(y & 0xffn);
+  pub[31] |= Number(x & 1n) << 7;
+  return pub;
 }
 
 // isPrimeOrderEd25519 reports whether enc is the canonical encoding of a

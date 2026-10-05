@@ -12,13 +12,11 @@
 // not. The wrapped form is weaker: script on the app origin can unwrap it as
 // extractable and export the private key, which it cannot do with x25519.
 // load() unwraps it into a non-extractable CryptoKey.
-import { importX25519PrivateKey } from './e2e.mjs';
+import { importX25519PrivateKey, x25519Pkcs8 } from './e2e.mjs';
 
 const DB_NAME = 'cairn-keys';
 const STORE = 'keys';
 const RECORD = 'session';
-
-const X25519_PKCS8_PREFIX = Uint8Array.from([0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x04, 0x22, 0x04, 0x20]);
 
 // wrapX25519 encrypts the raw private scalar priv under a fresh
 // non-extractable AES-GCM key, for storage. The public key is derived from
@@ -27,9 +25,7 @@ export async function wrapX25519(priv) {
   const { publicKey } = await importX25519PrivateKey(priv);
   const wrapKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'unwrapKey']);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const pkcs8 = new Uint8Array(X25519_PKCS8_PREFIX.length + priv.length);
-  pkcs8.set(X25519_PKCS8_PREFIX);
-  pkcs8.set(priv, X25519_PKCS8_PREFIX.length);
+  const pkcs8 = x25519Pkcs8(priv);
   try {
     const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrapKey, pkcs8));
     return { wrapKey, iv, ct, publicKey };

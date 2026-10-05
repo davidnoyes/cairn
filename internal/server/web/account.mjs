@@ -168,18 +168,6 @@ export async function signIn(deps, { email, password }) {
   return user;
 }
 
-const ED25519_PKCS8_PREFIX = e2e.fromHex('302e020100300506032b657004220420');
-
-// ed25519PublicOf derives the public key for a seed, as generateEd25519 does:
-// a transient extractable import, from which only the JWK's "x" is read.
-async function ed25519PublicOf(seed) {
-  const pkcs8 = new Uint8Array(ED25519_PKCS8_PREFIX.length + seed.length);
-  pkcs8.set(ED25519_PKCS8_PREFIX);
-  pkcs8.set(seed, ED25519_PKCS8_PREFIX.length);
-  const key = await crypto.subtle.importKey('pkcs8', pkcs8, 'Ed25519', true, ['sign']);
-  return e2e.unb64((await crypto.subtle.exportKey('jwk', key)).x);
-}
-
 // openBundle opens MK with kek, then every sealed key under mkSealKey. MK and
 // EK are opened straight into non-extractable HKDF keys. WebCrypto cannot
 // unwrap a raw X25519 or Ed25519 private key, so each is decrypted to bytes
@@ -203,7 +191,7 @@ async function openBundle(user, bundle, kek) {
       x25519: await e2e.importX25519PrivateKey(x25519Raw),
       x25519Wrapped: await wrapX25519(x25519Raw),
       ed25519: await e2e.importEd25519SigningKey(ed25519Raw),
-      ed25519Pub: await ed25519PublicOf(ed25519Raw),
+      ed25519Pub: await e2e.ed25519PublicKey(ed25519Raw),
     };
   } finally {
     x25519Raw?.fill(0);
