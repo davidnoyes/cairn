@@ -161,9 +161,15 @@ test('successor: a deactivated user refuses from /refuse with no session, by pas
       await page.goto(`${s.appOrigin}/refuse`);
       await page.locator('#email').fill(u.email);
       // Firefox has, once on CI, dropped this click on a page that had just
-      // loaded, with nothing shifting under it, so the choice is retried.
+      // loaded, with nothing shifting under it, so the choice is retried, and
+      // a retry is recorded so a recurrence still shows in the report.
       const choice = page.locator(`input[name=mode][value=${mode}]`);
-      await expect(async () => choice.check({ timeout: 5_000 })).toPass({ timeout: 20_000 });
+      let tries = 0;
+      await expect(async () => {
+        tries++;
+        await choice.check({ timeout: 5_000 });
+      }).toPass({ timeout: 20_000 });
+      if (tries > 1) test.info().annotations.push({ type: 'retried', description: `the ${mode} choice took ${tries} clicks` });
       await page.locator(mode === 'password' ? '#password' : '#code').fill(secret);
       await page.locator('#submit').click();
     };

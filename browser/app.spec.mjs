@@ -204,7 +204,8 @@ test('refuse: after a reload, the field shown matches the choice the browser res
   await recovery.check();
   await expect(page.locator('#code')).toBeVisible();
   await page.reload();
-  // Firefox restores the choice on a reload; the other engines start over.
+  // Firefox restores the choice on a reload; the other engines start over, so
+  // only Firefox can fail this.
   const restored = await recovery.isChecked();
   if (browserName === 'firefox') expect(restored, 'Firefox restored the choice').toBe(true);
   await expect(page.locator('#code')).toBeVisible({ visible: restored });
