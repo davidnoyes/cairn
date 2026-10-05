@@ -160,7 +160,10 @@ test('successor: a deactivated user refuses from /refuse with no session, by pas
     const submit = async (u, mode, secret) => {
       await page.goto(`${s.appOrigin}/refuse`);
       await page.locator('#email').fill(u.email);
-      await page.locator(`input[name=mode][value=${mode}]`).check();
+      // Firefox has, once on CI, dropped this click on a page that had just
+      // loaded, with nothing shifting under it, so the choice is retried.
+      const choice = page.locator(`input[name=mode][value=${mode}]`);
+      await expect(async () => choice.check({ timeout: 5_000 })).toPass({ timeout: 20_000 });
       await page.locator(mode === 'password' ? '#password' : '#code').fill(secret);
       await page.locator('#submit').click();
     };
