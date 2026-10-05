@@ -21,6 +21,10 @@ const (
 	LevelTeam   Level = "team"
 	LevelLink   Level = "link"
 	LevelNone   Level = "none"
+
+	// LevelSuccessor is a released successor of the artifact's owner. It sits
+	// between team and link in match order.
+	LevelSuccessor Level = "successor"
 )
 
 // Roles a membership record gives a listed member.
@@ -153,13 +157,17 @@ type Request struct {
 	// LinkToken is true when the request carried X-Cairn-Link-Token and its
 	// hash matched the artifact's public token hash.
 	LinkToken bool
+	// Successor is true when the caller is the released successor of the
+	// artifact's owner. The caller of Check works that out; an artifact only
+	// shared with the nominating user never sets it.
+	Successor bool
 }
 
 // matches records which access levels match a request.
 type matches struct {
-	owner, member, team, link bool
-	signedIn                  bool
-	editorPower               bool
+	owner, member, team, successor, link bool
+	signedIn                             bool
+	editorPower                          bool
 }
 
 func match(r Request) matches {
@@ -173,9 +181,10 @@ func match(r Request) matches {
 	// A team member the record also lists matches as a member first, so the
 	// "record does not list them" condition needs no check here.
 	m.team = m.signedIn && (a.Team == TeamViewer || a.Team == TeamEditor) && holdsWrap(c.Wraps, a.Epoch)
+	m.successor = m.signedIn && r.Successor
 	m.link = a.Public && r.LinkToken
 	if c.LinkOnly {
-		m.owner, m.member, m.team = false, false, false
+		m.owner, m.member, m.team, m.successor = false, false, false, false
 	}
 	// A listed editor whose current keys differ from the listed fingerprint
 	// can read but not write, until the owner lists the new fingerprint.
@@ -196,7 +205,7 @@ func holdsWrap(wraps []Wrap, epoch int) bool {
 }
 
 // LevelOf returns the first level that matches the request: owner, then the
-// listed member's role, then team, then link, else none.
+// listed member's role, then team, then successor, then link, else none.
 func LevelOf(r Request) Level {
 	m := match(r)
 	switch {
@@ -208,6 +217,8 @@ func LevelOf(r Request) Level {
 		return LevelViewer
 	case m.team:
 		return LevelTeam
+	case m.successor:
+		return LevelSuccessor
 	case m.link:
 		return LevelLink
 	}
@@ -232,7 +243,7 @@ func contentTokenAllows(act Action) bool {
 // matching link token writes while public writes are on.
 func Check(r Request, act Action) Decision {
 	m := match(r)
-	if !(m.owner || m.member || m.team || m.link) {
+	if !(m.owner || m.member || m.team || m.successor || m.link) {
 		return NotFound
 	}
 	if r.Caller.Kind == ContentToken && !contentTokenAllows(act) {
@@ -260,6 +271,13 @@ func allowed(m matches, a Artifact, act Action) bool {
 	// A listed member of either role, a team member, and a link holder read.
 	if m.member || m.team || m.link {
 		if act == ReadContent || act == ReadMembership {
+			return true
+		}
+	}
+	// A released successor reads, and may accept an administrator's offer.
+	if m.successor {
+		switch act {
+		case ReadContent, ReadMembership, ReadKeys, AnswerTransfer:
 			return true
 		}
 	}

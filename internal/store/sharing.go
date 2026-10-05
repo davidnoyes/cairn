@@ -93,11 +93,13 @@ type Offer struct {
 
 // AccessState is what the permission check needs about one caller and one
 // artifact: the artifact, the caller's entry in the latest record (nil when
-// not listed), and every wrap the caller holds.
+// not listed), every wrap the caller holds, and the artifact owner's
+// nomination when it names the caller (nil otherwise).
 type AccessState struct {
-	Artifact *Artifact
-	Member   *Member
-	Wraps    []Wrap
+	Artifact       *Artifact
+	Member         *Member
+	Wraps          []Wrap
+	OwnerSuccessor *Successor
 }
 
 // ArtifactTx is a transaction that holds the lock on one artifact. Approvals
@@ -251,6 +253,13 @@ func (s *Store) AccessState(artifactID, userID string) (*AccessState, error) {
 		return nil, err
 	}
 	if st.Wraps, err = queryWraps(tx, `WHERE artifact_id = ? AND user_id = ? ORDER BY epoch`, artifactID, userID); err != nil {
+		return nil, err
+	}
+	sc, err := scanSuccessor(tx.QueryRow(`SELECT `+successorCols+successorFrom+`WHERE s.user_id = ? AND s.successor_id = ?`, a.OwnerID, userID))
+	switch {
+	case err == nil:
+		st.OwnerSuccessor = sc
+	case !errors.Is(err, sql.ErrNoRows):
 		return nil, err
 	}
 	return st, nil

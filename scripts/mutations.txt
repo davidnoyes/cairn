@@ -2023,3 +2023,27 @@ internal/server/handlers_meta.go	r.Body = http.MaxBytesReader(w, r.Body, 2*maxMe
 internal/server/handlers_meta.go	len(blob) > maxMetaBlob	len(blob) >= maxMetaBlob	go test ./internal/server -run 'TestMetaWriteBodyLimits'
 internal/server/routes.go	versions/{vid}/meta/{field}", s.artifactRoute(access.Rename,	versions/{vid}/meta/{field}", s.artifactRoute(access.Share,	go test ./internal/server -run 'TestMetaEditorWritesVersionField'
 internal/server/handlers_artifacts.go	`^[0-9a-f]{64}$`	`^[0-9a-f]{64}`	go test ./internal/server -run 'TestResourceValueMustBeABlindIndex'
+internal/store/successor.go	return sc.Requested() && !now.Before(sc.ReleaseAt())	return sc.Requested() && now.After(sc.ReleaseAt())	go test ./internal/store -run TestSuccessorReleaseIsComputed
+internal/store/successor.go	const SuccessionWait = 14 * 24 * time.Hour	const SuccessionWait = 13 * 24 * time.Hour	go test ./internal/store -run TestSuccessorReleaseIsComputed
+internal/store/successor.go	if prev != nil && prev.Released(at) {	if false {	go test ./internal/store -run TestAReleasedNominationCannotBeReplacedOrRemoved
+internal/store/sharing.go	`WHERE s.user_id = ? AND s.successor_id = ?`, a.OwnerID, userID))	`WHERE s.user_id IN (SELECT user_id FROM artifact_members WHERE artifact_id = ?) AND s.successor_id = ?`, artifactID, userID))	go test ./internal/server -run TestReleaseAfterFourteenDays
+internal/access/access.go	m.successor = m.signedIn && r.Successor	m.successor = r.Successor	go test ./internal/access -run TestSuccessorNeedsSignedInAndNotLinkOnly
+internal/access/access.go	case ReadContent, ReadMembership, ReadKeys, AnswerTransfer:	case ReadContent, ReadMembership, ReadKeys, AnswerTransfer, WriteData:	go test ./internal/access -run TestSuccessorMayOnlyReadAndAnswer
+internal/server/sharing.go	if owner || req.Successor {	if owner {	go test ./internal/server -run TestReleaseAfterFourteenDays
+internal/server/handlers_successor.go	return body.RequestedAt == sc.RequestedAt	return true	go test ./internal/server -run TestRefuseFromThePage
+internal/server/handlers_successor.go	if !sc.Released(s.clk.Now()) {	if true {	go test ./internal/server -run TestReleaseAfterFourteenDays
+internal/server/handlers_successor.go	if mustRotateExempt[r.Pattern] {	if true {	go test ./internal/server -run TestReleaseAfterFourteenDays
+internal/server/handlers_users.go	if err := s.store.MarkSuccessionDeactivated(id, s.clk.Now()); err != nil {	if err := error(nil); err != nil {	go test ./internal/server -run 'TestRefuseFromThePage|TestAdminHandoverToAReleasedSuccessor'
+internal/server/handlers_successor.go	case body.SuccessorFP != fingerprintOf(b):	case b == nil:	go test ./internal/server -run TestNominate
+internal/server/handlers_successor.go	sc.Requested() && !sc.Released(s.clk.Now()) {	sc.Requested() {	go test ./internal/server -run TestRefuseBegin
+internal/server/handlers_successor.go	if retryAfter, blocked := s.checkSignInLimits(email, ip); blocked {	if retryAfter, blocked := time.Duration(0), false; blocked {	go test ./internal/server -run TestRefuseFromThePage
+internal/server/rotate.go	if err := rt.DeleteSuccessor(); err != nil {	if err := error(nil); err != nil {	go test ./internal/server -run TestReleaseAfterFourteenDays
+internal/store/archives.go	DELETE FROM successors WHERE user_id = ?`, userID); err != nil {	DELETE FROM successors WHERE user_id = ?`, ""); err != nil {	go test ./internal/store ./internal/server -run 'TestResetArchivesTheNomination|TestResetWithoutTheRecoveryCodeArchivesTheNomination'
+internal/server/transfer.go	if sc.SuccessorID != to || !sc.Released(s.clk.Now()) {	if sc.SuccessorID != to {	go test ./internal/server -run TestAdminHandoverToAReleasedSuccessor
+internal/server/transfer.go	body.Action != "nominate" || body.SuccessorFP != u.FP {	body.Action != "nominate" {	go test ./internal/server -run TestAdminHandoverToAReleasedSuccessor
+internal/membership/membership.go	if ch.Accept.Successor {	if false {	go test ./internal/membership -run TestCheckAcceptByTheOwnersSuccessorWhoIsNotAMember
+internal/server/sharing.go	if rec.Handover == "admin" && i > 0 {	if false {	go test ./internal/server -run TestAdminHandoverToAReleasedSuccessor
+internal/server/handlers_successor.go	"POST /api/artifacts/{id}/content-token": true,	"POST /api/artifacts/{id}/content-token": false,	go test ./internal/server -run TestReleaseAfterFourteenDays
+internal/server/handlers_successor.go	Ed25519Priv: e2e.B64(b.Ed25519Priv), RequestedAt: sc.RequestedAt})	Ed25519Priv: e2e.B64(b.Ed25519Priv)})	go test ./internal/server -run TestRefuseFromThePage
+internal/e2e/refuse.go	return time.Unix(start+offset, 0).UTC()	return time.Unix(start, 0).UTC()	go test ./internal/e2e -run TestRefuseFakeRequestedAt
+internal/e2e/refuse.go	start := since - since%period	start := since	go test ./internal/e2e -run TestRefuseFakeRequestedAt

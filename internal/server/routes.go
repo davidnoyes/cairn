@@ -25,6 +25,8 @@ func (s *Server) routes() {
 	handle("POST /api/auth/forgot", s.handleForgot)
 	handle("POST /api/auth/reset/begin", s.handleResetBegin)
 	handle("POST /api/auth/reset/complete", s.handleResetComplete)
+	handle("POST /api/auth/refuse/begin", s.handleRefuseBegin)
+	handle("POST /api/auth/refuse", s.handleRefuse)
 
 	// Signed-in account
 	handle("GET /api/me", s.requireAuth(s.handleMe))
@@ -35,6 +37,13 @@ func (s *Server) routes() {
 	handle("GET /api/me/keyring", s.requireAuth(s.handleGetKeyring))
 	handle("PUT /api/me/keyring", s.requireAuth(s.handlePutKeyring))
 	handle("POST /api/me/rotate", s.requireSession(s.handleMeRotate))
+	handle("GET /api/me/successor", s.requireAuth(s.handleGetSuccessor))
+	handle("PUT /api/me/successor", s.requireSession(s.handlePutSuccessor))
+	handle("DELETE /api/me/successor", s.requireAuth(s.handleDeleteSuccessor))
+	handle("DELETE /api/me/successor/request", s.requireAuth(s.handleRefuseRequest))
+	handle("PUT /api/me/notice-email", s.requireSession(s.handlePutNoticeEmail))
+	handle("GET /api/successions", s.requireAuth(s.handleSuccessions))
+	handle("POST /api/successions/{user}/request", s.requireAuth(s.handleSuccessionRequest))
 
 	// API keys: the user's own only.
 	handle("GET /api/keys", s.requireAuth(s.handleListKeys))

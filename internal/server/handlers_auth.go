@@ -256,10 +256,30 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 	}
 	tok, err := s.store.UseToken(hashToken(raw), "verify", s.clk.Now())
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid or expired token")
+		s.verifyNoticeEmail(w, hashToken(raw))
 		return
 	}
 	if err := s.store.MarkVerified(tok.UserID, s.clk.Now()); err != nil {
+		s.writeStoreError(w, err, "account")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// verifyNoticeEmail follows a verification link that is not an account's: the
+// link for a personal address for notices, a token of its own kind. An
+// address that a later request replaced has no pending address left to
+// confirm.
+func (s *Server) verifyNoticeEmail(w http.ResponseWriter, hash string) {
+	tok, err := s.store.UseToken(hash, "notice", s.clk.Now())
+	if err == nil {
+		err = s.store.ConfirmNoticeEmail(tok.UserID)
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusBadRequest, "invalid or expired token")
+		return
+	}
+	if err != nil {
 		s.writeStoreError(w, err, "account")
 		return
 	}

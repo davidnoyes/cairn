@@ -22,13 +22,16 @@ type User struct {
 	VerifiedAt   string `json:"verifiedAt,omitempty"`
 	ResetAt      string `json:"resetAt,omitempty"`
 	CreatedAt    string `json:"createdAt"`
+	// NoticeEmail is the verified personal address for notices, empty when
+	// there is none.
+	NoticeEmail string `json:"-"`
 }
 
-const userCols = `id, email, name, auth_hash, is_admin, token_version, disabled, COALESCE(verified_at, ''), COALESCE(reset_at, ''), created_at`
+const userCols = `id, email, name, auth_hash, is_admin, token_version, disabled, COALESCE(verified_at, ''), COALESCE(reset_at, ''), created_at, COALESCE(notice_email, '')`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
-	if err := row.Scan(&u.ID, &u.Email, &u.Name, &u.AuthHash, &u.IsAdmin, &u.TokenVersion, &u.Disabled, &u.VerifiedAt, &u.ResetAt, &u.CreatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Email, &u.Name, &u.AuthHash, &u.IsAdmin, &u.TokenVersion, &u.Disabled, &u.VerifiedAt, &u.ResetAt, &u.CreatedAt, &u.NoticeEmail); err != nil {
 		return nil, err
 	}
 	return &u, nil

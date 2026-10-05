@@ -249,6 +249,9 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		if scope.Artifact != "" {
 			r = withTokenScope(r, scope)
 		}
+		if !s.successionGate(w, r, u) {
+			return
+		}
 		next(w, r)
 	}
 }
@@ -273,6 +276,9 @@ func (s *Server) requireSession(next http.HandlerFunc) http.HandlerFunc {
 		}
 		if scope.Artifact != "" {
 			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		if !s.successionGate(w, r, u) {
 			return
 		}
 		next(w, withUser(r, u))

@@ -447,6 +447,11 @@ surrogate.
   link, so the proof cannot be replayed with another link.
 - A refusal's `requestedAt` is the pending request's time exactly as the
   server sent it, so the proof cannot be replayed against a later request.
+  `refuse/begin` sends it. With nothing pending, it sends a fake: with
+  `o = uint64be(HMAC-SHA256(serverSecret, enc("cairn/v1/refuse-fake",
+  email, "requestedAt"))[0:8]) mod W`, where `W` is 14 days in seconds, the
+  fake is the latest `o + kW` seconds after the Unix epoch, for a whole
+  number `k`, that is not after the current time.
 - Public keys inside bodies are `b64`; fingerprints are `hex`.
 
 ## Fingerprints

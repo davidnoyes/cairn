@@ -261,6 +261,43 @@ func ParseRecoveryCode(s string) ([]byte, error) {
 	return b, nil
 }
 
+// Successor codes: the first 10 bytes of a fingerprint, shown as four groups
+// of four base32 characters. 80 bits leave no unused trailing bits, so unlike
+// a recovery code there is no trailing-bit check.
+
+const successorCodeBytes = 10
+
+// SuccessorCode renders the first 10 bytes of a fingerprint as a successor
+// code, in the shape XXXX-XXXX-XXXX-XXXX.
+func SuccessorCode(fp []byte) string {
+	return FormatRecoveryCode(fp[:successorCodeBytes])
+}
+
+// ParseSuccessorCode parses a displayed successor code by the recovery
+// code's character rules and returns the 10 bytes it names. Anything but 16
+// characters after the spaces and hyphens are dropped is refused.
+func ParseSuccessorCode(s string) ([]byte, error) {
+	for i := 0; i < len(s); i++ {
+		if !isRecoveryCodeByte(s[i]) {
+			return nil, ErrFormat
+		}
+	}
+	s = strings.Map(func(r rune) rune {
+		if r == '-' || r == ' ' {
+			return -1
+		}
+		return r
+	}, strings.ToUpper(s))
+	if len(s) != base32Encoding.EncodedLen(successorCodeBytes) {
+		return nil, ErrFormat
+	}
+	b, err := base32Encoding.DecodeString(s)
+	if err != nil || len(b) != successorCodeBytes {
+		return nil, ErrFormat
+	}
+	return b, nil
+}
+
 // RecoveryKEK derives the key that seals MK under the recovery code.
 func RecoveryKEK(code []byte) []byte {
 	return Derive(code, nil, LabelRecovery)

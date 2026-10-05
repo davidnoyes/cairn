@@ -101,6 +101,10 @@ type EstateIn struct {
 type Acceptance struct {
 	NewOwner  *User
 	OfferHash string // the owner's offer body hash; empty for an administrator's offer
+	// Successor is set by the server, which has checked that NewOwner is the
+	// previous owner's released successor, for an administrator's offer. They
+	// need not be listed.
+	Successor bool
 }
 
 // Change is a membership record and everything sent with it. Accept is set
@@ -181,6 +185,16 @@ func CheckNewOwner(cur Current, u *User) error {
 	return nil
 }
 
+// CheckSuccessorOwner refuses u as the artifact's next owner unless u is an
+// active, verified user. The caller has checked that u is the previous
+// owner's released successor, who need not be a member.
+func CheckSuccessorOwner(u *User) error {
+	if !u.Active || !u.Verified {
+		return conflict(RuleOwner, "the user is not an active, verified user")
+	}
+	return nil
+}
+
 // Check decides whether the server accepts ch on cur. A refusal is an
 // *Error; any other error is a directory failure.
 //
@@ -195,7 +209,11 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 	owner := prevOwner
 	if ch.Accept != nil {
 		owner = ch.Accept.NewOwner
-		if err := CheckNewOwner(cur, owner); err != nil {
+		err := CheckNewOwner(cur, owner)
+		if ch.Accept.Successor {
+			err = CheckSuccessorOwner(owner)
+		}
+		if err != nil {
 			return nil, err
 		}
 	}

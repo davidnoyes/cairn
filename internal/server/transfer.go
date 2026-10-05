@@ -61,6 +61,54 @@ func editorFor(cur membership.Current, dir membership.Directory, to string) (*me
 	return u, nil
 }
 
+// releasedSuccessorFor returns the user to as the next owner when to is the
+// previous owner's successor, released at the server's clock, under the key
+// the nomination names. Otherwise it is nil, and nil when to is no one's
+// successor; a successor whose key changed since is a 409.
+func (s *Server) releasedSuccessorFor(tx *store.ArtifactTx, cur membership.Current, dir membership.Directory, to string) (*membership.User, error) {
+	sc, err := tx.SuccessorOf(cur.Owner.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if sc.SuccessorID != to || !sc.Released(s.clk.Now()) {
+		return nil, nil
+	}
+	u, err := dir.User(to)
+	if err != nil || u == nil {
+		return nil, err
+	}
+	var body e2e.SuccessorBody
+	if e2e.DecodeStrict(sc.Record.Body, &body) != nil || body.Action != "nominate" || body.SuccessorFP != u.FP {
+		return nil, transferRefusal(http.StatusConflict, "the successor's key is not the one the nomination names")
+	}
+	return u, nil
+}
+
+// newOwnerFor returns the user to as the next owner: a listed editor, or for
+// an administrator's offer the owner's released successor, who need not be a
+// member; viaSuccessor says which. Otherwise it is the refusal for a user
+// who is not a listed editor.
+func (s *Server) newOwnerFor(tx *store.ArtifactTx, cur membership.Current, dir membership.Directory, to string, adminOffer bool) (u *membership.User, viaSuccessor bool, err error) {
+	u, err = editorFor(cur, dir, to)
+	if err == nil || !adminOffer {
+		return u, false, err
+	}
+	su, serr := s.releasedSuccessorFor(tx, cur, dir, to)
+	switch {
+	case serr != nil:
+		return nil, false, serr
+	case su == nil:
+		return nil, false, err
+	}
+	if err := membership.CheckSuccessorOwner(su); err != nil {
+		return nil, false, err
+	}
+	return su, true, nil
+}
+
 type offerTransferRequest struct {
 	To         string        `json:"to"`
 	Offer      e2e.Envelope  `json:"offer"`
@@ -228,7 +276,7 @@ func (s *Server) handleAcceptTransfer(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		u, err := editorFor(cur, dir, caller.ID)
+		u, viaSuccessor, err := s.newOwnerFor(tx, cur, dir, caller.ID, open.By == "admin")
 		if err != nil {
 			return err
 		}
@@ -246,7 +294,7 @@ func (s *Server) handleAcceptTransfer(w http.ResponseWriter, r *http.Request) {
 		} else if cur.Owner.Active {
 			return transferRefusal(http.StatusConflict, "the owner's account is active")
 		}
-		ch.Accept = &membership.Acceptance{NewOwner: u, OfferHash: open.Hash}
+		ch.Accept = &membership.Acceptance{NewOwner: u, OfferHash: open.Hash, Successor: viaSuccessor}
 		prevOwnerEmail = cur.Owner.Email
 		res, err := applyChange(tx, ch)
 		if err != nil {
@@ -327,7 +375,7 @@ type adminOfferRequest struct {
 }
 
 // handleAdminOfferTransfer offers a deactivated owner's artifact to a listed
-// editor.
+// editor, or to the owner's released successor.
 func (s *Server) handleAdminOfferTransfer(w http.ResponseWriter, r *http.Request) {
 	a, err := s.store.ArtifactByID(r.PathValue("id"))
 	if err != nil {
@@ -349,7 +397,7 @@ func (s *Server) handleAdminOfferTransfer(w http.ResponseWriter, r *http.Request
 		if cur.Owner.Active {
 			return transferRefusal(http.StatusConflict, "the owner's account is active, so the owner must agree")
 		}
-		u, err := editorFor(cur, dir, req.To)
+		u, _, err := s.newOwnerFor(tx, cur, dir, req.To, true)
 		if err != nil {
 			return err
 		}

@@ -104,6 +104,9 @@ func (s *Server) accessRequest(c access.Caller, id string, token []byte) (*store
 		Artifact: access.Artifact{ID: a.ID, OwnerID: a.OwnerID, Epoch: a.Epoch, Team: a.Team,
 			Public: a.Public, PublicWrites: a.PublicWrites},
 		LinkToken: linkMatches(a, token),
+		// Only the owner's own released successor: an artifact merely shared
+		// with the nominating user is not the owner's.
+		Successor: c.UserID != "" && st.OwnerSuccessor != nil && st.OwnerSuccessor.Released(s.clk.Now()),
 	}
 	if st.Member != nil {
 		req.Member = &access.Member{Role: st.Member.Role, FP: st.Member.FP}
@@ -181,6 +184,9 @@ func (s *Server) artifactRoute(act access.Action, next http.HandlerFunc) http.Ha
 		}
 		if err != nil {
 			s.writeStoreError(w, err, "user")
+			return
+		}
+		if u != nil && !s.successionGate(w, r, u) {
 			return
 		}
 		a, req, err := s.resolveReadable(c, r.PathValue("id"), linkToken(r))
@@ -426,8 +432,9 @@ type membershipView struct {
 	Offers  map[string]e2e.Envelope `json:"offers"`
 	Owners  map[string]e2e.KeyPair  `json:"owners"`
 	// Rotations holds the rotation records of every owner the chain names
-	// and every member of the latest record who has any. Successors stays
-	// empty until successors are built.
+	// and every member of the latest record who has any. Successors maps the
+	// seq of each administrator handover to the previous owner's latest
+	// successor record.
 	Rotations  map[string][]e2e.Envelope `json:"rotations"`
 	Successors map[string]e2e.Envelope   `json:"successors"`
 	// OwnerChanges maps the seq of each record that sets transfer or
@@ -507,10 +514,19 @@ func (s *Server) handleGetMembership(w http.ResponseWriter, r *http.Request) {
 				rotated = append(rotated, id)
 			}
 		}
-		for _, rec := range records {
+		for i, rec := range records {
 			v.Records = append(v.Records, envelopeOf(rec.Envelope))
 			if rec.Transfer != "" || rec.Handover != "" {
 				v.OwnerChanges[strconv.Itoa(rec.Seq)] = dateOf(rec.CreatedAt)
+			}
+			if rec.Handover == "admin" && i > 0 {
+				sr, err := tx.LatestSuccessorRecord(records[i-1].OwnerID)
+				if err != nil && !errors.Is(err, store.ErrNotFound) {
+					return err
+				}
+				if err == nil {
+					v.Successors[strconv.Itoa(rec.Seq)] = envelopeOf(*sr)
+				}
 			}
 			if o := accepted[rec.Transfer]; rec.Transfer != "" && o != nil && o.Envelope != nil {
 				v.Offers[rec.Transfer] = envelopeOf(*o.Envelope)
@@ -597,12 +613,13 @@ type keysView struct {
 	Estate []estateView  `json:"estate"`
 }
 
-// handleGetKeys returns the caller's own wraps, or for the owner the estate
-// copies with an empty wraps.
+// handleGetKeys returns the caller's own wraps, and for the owner and the
+// owner's released successor the estate copies; the owner has no wraps.
 func (s *Server) handleGetKeys(w http.ResponseWriter, r *http.Request) {
 	a, req := requestArtifact(r), requestAccess(r)
 	v := keysView{Wraps: []keyWrapView{}, Estate: []estateView{}}
-	if access.LevelOf(req) == access.LevelOwner {
+	owner := access.LevelOf(req) == access.LevelOwner
+	if owner || req.Successor {
 		estate, err := s.store.EstateKeys(a.ID)
 		if err != nil {
 			s.writeStoreError(w, err, "keys")
@@ -611,7 +628,8 @@ func (s *Server) handleGetKeys(w http.ResponseWriter, r *http.Request) {
 		for _, e := range estate {
 			v.Estate = append(v.Estate, estateView{Epoch: e.Epoch, Sealed: e2e.B64(e.Sealed)})
 		}
-	} else {
+	}
+	if !owner {
 		wraps, err := s.store.WrapsFor(a.ID, req.Caller.UserID)
 		if err != nil {
 			s.writeStoreError(w, err, "keys")

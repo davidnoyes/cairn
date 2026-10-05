@@ -151,6 +151,14 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 			s.writeStoreError(w, err, "user")
 			return
 		}
+		// A deactivation while a request is pending is on the record, so an
+		// administrator cannot hide it from the refusal page.
+		if *req.Disabled {
+			if err := s.store.MarkSuccessionDeactivated(id, s.clk.Now()); err != nil {
+				s.writeStoreError(w, err, "user")
+				return
+			}
+		}
 	}
 	u, err = s.store.UserByID(id)
 	if err != nil {

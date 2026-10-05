@@ -1934,7 +1934,8 @@ a wrap that is not 81 bytes, and a record that does not verify under the
 caller's current Ed25519 key. The record's `user` must be the caller, its
 `successor` the named user, its `action` `nominate`, and its `successorFp`
 the successor's current fingerprint. A `seq` other than one more than the
-last answers `409 {"error", "seq"}`. In one transaction the server replaces
+last answers `409 {"error", "seq"}`, with `seq` the last record the user
+signed. In one transaction the server replaces
 any earlier nomination, ends any pending request, and stores the record. It
 answers `200 {"seq"}`.
 
@@ -1947,7 +1948,8 @@ nomination, the wrapped copy, and any pending request, and answers
 `PUT /api/me/notice-email` takes `{"email": "…"}`, or an empty string to
 clear it. The server emails a verification link for the new address, as at
 sign-up, and uses the address only once it is verified. It answers
-`202 {"status": "check-email"}`, or `200` when it clears the address.
+`202 {"status": "check-email"}`, or `200 {"ok": true}` when it clears the
+address.
 
 ### Asking for access
 
@@ -1986,6 +1988,11 @@ or after a release. The server then tells the user three ways:
 A refusal ends the request; the nomination stays. The server emails the
 successor that the user refused.
 
+The mail about a request, to the user and to the successor, is sent without
+the per-address limit that applies to sign-up and reset mail. Anyone can
+spend that limit with reset requests for an address, and a user who never
+hears of a request cannot refuse it.
+
 - **Signed in**, from any session or API key:
   `DELETE /api/me/successor/request` answers `200 {"ok": true}`, or `409`
   with no request pending.
@@ -1996,12 +2003,14 @@ successor that the user refused.
   sign-in for the rate limits.
 
 For the recovery code, `POST /api/auth/refuse/begin` with `{"email"}`
-returns `{"id", "mkRecovery", "ed25519Priv"}`. The client opens `MK` with
-the code, opens the signing key, and signs a `refusal` record naming the
-pending request's `requestedAt` as `proof`. For an address with no pending
+returns `{"id", "mkRecovery", "ed25519Priv", "requestedAt"}`. The client
+opens `MK` with the code, opens the signing key, and signs a `refusal`
+record naming that `requestedAt` as `proof`. For an address with no pending
 request, the answer has the same shape, with values derived from the server
 secret and the email under `cairn/v1/refuse-fake`, so it does not reveal
-whether a request is pending.
+whether a request is pending. The fake `requestedAt` is a time in the last
+14 days that holds for 14 days and then moves on, as a real one gives way to
+the fake at its release.
 
 After a correct key or proof, the page's call answers:
 
@@ -2033,14 +2042,20 @@ time. After a release:
 - `GET /api/me` adds `mustRotate: true` for the user. Every write under
   `/api/` from the user answers
   `409 {"error": "rotate your keys first …"}` and carries
-  `Cairn-Notice: rotate-keys`, except rotating keys, signing out, and
-  creating and revoking API keys.
+  `Cairn-Notice: rotate-keys`, except rotating keys, signing out, creating
+  and revoking API keys, and asking for a content token, which only reads.
 
 A release cannot be refused, and the nomination can be neither removed nor
-replaced. Rotating keys deletes the nomination, the wrapped copy, and the
-request, which ends the successor's access. A reset without the recovery
-code archives the nomination and its wrapped copy with the bundle, and ends
-any request; an archived copy is never released.
+replaced: both answer `409`. Rotating keys deletes the nomination, the
+wrapped copy, and the request, which ends the successor's access. A reset
+without the recovery code archives the nomination and its wrapped copy with
+the bundle, and ends any request; an archived copy is never released.
+
+Two events end things without a record:
+
+- Deleting either account deletes the nomination and any request.
+- Reactivating a deactivated user keeps `deactivatedAt`, so the record of the
+  deactivation survives until the request ends.
 
 Administrator handover follows [Ownership transfer](#ownership-transfer).
 `successors` in `GET /api/artifacts/{id}/membership` now carries the

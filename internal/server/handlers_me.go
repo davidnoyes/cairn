@@ -2,14 +2,57 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/aloisdeniel/cairn/internal/auth"
 	"github.com/aloisdeniel/cairn/internal/e2e"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
+// meSuccession is what GET /api/me shows a user whose successor has asked
+// or been released.
+type meSuccession struct {
+	Successor     successorBrief `json:"successor"`
+	RequestedAt   string         `json:"requestedAt"`
+	ReleaseAt     string         `json:"releaseAt"`
+	Released      bool           `json:"released"`
+	DeactivatedAt string         `json:"deactivatedAt"`
+}
+
+type successorBrief struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// meResponse adds to the user what the app shows on every tab: the request
+// from the successor, and whether the user must rotate keys.
+type meResponse struct {
+	meView
+	MustRotate bool          `json:"mustRotate,omitempty"`
+	Succession *meSuccession `json:"succession"`
+}
+
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, toMeView(requestUser(r)))
+	u := requestUser(r)
+	resp := meResponse{meView: toMeView(u)}
+	switch sc, err := s.store.SuccessorOf(u.ID); {
+	case errors.Is(err, store.ErrNotFound) || err == nil && !sc.Requested():
+	case err != nil:
+		s.writeStoreError(w, err, "successor")
+		return
+	default:
+		to, err := s.store.UserByID(sc.SuccessorID)
+		if err != nil {
+			s.writeStoreError(w, err, "successor")
+			return
+		}
+		resp.MustRotate = sc.Released(s.clk.Now())
+		resp.Succession = &meSuccession{Successor: successorBrief{ID: to.ID, Name: to.Name, Email: to.Email},
+			RequestedAt: sc.RequestedAt, ReleaseAt: releaseAtOf(sc), Released: resp.MustRotate, DeactivatedAt: sc.DeactivatedAt}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // apiKeyMK is an API key's own sealed copy of MK, as returned alongside a

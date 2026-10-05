@@ -66,9 +66,12 @@ func TestDeriveDiffersBySalt(t *testing.T) {
 }
 
 func TestLabelsMatchSpecTable(t *testing.T) {
-	// The wire-format spec's label table has 18 rows, ending with salt.
-	if got := len(Labels()); got != 18 {
-		t.Fatalf("len(Labels()) = %d, want 18", got)
+	// The wire-format spec's label table has 19 rows, ending with refuse-fake.
+	if got := len(Labels()); got != 19 {
+		t.Fatalf("len(Labels()) = %d, want 19", got)
+	}
+	if LabelRefuseFake != "cairn/v1/refuse-fake" {
+		t.Fatalf("LabelRefuseFake = %q", LabelRefuseFake)
 	}
 	if LabelPrelogin != "cairn/v1/prelogin" {
 		t.Fatalf("LabelPrelogin = %q", LabelPrelogin)

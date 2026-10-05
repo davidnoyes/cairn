@@ -185,6 +185,13 @@
         "05050505050505050505050505050505"
       ],
       "want": "efdceadeed24511d1a9656973b85a28c35f1d78be9ca7d1de0ded437af087ec8"
+    },
+    {
+      "label": "cairn/v1/refuse-fake",
+      "ikm": "73616d706c652d696e7075742d6b65792d6d6174657269616c2d333262797465",
+      "salt": "73616d706c652d73616c742d31362d62",
+      "fields": null,
+      "want": "cefd0e71c08226e560a6b68be46451d01eb54b6106aff923e97ff4f4cb47457b"
     }
   ],
   "argon2": [

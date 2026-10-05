@@ -523,3 +523,71 @@ var allActions = []Action{
 	ReadContent, WriteData, PushVersion, Share, Delete, Rename, ReadMembership,
 	ReadKeys, ListPending, ApproveMember, ReviewVersions, Transfer, AnswerTransfer,
 }
+
+// asSuccessor is a signed-in stranger who is the owner's released successor.
+func asSuccessor(r Request) Request {
+	r = asUser(r, someone)
+	r.Successor = true
+	return r
+}
+
+func TestSuccessorMayOnlyReadAndAnswer(t *testing.T) {
+	r := asSuccessor(base())
+	if got := LevelOf(r); got != LevelSuccessor {
+		t.Fatalf("level %v, want successor", got)
+	}
+	allowed := map[Action]bool{ReadContent: true, ReadMembership: true, ReadKeys: true, AnswerTransfer: true}
+	for _, a := range allActions {
+		want := Forbidden
+		if allowed[a] {
+			want = Allow
+		}
+		if got := Check(r, a); got != want {
+			t.Errorf("successor / %s: got %v, want %v", a, got, want)
+		}
+	}
+}
+
+func TestSuccessorOrderIsBetweenTeamAndLink(t *testing.T) {
+	r := withLink(public(withWrap(team(asSuccessor(base()), TeamViewer), 2), true))
+	if got := LevelOf(r); got != LevelTeam {
+		t.Errorf("team and successor: got %v, want team", got)
+	}
+	r = withLink(public(asSuccessor(base()), true))
+	if got := LevelOf(r); got != LevelSuccessor {
+		t.Errorf("successor and link: got %v, want successor", got)
+	}
+	r = asSuccessor(base())
+	r.Member = &Member{Role: RoleViewer, FP: "fp-stranger"}
+	if got := LevelOf(r); got != LevelViewer {
+		t.Errorf("member and successor: got %v, want viewer", got)
+	}
+}
+
+func TestSuccessorNeedsSignedInAndNotLinkOnly(t *testing.T) {
+	r := anon(base())
+	r.Successor = true
+	if got := LevelOf(r); got != LevelNone {
+		t.Errorf("anonymous: got %v, want none", got)
+	}
+	r = asSuccessor(base())
+	r.Caller.LinkOnly = true
+	if got := Check(r, ReadContent); got != NotFound {
+		t.Errorf("link-only token: got %v, want NotFound", got)
+	}
+}
+
+func TestSuccessorContentToken(t *testing.T) {
+	r := viaContentToken(asSuccessor(base()), aid)
+	for _, a := range []Action{ReadContent, ReadMembership} {
+		if got := Check(r, a); got != Allow {
+			t.Errorf("%s: got %v, want Allow", a, got)
+		}
+	}
+	if got := Check(r, ReadKeys); got != NotFound {
+		t.Errorf("keys through a content token: got %v, want NotFound", got)
+	}
+	if got := Check(viaContentToken(asSuccessor(base()), "other"), ReadContent); got != NotFound {
+		t.Errorf("token for another artifact: got %v, want NotFound", got)
+	}
+}

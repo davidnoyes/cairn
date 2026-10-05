@@ -1,7 +1,9 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +16,17 @@ type Archive struct {
 	ArchivedAt string        `json:"archivedAt"`
 	Bundle     Bundle        `json:"bundle"`
 	APIKeys    []ArchivedKey `json:"apiKeys"`
+	// Successor is the nomination the reset archived with the bundle, nil
+	// when there was none. An archived copy is never released.
+	Successor *ArchivedSuccessor `json:"successor,omitempty"`
+}
+
+// ArchivedSuccessor is a nomination as it stood when a reset archived it.
+type ArchivedSuccessor struct {
+	Successor   string `json:"successor"`
+	Seq         int    `json:"seq"`
+	Wrapped     []byte `json:"wrapped"`
+	NominatedAt string `json:"nominatedAt"`
 }
 
 // ArchivedKey is one API key's wrapped MK as it stood at the time of an
@@ -25,8 +38,9 @@ type ArchivedKey struct {
 
 // ResetAccount is the "reset without the recovery code" path: it archives
 // the current bundle and every live API key's wrapped MK, revokes those
-// keys, replaces the bundle and auth hash, deletes the keyring, and bumps
-// token_version — all in one transaction.
+// keys, archives the nomination of a successor with its wrapped copy and ends
+// any request on it, replaces the bundle and auth hash, deletes the keyring,
+// and bumps token_version — all in one transaction.
 func (s *Store) ResetAccount(userID, authHash string, b Bundle, at time.Time) error {
 	t := formatTime(at)
 	tx, err := s.db.Begin()
@@ -67,8 +81,21 @@ func (s *Store) ResetAccount(userID, authHash string, b Bundle, at time.Time) er
 		return err
 	}
 
-	if _, err := tx.Exec(`INSERT INTO bundle_archives (id, user_id, archived_at, bundle, api_keys) VALUES (?, ?, ?, ?, ?)`,
-		uuid.NewString(), userID, t, string(bundleJSON), string(keysJSON)); err != nil {
+	var successorJSON []byte
+	switch sc, err := querySuccessor(tx, userID); {
+	case err == nil:
+		if successorJSON, err = json.Marshal(ArchivedSuccessor{Successor: sc.SuccessorID, Seq: sc.Seq, Wrapped: sc.Wrapped, NominatedAt: sc.NominatedAt}); err != nil {
+			return err
+		}
+	case !errors.Is(err, sql.ErrNoRows):
+		return err
+	}
+
+	if _, err := tx.Exec(`INSERT INTO bundle_archives (id, user_id, archived_at, bundle, api_keys, successor) VALUES (?, ?, ?, ?, ?, ?)`,
+		uuid.NewString(), userID, t, string(bundleJSON), string(keysJSON), string(successorJSON)); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM successors WHERE user_id = ?`, userID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`UPDATE api_keys SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`, t, userID); err != nil {
@@ -90,7 +117,7 @@ func (s *Store) ResetAccount(userID, authHash string, b Bundle, at time.Time) er
 
 // Archives returns bundles archived by a reset, newest first.
 func (s *Store) Archives(userID string) ([]*Archive, error) {
-	rows, err := s.db.Query(`SELECT id, archived_at, bundle, api_keys FROM bundle_archives WHERE user_id = ? ORDER BY archived_at DESC`, userID)
+	rows, err := s.db.Query(`SELECT id, archived_at, bundle, api_keys, successor FROM bundle_archives WHERE user_id = ? ORDER BY archived_at DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -98,8 +125,8 @@ func (s *Store) Archives(userID string) ([]*Archive, error) {
 	var out []*Archive
 	for rows.Next() {
 		var a Archive
-		var bundleJSON, keysJSON string
-		if err := rows.Scan(&a.ID, &a.ArchivedAt, &bundleJSON, &keysJSON); err != nil {
+		var bundleJSON, keysJSON, successorJSON string
+		if err := rows.Scan(&a.ID, &a.ArchivedAt, &bundleJSON, &keysJSON, &successorJSON); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(bundleJSON), &a.Bundle); err != nil {
@@ -107,6 +134,11 @@ func (s *Store) Archives(userID string) ([]*Archive, error) {
 		}
 		if err := json.Unmarshal([]byte(keysJSON), &a.APIKeys); err != nil {
 			return nil, err
+		}
+		if successorJSON != "" {
+			if err := json.Unmarshal([]byte(successorJSON), &a.Successor); err != nil {
+				return nil, err
+			}
 		}
 		out = append(out, &a)
 	}

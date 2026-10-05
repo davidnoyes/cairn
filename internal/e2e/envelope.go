@@ -138,6 +138,14 @@ type ResetBody struct {
 	Token string `json:"token"`
 }
 
+// RefusalBody is signed by the user, with their existing key. RequestedAt is
+// the pending request's time exactly as the server sent it.
+type RefusalBody struct {
+	V           int    `json:"v"`
+	User        string `json:"user"`
+	RequestedAt string `json:"requestedAt"`
+}
+
 // RecordBody covers a stored file, a file-meta record, or a meta blob.
 type RecordBody struct {
 	V        int    `json:"v"`
