@@ -146,12 +146,19 @@ func writeOldBackup(t *testing.T, arts []fakeArtifact) string {
 	return dir
 }
 
-// hashTree maps the slash path of every file under dir to its SHA-256.
+// hashTree maps the slash path of every file under dir to its SHA-256, and of
+// every symbolic link to its target.
 func hashTree(t *testing.T, dir string) map[string]string {
 	t.Helper()
 	out := map[string]string{}
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
+			return err
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			target, err := os.Readlink(p)
+			rel, _ := filepath.Rel(dir, p)
+			out[filepath.ToSlash(rel)] = "-> " + target
 			return err
 		}
 		data, err := os.ReadFile(p)
@@ -169,7 +176,9 @@ func hashTree(t *testing.T, dir string) map[string]string {
 	return out
 }
 
-// sampleBackup is two artifacts, the first public, with every kind of part.
+// sampleBackup is two artifacts, the first public, with every kind of part:
+// versions with neither a database nor stored files, with both, with stored
+// files alone, and with a database alone.
 func sampleBackup(t *testing.T) (string, []fakeArtifact) {
 	arts := []fakeArtifact{
 		{
@@ -187,10 +196,42 @@ func sampleBackup(t *testing.T) (string, []fakeArtifact) {
 		},
 		{
 			id: "old-b", name: "Poll", description: "", created: "2026-01-02T00:00:00Z",
-			versions: []fakeVersion{{id: "vb1", content: map[string]string{"index.html": "<h1>poll</h1>"}}},
+			versions: []fakeVersion{
+				{id: "vb1", content: map[string]string{"index.html": "<h1>poll</h1>"}, stored: map[string]string{"only.txt": "marker-files-only"}},
+				{id: "vb2", content: map[string]string{"index.html": "<h1>poll 2</h1>"}, dbRows: []string{`INSERT INTO t VALUES ('marker-db-only')`}},
+			},
 		},
 	}
 	return writeOldBackup(t, arts), arts
+}
+
+// editOld runs stmts on the cairn.db of the backup in dir.
+func editOld(t *testing.T, dir string, stmts ...string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(dir, "cairn.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// replaceWithLink moves the file or directory at the slash path rel under dir
+// out of the backup, and leaves a symbolic link to it in its place.
+func replaceWithLink(t *testing.T, dir, rel string) {
+	t.Helper()
+	p := filepath.Join(dir, filepath.FromSlash(rel))
+	outside := filepath.Join(t.TempDir(), filepath.Base(p))
+	if err := os.Rename(p, outside); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, p); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func listArtifactsByName(t *testing.T, c *client.Client) map[string]*client.Artifact {
@@ -219,11 +260,11 @@ func TestImportCopiesEverything(t *testing.T) {
 	if len(done) != 2 || done[0].OldID != "old-a" || done[1].OldID != "old-b" || !done[0].Public || done[1].Public {
 		t.Fatalf("imported = %+v, want old-a then old-b, only the first public", done)
 	}
-	wantOut := "imported old-a as " + done[0].NewID + ": Guestbook (2 versions)\nimported old-b as " + done[1].NewID + ": Poll (1 versions)\n"
+	wantOut := "imported old-a as " + done[0].NewID + ": Guestbook (2 versions)\nimported old-b as " + done[1].NewID + ": Poll (2 versions)\n"
 	if out.String() != wantOut {
 		t.Errorf("stdout = %q, want %q", out.String(), wantOut)
 	}
-	if !strings.Contains(progress.String(), `importing "Guestbook": version 2 of 2`) || !strings.Contains(progress.String(), `importing "Poll": version 1 of 1`) {
+	if !strings.Contains(progress.String(), `importing "Guestbook": version 2 of 2`) || !strings.Contains(progress.String(), `importing "Poll": version 2 of 2`) {
 		t.Errorf("progress = %q", progress.String())
 	}
 
@@ -315,7 +356,7 @@ func TestImportCommandJSON(t *testing.T) {
 	byName := listArtifactsByName(t, c)
 	want := []importedArtifact{
 		{OldID: "old-a", NewID: byName["Guestbook"].ID, Name: "Guestbook", Versions: 2, Public: true},
-		{OldID: "old-b", NewID: byName["Poll"].ID, Name: "Poll", Versions: 1},
+		{OldID: "old-b", NewID: byName["Poll"].ID, Name: "Poll", Versions: 2},
 	}
 	if !reflect.DeepEqual(got.Artifacts, want) {
 		t.Errorf("--json = %+v, want %+v", got.Artifacts, want)
@@ -356,11 +397,82 @@ func TestImportRefusesABadBackupBeforeUploading(t *testing.T) {
 			os.Remove(filepath.Join(dir, "cairn.db"))
 			return dir
 		}, "no cairn.db"},
-		{"a WAL file in the tree", func(t *testing.T) string {
+		{"a WAL file beside cairn.db", func(t *testing.T) string {
+			dir := good(t)
+			writeFile(t, dir, "cairn.db-wal", "x")
+			return dir
+		}, "live data directory"},
+		{"a WAL file beside a version database", func(t *testing.T) string {
 			dir := good(t)
 			writeFile(t, dir, "dbs/old-a/va2.db-wal", "x")
 			return dir
 		}, "live data directory"},
+		{"an artifact ID that climbs out", func(t *testing.T) string {
+			dir := good(t)
+			editOld(t, dir, `UPDATE artifacts SET id = '../escape' WHERE id = 'old-b'`, `UPDATE versions SET artifact_id = '../escape' WHERE artifact_id = 'old-b'`)
+			return dir
+		}, `artifact ID "../escape" is not a plain name`},
+		{"an artifact ID with a separator", func(t *testing.T) string {
+			dir := good(t)
+			editOld(t, dir, `UPDATE artifacts SET id = 'old-b/cd-vb1' WHERE id = 'old-b'`)
+			return dir
+		}, "is not a plain name"},
+		{"a version ID that climbs out", func(t *testing.T) string {
+			dir := good(t)
+			editOld(t, dir, `UPDATE versions SET id = '../../escape' WHERE id = 'vb1'`)
+			return dir
+		}, "a directory name in cairn.db is not a plain name"},
+		{"a content dir that climbs out", func(t *testing.T) string {
+			dir := good(t)
+			editOld(t, dir, `UPDATE versions SET content_dir = '../old-a/cd-va1' WHERE id = 'vb1'`)
+			return dir
+		}, "a directory name in cairn.db is not a plain name"},
+		{"an empty content dir", func(t *testing.T) string {
+			dir := good(t)
+			editOld(t, dir, `UPDATE versions SET content_dir = '' WHERE id = 'vb1'`)
+			return dir
+		}, "a directory name in cairn.db is not a plain name"},
+		{"a content dir of dot", func(t *testing.T) string {
+			dir := good(t)
+			editOld(t, dir, `UPDATE versions SET content_dir = '.' WHERE id = 'vb1'`)
+			return dir
+		}, "a directory name in cairn.db is not a plain name"},
+		{"a content dir of dot-dot", func(t *testing.T) string {
+			dir := good(t)
+			editOld(t, dir, `UPDATE versions SET content_dir = '..' WHERE id = 'vb1'`)
+			return dir
+		}, "a directory name in cairn.db is not a plain name"},
+		{"a symbolic link for a database", func(t *testing.T) string {
+			dir := good(t)
+			replaceWithLink(t, dir, "dbs/old-a/va2.db")
+			return dir
+		}, "va2.db is a symbolic link"},
+		{"a directory for a database", func(t *testing.T) string {
+			dir := good(t)
+			os.Remove(filepath.Join(dir, "dbs", "old-a", "va2.db"))
+			writeFile(t, dir, "dbs/old-a/va2.db/inside", "x")
+			return dir
+		}, "its database is not a regular file"},
+		{"a symbolic link for an artifact's databases", func(t *testing.T) string {
+			dir := good(t)
+			replaceWithLink(t, dir, "dbs/old-a")
+			return dir
+		}, "old-a is a symbolic link"},
+		{"a symbolic link for an artifact's content", func(t *testing.T) string {
+			dir := good(t)
+			replaceWithLink(t, dir, "content/old-b")
+			return dir
+		}, "old-b is a symbolic link"},
+		{"a symbolic link for an artifact's stored files", func(t *testing.T) string {
+			dir := good(t)
+			replaceWithLink(t, dir, "files/old-b")
+			return dir
+		}, "old-b is a symbolic link"},
+		{"a symbolic link among the stored files", func(t *testing.T) string {
+			dir := good(t)
+			replaceWithLink(t, dir, "files/old-b/vb1/only.txt")
+			return dir
+		}, "only.txt\" is not a regular file"},
 		{"the new schema", func(t *testing.T) string {
 			dir := t.TempDir()
 			s, err := store.Open(filepath.Join(dir, "cairn.db"))
@@ -422,7 +534,7 @@ func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
 func TestImportInterruptDeletesThePartialArtifact(t *testing.T) {
 	c := loggedIn(t)
 	arts := []fakeArtifact{
-		{id: "old-a", name: "first", created: "2026-01-01T00:00:00Z", versions: []fakeVersion{
+		{id: "old-a", name: "first", public: true, created: "2026-01-01T00:00:00Z", versions: []fakeVersion{
 			{id: "va1", content: map[string]string{"index.html": "a"}},
 		}},
 		{id: "old-b", name: "many", created: "2026-01-02T00:00:00Z", versions: []fakeVersion{
@@ -449,7 +561,9 @@ func TestImportInterruptDeletesThePartialArtifact(t *testing.T) {
 	if len(done) != 1 || done[0].OldID != "old-a" {
 		t.Fatalf("done = %+v, want only old-a", done)
 	}
-	for _, want := range []string{"old-a -> " + done[0].NewID, "running the import again imports every artifact again", "artifact delete"} {
+	// The person may keep what finished, so the list must say what was public:
+	// only a run that completes prints the public list.
+	for _, want := range []string{"old-a -> " + done[0].NewID + "  first  (public on the old server)", "running the import again imports every artifact again", "artifact delete"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q lacks %q", err, want)
 		}
@@ -670,5 +784,47 @@ func TestImportReadsABackupItCannotWriteTo(t *testing.T) {
 	}
 	if !reflect.DeepEqual(hashTree(t, dir), before) {
 		t.Error("the import changed the backup")
+	}
+}
+
+// TestImportTakesWALNamesOutsideTheDatabases imports a backup whose content
+// and stored files carry names ending in .db-wal: only a WAL file beside a
+// database means a live data directory.
+func TestImportTakesWALNamesOutsideTheDatabases(t *testing.T) {
+	c := loggedIn(t)
+	dir, _ := sampleBackup(t)
+	writeFile(t, dir, "content/old-b/cd-vb1/notes.db-wal", "content")
+	writeFile(t, dir, "files/old-b/vb1/kept.db-wal", "stored")
+	done, err := importBackup(context.Background(), c, dir, io.Discard, io.Discard)
+	if err != nil || len(done) != 2 {
+		t.Fatalf("importBackup = %+v, %v", done, err)
+	}
+	vs, err := c.ListVersions(done[1].NewID) // newest first
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := c.VersionFiles(done[1].NewID, vs[1].ID)
+	if err != nil || string(files["notes.db-wal"]) != "content" {
+		t.Errorf("content notes.db-wal = %q, %v", files["notes.db-wal"], err)
+	}
+	d, err := c.OpenData(done[1].NewID, vs[1].ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := d.GetFile("kept.db-wal"); err != nil || string(got) != "stored" {
+		t.Errorf("stored kept.db-wal = %q, %v", got, err)
+	}
+}
+
+func TestImportSaysWhenTheBackupIsEmpty(t *testing.T) {
+	c := loggedIn(t)
+	dir := writeOldBackup(t, nil)
+	var out bytes.Buffer
+	done, err := importBackup(context.Background(), c, dir, &out, io.Discard)
+	if err != nil || len(done) != 0 {
+		t.Fatalf("importBackup = %+v, %v", done, err)
+	}
+	if !strings.Contains(out.String(), "nothing to import") {
+		t.Errorf("stdout = %q, want it to say there is nothing to import", out.String())
 	}
 }

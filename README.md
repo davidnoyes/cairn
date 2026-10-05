@@ -408,13 +408,19 @@ artifacts across from a snapshot instead.
 
 The import reads the snapshot in place and only reads it. It never writes into
 the snapshot, and it refuses a live data directory, so always import a
-`cairn backup` copy. If it fails or you press Ctrl-C, it deletes the artifact
-it was importing and lists the ones it finished. A second run imports
-everything again, so delete those first with `cairn artifact delete`.
+`cairn backup` copy. It also refuses a snapshot that reaches outside itself
+through a symbolic link.
+
+If the import fails, or you press Ctrl-C, it deletes the artifact it was
+importing and lists the ones it finished. A second Ctrl-C stops it at once,
+and can leave that artifact behind unlisted; find it with
+`cairn artifact list`. A second run imports everything again, so delete the
+finished ones first with `cairn artifact delete`.
 
 Artifacts that were public arrive private. The import lists them with their
-new IDs; run `cairn public <id> on` to publish one again. When you are done,
-delete the snapshot and wipe the old server.
+new IDs, and marks them in the list it prints when it stops early. Run
+`cairn public <id> on` to publish one again. When you are done, delete the
+snapshot and wipe the old server.
 
 ## Operations
 

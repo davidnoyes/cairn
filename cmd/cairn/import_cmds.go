@@ -113,6 +113,9 @@ func importBackup(ctx context.Context, c *client.Client, dir string, out, progre
 	if err != nil {
 		return nil, err
 	}
+	if len(plan) == 0 {
+		fmt.Fprintln(out, "the backup holds no artifacts, so there is nothing to import")
+	}
 	done := []importedArtifact{}
 	for _, a := range plan {
 		imp, err := importArtifact(ctx, c, a, progress)
@@ -135,6 +138,9 @@ func importFailed(err error, done []importedArtifact) error {
 	fmt.Fprintf(&b, "%v\nalready imported (old ID -> new ID):", err)
 	for _, a := range done {
 		fmt.Fprintf(&b, "\n  %s -> %s  %s", a.OldID, a.NewID, a.Name)
+		if a.Public {
+			b.WriteString("  (public on the old server)")
+		}
 	}
 	b.WriteString("\nrunning the import again imports every artifact again, so delete these first with 'cairn artifact delete'")
 	return errors.New(b.String())
@@ -336,11 +342,25 @@ func readBackup(dir string) ([]oldArtifact, error) {
 	if _, err := os.Stat(dbFile); err != nil {
 		return nil, fmt.Errorf("%s has no cairn.db: it is not a backup made by 'cairn backup' on the old server", dir)
 	}
-	err := filepath.WalkDir(dir, func(p string, e fs.DirEntry, err error) error {
-		if err == nil && strings.HasSuffix(e.Name(), ".db-wal") {
-			return fmt.Errorf("%s exists: this looks like a live data directory, not a backup; take a snapshot with 'cairn backup' on the old server", p)
+	// A live data directory keeps a WAL file beside each database it has open.
+	live := func(p string) error {
+		return fmt.Errorf("%s exists: this looks like a live data directory, not a backup; take a snapshot with 'cairn backup' on the old server", p)
+	}
+	if _, err := os.Lstat(dbFile + "-wal"); err == nil {
+		return nil, live(dbFile + "-wal")
+	}
+	dbs := filepath.Join(dir, "dbs")
+	err := filepath.WalkDir(dbs, func(p string, e fs.DirEntry, err error) error {
+		if err != nil {
+			if p == dbs && errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
 		}
-		return err
+		if strings.HasSuffix(e.Name(), ".db-wal") {
+			return live(p)
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -421,7 +441,7 @@ func readOldArtifacts(db *sql.DB, dir string) ([]oldArtifact, error) {
 	}
 	for i := range out {
 		a := &out[i]
-		if !filepath.IsLocal(a.id) {
+		if !plainName(a.id) {
 			return nil, fmt.Errorf("artifact ID %q is not a plain name", a.id)
 		}
 		res, err := db.Query(`SELECT type, value FROM artifact_resources WHERE artifact_id = ? ORDER BY rowid`, a.id)
@@ -470,22 +490,34 @@ func readOldArtifacts(db *sql.DB, dir string) ([]oldArtifact, error) {
 }
 
 // checkOldVersion fills in where version vid's parts are, and refuses a
-// content tree or stored-file path the new server would refuse.
+// content tree or stored-file path the new server would refuse, and a part
+// reached through a symbolic link.
 func checkOldVersion(dir string, a *oldArtifact, v *oldVersion, vid, contentDir string, n int) error {
 	what := fmt.Sprintf("artifact %q, version %d", a.name, n)
-	if !filepath.IsLocal(vid) || !filepath.IsLocal(contentDir) {
+	if !plainName(vid) || !plainName(contentDir) {
 		return fmt.Errorf("%s: a directory name in cairn.db is not a plain name", what)
+	}
+	if _, err := lstatIn(dir, "content", a.id, contentDir); err != nil {
+		return fmt.Errorf("%s: %w", what, err)
 	}
 	v.contentDir = filepath.Join(dir, "content", a.id, contentDir)
 	if err := client.CheckTree(v.contentDir); err != nil {
 		return fmt.Errorf("%s: %w", what, err)
 	}
-	if dbPath := filepath.Join(dir, "dbs", a.id, vid+".db"); fileExists(dbPath) {
-		v.dbPath = dbPath
+	switch st, err := lstatIn(dir, "dbs", a.id, vid+".db"); {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		return fmt.Errorf("%s: %w", what, err)
+	case !st.Mode().IsRegular():
+		return fmt.Errorf("%s: its database is not a regular file", what)
+	default:
+		v.dbPath = filepath.Join(dir, "dbs", a.id, vid+".db")
 	}
 	v.filesDir = filepath.Join(dir, "files", a.id, vid)
-	if _, err := os.Stat(v.filesDir); err != nil {
+	if _, err := lstatIn(dir, "files", a.id, vid); errors.Is(err, fs.ErrNotExist) {
 		return nil
+	} else if err != nil {
+		return fmt.Errorf("%s: %w", what, err)
 	}
 	err := walkFiles(v.filesDir, func(rel, _ string) error {
 		if err := client.CheckFilePath(rel); err != nil {
@@ -500,7 +532,27 @@ func checkOldVersion(dir string, a *oldArtifact, v *oldVersion, vid, contentDir 
 	return nil
 }
 
-func fileExists(p string) bool {
-	st, err := os.Stat(p)
-	return err == nil && st.Mode().IsRegular()
+// plainName reports whether s names one entry of a directory: not empty, not
+// . or .., and with no separator.
+func plainName(s string) bool {
+	return filepath.IsLocal(s) && filepath.Base(s) == s && s != "."
+}
+
+// lstatIn returns the file info of the path elems name under dir. It refuses a
+// symbolic link anywhere on that path, so the import reads nothing from
+// outside the backup.
+func lstatIn(dir string, elems ...string) (fs.FileInfo, error) {
+	p := dir
+	var st fs.FileInfo
+	for _, e := range elems {
+		p = filepath.Join(p, e)
+		var err error
+		if st, err = os.Lstat(p); err != nil {
+			return nil, err
+		}
+		if st.Mode()&fs.ModeSymlink != 0 {
+			return nil, fmt.Errorf("%s is a symbolic link; the import reads only what is inside the backup", p)
+		}
+	}
+	return st, nil
 }

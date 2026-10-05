@@ -2175,6 +2175,21 @@ cmd/cairn/import_cmds.go	if derr := c.DeleteArtifact(created.ID); derr != nil {	
 cmd/cairn/import_cmds.go	if ctx.Err() != nil {	if false {	go test ./cmd/cairn -run TestImportInterruptDeletesThePartialArtifact
 cmd/cairn/import_cmds.go	if a.Public {	if true {	go test ./cmd/cairn -run TestImportCommandListsPublicArtifacts
 cmd/cairn/import_cmds.go	Versions: len(a.versions), Public: a.public}	Versions: len(a.versions), Public: false}	go test ./cmd/cairn -run 'TestImportCopiesEverything|TestImportCommandJSON'
+cmd/cairn/import_cmds.go	if _, err := os.Lstat(dbFile + "-wal"); err == nil {	if _, err := os.Lstat(dbFile + "-wal"); err == nil && false {	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	if !plainName(a.id) {	if false {	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	if !plainName(vid) || !plainName(contentDir) {	if false || !plainName(contentDir) {	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	if !plainName(vid) || !plainName(contentDir) {	if !plainName(vid) || false {	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	return filepath.IsLocal(s) && filepath.Base(s) == s && s != "."	return true && filepath.Base(s) == s && s != "."	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	return filepath.IsLocal(s) && filepath.Base(s) == s && s != "."	return filepath.IsLocal(s) && true && s != "."	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	return filepath.IsLocal(s) && filepath.Base(s) == s && s != "."	return filepath.IsLocal(s) && filepath.Base(s) == s && true	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	if st.Mode()&fs.ModeSymlink != 0 {	if false {	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	if _, err := lstatIn(dir, "content", a.id, contentDir); err != nil {	if _, err := lstatIn(dir, "content", a.id, contentDir); err != nil && false {	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	case !st.Mode().IsRegular():	case st == nil:	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	} else if err != nil {	} else if false {	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	if !e.Type().IsRegular() {	if false {	go test ./cmd/cairn -run TestImportRefusesABadBackupBeforeUploading
+cmd/cairn/import_cmds.go	if v.dbPath != "" || len(v.files) > 0 {	if v.dbPath != "" {	go test ./cmd/cairn -run TestImportCopiesEverything
+cmd/cairn/import_cmds.go	"  (public on the old server)"	""	go test ./cmd/cairn -run TestImportInterruptDeletesThePartialArtifact
+cmd/cairn/import_cmds.go	if len(plan) == 0 {	if false {	go test ./cmd/cairn -run TestImportSaysWhenTheBackupIsEmpty
 internal/client/reseal.go	if err == nil && e2e.BodyHash(blob) != f.SHA256 {	if false {	go test ./internal/client -run TestVersionFilesChecksTheHashBeforeOpening
 # Milestone 8: the release manifest, cairn verify, and the VM startup script.
 internal/release/manifest.go	if m.V != 1 {	if false {	go test ./internal/release
