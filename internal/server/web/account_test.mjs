@@ -794,6 +794,26 @@ test('newRecoveryCode refuses a wrong password without a request', async () => {
   assert.equal(call(server, '/api/me/recovery').length, 0);
 });
 
+test('every password check refuses bundle parameters below the floor before stretching or writing', async () => {
+  const actions = {
+    createApiKey: (deps) => account.createApiKey(deps, { name: 'k', password: STRONG }),
+    changePassword: (deps) => account.changePassword(deps, { current: STRONG, next: NEW_STRONG, confirm: NEW_STRONG }),
+    newRecoveryCode: (deps) => account.newRecoveryCode(deps, { password: STRONG }),
+  };
+  for (const [name, run] of Object.entries(actions)) {
+    const server = fakeServer();
+    const { deps } = await signedUp(server);
+    server.accounts.get('ada@example.com').bundle.kdf.m = 1024;
+    let stretched = 0;
+    deps.stretch = (...a) => { stretched++; return fakeStretch(...a); };
+    const sent = server.log.length;
+    await assert.rejects(run(deps), (err) => err.name === 'FloorError', name);
+    assert.equal(stretched, 0, `${name} stretched the password`);
+    const writes = server.log.slice(sent).filter((e) => ['POST', 'PUT', 'DELETE'].includes(e.method));
+    assert.deepEqual(writes, [], `${name} wrote`);
+  }
+});
+
 test('the account changes zero MK, the stretched password, and the key secret', async () => {
   const server = fakeServer();
   const { deps } = await signedUp(server);

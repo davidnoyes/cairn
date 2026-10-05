@@ -1,9 +1,10 @@
 -- An artifact's name and description, and a version's name and changelog, as
 -- client-encrypted fields. The server holds each as a sealed blob and the
 -- signed record that covers it, and no plaintext of any of them: the four
--- plaintext columns go. version_id is empty for an artifact's own fields, so
--- it cannot reference versions; the trigger removes a version's fields with
--- it, as the cascade does for the artifact's.
+-- plaintext columns go, values and all. The trust model needs a fresh server,
+-- so there is nothing to carry over. version_id is empty for an artifact's own
+-- fields, so it cannot reference versions; the trigger removes a version's
+-- fields with it, as the cascade does for the artifact's.
 ALTER TABLE artifacts DROP COLUMN name;
 ALTER TABLE artifacts DROP COLUMN description;
 ALTER TABLE versions DROP COLUMN name;

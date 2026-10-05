@@ -123,7 +123,9 @@ async function loadArtifacts({ me }) {
     row.name = got.name;
     row.nameText.textContent = got.name;
     row.descText.textContent = got.description;
-    row.nameCell.title = got.error ? describeError(got.error) : '';
+    // Said in the row, not only in a tooltip, so a keyboard or screen reader
+    // user learns why the row shows an ID.
+    row.reasonText.textContent = got.error ? describeError(got.error) : '';
     // The share dialog may have opened on this row before its name was read.
     if (sharing?.id === a.id) $('share-title').textContent = got.name;
   }
@@ -133,9 +135,11 @@ function artifactRow(a, mine) {
   const row = { name: a.id, nameText: el('div', 'clamp', a.id), descText: el('div', 'clamp', '') };
   const tr = el('tr');
   tr.dataset.id = a.id;
-  row.nameCell = td(row.nameText, 'name');
+  row.reasonText = el('div', 'unreadable', '');
+  const nameCell = td(row.nameText, 'name');
+  nameCell.appendChild(row.reasonText);
   tr.append(
-    row.nameCell,
+    nameCell,
     td(row.descText, 'desc'),
     td(a.access, 'access'),
     td(a.public ? 'public' : 'private', 'public'),
@@ -182,25 +186,41 @@ async function act(working, change, retry) {
   const controls = [...$('share').querySelectorAll('button, input, select')].filter((c) => c.id !== 'share-close');
   for (const c of controls) c.disabled = true;
   status('share-status', working());
+  let said = null;
+  let failed = null;
   try {
-    const said = await change();
+    said = await change();
     if (said !== null) s.changed = true;
-    await listMembers(s);
-    status('share-status', said ?? '');
   } catch (err) {
-    if (err instanceof KeyChangedError && retry) {
-      warnKeyChanged(err.message, retry);
-      status('share-status', '');
-    } else if (!(err instanceof UnauthenticatedError)) {
-      status('share-status', describeError(err), true);
-    }
+    failed = err;
+  }
+  // The owner may have closed the dialog while the change ran, or opened it
+  // again on another artifact: the controls and status are that dialog's now.
+  if (s !== sharing) {
+    if (s.changed) reloadArtifacts();
+    return;
+  }
+  if (failed instanceof KeyChangedError && retry) {
+    warnKeyChanged(failed.message, retry);
+    status('share-status', '');
+  } else if (failed && !(failed instanceof UnauthenticatedError)) {
+    status('share-status', describeError(failed), true);
+  }
+  try {
     // A refused change leaves the switches as the owner set them, not as the
-    // server has them.
-    await listMembers(s).catch(() => {});
+    // server has them, so the members are listed again either way.
+    await listMembers(s);
+    if (!failed && s === sharing) status('share-status', said ?? '');
+  } catch (err) {
+    if (!failed && s === sharing && !(err instanceof UnauthenticatedError)) {
+      status('share-status', `${said ?? ''} The members could not be listed again: ${describeError(err)}`.trim(), true);
+    }
   } finally {
-    for (const c of controls) c.disabled = false;
-    $('public-writes').disabled = !$('public').checked;
-    $('copy-link').disabled = !$('public').checked;
+    if (s === sharing) {
+      for (const c of controls) c.disabled = false;
+      $('public-writes').disabled = !$('public').checked;
+      $('copy-link').disabled = !$('public').checked;
+    }
   }
 }
 
@@ -290,11 +310,11 @@ function epochNote(res) {
 $('share-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const email = $('share-email');
-  const { id } = sharing;
+  const s = sharing;
   const send = (acceptNewKey) => act(() => 'Sharing…', async () => {
-    const res = await share(deps, id, email.value, $('share-role').value, { acceptNewKey });
+    const res = await share(deps, s.id, email.value, $('share-role').value, { acceptNewKey });
     const said = `Shared with ${res.user.email} as ${res.role}.` + epochNote(res);
-    email.value = '';
+    if (s === sharing) email.value = '';
     return said;
   }, acceptNewKey ? undefined : () => send(true));
   send(false);

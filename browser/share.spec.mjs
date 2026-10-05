@@ -174,3 +174,55 @@ test('share: a member whose keys changed is flagged, and the owner accepts the n
   await expect(row.locator('td.pin')).not.toHaveText('changed');
   expect(members(id)[email].state).not.toBe('changed');
 });
+
+test('share: a change still running when the dialog closes stays with its own artifact', async ({ ownerPage, browserName }) => {
+  const s = loadState();
+  const first = pushDoc(`race-a-${browserName}`);
+  const second = pushDoc(`race-b-${browserName}`);
+  const viewer = s.users[`peer-${browserName}`];
+  const dialog = await openShare(ownerPage, first.id);
+
+  // Hold the first artifact's membership write until the dialog shows the
+  // second one.
+  const membership = `**/api/artifacts/${first.id}/membership`;
+  let release, reached;
+  const held = new Promise((resolve) => { release = resolve; });
+  const arrived = new Promise((resolve) => { reached = resolve; });
+  await ownerPage.route(membership, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback();
+    reached();
+    await held;
+    return route.continue();
+  });
+  try {
+    await dialog.locator('#share-email').fill(viewer.email);
+    await dialog.locator('#share-role').selectOption('viewer');
+    await dialog.getByRole('button', { name: 'Share', exact: true }).click();
+    await arrived;
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    await ownerPage.locator(`#own tr[data-id="${second.id}"]`).getByRole('button', { name: 'Share' }).click();
+    await expect(dialog.locator('#share-title')).toHaveText(`race-b-${browserName}`);
+    await expect(dialog.locator('#share-email')).toBeEnabled();
+    await dialog.locator('#share-email').fill('typed@example.com');
+
+    // The finished change reloads the list, because the dialog it came from
+    // is gone, and leaves the second dialog as it is.
+    const row = `#own tr[data-id="${first.id}"]`;
+    await ownerPage.locator(row).evaluate((tr) => { tr.dataset.stale = '1'; });
+    const reloaded = ownerPage.waitForResponse((r) => new URL(r.url()).pathname === '/api/artifacts' && r.request().method() === 'GET');
+    release();
+    await reloaded;
+    expect(Object.keys(members(first.id))).toContain(viewer.email);
+    expect(Object.keys(members(second.id))).not.toContain(viewer.email);
+    await expect(dialog.locator('#share-email')).toHaveValue('typed@example.com');
+    // A stale write would land within the same chain as the reload, so wait
+    // for the rebuilt row to be named before looking.
+    await expect(ownerPage.locator(`${row}:not([data-stale]) td.name`)).toContainText(`race-a-${browserName}`);
+    await expect(dialog.locator('#share-status')).not.toContainText('Shared with');
+    await expect(dialog.locator('#share-email')).toBeEnabled();
+    await expect(dialog.locator(`tr[data-email="${viewer.email}"]`)).toHaveCount(0);
+  } finally {
+    release();
+    await ownerPage.unroute(membership);
+  }
+});

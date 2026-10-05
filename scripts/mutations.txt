@@ -2017,3 +2017,9 @@ internal/client/reseal.go	if err := c.resealMeta(k, va, artifactID, aks, old, vi
 cmd/cairn/client_cmds.go	if !errors.Is(err, client.ErrNoArtifact) {	if false {	go test ./cmd/cairn -run 'TestPushCreateDoesNotMakeAThirdWhenTheNameIsAmbiguous'
 internal/server/protect.go	sameOriginForm := mediaType == "multipart/form-data" && r.Header.Get("Sec-Fetch-Site") == "same-origin"	sameOriginForm := mediaType == "multipart/form-data"	go test ./internal/server -run TestProtectMutationsMultipartNeedsSameOriginFetch
 internal/server/protect.go	sameOriginForm := mediaType == "multipart/form-data" && r.Header.Get("Sec-Fetch-Site") == "same-origin"	sameOriginForm := r.Header.Get("Sec-Fetch-Site") == "same-origin"	go test ./internal/server -run TestProtectMutationsMultipartNeedsSameOriginFetch
+internal/server/web/account.mjs	const kdf = parseKdf(bundle.kdf);	const kdf = { ...bundle.kdf, salt: e2e.unb64(bundle.kdf.salt) };	node --test internal/server/web/account_test.mjs
+internal/server/handlers_meta.go	if dec.More() {	if false {	go test ./internal/server -run 'TestMetaWriteBodyLimits'
+internal/server/handlers_meta.go	r.Body = http.MaxBytesReader(w, r.Body, 2*maxMetaBlob+maxRecordBytes)	_ = w	go test ./internal/server -run 'TestMetaWriteBodyLimits'
+internal/server/handlers_meta.go	len(blob) > maxMetaBlob	len(blob) >= maxMetaBlob	go test ./internal/server -run 'TestMetaWriteBodyLimits'
+internal/server/routes.go	versions/{vid}/meta/{field}", s.artifactRoute(access.Rename,	versions/{vid}/meta/{field}", s.artifactRoute(access.Share,	go test ./internal/server -run 'TestMetaEditorWritesVersionField'
+internal/server/handlers_artifacts.go	`^[0-9a-f]{64}$`	`^[0-9a-f]{64}`	go test ./internal/server -run 'TestResourceValueMustBeABlindIndex'

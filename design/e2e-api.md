@@ -1777,6 +1777,12 @@ signature that does not verify under the caller's current Ed25519 key with
 `403`, and any epoch but the current one with `409`, while it holds the
 artifact's lock. A write replaces the field.
 
+A record carries no sequence number, only its epoch. A server can therefore
+answer with an earlier value of a field that was signed in the same epoch,
+and a client accepts it. This is accepted: the earlier value was written by
+someone allowed to write it, and an epoch change re-seals every field, so a
+rolled-back value cannot outlive the epoch it was signed in.
+
 The artifact views gain `"meta": {field: item}`, and each version view
 gains the same for its own fields. An item is `{"record": envelope,
 "signerKey": "b64", "blob": "b64"}`, and a field nobody wrote is absent.

@@ -137,6 +137,12 @@ test('shell: no password field appears over an artifact, and locked keys send th
     await page.goto(`${s.appOrigin}/shared/${id}`);
     await expect(page).toHaveURL(/\/login(\?|$)/);
     expect(page.frames().filter((f) => f.url().includes('.localhost')), 'artifact frames').toEqual([]);
+    // The login page checks for usable keys on load; with none it stays put
+    // and asks, rather than bouncing back to the artifact.
+    await expect(page.locator('#password')).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveURL(/\/login(\?|$)/);
+    await expect(page.locator('#password')).toBeVisible();
   } finally {
     await cookiesOnly.close();
   }
