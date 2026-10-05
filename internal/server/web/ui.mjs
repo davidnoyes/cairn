@@ -125,7 +125,9 @@ export function describeVerifyError(err) {
 }
 
 // onSubmit runs action when the form is submitted. It disables the button
-// while the action runs, and shows what the action throws in errorEl.
+// while the action runs, and shows what the action throws in errorEl. The
+// page ships the button disabled, because a click before this listener exists
+// submits a method="dialog" form to nowhere, so it is enabled here.
 export function onSubmit(form, button, errorEl, action) {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -140,6 +142,7 @@ export function onSubmit(form, button, errorEl, action) {
       button.disabled = false;
     }
   });
+  button.disabled = false; // listening now
 }
 
 // watchStrength shows a live strength line under a password field.

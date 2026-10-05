@@ -91,6 +91,12 @@ test('onSubmit disables the button while the action runs and re-enables it after
   assert.equal(errorEl.hidden, false);
 });
 
+test('onSubmit enables a button the page shipped disabled, once it is listening', () => {
+  const button = fakeEl({ disabled: true });
+  onSubmit(fakeEl(), button, fakeEl(), async () => {});
+  assert.equal(button.disabled, false, 'a click before the listener would be lost, so the page ships it disabled');
+});
+
 test('onSubmit re-enables the button after success and clears an earlier error', async () => {
   const form = fakeEl();
   const button = fakeEl();

@@ -175,6 +175,19 @@ test('shell: no password field appears over an artifact, and locked keys send th
   }
 });
 
+test('login: Sign in stays disabled until the page listens for it, since an earlier click is lost', async ({ page }) => {
+  const s = loadState();
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await page.route('**/login.js', async (route) => { await held; await route.continue(); });
+  // Not to load: a module script holds up the load event, and here it is held.
+  await page.goto(`${s.appOrigin}/login`, { waitUntil: 'commit' });
+  await expect(page.locator('#email')).toBeVisible();
+  await expect(page.locator('#submit')).toBeDisabled();
+  release();
+  await expect(page.locator('#submit')).toBeEnabled({ timeout: 30_000 });
+});
+
 test('keys: an API key needs the password, is shown once, works for the CLI, and stops when revoked', async ({ browser, browserName }) => {
   const s = loadState();
   const user = `acct-${browserName}`;
