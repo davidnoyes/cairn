@@ -107,6 +107,12 @@ Tests use `*.localhost` content origins locally, and a second registrable
 domain through `/etc/hosts` entries and a local CA in CI, so the cross-site
 behavior under test is the same as production.
 
+The suite builds the server with the `e2eclock` build tag. That build runs
+its clock ahead of the wall clock by the duration in the file
+`CAIRN_TEST_CLOCK_FILE` names, so the successor tests pass the 14-day wait
+without waiting. It refuses to start without that variable, and a release
+build never contains it.
+
 Playwright's WebKit build is not Safari, and storage partitioning is exactly
 where the two can differ. Before each release, run the browser suite's smoke
 subset against Safari through `safaridriver`. Where that cannot run, work

@@ -2111,3 +2111,48 @@ commands. They also read each artifact's pending list, so their accept of an
 administrator's offer carries the approved team members over. They cannot
 approve anyone. Every command that encrypts refuses an artifact the caller reaches
 only as a successor.
+
+### The successor in the browser
+
+The app's **Successor** tab does what the commands do:
+
+- **Your successor** shows the current successor and any request, and
+  nominates someone from their email, their code, and the user's password.
+  A wrong code changes nothing.
+- **Your code** shows the user's own successor code.
+- **Notice address** sets or clears the personal address for notices.
+- **Users who named you** lists each nomination of the caller, with a button
+  to ask for access. Once a nomination is released, the row links to each
+  artifact the nominating user owns, and the viewer opens it from the estate
+  copies.
+
+Two banners appear at the top of every tab:
+
+- While a request is pending, the user sees who asked and when it releases,
+  with a **Refuse** button.
+- After a release, the user sees that the successor can read their
+  artifacts, and that Cairn refuses their changes until they rotate keys.
+
+The `/refuse` page needs no session, so it works for a deactivated account.
+The user enters their email, then their password or their recovery code.
+On success the page names the successor and the request it refused, and
+says so when an administrator deactivated the account during the request.
+
+The viewer reaches an artifact as a successor only when the caller holds no
+wrap for it and the server serves estate copies. It then reads the owner's
+entry in `GET /api/successions`. It refuses a nomination that is not released,
+and one whose record does not verify under the owner's key or does not name
+the caller. It unwraps `EK`, opens each estate copy, checks it against the
+membership record, and zeroes `EK` afterwards.
+
+### Accepted risks for the successor
+
+- **A replayed nomination.** The chain check reads the previous owner's latest
+  `successor` record as the server serves it. A server colluding with an
+  administrator could serve an older record that the owner has since replaced,
+  and make a handover to the successor it names silent. This needs the owner
+  to have nominated that user at some point, and the handover still shows in
+  the chain.
+- **Polling a refusal.** As described under [Refusing](#refusing), anyone who
+  polls `POST /api/auth/refuse/begin` for an address can tell that a request
+  is pending.
