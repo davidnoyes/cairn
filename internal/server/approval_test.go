@@ -291,7 +291,7 @@ func TestPendingListedMemberWithNoWrapWhoseKeyChanged(t *testing.T) {
 func TestPendingOfAnArtifactWithNoRecord(t *testing.T) {
 	w := newApprovalWorld(t)
 	id := uuid.NewString()
-	if _, err := w.s.store.CreateOwnedArtifact(id, "bare", "", w.owner.id, nil); err != nil {
+	if _, err := w.s.store.CreateOwnedArtifact(id, w.owner.id, nil); err != nil {
 		t.Fatal(err)
 	}
 	var list []pendingEntry
@@ -307,7 +307,7 @@ func TestPendingOfAnArtifactWithNoRecord(t *testing.T) {
 func TestApproveOnAnArtifactWithNoRecord(t *testing.T) {
 	w := newApprovalWorld(t)
 	id := uuid.NewString()
-	if _, err := w.s.store.CreateOwnedArtifact(id, "bare", "", w.owner.id, nil); err != nil {
+	if _, err := w.s.store.CreateOwnedArtifact(id, w.owner.id, nil); err != nil {
 		t.Fatal(err)
 	}
 	got, msg := status(w.owner.testClient, "POST", "/api/artifacts/"+id+"/keys", map[string]any{"user": w.team1.id, "fp": w.team1.keys.fp()})
@@ -558,10 +558,12 @@ func TestApproveStoresWrapsAndLetsTheUserRead(t *testing.T) {
 	if r := w.team1.writeDB(t, w.o.id, vid); r.StatusCode != http.StatusForbidden {
 		t.Errorf("approved team member db write: %d", r.StatusCode)
 	}
-	if r := w.team1.upload("POST", base+"/versions", map[string]string{"index.html": "x"}, nil); r.StatusCode != http.StatusForbidden {
+	if r := w.team1.upload("POST", base+"/versions", map[string]string{"index.html": "x"}); r.StatusCode != http.StatusForbidden {
 		t.Errorf("approved team member push: %d", r.StatusCode)
 	}
-	wantStatus(t, w.team1.testClient, "PATCH", base, map[string]any{"name": "x"}, http.StatusForbidden)
+	if r := newMeta(t, w.team1, w.o.id, "", "name", 1, "x").send(t); r.StatusCode != http.StatusForbidden {
+		t.Errorf("approved team member meta write: %d", r.StatusCode)
+	}
 	wantStatus(t, w.team1.testClient, "GET", base+"/pending", nil, http.StatusForbidden)
 
 	// Listed as an editor, with no new wrap, they write.

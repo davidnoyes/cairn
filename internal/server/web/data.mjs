@@ -277,7 +277,7 @@ async function addressAt(keys, ak, epoch, path) {
 
 // openEntry checks one entry of the server's file list and opens its
 // metadata, steps 1 to 5. It throws on any failure.
-async function openEntry(keys, item) {
+export async function openEntry(keys, item) {
   if (typeof item !== 'object' || item === null) throw new ContentError('not an object');
   const address = item.address;
   if (typeof address !== 'string' || !ADDRESS_RE.test(address)) throw new ContentError('the address is not 64 hex characters');

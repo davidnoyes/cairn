@@ -137,12 +137,10 @@ func (s *Server) redirectShellReference(w http.ResponseWriter, r *http.Request, 
 
 // Login / logout pages
 
+// handleLoginPage serves the sign-in page to every visitor. A session alone
+// is not enough to go straight through: the browser also needs the keys that
+// sign-in unlocked, and only the page's script can see those.
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
-	// Already logged in? Straight through.
-	if u, err := s.currentUser(r); err == nil && u != nil {
-		http.Redirect(w, r, safeNext(r.URL.Query().Get("next")), http.StatusFound)
-		return
-	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if err := s.templates().ExecuteTemplate(w, "login.html", map[string]any{
 		"Next": safeNext(r.URL.Query().Get("next")),
@@ -173,27 +171,23 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if u, err := s.currentUser(r); err == nil && u != nil {
-		http.Redirect(w, r, "/admin", http.StatusFound)
+		http.Redirect(w, r, "/app", http.StatusFound)
 		return
 	}
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
-// handleAdminPage serves the admin UI; the page itself talks to the JSON
-// APIs. Anonymous visitors are sent to login, non-admins get a 403.
-func (s *Server) handleAdminPage(w http.ResponseWriter, r *http.Request) {
-	u, err := s.currentUser(r)
-	if err != nil || u == nil {
-		http.Redirect(w, r, "/login?next=/admin", http.StatusFound)
-		return
-	}
-	if !u.IsAdmin {
-		http.Error(w, "admin access required", http.StatusForbidden)
+// handleAppPage serves the signed-in home; the page itself talks to the JSON
+// APIs, and shows the Users tab to an administrator. A visitor with no session
+// is sent to sign in, and back.
+func (s *Server) handleAppPage(w http.ResponseWriter, r *http.Request) {
+	if u, err := s.currentUser(r); err != nil || u == nil {
+		http.Redirect(w, r, "/login?next=/app", http.StatusFound)
 		return
 	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if err := s.templates().ExecuteTemplate(w, "admin.html", nil); err != nil {
-		s.log.Error("render admin", "err", err)
+	if err := s.templates().ExecuteTemplate(w, "app.html", nil); err != nil {
+		s.log.Error("render app", "err", err)
 	}
 }
 
@@ -230,7 +224,7 @@ func (s *Server) serveSqlJS(w http.ResponseWriter, r *http.Request) {
 // directory. The worker's own files are served by the handlers below.
 var appAssets = map[string]string{
 	"/app.css":           "app.css",
-	"/admin.css":         "admin.css",
+	"/home.css":          "home.css",
 	"/icon.svg":          "icon.svg",
 	"/shell.css":         "shell.css",
 	"/shell.mjs":         "shell.mjs",
@@ -246,8 +240,11 @@ var appAssets = map[string]string{
 	"/login.js":          "login.js",
 	"/forgot.js":         "forgot.js",
 	"/reset.js":          "reset.js",
-	"/admin.js":          "admin.js",
-	"/admin-init.mjs":    "admin-init.mjs",
+	"/app.mjs":           "app.mjs",
+	"/app-init.mjs":      "app-init.mjs",
+	"/data.mjs":          "data.mjs",
+	"/meta.mjs":          "meta.mjs",
+	"/sharing.mjs":       "sharing.mjs",
 	"/argon2-worker.js":  "argon2-worker.js",
 	"/zxcvbn.js":         "vendor/zxcvbn.js",
 }

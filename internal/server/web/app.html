@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cairn</title>
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="stylesheet" href="/home.css">
+</head>
+<body>
+  <header>
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32">
+        <rect x="11" y="7"  width="10" height="4" rx="2" fill="#C6F135"/>
+        <rect x="8"  y="14" width="16" height="4" rx="2" fill="#C6F135" opacity=".7"/>
+        <rect x="5"  y="21" width="22" height="4" rx="2" fill="#C6F135" opacity=".45"/>
+      </svg>
+    </span>
+    <h1 class="word">cairn</h1>
+    <nav role="tablist" aria-label="Sections">
+      <button role="tab" id="tab-artifacts" aria-controls="artifacts" aria-selected="true">Artifacts</button>
+      <button role="tab" id="tab-keys" aria-controls="keys-panel" aria-selected="false">API keys</button>
+      <button role="tab" id="tab-account" aria-controls="account" aria-selected="false">Account</button>
+      <button role="tab" id="tab-users" aria-controls="users-panel" aria-selected="false" hidden>Users</button>
+    </nav>
+    <span class="spacer"></span>
+    <span class="chip" id="who"></span>
+    <span class="chip"><a href="/logout" id="signout">sign out</a></span>
+  </header>
+
+  <main>
+    <p class="status-line" id="app-status" role="status" hidden></p>
+
+    <section id="artifacts" role="tabpanel" aria-labelledby="tab-artifacts" class="active">
+      <h2>Your artifacts</h2>
+      <p class="hint">Create one with <span class="mono">cairn push DIR --create</span>.</p>
+      <div class="list">
+        <table>
+          <thead><tr><th>name</th><th>description</th><th>access</th><th>visibility</th><th>updated</th><th></th></tr></thead>
+          <tbody id="own"></tbody>
+        </table>
+      </div>
+      <h2 class="next">Shared with you</h2>
+      <div class="list">
+        <table>
+          <thead><tr><th>name</th><th>description</th><th>access</th><th>visibility</th><th>updated</th><th></th></tr></thead>
+          <tbody id="shared"></tbody>
+        </table>
+      </div>
+      <p class="status-line" id="artifacts-status" role="status"></p>
+    </section>
+
+    <section id="keys-panel" role="tabpanel" aria-labelledby="tab-keys">
+      <h2>API keys</h2>
+      <p class="hint">A key signs in as you and opens your artifacts. It is shown once, when you create it.</p>
+      <div class="list">
+        <table>
+          <thead><tr><th>name</th><th>created</th><th>last used</th><th>type</th><th></th></tr></thead>
+          <tbody id="keys"></tbody>
+        </table>
+      </div>
+      <form class="bar" id="key-form" method="dialog">
+        <input id="key-name" placeholder="key name" aria-label="Key name" autocomplete="off">
+        <input id="key-password" type="password" placeholder="your password" aria-label="Your password" autocomplete="current-password">
+        <button class="btn primary" type="submit">Create key</button>
+      </form>
+      <p class="status-line" id="keys-status" role="status"></p>
+      <p class="secret mono" id="key-new"></p>
+    </section>
+
+    <section id="account" role="tabpanel" aria-labelledby="tab-account">
+      <h2>Password</h2>
+      <form class="bar" id="pw-form" method="dialog">
+        <input id="pw-current" type="password" placeholder="current password" aria-label="Current password" autocomplete="current-password">
+        <input id="pw-new" type="password" placeholder="new password" aria-label="New password" autocomplete="new-password">
+        <input id="pw-confirm" type="password" placeholder="new password again" aria-label="New password again" autocomplete="new-password">
+        <button class="btn primary" type="submit">Change password</button>
+      </form>
+      <p class="strength" id="pw-strength"></p>
+      <h2 class="next">Recovery code</h2>
+      <p class="hint">The recovery code resets a forgotten password without losing your keys. A new one replaces the old.</p>
+      <form class="bar" id="rc-form" method="dialog">
+        <input id="rc-password" type="password" placeholder="your password" aria-label="Your password" autocomplete="current-password">
+        <button class="btn primary" type="submit">New recovery code</button>
+      </form>
+      <p class="secret mono" id="rc-new"></p>
+      <p class="status-line" id="account-status" role="status"></p>
+    </section>
+
+    <section id="users-panel" role="tabpanel" aria-labelledby="tab-users">
+      <h2>Users</h2>
+      <p class="hint">People sign up themselves, at /signup. You can grant the admin role, deactivate an account, or delete it.</p>
+      <div class="list">
+        <table>
+          <thead><tr><th>user</th><th>id</th><th>status</th><th></th></tr></thead>
+          <tbody id="users"></tbody>
+        </table>
+      </div>
+      <p class="status-line" id="users-status" role="status"></p>
+    </section>
+  </main>
+
+  <dialog id="share" aria-labelledby="share-title">
+    <div class="dialog-head">
+      <h2 id="share-title" class="name clamp"></h2>
+      <button class="btn" type="button" id="share-close">Close</button>
+    </div>
+    <div class="list">
+      <table>
+        <thead><tr><th>name</th><th>email</th><th>role</th><th>fingerprint</th><th>key</th><th></th></tr></thead>
+        <tbody id="members"></tbody>
+      </table>
+    </div>
+    <div class="warning" id="accept-warning" role="alert" hidden>
+      <p id="accept-text"></p>
+      <div class="actions">
+        <button class="btn danger" type="button" id="accept-confirm">Accept</button>
+        <button class="btn" type="button" id="accept-cancel">Cancel</button>
+      </div>
+    </div>
+    <form class="bar" id="share-form" method="dialog">
+      <input id="share-email" type="email" placeholder="email" aria-label="Email" autocomplete="off">
+      <select id="share-role" aria-label="Role">
+        <option value="viewer">viewer</option>
+        <option value="editor">editor</option>
+      </select>
+      <button class="btn primary" type="submit">Share</button>
+    </form>
+    <div class="public">
+      <label><input type="checkbox" id="public"> Public link</label>
+      <label><input type="checkbox" id="public-writes"> Public writes</label>
+      <button class="btn" type="button" id="copy-link">Copy link</button>
+      <p class="hint" id="public-note">The link carries the artifact's key: anyone who has it can read the artifact.</p>
+    </div>
+    <p class="status-line" id="share-status" role="status"></p>
+  </dialog>
+
+  <script src="/zxcvbn.js"></script>
+  <script type="module" src="/app.mjs"></script>
+</body>
+</html>

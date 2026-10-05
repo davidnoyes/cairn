@@ -49,8 +49,6 @@ type pushed struct {
 	Epoch        int    `json:"epoch"`
 	ManifestHash string `json:"manifestHash"`
 	PushedBy     string `json:"pushedBy"`
-	Name         string `json:"name"`
-	Changelog    string `json:"changelog"`
 }
 
 // storedBytes reads a file under the version's content dir.
@@ -96,15 +94,14 @@ func TestPushStoresCiphertextUnderTheClientsID(t *testing.T) {
 		"index.html": "<h1>" + plainMarker + "</h1>",
 		"app.js":     "console.log('" + plainMarker + "')",
 	})
-	p.Version["name"], p.Version["changelog"] = "v1", "initial"
 	resp := admin.send("POST", "/api/artifacts/"+aid+"/versions", p)
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("push: %d", resp.StatusCode)
 	}
 	v := decode[pushed](t, resp)
 	if v.ID != p.Version["id"] || v.Seq != 1 || v.Epoch != 1 || v.ManifestHash != p.ManifestHash ||
-		v.PushedBy != me.id || v.Name != "v1" || v.Changelog != "initial" {
-		t.Errorf("answer %+v, want the pushed id, seq 1, epoch 1, hash %s, pusher %s, name v1", v, p.ManifestHash, me.id)
+		v.PushedBy != me.id {
+		t.Errorf("answer %+v, want the pushed id, seq 1, epoch 1, hash %s, pusher %s", v, p.ManifestHash, me.id)
 	}
 
 	// The stored bytes are the uploaded ciphertext, byte for byte.
@@ -453,7 +450,6 @@ func TestReplaceVersion(t *testing.T) {
 	base := "/api/artifacts/" + aid + "/versions"
 
 	p1 := newPush(t, aid, "", 1, map[string]string{"index.html": "one"})
-	p1.Version["name"], p1.Version["changelog"] = "v1", "first"
 	v := decode[pushed](t, admin.send("POST", base, p1))
 	v2 := decode[pushed](t, admin.pushPlain(aid))
 	oldBlob := p1.Blobs[0].ID
@@ -466,10 +462,6 @@ func TestReplaceVersion(t *testing.T) {
 	got := decode[pushed](t, resp)
 	if got.ID != v.ID || got.Seq != v.Seq || got.ManifestHash != p2.ManifestHash || got.ManifestHash == p1.ManifestHash {
 		t.Errorf("replaced %+v, want the same id and seq with hash %s", got, p2.ManifestHash)
-	}
-	// An empty name and changelog keep the old ones.
-	if got.Name != "v1" || got.Changelog != "first" {
-		t.Errorf("replaced name %q changelog %q, want v1 and first kept", got.Name, got.Changelog)
 	}
 	if b := storedBytes(t, s, aid, v.ID, "manifest"); !bytes.Equal(b, p2.Manifest) {
 		t.Error("the stored manifest is not the replacement")

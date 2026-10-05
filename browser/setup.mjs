@@ -85,7 +85,12 @@ export default async function globalSetup() {
     });
 
     // Users: sign up, confirm with the link from the log:// mailer, sign in.
-    for (const name of ['owner', 'editor', 'viewer']) {
+    // acct-* change their password, keys and recovery code; drift-* lose their
+    // keys; the owner pins and verifies peer-* keys. One of each per engine, so
+    // a later engine starts from a clean user.
+    const engines = ['chromium', 'firefox', 'webkit'];
+    const names = ['owner', 'editor', 'viewer', ...engines.flatMap((e) => [`acct-${e}`, `drift-${e}`, `peer-${e}`])];
+    for (const name of names) {
       const email = `${name}@${DOMAIN}`;
       const password = `e2e-${name}-password-Qm47vz`;
       const config = path.join(tmp, 'config', name, 'config.json');
@@ -121,6 +126,12 @@ export default async function globalSetup() {
     owner(['share', 'team-doc', state.users.editor.email, '--role', 'editor']);
     owner(['share', 'data-doc', state.users.editor.email, '--role', 'editor']);
     state.publicLink = JSON.parse(owner(['public', 'plain-doc', 'on', '--json'])).link;
+    for (const e of engines) {
+      const acct = state.users[`acct-${e}`];
+      mkdirSync(path.join(fx, `acct-${e}`));
+      const out = JSON.parse(runCli(bin, acct.config, ['push', template('marker', path.join(fx, `acct-${e}`), {}), '--artifact', `acct-doc-${e}`, '--create', '--json']));
+      state.artifacts[`acct-doc-${e}`] = { id: out.artifact.id, version: out.version.id };
+    }
     state.fixturesDir = fx;
 
     writeFileSync(statePath, JSON.stringify(state, null, 2));

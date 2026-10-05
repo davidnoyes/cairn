@@ -36,15 +36,15 @@ func TestMigrationsIdempotent(t *testing.T) {
 
 func TestArtifactsAndVersions(t *testing.T) {
 	s := testStore(t)
-	a, err := s.CreateArtifact("demo", "a demo", false)
+	a, err := s.CreateArtifact(false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	v1, err := s.CreateVersion(a.ID, uuid.NewString(), "v1", "initial", "c1", "", "", 0)
+	v1, err := s.CreateVersion(a.ID, uuid.NewString(), "c1", "", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	v2, err := s.CreateVersion(a.ID, uuid.NewString(), "v2", "more", "c2", "", "", 0)
+	v2, err := s.CreateVersion(a.ID, uuid.NewString(), "c2", "", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestArtifactsAndVersions(t *testing.T) {
 	if err != nil || latest.ID != v2.ID {
 		t.Fatalf("LatestVersion: %v %+v", err, latest)
 	}
-	prev, err := s.SwapVersionContent(a.ID, v2.ID, "c3", "v2b", "fixed", "", "", 0)
+	prev, err := s.SwapVersionContent(a.ID, v2.ID, "c3", "", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestArtifactsAndVersions(t *testing.T) {
 		t.Errorf("prev content dir = %q, want c2", prev)
 	}
 	got, _ := s.VersionByID(a.ID, v2.ID)
-	if got.ContentDir != "c3" || got.Name != "v2b" {
+	if got.ContentDir != "c3" {
 		t.Errorf("after swap: %+v", got)
 	}
 	// Resources

@@ -5,7 +5,7 @@ of **artifacts** — single-page web apps with optional shared SQLite data — a
 open alternative to Claude Artifacts for small trusted teams and AI-agent
 workflows.
 
-One Go binary contains the server, an admin UI, and a client CLI designed to
+One Go binary contains the server, a web app, and a client CLI designed to
 be driven by AI agents.
 
 ```
@@ -13,7 +13,7 @@ be driven by AI agents.
 │  agent / dev  │ ──────────────▶ │  cairn serve                 │
 └───────────────┘                 │  ├─ /full/{id}/{vid}         │  full screen
         ▲                         │  ├─ /shared/{id}             │  framed + metadata
-        │ cairn db query          │  ├─ /admin                   │  admin UI
+        │ cairn db query          │  ├─ /app                     │  web app
         └──────────────────────── │  └─ /api/...                 │  JSON APIs
                                   └──────────────────────────────┘
                                      data/ (SQLite + files)
@@ -22,12 +22,15 @@ be driven by AI agents.
 ## Concepts
 
 - **Artifact** — uuid, name, description, public/private flag, associated
-  *resources* (e.g. a Claude session id), and a sequence of versions.
-- **Version** — uuid, name, changelog, and a directory with at least an
-  `index.html`. Each version also owns a lazily-created SQLite database shared
-  by everyone who uses that version, and a **file storage** where clients
-  upload and download arbitrary files. The server stores both encrypted: the
-  browser, or the `cairn` command, decrypts them and runs SQL on its own copy.
+  *resources* (e.g. a Claude session id), and a sequence of versions. The
+  server holds the name and description encrypted, and each resource as a
+  blind index.
+- **Version** — uuid, encrypted name and changelog, and a directory with at
+  least an `index.html`. Each version also owns a lazily-created SQLite
+  database shared by everyone who uses that version, and a **file storage**
+  where clients upload and download arbitrary files. The server stores both
+  encrypted: the browser, or the `cairn` command, decrypts them and runs SQL
+  on its own copy.
   Versions can be re-uploaded in place (work-in-progress iteration) — the
   shared database and file storage survive re-uploads.
 - **Users** — sign up themselves, in the browser or with `cairn signup`, from an
@@ -113,7 +116,7 @@ image yourself instead: `docker build -t cairn .`
 | `/shared/{id}` / `/shared/{id}/{versionId}` | version embedded in a shell frame with metadata and a version picker |
 | `/full/{id}` / `/full/{id}/{versionId}` | the same frame full screen, with no header |
 | `/artifacts/{id}…` | redirects to the same path under `/shared/`, for old links |
-| `/admin` | admin UI |
+| `/app` | the signed-in home: artifacts, sharing, API keys, account, and users for an administrator; `/admin` redirects here |
 | `/login`, `/logout` | session pages |
 | `/signup`, `/verify`, `/forgot`, `/reset` | account pages; the emailed links open `/verify` and `/reset` |
 
@@ -225,14 +228,16 @@ POST   /api/auth/login                      {email, password[, confirm]}
 GET    /api/me
 GET|PUT /api/me/keyring                    your sealed keyring: {rev, keyring}; PUT needs rev+1, else 409 {error, rev}
 GET    /api/users                           directory: id, name, email (any authed user)
-GET    /api/artifacts                       ?name= ?limit= ?offset=
-POST   /api/artifacts                       {id, name, description, membership, wraps, estate}
-GET|PATCH|DELETE /api/artifacts/{id}
-POST   /api/artifacts/{id}/resources        {type, value}
+GET    /api/artifacts                       ?limit= ?offset=
+POST   /api/artifacts                       {id, membership, wraps, estate}
+GET|DELETE /api/artifacts/{id}
+PUT    /api/artifacts/{id}/meta/{name|description}   encrypted field: {record, blob}
+POST   /api/artifacts/{id}/resources        {type, value}; value is a 64-hex blind index
 DELETE /api/artifacts/{id}/resources/{rid}
 GET    /api/artifacts/{id}/versions
-POST   /api/artifacts/{id}/versions         multipart zip: archive, name, changelog
-GET|PATCH|DELETE /api/artifacts/{id}/versions/{vid}
+POST   /api/artifacts/{id}/versions         multipart: version, manifest, encrypted blobs
+GET|DELETE /api/artifacts/{id}/versions/{vid}
+PUT    /api/artifacts/{id}/versions/{vid}/meta/{name|changelog}   encrypted field: {record, blob}
 PUT    /api/artifacts/{id}/versions/{vid}   re-upload (data survives)
 GET|PUT /api/artifacts/{id}/versions/{vid}/db   latest encrypted revision; PUT needs If-Match
 GET    /api/artifacts/{id}/versions/{vid}/db/revisions        the 10 kept, newest first
@@ -254,7 +259,7 @@ Set two environment variables and every command works headlessly:
 
 ```sh
 export CAIRN_HOST=https://cairn.example.com
-export CAIRN_API_KEY=cairn_xxxxxxxx_yyyyyyyy    # from the admin UI
+export CAIRN_API_KEY=cairn_xxxxxxxx_yyyyyyyy    # from the app's API keys tab
 
 cairn whoami --json
 cairn artifact list --json

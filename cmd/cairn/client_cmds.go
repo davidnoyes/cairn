@@ -439,7 +439,7 @@ func artifactList(args []string) error {
 		if a.Public {
 			vis = "public"
 		}
-		fmt.Printf("%s  %-24s  %-7s  %s\n", a.ID, a.Name, vis, a.Description)
+		fmt.Printf("%s  %-24s  %-7s  %s\n", a.ID, a.Title(), vis, a.Description)
 	}
 	return nil
 }
@@ -484,7 +484,7 @@ func artifactCreate(args []string) error {
 	if *jsonOut {
 		return printJSON(a)
 	}
-	fmt.Printf("created artifact %s (%s)\n", a.Name, a.ID)
+	fmt.Printf("created artifact %s (%s)\n", a.Title(), a.ID)
 	return nil
 }
 
@@ -503,7 +503,7 @@ func artifactShow(args []string) error {
 	if err != nil {
 		return err
 	}
-	a, err := c.ResolveArtifact(target)
+	a, err := resolveArtifact(c, target)
 	if err != nil {
 		return err
 	}
@@ -518,9 +518,11 @@ func artifactShow(args []string) error {
 	if a.Public {
 		vis = "public"
 	}
-	fmt.Printf("%s (%s, %s)\n%s\n", a.Name, a.ID, vis, a.Description)
+	fmt.Printf("%s (%s, %s)\n%s\n", a.Title(), a.ID, vis, a.Description)
+	// The server holds a resource's blind index only, so its value cannot be
+	// read back: each is listed by type and row ID.
 	for _, res := range a.Resources {
-		fmt.Printf("  resource %s = %s\n", res.Type, res.Value)
+		fmt.Printf("  resource %s  %s\n", res.Type, res.ID)
 	}
 	fmt.Printf("versions (%d):\n", len(versions))
 	for _, v := range versions {
@@ -546,25 +548,28 @@ func artifactUpdate(args []string) error {
 	if err != nil {
 		return err
 	}
-	a, err := c.ResolveArtifact(target)
+	a, err := resolveArtifact(c, target)
 	if err != nil {
 		return err
 	}
-	fields := map[string]any{}
+	fields := map[string]string{}
 	if *name != "" {
 		fields["name"] = *name
 	}
 	if *description != "" {
 		fields["description"] = *description
 	}
-	updated, err := c.UpdateArtifact(a.ID, fields)
-	if err != nil {
+	if err := c.UpdateArtifact(a.ID, fields); err != nil {
 		return err
 	}
 	if *jsonOut {
+		updated, err := c.GetArtifact(a.ID)
+		if err != nil {
+			return err
+		}
 		return printJSON(updated)
 	}
-	fmt.Printf("updated artifact %s\n", updated.ID)
+	fmt.Printf("updated artifact %s\n", a.ID)
 	return nil
 }
 
@@ -582,14 +587,14 @@ func artifactDelete(args []string) error {
 	if err != nil {
 		return err
 	}
-	a, err := c.ResolveArtifact(target)
+	a, err := resolveArtifact(c, target)
 	if err != nil {
 		return err
 	}
 	if err := c.DeleteArtifact(a.ID); err != nil {
 		return err
 	}
-	fmt.Printf("deleted artifact %s (%s)\n", a.Name, a.ID)
+	fmt.Printf("deleted artifact %s (%s)\n", a.Title(), a.ID)
 	return nil
 }
 
@@ -624,10 +629,15 @@ func runPush(args []string) error {
 		return err
 	}
 	c.AcceptNewOwner = *accept
-	a, err := c.ResolveArtifact(*artifact)
+	a, err := resolveArtifact(c, *artifact)
 	if err != nil {
 		if !*create {
 			return fmt.Errorf("%w (use --create to create it)", err)
+		}
+		// Only an artifact that is not there is created: a lookup that could
+		// not read the names would otherwise make a second one.
+		if !errors.Is(err, client.ErrNoArtifact) {
+			return err
 		}
 		a, err = c.CreateArtifact(*artifact, "")
 		if err != nil {
@@ -681,7 +691,7 @@ func runOpen(args []string) error {
 	if err != nil {
 		return err
 	}
-	a, err := c.ResolveArtifact(target)
+	a, err := resolveArtifact(c, target)
 	if err != nil {
 		return err
 	}

@@ -12,6 +12,7 @@ import {
 } from './viewer_fixture.mjs';
 import { UNTRUSTED_MESSAGE } from './viewer.mjs';
 import { downloadName, run } from './shell.mjs';
+import { metaItem } from './sharing_fixture.mjs';
 
 const CONTENT = `http://${ARTIFACT}.localhost:8080`;
 const U = {};
@@ -76,7 +77,7 @@ function fakeDom(dataset) {
 }
 
 // page builds a shell page for who (or nobody) and runs it.
-async function page({ who = null, mode = 'shared', version = '', path = '/', isPublic = false, hash = '', members, build, noRun } = {}) {
+async function page({ who = null, mode = 'shared', version = '', path = '/', isPublic = false, hash = '', members, build, noRun, record } = {}) {
   const world = await buildWorld({
     owner: U.owner,
     members: members ?? [{ user: U.editor, role: 'editor' }, { user: U.viewer, role: 'viewer' }],
@@ -86,6 +87,14 @@ async function page({ who = null, mode = 'shared', version = '', path = '/', isP
   for (const [vid, seq, signer] of [[V1, 1, U.owner], [V2, 2, U.owner]]) {
     server.versions.set(vid, await makeVersion(world, vid, { signer: { user: signer.id, seed: signer.ed.seed }, seq }));
   }
+  // The server holds the name and description sealed, as it does for real.
+  server.artifact = {
+    id: ARTIFACT,
+    meta: {
+      name: await metaItem({ world }, { field: 'name', value: 'Guestbook' }),
+      description: await metaItem({ world }, { field: 'description', value: 'Sign here' }),
+    },
+  };
   await build?.({ world, server });
   const dom = fakeDom({ artifact: ARTIFACT, version, path, mode, contentOrigin: CONTENT });
   const handlers = {};
@@ -118,7 +127,7 @@ async function page({ who = null, mode = 'shared', version = '', path = '/', isP
       },
     },
   };
-  const keyStore = fakeKeyStore(who ? await keyStoreRecord(U[who]) : null);
+  const keyStore = fakeKeyStore(record !== undefined ? record : who ? await keyStoreRecord(U[who]) : null);
   const p = { world, server, dom, window, handlers, timers, assigned, replaced, keyStore };
   p.frame = () => dom.els['frame-host'].children[0];
   p.status = () => dom.els.status;
@@ -153,6 +162,39 @@ test('a member sees the artifact, and the frame holds the boot page, sandboxed',
   });
   assert.equal(p.dom.els['frame-host'].children.length, 1);
   assert.deepEqual(p.dom.violations, []);
+});
+
+test('the name, description, and version names come from the sealed fields, never from plaintext the server adds', async () => {
+  const p = await page({
+    who: 'viewer',
+    build: async ({ world, server }) => {
+      Object.assign(server.artifact, { name: 'Server name', description: 'Server description' });
+      Object.assign(server.versions.get(V2).json, { name: 'server-v2', meta: { name: await metaItem({ world }, { version: V2, field: 'name', value: 'Release' }) } });
+      server.versions.get(V1).json.name = 'server-v1';
+    },
+  });
+  assert.equal(p.dom.els.name.textContent, 'Guestbook');
+  assert.equal(p.dom.els.desc.textContent, 'Sign here');
+  assert.deepEqual(p.dom.els.version.children.map((o) => o.textContent), ['#2 Release', '#1']);
+  assert.equal(p.frame().attrs.title, 'Guestbook');
+});
+
+test('a name that fails its checks, or that nobody wrote, shows the artifact ID', async () => {
+  for (const name of [async (world) => metaItem({ world }, { field: 'name', value: 'Forged', signer: U.viewer }), null]) {
+    const p = await page({
+      who: 'viewer',
+      build: async ({ world, server }) => {
+        if (name) server.artifact.meta.name = await name(world); else delete server.artifact.meta.name;
+        server.versions.get(V2).json.meta = { name: await metaItem({ world }, { version: V2, field: 'name', value: 'Forged', signer: U.viewer }) };
+      },
+    });
+    assert.equal(p.status().hidden, true);
+    assert.equal(p.dom.els.name.textContent, ARTIFACT);
+    assert.equal(p.dom.document.title, ARTIFACT);
+    assert.equal(p.frame().attrs.title, ARTIFACT);
+    assert.equal(p.dom.els.desc.textContent, 'Sign here');
+    assert.deepEqual(p.dom.els.version.children.map((o) => o.textContent), ['#2', '#1']);
+  }
 });
 
 test('the page version is the one framed and shown, and the fullscreen link names it', async () => {
@@ -353,6 +395,17 @@ test('nothing is framed after a failure, and each failure is shown', async () =>
   });
   assert.equal(signedOut.frame(), undefined);
   assert.equal(signedOut.status().textContent, 'Your session has ended. Sign in again.');
+});
+
+test('a session whose keys this browser does not hold goes to sign in, and back, with nothing framed or asked', async () => {
+  for (const record of [null, await keyStoreRecord(U.editor)]) {
+    const p = await page({ who: 'viewer', record, mode: 'full', noRun: true });
+    p.window.location.pathname = `/full/${ARTIFACT}/${V1}`;
+    await p.start();
+    assert.equal(p.frame(), undefined);
+    assert.deepEqual(p.assigned, [`/login?next=${encodeURIComponent(`/full/${ARTIFACT}/${V1}`)}`]);
+    assert.equal(p.status().hidden, true, p.status().textContent);
+  }
 });
 
 test('an artifact with no versions says so and is not framed', async () => {

@@ -87,3 +87,37 @@ export async function openShared(page, id, base = 'shared', vid = '') {
   await page.goto(`${s.appOrigin}/${base}/${id}${vid ? `/${vid}` : ''}`);
   return contentFrame(page);
 }
+
+// signedInContext opens a fresh context signed in as a named user.
+export async function signedInContext(browser, user, password) {
+  const u = loadState().users[user];
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await signIn(page, u.email, password ?? u.password);
+  return { context, page };
+}
+
+// cliWithKey runs the CLI headless with an API key and no saved state, the
+// way an agent would: CAIRN_HOST is the test server, never anything else.
+export function cliWithKey(key, args) {
+  const s = loadState();
+  const env = { ...process.env, CAIRN_HOST: s.appOrigin, CAIRN_API_KEY: key, CAIRN_CONFIG: path.join(s.tmp, 'no-config.json') };
+  return execFileSync(s.bin, args, { env, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+}
+
+// mailedLink waits for the newest link matching re in the log:// mailer's
+// output that was not there before `after` bytes of the log.
+export async function mailedLink(re, after, timeout = 20_000) {
+  const s = loadState();
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const m = readFileSync(s.logPath, 'utf8').slice(after).match(new RegExp(re.source, 'g'));
+    if (m) return m[m.length - 1];
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`no mailed link matching ${re} appeared`);
+}
+
+export function logSize() {
+  return readFileSync(loadState().logPath, 'utf8').length;
+}

@@ -54,7 +54,7 @@ func runTransferOffer(args []string) error {
 		return err
 	}
 	c.AcceptNewOwner = *accept
-	a, err := c.ResolveArtifact(pos[0])
+	a, err := resolveArtifact(c, pos[0])
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func runTransferAnswer(answer string, args []string) error {
 		return err
 	}
 	c.AcceptNewOwner = *accept
-	a, err := c.ResolveArtifact(pos[0])
+	a, err := resolveArtifact(c, pos[0])
 	if err != nil {
 		return err
 	}

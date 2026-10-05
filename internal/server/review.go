@@ -12,17 +12,23 @@ import (
 
 // versionView is a version as GET /api/artifacts/{id}/versions and
 // GET /api/artifacts/{id}/versions/{vid} return it. PushedBy is null for a
-// version with no recorded pusher; Vouch is null until the owner vouches.
+// version with no recorded pusher; Vouch is null until the owner vouches. Meta
+// holds the version's encrypted fields, taken from meta by version ID; a field
+// nobody wrote is absent.
 type versionView struct {
 	*store.Version
-	PushedBy *string       `json:"pushedBy"`
-	Vouch    *e2e.Envelope `json:"vouch"`
+	PushedBy *string                 `json:"pushedBy"`
+	Vouch    *e2e.Envelope           `json:"vouch"`
+	Meta     map[string]metaItemView `json:"meta"`
 }
 
-func viewVersions(vs []*store.Version, vouches map[string]store.Envelope) []*versionView {
+func viewVersions(vs []*store.Version, vouches map[string]store.Envelope, meta map[string]map[string]metaItemView) []*versionView {
 	out := make([]*versionView, 0, len(vs))
 	for _, v := range vs {
-		view := &versionView{Version: v}
+		view := &versionView{Version: v, Meta: meta[v.ID]}
+		if view.Meta == nil {
+			view.Meta = map[string]metaItemView{}
+		}
 		if v.PushedBy != "" {
 			view.PushedBy = &v.PushedBy
 		}
@@ -50,7 +56,7 @@ func (s *Server) handleReview(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		for _, v := range viewVersions(vs, nil) {
+		for _, v := range viewVersions(vs, nil, nil) {
 			out = append(out, reviewEntryView{ID: v.ID, Seq: v.Seq, PushedBy: v.PushedBy, CreatedAt: v.CreatedAt})
 		}
 		return nil

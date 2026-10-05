@@ -11,7 +11,7 @@ import {
   makeServer, makeUser, makeVersion, readServerKeyring, rotationRecord, seedKeyring, vouchFor,
 } from './viewer_fixture.mjs';
 import {
-  KeyringBusyError, LinkError, NoAccessError, UNTRUSTED_MESSAGE, UntrustedVersionError, VersionGoneError, WriteError, canWrite, keepToken,
+  KeyringBusyError, LinkError, LockedError, NoAccessError, UNTRUSTED_MESSAGE, UntrustedVersionError, VersionGoneError, WriteError, canWrite, keepToken,
   keysMessage, listVersions, loadContext, mintToken, navigateTarget, openArtifact, prepareVersion, signBodies, takeLink, trustVersion,
   writerKeys,
 } from './viewer.mjs';
@@ -299,7 +299,35 @@ test('a signed-in non-member without a link is told to sign in or use the full l
 test('a visitor without a link is told to sign in or use the full link', async () => {
   const s = await scene({ isPublic: true });
   await assert.rejects(() => open(s), { name: 'NoAccessError', message: /Sign in.*full public link/ });
-  assert.equal(s.server.calls.length, 0);
+  assert.deepEqual(s.server.calls.map((c) => c.path), ['/api/me'], 'only whether there is a session');
+});
+
+test('a visitor with a link is never asked whether there is a session', async () => {
+  const s = await scene({ isPublic: true });
+  assert.equal((await open(s, linkFor(s.world))).mode, 'link');
+  assert.equal(s.server.calls.some((c) => c.path === '/api/me'), false);
+});
+
+test('a session whose keys this browser does not hold, or holds for another user, is locked: it signs in again', async () => {
+  for (const record of [null, records.editor]) {
+    const s = await scene({ who: 'owner', isPublic: true, record });
+    await assert.rejects(() => open(s), LockedError);
+    assert.equal(s.server.calls.some((c) => c.path.includes('/membership')), false, 'nothing is fetched before the keys');
+  }
+});
+
+test('a session without keys still opens a link, as a visitor', async () => {
+  const s = await scene({ who: 'owner', isPublic: true, record: null });
+  const opened = await open(s, linkFor(s.world));
+  assert.equal(opened.mode, 'link');
+  assert.equal(opened.caller, null);
+});
+
+test('whether there is a session fails loudly, not as locked or no access', async () => {
+  const s = await scene({ isPublic: true });
+  const base = s.server.fetch;
+  s.deps.fetch = async (path, init) => (path === '/api/me' ? new Response('{}', { status: 500 }) : base(path, init));
+  await assert.rejects(() => open(s), (err) => err.status === 500);
 });
 
 test('a member who also has the link opens as a member', async () => {

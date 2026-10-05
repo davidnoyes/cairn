@@ -41,8 +41,6 @@ type pushVersionPart struct {
 	ID           string `json:"id"`
 	Epoch        int    `json:"epoch"`
 	ManifestHash string `json:"manifestHash"`
-	Name         string `json:"name"`
-	Changelog    string `json:"changelog"`
 }
 
 // handleUploadVersion creates a version from a multipart push of encrypted
@@ -55,7 +53,7 @@ func (s *Server) handleUploadVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	// The id the client chose goes in the manifest and every blob's context,
 	// so the server never picks one: an id any version uses is a conflict.
-	v, err := s.store.CreateVersion(a.ID, p.ID, p.Name, p.Changelog, contentDir, requestUser(r).ID, p.ManifestHash, p.Epoch)
+	v, err := s.store.CreateVersion(a.ID, p.ID, contentDir, requestUser(r).ID, p.ManifestHash, p.Epoch)
 	if err != nil {
 		os.RemoveAll(s.layout.ContentDir(a.ID, contentDir))
 		if errors.Is(err, store.ErrExists) {
@@ -89,14 +87,7 @@ func (s *Server) handleReplaceVersion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "the version id must be the id in the URL")
 		return
 	}
-	name, changelog := p.Name, p.Changelog
-	if name == "" {
-		name = v.Name
-	}
-	if changelog == "" {
-		changelog = v.Changelog
-	}
-	prev, err := s.store.SwapVersionContent(v.ArtifactID, v.ID, contentDir, name, changelog, requestUser(r).ID, p.ManifestHash, p.Epoch)
+	prev, err := s.store.SwapVersionContent(v.ArtifactID, v.ID, contentDir, requestUser(r).ID, p.ManifestHash, p.Epoch)
 	if err != nil {
 		os.RemoveAll(s.layout.ContentDir(v.ArtifactID, contentDir))
 		s.writeStoreError(w, err, "version")

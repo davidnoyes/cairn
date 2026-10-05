@@ -48,6 +48,7 @@ function fakeServer({ signupStatus = 202 } = {}) {
       case '/api/auth/signup':
         if (signupStatus !== 202) return json(signupStatus, { error: 'sign-up is not open for this address' });
         server.accounts.set(body.email, { id: 'u-' + body.email, name: body.name, authKey: body.authKey, bundle: body.bundle });
+        server.current = body.email;
         return json(202, { status: 'check-email' });
       case '/api/auth/prelogin': {
         const a = server.accounts.get(body.email);
@@ -84,6 +85,28 @@ function fakeServer({ signupStatus = 202 } = {}) {
           const ok = await e2e.verify(e2e.unb64(a.bundle.ed25519Pub), 'reset', proofBody, e2e.unb64(body.proof));
           if (!ok) return json(403, { error: 'invalid proof' });
           server.accounts.set(email, { ...a, authKey: body.authKey, bundle: { ...a.bundle, kdf: body.kdf, mkPassword: body.mkPassword } });
+        }
+        return json(200, { ok: true });
+      }
+      // The signed-in account's endpoints act on server.current, the last
+      // account to sign up. Each fresh-password check answers as
+      // requireFreshAuthKey does.
+      case '/api/me': {
+        const a = server.accounts.get(server.current);
+        return json(200, { id: a.id, email: server.current, name: a.name, isAdmin: false });
+      }
+      case '/api/me/bundle':
+        return json(200, server.accounts.get(server.current).bundle);
+      case '/api/keys':
+      case '/api/me/password':
+      case '/api/me/recovery': {
+        const a = server.accounts.get(server.current);
+        if (body.authKey !== a.authKey) return json(401, { error: 'invalid password' });
+        if (path === '/api/keys') return json(201, { id: body.keyId, name: body.name, device: body.device, createdAt: 'now' });
+        if (path === '/api/me/password') {
+          server.accounts.set(server.current, { ...a, authKey: body.newAuthKey, bundle: { ...a.bundle, kdf: body.kdf, mkPassword: body.mkPassword } });
+        } else {
+          server.accounts.set(server.current, { ...a, bundle: { ...a.bundle, mkRecovery: body.mkRecovery } });
         }
         return json(200, { ok: true });
       }
@@ -659,6 +682,128 @@ test('reset with the recovery code zeroes the stretched key when deriving from i
   try {
     const deps = makeDeps(server, { stretch: stretchKeeping(kept, () => spy.failing.add('deriveBits')) });
     await assert.rejects(account.resetWithRecovery(deps, { token, info, recoveryCode, password: NEW_STRONG, confirm: NEW_STRONG }), /injected deriveBits/);
+  } finally {
+    spy.restore();
+  }
+  for (const secret of [...kept, ...spy.decrypted, ...spy.raws]) assert.ok(isZero(secret), 'a secret was left in memory');
+});
+
+// ------------------------------------------------- signed-in account changes
+
+// mkOf opens the account's MK with its password, as sign-in does.
+async function mkOf(server, password, email = 'ada@example.com') {
+  const b = server.accounts.get(email).bundle;
+  const stretched = await fakeStretch(password, email, { salt: e2e.unb64(b.kdf.salt) });
+  const { kek } = await e2e.passwordKeys(stretched);
+  return e2e.open(kek, ['mk'], e2e.unb64(b.mkPassword));
+}
+
+test('createApiKey seals MK under the new key, sends only its public parts, and returns the full key once', async () => {
+  const server = fakeServer();
+  const { deps } = await signedUp(server);
+  const authKey = server.accounts.get('ada@example.com').authKey;
+  const out = await account.createApiKey(deps, { name: ' laptop ', password: STRONG });
+  const [req] = call(server, '/api/keys');
+  assert.equal(req.method, 'POST');
+  assert.deepEqual(Object.keys(req.body).sort(), ['authKey', 'authSecret', 'device', 'keyId', 'mk', 'name']);
+  assert.equal(req.body.authKey, authKey);
+  assert.equal(req.body.name, 'laptop');
+  assert.equal(req.body.device, false);
+  const parsed = e2e.parseApiKey(out.key);
+  assert.equal(req.body.keyId, parsed.keyId);
+  assert.equal(req.body.authSecret, parsed.authSecret);
+  assert.ok(!JSON.stringify(server.log).includes(e2e.toHex(parsed.keySecret)), 'the key secret never reaches the server');
+  const mk = await e2e.open(await e2e.apiKeyKek(parsed.keySecret, parsed.keyId), ['mk', parsed.keyId], e2e.unb64(req.body.mk));
+  assert.deepEqual(mk, await mkOf(server, STRONG));
+  assert.equal(out.id, parsed.keyId);
+});
+
+test('createApiKey refuses a wrong or empty password and an empty name without creating a key', async () => {
+  const server = fakeServer();
+  const { deps } = await signedUp(server);
+  await assert.rejects(account.createApiKey(deps, { name: 'k', password: 'not it' }), /password is wrong/);
+  await assert.rejects(account.createApiKey(deps, { name: 'k', password: '' }), /password/);
+  await assert.rejects(account.createApiKey(deps, { name: '  ', password: STRONG }), /name/);
+  assert.equal(call(server, '/api/keys').length, 0);
+});
+
+test("createApiKey surfaces the server's refusal of the password", async () => {
+  const server = fakeServer();
+  const { deps } = await signedUp(server);
+  server.accounts.get('ada@example.com').authKey = 'stale';
+  await assert.rejects(account.createApiKey(deps, { name: 'k', password: STRONG }), (e) => e.status === 401 && /password/.test(e.message));
+});
+
+test('changePassword re-seals the same MK under a fresh salt, and only the new password signs in', async () => {
+  const server = fakeServer();
+  const { deps } = await signedUp(server);
+  const mk = await mkOf(server, STRONG);
+  const before = server.accounts.get('ada@example.com');
+  await account.changePassword(deps, { current: STRONG, next: NEW_STRONG, confirm: NEW_STRONG });
+  const [req] = call(server, '/api/me/password');
+  assert.equal(req.method, 'PUT');
+  assert.deepEqual(Object.keys(req.body).sort(), ['authKey', 'kdf', 'mkPassword', 'newAuthKey']);
+  assert.equal(req.body.authKey, before.authKey);
+  assert.deepEqual({ ...req.body.kdf, salt: undefined }, { alg: 'argon2id', m: 65536, t: 3, p: 1, salt: undefined });
+  assert.notEqual(req.body.kdf.salt, before.bundle.kdf.salt);
+  assert.deepEqual(await mkOf(server, NEW_STRONG), mk);
+
+  await assert.rejects(account.signIn(makeDeps(server), { email: 'ada@example.com', password: STRONG }), /invalid email or password/);
+  await account.signIn(makeDeps(server), { email: 'ada@example.com', password: NEW_STRONG });
+});
+
+test('changePassword checks the new password before anything, and refuses a wrong current one', async () => {
+  const server = fakeServer();
+  const { deps } = await signedUp(server);
+  const sent = server.log.length;
+  await assert.rejects(account.changePassword(deps, { current: STRONG, next: NEW_STRONG, confirm: NEW_STRONG + 'x' }), /do not match/);
+  await assert.rejects(account.changePassword(deps, { current: STRONG, next: 'short-one', confirm: 'short-one' }), (e) => e.name === 'WeakPasswordError');
+  assert.deepEqual(server.log.slice(sent).map((e) => e.path), ['/api/me'], 'nothing past the account lookup for a bad new password');
+  await assert.rejects(account.changePassword(deps, { current: 'not it', next: NEW_STRONG, confirm: NEW_STRONG }), /password is wrong/);
+  assert.equal(call(server, '/api/me/password').length, 0);
+});
+
+test('changePassword gives the strength estimator the email and name', async () => {
+  const server = fakeServer();
+  const { deps } = await signedUp(server);
+  fakeStrength.calls.length = 0;
+  await account.changePassword(deps, { current: STRONG, next: NEW_STRONG, confirm: NEW_STRONG });
+  assert.deepEqual(fakeStrength.calls[0].userInputs, ['ada@example.com', 'Ada']);
+});
+
+test('newRecoveryCode seals MK under a new code that the old one no longer opens', async () => {
+  const server = fakeServer();
+  const { deps, recoveryCode: old } = await signedUp(server);
+  const authKey = server.accounts.get('ada@example.com').authKey;
+  const { recoveryCode } = await account.newRecoveryCode(deps, { password: STRONG });
+  assert.match(recoveryCode, /^([A-Z2-7]{4}-){6}[A-Z2-7]{2}$/);
+  const [req] = call(server, '/api/me/recovery');
+  assert.equal(req.method, 'PUT');
+  assert.deepEqual(Object.keys(req.body).sort(), ['authKey', 'mkRecovery']);
+  assert.equal(req.body.authKey, authKey);
+  const sealed = e2e.unb64(req.body.mkRecovery);
+  const mk = await e2e.open(await e2e.recoveryKek(e2e.parseRecoveryCode(recoveryCode)), ['mk'], sealed);
+  assert.deepEqual(mk, await mkOf(server, STRONG));
+  await assert.rejects(e2e.open(await e2e.recoveryKek(e2e.parseRecoveryCode(old)), ['mk'], sealed), e2e.DecryptError);
+});
+
+test('newRecoveryCode refuses a wrong password without a request', async () => {
+  const server = fakeServer();
+  const { deps } = await signedUp(server);
+  await assert.rejects(account.newRecoveryCode(deps, { password: 'not it' }), /password is wrong/);
+  assert.equal(call(server, '/api/me/recovery').length, 0);
+});
+
+test('the account changes zero MK, the stretched password, and the key secret', async () => {
+  const server = fakeServer();
+  const { deps } = await signedUp(server);
+  const kept = [];
+  const spy = spyCrypto();
+  try {
+    const d = { ...deps, stretch: stretchKeeping(kept) };
+    await account.createApiKey(d, { name: 'k', password: STRONG });
+    await account.newRecoveryCode(d, { password: STRONG });
+    await account.changePassword(d, { current: STRONG, next: NEW_STRONG, confirm: NEW_STRONG });
   } finally {
     spy.restore();
   }

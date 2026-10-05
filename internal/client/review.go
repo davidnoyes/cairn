@@ -302,7 +302,7 @@ func (c *Client) Vouch(artifactID, versionID string) error {
 	if latest := va.Chain.Latest; latest.Owner != k.UserID || latest.OwnerFP != k.FP {
 		return ErrVouchNotOwner
 	}
-	versions, err := c.ListVersions(artifactID)
+	versions, err := c.storeVersions(artifactID)
 	if err != nil {
 		return err
 	}

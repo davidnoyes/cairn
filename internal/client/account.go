@@ -98,6 +98,10 @@ func newBundle(email, password string, params e2e.Params) (*newAccount, error) {
 	if err != nil {
 		return nil, err
 	}
+	indexKey, err := e2e.IndexKey(mk)
+	if err != nil {
+		return nil, err
+	}
 
 	mkPassword, err := sealField(kek, "mk", mk)
 	if err != nil {
@@ -141,7 +145,7 @@ func newBundle(email, password string, params e2e.Params) (*newAccount, error) {
 			FP:        hex.EncodeToString(e2e.Fingerprint(x25519Pub, ed25519Pub)),
 			X25519Pub: x25519Pub, X25519Priv: x25519Priv,
 			Ed25519Pub: ed25519Pub, Ed25519Seed: ed25519Seed,
-			EK: ek, MKSealKey: mkSealKey,
+			EK: ek, MKSealKey: mkSealKey, IndexKey: indexKey,
 		},
 	}, nil
 }

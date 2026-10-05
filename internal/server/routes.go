@@ -63,7 +63,7 @@ func (s *Server) routes() {
 	handle("GET /api/artifacts", s.requireAuth(s.handleListArtifacts))
 	handle("POST /api/artifacts", s.requireAuth(s.handleCreateArtifact))
 	handle("GET /api/artifacts/{id}", s.artifactRoute(access.ReadContent, s.handleGetArtifact))
-	handle("PATCH /api/artifacts/{id}", s.artifactRoute(access.Rename, s.handleUpdateArtifact))
+	handle("PUT /api/artifacts/{id}/meta/{field}", s.artifactRoute(access.Rename, s.handlePutArtifactMeta))
 	handle("DELETE /api/artifacts/{id}", s.artifactRoute(access.Delete, s.handleDeleteArtifact))
 	handle("GET /api/artifacts/{id}/membership", s.artifactRoute(access.ReadMembership, s.handleGetMembership))
 	handle("PUT /api/artifacts/{id}/membership", s.artifactRoute(access.Share, s.handlePutMembership))
@@ -84,7 +84,7 @@ func (s *Server) routes() {
 	handle("PUT /api/artifacts/{id}/versions/{vid}", s.artifactRoute(access.PushVersion, s.handleReplaceVersion))
 	handle("GET /api/artifacts/{id}/versions/{vid}/manifest", s.artifactRoute(access.ReadContent, s.handleGetManifest))
 	handle("GET /api/artifacts/{id}/versions/{vid}/blobs/{blob}", s.artifactRoute(access.ReadContent, s.handleGetBlob))
-	handle("PATCH /api/artifacts/{id}/versions/{vid}", s.artifactRoute(access.Rename, s.handleUpdateVersionMeta))
+	handle("PUT /api/artifacts/{id}/versions/{vid}/meta/{field}", s.artifactRoute(access.Rename, s.handlePutVersionMeta))
 	handle("DELETE /api/artifacts/{id}/versions/{vid}", s.artifactRoute(access.Delete, s.handleDeleteVersion))
 
 	// Per-version database revisions and stored files: client-encrypted
@@ -104,7 +104,9 @@ func (s *Server) routes() {
 	for _, page := range []string{"signup", "verify", "forgot", "reset"} {
 		handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))
 	}
-	handle("GET /admin", withAppCSP(s.handleAdminPage))
+	handle("GET /app", withAppCSP(s.handleAppPage))
+	// The old admin page's address, kept for bookmarks.
+	handle("GET /admin", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app", http.StatusFound) })
 	handle("GET /logout", s.handleLogoutPage)
 	handle("GET /cairn.js", s.serveCairnJS)
 	handle("GET /mermaid.js", s.serveMermaidJS)

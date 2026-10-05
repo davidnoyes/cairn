@@ -306,7 +306,7 @@ func TestApplyAcceptanceThroughTheStore(t *testing.T) {
 		V: 1, Artifact: artID, Epoch: 1, Seq: 1, Owner: o.ID, OwnerFP: o.FP, AKCommit: commit(1),
 		Members: []e2e.Member{member(a, "editor")}, Excluded: []e2e.ExcludedEntry{}, Team: "none",
 	}
-	_, err = s.CreateOwnedArtifact(artID, "N", "", o.ID, func(tx *store.ArtifactTx) error {
+	_, err = s.CreateOwnedArtifact(artID, o.ID, func(tx *store.ArtifactTx) error {
 		dir := TxDirectory(tx)
 		cur, err := Load(tx, dir)
 		if err != nil {

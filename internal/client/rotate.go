@@ -151,7 +151,7 @@ func (c *Client) RotateKeys(password string, keepEpochs bool) (*RotateResult, er
 	newKR := kr.Clone()
 	newKR.Rev = kr.Rev + 1
 
-	arts, err := s.ListArtifacts()
+	arts, err := s.listArtifacts()
 	if err != nil {
 		return nil, err
 	}
@@ -456,7 +456,7 @@ func (c *Client) rotateConflict(userID, oldFP string, last, rev int, owned map[s
 	if err := c.doJSON("GET", "/api/me/keyring", nil, &kw); err == nil && kw.Rev != rev {
 		moved = append(moved, fmt.Sprintf("the keyring moved from rev %d to rev %d", rev, kw.Rev))
 	}
-	if arts, err := c.ListArtifacts(); err == nil {
+	if arts, err := c.listArtifacts(); err == nil {
 		now := map[string]bool{}
 		for _, a := range arts {
 			if a.OwnerID == userID && a.Epoch > 0 {

@@ -87,7 +87,7 @@ func newPush(t *testing.T, aid, vid string, epoch int, files map[string]string) 
 		t.Fatal(err)
 	}
 	p.ManifestHash = e2e.BodyHash(body)
-	p.Version = map[string]any{"id": vid, "epoch": epoch, "manifestHash": p.ManifestHash, "name": "", "changelog": ""}
+	p.Version = map[string]any{"id": vid, "epoch": epoch, "manifestHash": p.ManifestHash}
 	return p
 }
 
@@ -188,15 +188,13 @@ func (c *testClient) pushFiles(method, aid, vid string, files map[string]string)
 }
 
 // upload pushes files as c would, at the artifact's current epoch: a new
-// version for POST, or the version in the path for PUT. fields may carry
-// "name" and "changelog".
-func (c *testClient) upload(method, path string, files map[string]string, fields map[string]string) *http.Response {
+// version for POST, or the version in the path for PUT.
+func (c *testClient) upload(method, path string, files map[string]string) *http.Response {
 	c.t.Helper()
 	rest := strings.TrimPrefix(path, "/api/artifacts/")
 	aid, tail, _ := strings.Cut(rest, "/versions")
 	vid := strings.TrimPrefix(tail, "/")
 	p := newPush(c.t, aid, vid, c.currentEpoch(aid), files)
-	p.Version["name"], p.Version["changelog"] = fields["name"], fields["changelog"]
 	return c.send(method, path, p)
 }
 

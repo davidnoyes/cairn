@@ -8,17 +8,16 @@ import (
 
 	"github.com/aloisdeniel/cairn/internal/client"
 	"github.com/aloisdeniel/cairn/internal/sqlrun"
-	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 // pushedSite logs in, creates an artifact called "site" and pushes one
 // version to it.
-func pushedSite(t *testing.T) (c *client.Client, a store.Artifact, v store.Version) {
+func pushedSite(t *testing.T) (c *client.Client, a client.Artifact, v client.Version) {
 	t.Helper()
 	c = loggedIn(t)
 	type pushed struct {
-		Artifact store.Artifact `json:"artifact"`
-		Version  store.Version  `json:"version"`
+		Artifact client.Artifact `json:"artifact"`
+		Version  client.Version  `json:"version"`
 	}
 	p := runJSON[pushed](t, runPush, siteDir(t), "--artifact", "site", "--create", "--name", "v1", "--changelog", "first", "--json")
 	return c, p.Artifact, p.Version
@@ -45,7 +44,7 @@ func TestArtifactListTextAndJSON(t *testing.T) {
 	if err != nil || out != "" {
 		t.Errorf("list with no artifacts = %q, %v", out, err)
 	}
-	a := runJSON[store.Artifact](t, runArtifact, "create", "notes", "--description", "my notes", "--json")
+	a := runJSON[client.Artifact](t, runArtifact, "create", "notes", "--description", "my notes", "--json")
 	out, err = runQuiet(t, runArtifact, "list")
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +52,7 @@ func TestArtifactListTextAndJSON(t *testing.T) {
 	if !strings.HasPrefix(out, a.ID+"  notes ") || !strings.Contains(out, "  private  my notes\n") {
 		t.Errorf("list text = %q", out)
 	}
-	list := runJSON[[]store.Artifact](t, runArtifact, "list", "--json")
+	list := runJSON[[]client.Artifact](t, runArtifact, "list", "--json")
 	if len(list) != 1 || list[0].ID != a.ID || list[0].Name != "notes" {
 		t.Errorf("list json = %+v", list)
 	}
@@ -74,8 +73,8 @@ func TestArtifactShow(t *testing.T) {
 		}
 	}
 	got := runJSON[struct {
-		Artifact store.Artifact  `json:"artifact"`
-		Versions []store.Version `json:"versions"`
+		Artifact client.Artifact  `json:"artifact"`
+		Versions []client.Version `json:"versions"`
 	}](t, runArtifact, "show", a.ID, "--json")
 	if got.Artifact.ID != a.ID || len(got.Versions) != 1 || got.Versions[0].ID != v.ID {
 		t.Errorf("show json = %+v", got)
@@ -120,8 +119,8 @@ func TestPushRecordsNameChangelogAndURL(t *testing.T) {
 		t.Errorf("version = %+v", v)
 	}
 	url := runJSON[struct {
-		URL     string        `json:"url"`
-		Version store.Version `json:"version"`
+		URL     string         `json:"url"`
+		Version client.Version `json:"version"`
 	}](t, runPush, siteDir(t), "--artifact", a.ID, "--json")
 	if want := c.Host + "/full/" + a.ID + "/" + url.Version.ID; url.URL != want {
 		t.Errorf("push url = %q, want %q", url.URL, want)
@@ -175,7 +174,7 @@ func TestDBQueryRefusals(t *testing.T) {
 			t.Errorf("%s: %v, want %q", tc.name, err, tc.want)
 		}
 	}
-	runJSON[store.Artifact](t, runArtifact, "create", "bare", "--json")
+	runJSON[client.Artifact](t, runArtifact, "create", "bare", "--json")
 	if err := runDB([]string{"query", "--artifact", "bare", "SELECT 1"}); err == nil || !strings.Contains(err.Error(), "artifact has no versions yet") {
 		t.Errorf("query of an artifact with no versions: %v", err)
 	}
@@ -248,7 +247,7 @@ func TestFilesRefusals(t *testing.T) {
 			t.Errorf("%s: %v, want %q", tc.name, err, tc.want)
 		}
 	}
-	runJSON[store.Artifact](t, runArtifact, "create", "bare", "--json")
+	runJSON[client.Artifact](t, runArtifact, "create", "bare", "--json")
 	if err := runFiles([]string{"list", "--artifact", "bare"}); err == nil || !strings.Contains(err.Error(), "artifact has no versions yet") {
 		t.Errorf("list of an artifact with no versions: %v", err)
 	}

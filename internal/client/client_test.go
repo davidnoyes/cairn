@@ -1,6 +1,7 @@
 package client
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -52,9 +53,11 @@ func TestArtifactLifecycle(t *testing.T) {
 		t.Fatalf("ListArtifacts = %+v, %v", all, err)
 	}
 
-	updated, err := c.UpdateArtifact(a.ID, map[string]any{"description": "updated"})
-	if err != nil || updated.Description != "updated" {
-		t.Fatalf("UpdateArtifact = %+v, %v", updated, err)
+	if err := c.UpdateArtifact(a.ID, map[string]string{"description": "updated"}); err != nil {
+		t.Fatalf("UpdateArtifact: %v", err)
+	}
+	if got, err := c.GetArtifact(a.ID); err != nil || got.Description != "updated" {
+		t.Fatalf("GetArtifact after the update = %+v, %v", got, err)
 	}
 
 	if _, err := c.Users(); err != nil {
@@ -106,7 +109,7 @@ func TestResolveArtifactAmbiguousName(t *testing.T) {
 
 func TestResolveArtifactNotFound(t *testing.T) {
 	c := authedClient(t)
-	if _, err := c.ResolveArtifact("nope"); err == nil {
-		t.Fatal("missing artifact resolved without error")
+	if _, err := c.ResolveArtifact("nope"); !errors.Is(err, ErrNoArtifact) {
+		t.Fatalf("ResolveArtifact(nope) = %v, want ErrNoArtifact", err)
 	}
 }

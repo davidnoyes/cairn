@@ -45,7 +45,7 @@ func (f dataFlags) open(write bool) (*client.Client, *client.Data, string, error
 		return nil, nil, "", err
 	}
 	c.AcceptNewOwner = *f.accept
-	a, err := c.ResolveArtifact(*f.artifact)
+	a, err := resolveArtifact(c, *f.artifact)
 	if err != nil {
 		return nil, nil, "", err
 	}
@@ -401,7 +401,7 @@ func runReseal(args []string) error {
 		return err
 	}
 	c.AcceptNewOwner = *accept
-	a, err := c.ResolveArtifact(pos[0])
+	a, err := resolveArtifact(c, pos[0])
 	if err != nil {
 		return err
 	}
@@ -415,7 +415,7 @@ func runReseal(args []string) error {
 		}
 		return err
 	}
-	if res.Databases == 0 && res.Files == 0 && res.Versions == 0 && len(res.Skipped) == 0 && err == nil {
+	if res.Databases == 0 && res.Files == 0 && res.Versions == 0 && res.Meta == 0 && len(res.Skipped) == 0 && err == nil {
 		fmt.Println("nothing to seal again: the data is under the current epoch")
 		return nil
 	}

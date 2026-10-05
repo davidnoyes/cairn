@@ -192,15 +192,15 @@ func (s *Store) WithArtifact(id string, fn func(*ArtifactTx) error) error {
 // runs fn (if not nil) in the same transaction, so the first record and its
 // wraps land with the artifact or not at all. An ID in use is ErrExists. fn
 // follows the same rules as in WithArtifact.
-func (s *Store) CreateOwnedArtifact(id, name, description, ownerID string, fn func(*ArtifactTx) error) (*Artifact, error) {
+func (s *Store) CreateOwnedArtifact(id, ownerID string, fn func(*ArtifactTx) error) (*Artifact, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 	t := now()
-	if _, err := tx.Exec(`INSERT INTO artifacts (id, name, description, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		id, name, description, ownerID, t, t); err != nil {
+	if _, err := tx.Exec(`INSERT INTO artifacts (id, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+		id, ownerID, t, t); err != nil {
 		if isUniqueViolation(err) {
 			return nil, ErrExists
 		}

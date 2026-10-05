@@ -63,7 +63,7 @@ func setupArtifact(t *testing.T, ts string, public bool) (admin *testClient, aid
 		"index.html":     "<h1>hello v1</h1><script src=\"./cairn.js\"></script>",
 		"app.js":         "console.log('app')",
 		"sub/index.html": "<h1>sub page</h1>",
-	}, map[string]string{"name": "v1"})
+	})
 	v := decode[struct {
 		ID string `json:"id"`
 	}](t, resp)

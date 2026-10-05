@@ -9,17 +9,16 @@ import (
 	"testing"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
-	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 // versionsByID lists the artifact's versions as c, keyed by ID.
-func versionsByID(t *testing.T, c *Client, artifact string) map[string]*store.Version {
+func versionsByID(t *testing.T, c *Client, artifact string) map[string]*Version {
 	t.Helper()
 	list, err := c.ListVersions(artifact)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := map[string]*store.Version{}
+	out := map[string]*Version{}
 	for _, v := range list {
 		out[v.ID] = v
 	}
@@ -82,7 +81,7 @@ func TestResealReplacesTheLatestVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.ada.checkManifest(k, va.Chain, e.artifact, got); err != nil {
+	if err := e.ada.checkManifest(k, va.Chain, e.artifact, &got.Version); err != nil {
 		t.Errorf("checkManifest: %v", err)
 	}
 	// The new public link's AK opens it.
@@ -183,13 +182,13 @@ func TestResealLeavesADemotedEditorsLatestVersion(t *testing.T) {
 
 // resealTampered unshares bob while ada's requests are changed, and returns
 // what the re-seal did and the state of the one version.
-func resealTampered(t *testing.T, tp *tamper) (*ResealResult, *store.Version) {
+func resealTampered(t *testing.T, tp *tamper) (*ResealResult, *Version) {
 	t.Helper()
 	return resealTamperedIn(t, func(*dataEnv) *tamper { return tp })
 }
 
 // resealTamperedIn is resealTampered with the tamper built from the world.
-func resealTamperedIn(t *testing.T, tp func(e *dataEnv) *tamper) (*ResealResult, *store.Version) {
+func resealTamperedIn(t *testing.T, tp func(e *dataEnv) *tamper) (*ResealResult, *Version) {
 	t.Helper()
 	e := newDataEnv(t)
 	if _, err := e.ada.Share(e.artifact, "bob@example.com", "viewer", false); err != nil {

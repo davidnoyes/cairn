@@ -219,14 +219,14 @@ internal/server/sharing.go	a.PublicTokenHash == "" || a.PublicEpoch != a.Epoch {
 
 # Browser account pages (milestone 2 part E).
 internal/server/web/account.mjs	export const MIN_SCORE = 3;	export const MIN_SCORE = 0;	node --test internal/server/web/account_test.mjs
-internal/server/web/account.mjs	e2e.checkFloor(kdf);	void 0;	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	e2e.checkFloor(parsed);	void 0;	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	history.replaceState(null, '', location.pathname + location.search);	void 0;	node --test internal/server/web/account_test.mjs
 internal/server/web/e2e.mjs	return importEd25519Priv(seed, false, ['sign']);	return importEd25519Priv(seed, true, ['sign']);	node --test internal/server/web/account_test.mjs
 internal/server/web/e2e.mjs	importX25519Priv(raw, false, ['deriveBits']);	importX25519Priv(raw, true, ['deriveBits']);	node --test internal/server/web/e2e_test.mjs
 internal/server/web/account.mjs	await deps.keyStore.clear();	void 0;	node --test internal/server/web/account_test.mjs
 internal/server/web/keystore.mjs	const clear = () => run('readwrite', (store) => store.clear());	const clear = () => run('readwrite', () => ({}));	node --test internal/server/web/keystore_test.mjs
 internal/server/routes.go	handle("GET /login", withAppCSP(s.handleLoginPage))	handle("GET /login", s.handleLoginPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
-internal/server/routes.go	handle("GET /admin", withAppCSP(s.handleAdminPage))	handle("GET /admin", s.handleAdminPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	handle("GET /app", withAppCSP(s.handleAppPage))	handle("GET /app", s.handleAppPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
 internal/server/routes.go	handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "signup" { handle("GET /"+page, s.handleStaticPage(page+".html")) } else { handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
 internal/server/routes.go	handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "verify" { handle("GET /"+page, s.handleStaticPage(page+".html")) } else { handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
 internal/server/routes.go	handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "forgot" { handle("GET /"+page, s.handleStaticPage(page+".html")) } else { handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
@@ -243,9 +243,9 @@ internal/server/web/account.mjs	for (const secret of [mk, ek, recovery?.code, x2
 internal/server/web/account.mjs	const stretched = await deps.stretch(password, email, kdf);	const stretched = Object.assign(await deps.stretch(password, email, kdf), { fill() {} });	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	const stretched = await deps.stretch(password, email, params);	const stretched = Object.assign(await deps.stretch(password, email, params), { fill() {} });	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	stretched = await deps.stretch(password, info.email, params);	stretched = Object.assign(await deps.stretch(password, info.email, params), { fill() {} });	node --test internal/server/web/account_test.mjs
-internal/server/web/admin-init.mjs	if (!(err instanceof UnauthenticatedError)) {	if (true) {	node --test internal/server/web/admin-init_test.mjs
-internal/server/web/admin-init.mjs	      fail(err);	      void 0;	node --test internal/server/web/admin-init_test.mjs
-internal/server/web/admin-init.mjs	if (!(err instanceof UnauthenticatedError)) listFailed(name, err);	throw err;	node --test internal/server/web/admin-init_test.mjs
+internal/server/web/app-init.mjs	if (!(err instanceof UnauthenticatedError)) {	if (true) {	node --test internal/server/web/app-init_test.mjs
+internal/server/web/app-init.mjs	      fail(err);	      void 0;	node --test internal/server/web/app-init_test.mjs
+internal/server/web/app-init.mjs	if (!(err instanceof UnauthenticatedError)) listFailed(name, err);	throw err;	node --test internal/server/web/app-init_test.mjs
 internal/server/web/ui.mjs	button.disabled = false;	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/account.mjs	/^#token=([A-Za-z0-9_-]+)$/	/^#token=([A-Za-z0-9_-]+)/	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	/^#token=([A-Za-z0-9_-]+)$/	/#token=([A-Za-z0-9_-]+)$/	node --test internal/server/web/account_test.mjs
@@ -285,14 +285,14 @@ cmd/cairn/share_cmds.go	if f.Name == "writes" {	if false {	go test ./cmd/cairn -
 cmd/cairn/share_cmds.go	if *writesFlag == "" {	if false {	go test ./cmd/cairn -run 'TestPublic'
 # Account pages: review fixes (crypto errors, list errors, recovery confirm, zeroing)
 internal/server/web/account.mjs	if (!(err instanceof e2e.DecryptError)) throw err;	;	node --test internal/server/web/account_test.mjs
-internal/server/web/admin-init.mjs	for (const { name } of lists) listFailed(name, err);	;	node --test internal/server/web/admin-init_test.mjs
+internal/server/web/app-init.mjs	for (const { name } of lists) listFailed(name, err);	;	node --test internal/server/web/app-init_test.mjs
 internal/server/web/ui.mjs	errorEl.hidden = true; // a wrong group's error, from an earlier try	;	node --test internal/server/web/ui_test.mjs
 internal/server/web/account.mjs	x25519Raw?.fill(0);	;	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	ed25519Raw?.fill(0);	;	node --test internal/server/web/account_test.mjs
 internal/store/artifacts.go	FROM artifacts WHERE id = ? AND (? = 0 OR epoch = ?)	FROM artifacts WHERE id = ? AND (? = 0 OR epoch = epoch OR ? = 0)	go test ./internal/store -run TestVersionWritesDeclareTheirEpoch
 internal/store/artifacts.go	AND (? = 0 OR (SELECT epoch FROM artifacts WHERE id = ?) = ?)	AND (? = 0 OR (SELECT epoch FROM artifacts WHERE id = ?) = ? OR 1)	go test ./internal/store -run TestVersionWritesDeclareTheirEpoch
-internal/server/upload.go	p.Changelog, contentDir, requestUser(r).ID, p.ManifestHash, p.Epoch)	p.Changelog, contentDir, requestUser(r).ID, p.ManifestHash, p.Epoch*0)	go test ./internal/server -run TestPushEpoch
-internal/server/upload.go	changelog, requestUser(r).ID, p.ManifestHash, p.Epoch)	changelog, requestUser(r).ID, p.ManifestHash, p.Epoch*0)	go test ./internal/server -run TestPushEpoch
+internal/server/upload.go	p.ID, contentDir, requestUser(r).ID, p.ManifestHash, p.Epoch)	p.ID, contentDir, requestUser(r).ID, p.ManifestHash, p.Epoch*0)	go test ./internal/server -run TestPushEpoch
+internal/server/upload.go	v.ID, contentDir, requestUser(r).ID, p.ManifestHash, p.Epoch)	v.ID, contentDir, requestUser(r).ID, p.ManifestHash, p.Epoch*0)	go test ./internal/server -run TestPushEpoch
 internal/client/client.go	"epoch": epoch, "manifestHash"	"epoch": epoch + 1, "manifestHash"	go test ./internal/client -run 'TestPushDeclaresTheChainEpoch|TestPushNamesAMovedEpoch'
 internal/client/client.go	return nil, ErrEpochMoved	return nil, err	go test ./internal/client -run 'TestPushDeclaresTheChainEpoch|TestPushNamesAMovedEpoch'
 internal/server/review.go	case body.Artifact != artifact:	case false:	go test ./internal/server -run 'TestVouchRefusals'
@@ -1137,7 +1137,7 @@ internal/server/web/viewer.mjs	if (chain.latest.owner === caller.record.userId) 
 internal/server/web/viewer.mjs	if (!commits.has(epoch) || (await e2e.akCommit(ak, artifact, epoch)) !== commits.get(epoch)) {	if (false) {	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (!aks.has(epoch)) throw	if (false) throw	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	!(record.ed25519Pub instanceof Uint8Array)	false	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	if (me.id !== record.userId) return null;	if (false) return null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (me.id !== record.userId) return { locked: true };	if (false) return { locked: true };	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (err instanceof ApiError && err.status === 401) return null;	if (false) return null;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (!record) return null;	if (false) return null;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	return latest.owner === userId || latest.members.some((m) => m.user === userId);	return true;	node --test internal/server/web/viewer_test.mjs
@@ -1218,8 +1218,8 @@ internal/server/web/shell.html	href="/icon.svg"	href="data:,"	go test ./internal
 # retries, a missing version, and the direct X25519 key kept where stored.
 internal/server/web/viewer.mjs	throw new LinkError('This link is incomplete or damaged.	throw new Error('This link is incomplete or damaged.	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (linkError) throw linkError;	void linkError;	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	found?.stale ? STALE_KEYS_MESSAGE : undefined	undefined	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	const caller = found?.stale ? null : found;	const caller = found;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (found?.stale) throw new NoAccessError(STALE_KEYS_MESSAGE);	if (false) throw new NoAccessError(STALE_KEYS_MESSAGE);	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	const caller = found?.record ? found : null;	const caller = found;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	(err.status === 401 || err.status === 403);	(err.status === 401);	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	(err.status === 401 || err.status === 403);	(err.status === 403);	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (!refused && current.tokenExpires	if (current.tokenExpires	node --test internal/server/web/viewer_test.mjs
@@ -1442,7 +1442,7 @@ internal/client/reseal.go	return m.User == user && m.Role == "editor"	return m.U
 internal/client/review.go	if e2e.BodyHash(env.Body) != v.ManifestHash {	if false {	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
 internal/client/reseal.go	if err == nil && e2e.BodyHash(blob) != f.SHA256 {	if false {	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
 internal/client/reseal.go	if v == nil || x.Seq > v.Seq {	if v == nil || x.Seq < v.Seq {	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
-internal/client/reseal.go	newAK, files, v.Name, v.Changelog)	newAK, files, "renamed", "changed")	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
+internal/client/reseal.go	c.putMeta(k, artifactID, vid, field, current, aks[current], plain)	c.putMeta(k, artifactID, vid, field, current, aks[current], plain+"!")	go test ./internal/client/ -run 'TestResealReplacesTheLatestVersion|TestEpochChangeResealsEveryField'
 internal/client/reseal.go	res.Versions++	res.Versions += 0	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
 internal/client/data.go	chk.writers, chk.earlierEpochs = writers, true	chk.writers, chk.earlierEpochs = writers, false	go test ./internal/client -run 'TestRestoreAcceptsARevisionFromARemovedEditor|TestResealLeavesWhatAnEarlierRemovalLeft'
 internal/client/data.go	if epoch < d.versionEpoch && !d.earlierEpochs {	if epoch < d.versionEpoch {	go test ./internal/client -run 'TestRestoreAcceptsARevisionFromARemovedEditor|TestResealLeavesWhatAnEarlierRemovalLeft'
@@ -1871,3 +1871,149 @@ internal/server/web/sw.js	else reject(new ContentError(m?.cairn === 'sign-error'
 internal/server/web/sw.js	else reject(new ContentError(m?.cairn === 'sign-error' && typeof m.error === 'string' ? m.error : 'the shell did not sign'));	else reject(new ContentError(m?.cairn === 'sign-error' && typeof m.error === 'string' ? 'x' : 'the shell did not sign'));	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	client.postMessage({ cairn: 'sign', purpose, bodies }, [port2]);	client.postMessage({ cairn: 'sign', purpose: 'revision', bodies }, [port2]);	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	client.postMessage({ cairn: 'sign', purpose, bodies }, [port2]);	client.postMessage({ cairn: 'sign', purpose, bodies: [] }, [port2]);	node --test internal/server/web/sw_test.mjs
+
+# Browser sharing, re-sealing and metadata (milestone 6).
+internal/server/web/meta.mjs	epoch: 1, aks, writers: await writerKeys(deps, opened), publicWrites: false }	epoch: 1, aks, writers: await writerKeys(deps, opened), publicWrites: opened.latest.publicWrites }	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	if (plain.length > MAX_META_PLAINTEXT) throw new Error('the value is over 16 KiB');	if (plain.length > MAX_META_PLAINTEXT + 1) throw new Error('the value is over 16 KiB');	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })	new TextDecoder('utf-8', { fatal: false, ignoreBOM: true })	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })	new TextDecoder('utf-8', { fatal: true })	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	{ epoch, kind: 'meta', name: field, blob }	{ epoch, kind: 'meta', name: field, blob: null }	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	{ artifact: keys.artifact, version: versionId, kind: 'meta', name: field }, blob)	{ artifact: keys.artifact, version: versionId, kind: 'meta', name: '' }, blob)	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	if (!meta || !Object.hasOwn(meta, field)) continue;	if (!meta) continue;	node --test internal/server/web/meta_test.mjs
+internal/server/web/data.mjs	writers[env.signer].includes(b64(key))	true	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	if (!fieldsOf(versionId).includes(field)) throw	if (false) throw	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	if (typeof value !== 'string' || !value.isWellFormed()) throw	if (typeof value !== 'string') throw	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	if (plain.length > MAX_META_PLAINTEXT) throw new MetaError	if (plain.length > MAX_META_PLAINTEXT + 1) throw new MetaError	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	if (!mayWriteMeta(opened)) throw new MetaError	if (false) throw new MetaError	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	if (!ak) throw new MetaError	if (false) throw new MetaError	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	const epoch = opened.latest.epoch;	const epoch = 1;	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	epoch, sha256: await e2e.bodyHash(blob) };	epoch, sha256: '0'.repeat(64) };	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	${versionId === '' ? '' : `/versions/${versionId}`}	${''}	node --test internal/server/web/meta_test.mjs
+internal/server/web/sharing.mjs	if (va.latest.owner !== caller.record.userId || va.latest.ownerFp !== caller.fp) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (va.latest.team !== 'none') throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (va.handover && !va.handover.acked) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (u.id === caller.record.userId) throw new SharingError('share-self'	if (false) throw new SharingError('share-self'	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (role !== 'viewer' && role !== 'editor') throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (u.id === caller.record.userId) throw new SharingError('unshare-owner'	if (false) throw new SharingError('unshare-owner'	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (kept.length === latest.members.length) throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (!on && writes !== undefined) throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (emails.has(email) && emails.get(email) !== u.id) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (fps.has(u.fp) && fps.get(u.fp) !== u.id) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (x25519Pub.length !== 32) throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (ed25519Pub.length !== 32) throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	e2e.normalizeEmail(d.email) === email);	d.email === who);	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (!acceptNewKey) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	prior === e2e.PIN_ROTATED && pinOf(kr, user)?.state === e2e.PIN_VERIFIED	prior === e2e.PIN_ROTATED	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (cur.fp === pin.fp && cur.state === e2e.PIN_VERIFIED) return;	if (false) return;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (cur.fp !== pin.fp && cur.fp !== basedOn) throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	r.state = fork ? 'conflict' : state;	r.state = state;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (r.user === caller.record.userId) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	demote = list[i].role === 'editor' && role === 'viewer';	demote = false;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	needsWraps = relist;	needsWraps = false;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (res.unchanged) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (needsWraps) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	(matched ? dropped : kept).push(x);	kept.push(x);	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (next.public && hash === '') hash =	if (false) hash =	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	prev: va.chain.head,	prev: '',	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	seq: va.latest.seq + 1,	seq: va.latest.seq,	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (inMembers(m.user)) continue;	if (false) continue;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	e2e.normalizeEmail(u.email) || u.id;	e2e.normalizeEmail(u.email);	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	throw new SharingError('member-deleted'	continue; throw new SharingError('member-deleted'	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (m.fp !== u.fp) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (m.user === r.decided) continue;	if (false) continue;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (!matched && !excludes.has(x.user)) excludes.set(x.user, x);	if (false) excludes.set(x.user, x);	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	e2e.checkNewAk(ak, [...aks.values()]);	e2e.checkNewAk(ak, []);	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	next.akCommit = await e2e.akCommit(ak, artifact, epoch);	next.akCommit = latest.akCommit;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	['estate', artifact, String(epoch)], ak)	['estate', artifact, String(epoch - 1)], ak)	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	const epochs = held ? [epoch] :	const epochs = false ? [epoch] :	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (next.public) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	link = e2e.publicLink(deps.origin, artifact, ak, epoch,	link = e2e.publicLink(deps.origin, artifact, aks.get(1), epoch,	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	linkHash = await e2e.linkTokenHash(await e2e.linkToken(ak, artifact, epoch));	linkHash = 'x';	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (!latest.public) return { ...res, unchanged: true };	if (false) return { ...res, unchanged: true };	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (latest.public && next.publicWrites === latest.publicWrites) return	if (false) return	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	publicWrites: writes === undefined ? latest.publicWrites : writes }	publicWrites: writes === undefined ? false : writes }	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	aks.get(va.latest.epoch), va.latest.epoch,	aks.get(1), va.latest.epoch,	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	return va.latest.public ? linkOf(deps, caller, va) : null;	return linkOf(deps, caller, va);	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (!approver) throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	m.role === 'editor' && m.fp === caller.fp)	m.role === 'editor')	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (!before) return;	if (false) return;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	writerKeys(deps, { ...opened, latest: before })	writerKeys(deps, { ...opened })	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	writers: old.writers, publicWrites: before.publicWrites }	writers: old.writers, publicWrites: false }	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (f.epoch >= va.latest.epoch) return;	if (false) return;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (revision < (seen.get(key) ?? 0)) throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	const revision = base + 1;	const revision = base;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (!(item?.epoch < current)) continue;	if (false) continue;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (!have.has(address)) {	if (true) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (!v || v.epoch >= current) return;	if (!v) return;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (!trusted.signer) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if ((await e2e.bodyHash(blob)) !== f.sha256) throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (!latestVersion || v.seq > latestVersion.seq) latestVersion = v;	if (!latestVersion || v.seq < latestVersion.seq) latestVersion = v;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	manifestHash: await e2e.bodyHash(body) })	manifestHash: '0'.repeat(64) })	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (epoch !== null && epoch >= va.latest.epoch) continue;	if (false) continue;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	writers: old.writers, publicWrites: false };	writers: old.writers, publicWrites: true };	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	res.skipped.push({ what: `the ${field} of ${label}`, reason: err.message });	throw err;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/meta.mjs	if (values.name) Object.assign(out, { name: values.name, named: true });	if (values.name !== undefined) Object.assign(out, { name: values.name, named: true });	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	out.description = values.description ?? '';	out.description = view.description ?? '';	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	if (unreadable.length > 0) out.error	if (unreadable.length > 1) out.error	node --test internal/server/web/meta_test.mjs
+internal/server/web/sharing.mjs	r.currentFp = u ? u.fp : '';	r.currentFp = r.fp;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/shell.mjs	const name = values.name || artifact;	const name = info.name || values.name || artifact;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	const description = values.description ?? '';	const description = info.description ?? values.description ?? '';	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	(await readMeta(deps, opened, v.meta, v.id)).values.name	v.name	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	(await readMeta(deps, opened, v.meta, v.id)).values.name	(await readMeta(deps, opened, v.meta)).values.name	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	const context = await loadContext(deps, opened, { name, description });	const context = await loadContext(deps, opened, info);	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	frame.setAttribute('title', name);	frame.setAttribute('title', info.name);	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (err instanceof LockedError) {	if (false) {	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/viewer.mjs	if (found?.locked || (!found && await sessionUser(deps))) throw new LockedError();	if (found?.locked) throw new LockedError();	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (found?.locked || (!found && await sessionUser(deps))) throw new LockedError();	if (!found && await sessionUser(deps)) throw new LockedError();	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (me.id !== record.userId) return { locked: true };	if (false) return { locked: true };	node --test internal/server/web/viewer_test.mjs
+internal/server/web/sharing.mjs	if (!caller?.record) throw new SharingError('not-signed-in'	if (!caller) throw new SharingError('not-signed-in'	node --test internal/server/web/sharing_test.mjs
+
+# Encrypted metadata fields (milestone 6): the server writes.
+internal/server/handlers_meta.go	if !allowed[field] {	if !allowed[field] && field == "" {	go test ./internal/server -run 'TestMetaWriteRefusals'
+internal/server/handlers_meta.go	allowed = versionMetaFields	allowed = artifactMetaFields	go test ./internal/server -run 'TestMetaWriteRefusals'
+internal/server/handlers_meta.go	case len(blob) > maxMetaBlob:	case len(blob) > maxMetaBlob*100:	go test ./internal/server -run 'TestMetaWriteRefusals'
+internal/server/handlers_meta.go	case len(blob) < e2e.BlobMinSize || !e2e.HasBlobHeader(blob):	case false:	go test ./internal/server -run 'TestMetaWriteRefusals'
+internal/server/handlers_meta.go	if err := openRecord(u, pub, req.Record, "record", &body); err != nil {	if err := openRecord(u, pub, req.Record, "record", &body); false && err != nil {	go test ./internal/server -run 'TestMetaWriteRefusals'
+internal/server/handlers_meta.go	case body.Artifact != aid || body.Version != vid:	case body.Version != vid:	go test ./internal/server -run 'TestMetaWriteRefusals'
+internal/server/handlers_meta.go	case body.Artifact != aid || body.Version != vid:	case body.Artifact != aid:	go test ./internal/server -run 'TestMetaWriteRefusals'
+internal/server/handlers_meta.go	case body.Kind != "meta":	case false:	go test ./internal/server -run 'TestMetaWriteRefusals'
+internal/server/handlers_meta.go	case body.Name != field:	case false:	go test ./internal/server -run 'TestMetaWriteRefusals'
+internal/server/handlers_meta.go	case body.SHA256 != e2e.BodyHash(blob):	case false:	go test ./internal/server -run 'TestMetaWriteRefusals'
+internal/server/handlers_meta.go	err = s.store.UnderEpoch(aid, body.Epoch, func() {	err = func(_ string, _ int, write func()) error { write(); return nil }(aid, body.Epoch, func() {	go test ./internal/server -run 'TestMetaWriteChecksTheEpochAfterAChange|TestMetaWriteRefusals'
+internal/server/handlers_meta.go	dec.DisallowUnknownFields()	_ = dec	go test ./internal/server -run 'TestMetaWriteRefusals'
+internal/server/routes.go	s.artifactRoute(access.Rename, s.handlePutArtifactMeta)	s.artifactRoute(access.ReadContent, s.handlePutArtifactMeta)	go test ./internal/server -run 'TestMetaWriteOnlyForOwnerAndEditor'
+internal/server/routes.go	s.artifactRoute(access.Rename, s.handlePutVersionMeta)	s.artifactRoute(access.ReadContent, s.handlePutVersionMeta)	go test ./internal/server -run 'TestMetaWriteOnlyForOwnerAndEditor'
+internal/server/review.go	view := &versionView{Version: v, Meta: meta[v.ID]}	view := &versionView{Version: v}	go test ./internal/server -run 'TestMetaWriteAppearsInViews'
+internal/server/sharing.go	v.Meta, _ = metaViews(fields)	v.Meta, _ = metaViews(fields[:0])	go test ./internal/server -run 'TestMetaWriteAppearsInViews'
+internal/server/handlers_artifacts.go	if !blindIndexPattern.MatchString(req.Value) {	if req.Value == "" {	go test ./internal/server -run 'TestResourceValueMustBeABlindIndex'
+internal/server/handlers_artifacts.go	`^[0-9a-f]{64}$`	`[0-9a-f]{64}`	go test ./internal/server -run 'TestResourceValueMustBeABlindIndex'
+internal/server/handlers_artifacts.go	`^[0-9a-f]{64}$`	`^[0-9a-fA-F]{64}$`	go test ./internal/server -run 'TestResourceValueMustBeABlindIndex'
+# Encrypted metadata fields: the store.
+internal/store/artifacts.go	blob = excluded.blob	blob = blob	go test ./internal/store -run 'TestMetaFieldsPutReplaceList'
+internal/store/artifacts.go	OR EXISTS (SELECT 1 FROM versions WHERE id = ? AND artifact_id = ?)	OR EXISTS (SELECT 1 FROM versions WHERE id = ? AND ? IS NOT NULL)	go test ./internal/store -run 'TestPutMetaFieldRefusesAMissingVersion'
+internal/store/artifacts.go	WHERE artifact_id = ? ORDER BY version_id, field	WHERE ? IS NOT NULL ORDER BY version_id, field	go test ./internal/store -run 'TestMetaFieldsPutReplaceList|TestMetaFieldsLeaveWithTheirOwner'
+internal/store/migrations/009_meta_fields.sql	DELETE FROM meta_fields WHERE artifact_id = OLD.artifact_id AND version_id = OLD.id;	SELECT 1;	go test ./internal/store -run 'TestMetaFieldsLeaveWithTheirOwner'
+# Encrypted metadata fields: the client reads and writes.
+internal/client/meta.go	if len(blob) == 0 {	if false {	go test ./internal/client -run 'TestReadChecksEveryField'
+internal/client/meta.go	if !utf8.Valid(plain) {	if false {	go test ./internal/client -run 'TestReadChecksEveryField'
+internal/client/meta.go	if len(plain) > e2e.MaxMetaPlaintext {	if false {	go test ./internal/client -run 'TestReadChecksEveryField'
+internal/client/meta.go	return &dataChecker{artifact: artifactID, aks: aks, writers: writers}, nil	return &dataChecker{artifact: artifactID, aks: aks, writers: writers, anyWriter: true}, nil	go test ./internal/client -run 'TestReadChecksEveryField'
+internal/client/meta.go	scoped.checkRecord(item.Record, item.SignerKey, body.Epoch, "meta", field, blob)	scoped.checkRecord(item.Record, item.SignerKey, body.Epoch, "meta", field, nil)	go test ./internal/client -run 'TestReadChecksEveryField'
+internal/client/meta.go	e2e.BlobContext{Artifact: chk.artifact, Version: vid, Kind: "meta", Name: field}	e2e.BlobContext{Artifact: chk.artifact, Version: "", Kind: "meta", Name: field}	go test ./internal/client -run 'TestMetaRoundTrip'
+internal/client/meta.go	e2e.BlobContext{Artifact: artifactID, Version: vid, Kind: "meta", Name: field}	e2e.BlobContext{Artifact: artifactID, Version: "", Kind: "meta", Name: field}	go test ./internal/client -run 'TestMetaRoundTrip'
+internal/client/meta.go	if !approverOf(va.Chain.Latest, k) {	if false {	go test ./internal/client -run 'TestUpdateRefusesAReaderAndALongField'
+internal/client/meta.go	if err := c.checkHandover(k, id, va); err != nil {	if false {	go test ./internal/client -run 'TestEveryWriteRefusesAnUnacknowledgedHandover'
+internal/client/meta.go	if !utf8.ValidString(text) {	if false {	go test ./internal/client -run 'TestUpdateRefusesAReaderAndALongField'
+internal/client/meta.go	if len(text) > e2e.MaxMetaPlaintext {	if false {	go test ./internal/client -run 'TestUpdateRefusesAReaderAndALongField'
+internal/client/meta.go	"type": typ, "value": index}	"type": typ, "value": value + index[:0]}	go test ./internal/client -run 'TestResourcesAreBlindIndexed'
+internal/client/meta.go	return r.Value == index[r.Type] }	return true }	go test ./internal/client -run 'TestResourcesAreBlindIndexed'
+internal/client/meta.go	if openErr != nil {	if false {	go test ./internal/client -run 'TestResolveByNameSaysWhyNamesCouldNotBeRead'
+internal/client/meta.go	if a.Name == ref {	if a.Name == ref || a.Name != "" {	go test ./internal/client -run 'TestResolveOrder|TestResolveByNameNamesTheAmbiguousIDs'
+internal/client/client.go	if f.text == "" {	if false {	go test ./internal/client -run 'TestEmptyFieldsAreNotWritten'
+internal/client/sharing.go	if f.field == "description" && f.text == "" {	if false {	go test ./internal/client -run 'TestEmptyFieldsAreNotWritten'
+internal/client/reseal.go	if e2e.DecodeStrict(item.Record.Body, &body) == nil && body.Epoch >= current {	if e2e.DecodeStrict(item.Record.Body, &body) == nil && false {	go test ./internal/client -run 'TestARemovedEditorsFieldIsUnreadableUntilTheOwnerReseals'
+internal/client/reseal.go	chk := &dataChecker{artifact: artifactID, aks: aks, writers: old}	chk := &dataChecker{artifact: artifactID, aks: aks, writers: old, anyWriter: true}	go test ./internal/client -run 'TestResealLeavesAFieldASecondChangeCannotVerify'
+internal/client/reseal.go	if err := c.resealMeta(k, va, artifactID, aks, old, views, res); err != nil {	if false {	go test ./internal/client -run 'TestEpochChangeResealsEveryField'
+cmd/cairn/client_cmds.go	if !errors.Is(err, client.ErrNoArtifact) {	if false {	go test ./cmd/cairn -run 'TestPushCreateDoesNotMakeAThirdWhenTheNameIsAmbiguous'
+internal/server/protect.go	sameOriginForm := mediaType == "multipart/form-data" && r.Header.Get("Sec-Fetch-Site") == "same-origin"	sameOriginForm := mediaType == "multipart/form-data"	go test ./internal/server -run TestProtectMutationsMultipartNeedsSameOriginFetch
+internal/server/protect.go	sameOriginForm := mediaType == "multipart/form-data" && r.Header.Get("Sec-Fetch-Site") == "same-origin"	sameOriginForm := r.Header.Get("Sec-Fetch-Site") == "same-origin"	go test ./internal/server -run TestProtectMutationsMultipartNeedsSameOriginFetch

@@ -13,7 +13,6 @@ import (
 	"strconv"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
-	"github.com/aloisdeniel/cairn/internal/store"
 	"github.com/google/uuid"
 )
 
@@ -29,6 +28,8 @@ type UnlockedKeys struct {
 	EK          []byte
 	// MKSealKey seals and opens the keyring.
 	MKSealKey []byte
+	// IndexKey computes the blind index of a resource value.
+	IndexKey []byte
 }
 
 // Unlock opens the caller's keys: MK from the device key's own sealed copy,
@@ -75,6 +76,9 @@ func openKeys(userID string, mk []byte, b bundleWire) (*UnlockedKeys, error) {
 		return nil, err
 	}
 	k := &UnlockedKeys{UserID: userID, MKSealKey: mkKey}
+	if k.IndexKey, err = e2e.IndexKey(mk); err != nil {
+		return nil, err
+	}
 	for _, f := range []struct {
 		name   string
 		sealed string
@@ -114,8 +118,9 @@ func estateFields(artifact string, epoch int) [][]byte {
 // caller. It picks the id and the first AK itself, signs the first
 // membership record, seals the estate copy of the AK under EK, and once the
 // server accepts it reads the chain back and verifies it, anchored at the
-// caller's own fingerprint.
-func (c *Client) CreateArtifact(name, description string) (*store.Artifact, error) {
+// caller's own fingerprint. It then writes the artifact's name, and its
+// description unless that is empty, as encrypted fields.
+func (c *Client) CreateArtifact(name, description string) (*Artifact, error) {
 	k, err := c.Unlock()
 	if err != nil {
 		return nil, err
@@ -148,9 +153,9 @@ func (c *Client) CreateArtifact(name, description string) (*store.Artifact, erro
 	if err != nil {
 		return nil, err
 	}
-	var out store.Artifact
+	var out artifactWire
 	if err := c.doJSON("POST", "/api/artifacts", map[string]any{
-		"id": id, "name": name, "description": description, "membership": env,
+		"id": id, "membership": env,
 		"wraps":  []any{},
 		"estate": []map[string]any{{"epoch": 1, "sealed": e2e.B64(sealed)}},
 	}, &out); err != nil {
@@ -160,7 +165,17 @@ func (c *Client) CreateArtifact(name, description string) (*store.Artifact, erro
 	if _, err := c.VerifyArtifact(k, id, k.FP); err != nil {
 		return nil, fmt.Errorf("artifact %s was created, but reading its membership back failed: %w", id, err)
 	}
-	return &out, nil
+	for _, f := range []struct{ field, text string }{{"name", name}, {"description", description}} {
+		if f.field == "description" && f.text == "" {
+			continue
+		}
+		if err := c.putMeta(k, id, "", f.field, 1, ak, f.text); err != nil {
+			return nil, fmt.Errorf("artifact %s was created, but writing its %s failed: %w", id, f.field, err)
+		}
+	}
+	a := out.artifact()
+	a.Name, a.Description = name, description
+	return a, nil
 }
 
 // Membership is an artifact's membership chain and the keys needed to check

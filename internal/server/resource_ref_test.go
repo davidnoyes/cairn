@@ -11,7 +11,7 @@ func TestResourceReferenceResolution(t *testing.T) {
 	_, ts := testServer(t)
 	admin, aid, vid, _ := setupArtifact(t, ts.URL, true)
 	admin.mustDo("POST", "/api/artifacts/"+aid+"/resources",
-		map[string]string{"type": "claude-session", "value": "sess-123"}, nil, http.StatusCreated)
+		map[string]string{"type": "claude-session", "value": refOf("sess-123")}, nil, http.StatusCreated)
 
 	// API lookup by resource value resolves to the artifact
 	var a struct {
@@ -20,7 +20,7 @@ func TestResourceReferenceResolution(t *testing.T) {
 			ID string `json:"id"`
 		} `json:"resources"`
 	}
-	admin.mustDo("GET", "/api/artifacts/sess-123", nil, &a, http.StatusOK)
+	admin.mustDo("GET", "/api/artifacts/"+refOf("sess-123"), nil, &a, http.StatusOK)
 	if a.ID != aid {
 		t.Fatalf("resolved %q, want %q", a.ID, aid)
 	}
@@ -38,13 +38,13 @@ func TestResourceReferenceResolution(t *testing.T) {
 	var versions []struct {
 		ID string `json:"id"`
 	}
-	admin.mustDo("GET", "/api/artifacts/sess-123/versions", nil, &versions, http.StatusOK)
+	admin.mustDo("GET", "/api/artifacts/"+refOf("sess-123")+"/versions", nil, &versions, http.StatusOK)
 	if len(versions) != 1 || versions[0].ID != vid {
 		t.Fatalf("versions via reference: %+v", versions)
 	}
-	admin.mustDo("GET", "/api/artifacts/sess-123/versions/"+vid+"/files", nil, nil, http.StatusOK)
+	admin.mustDo("GET", "/api/artifacts/"+refOf("sess-123")+"/versions/"+vid+"/files", nil, nil, http.StatusOK)
 	q := newRevision(t, placeholderActor(t, admin), aid, vid, 1, 1, "via reference")
-	q.aid = "sess-123" // the path names the reference; the signed record names the artifact
+	q.aid = refOf("sess-123") // the path names the reference; the signed record names the artifact
 	if r := q.send(t); r.StatusCode != http.StatusOK {
 		t.Fatalf("db write via reference: %d", r.StatusCode)
 	}
@@ -53,8 +53,8 @@ func TestResourceReferenceResolution(t *testing.T) {
 	}
 
 	// Upload through the reference lands on the right artifact
-	resp := admin.upload("POST", "/api/artifacts/sess-123/versions",
-		map[string]string{"index.html": "v2"}, nil)
+	resp := admin.upload("POST", "/api/artifacts/"+refOf("sess-123")+"/versions",
+		map[string]string{"index.html": "v2"})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("upload via reference: %d", resp.StatusCode)
 	}
@@ -66,8 +66,8 @@ func TestResourceReferenceResolution(t *testing.T) {
 	}
 
 	// The old page URL passes the reference on to the shared page, which resolves it
-	pr := get(t, ts.URL+"/artifacts/sess-123", admin.token, "text/html")
-	if pr.StatusCode != http.StatusFound || pr.Header.Get("Location") != "/shared/sess-123" {
+	pr := get(t, ts.URL+"/artifacts/"+refOf("sess-123"), admin.token, "text/html")
+	if pr.StatusCode != http.StatusFound || pr.Header.Get("Location") != "/shared/"+refOf("sess-123") {
 		t.Errorf("page redirect: %d %s", pr.StatusCode, pr.Header.Get("Location"))
 	}
 	pr.Body.Close()
@@ -76,8 +76,8 @@ func TestResourceReferenceResolution(t *testing.T) {
 	// ambiguous → 409, while artifact ids keep working.
 	bid := createArtifact(t, admin, "other")
 	admin.mustDo("POST", "/api/artifacts/"+bid+"/resources",
-		map[string]string{"type": "claude-session", "value": "sess-123"}, nil, http.StatusCreated)
-	r := admin.do("GET", "/api/artifacts/sess-123", nil, nil)
+		map[string]string{"type": "claude-session", "value": refOf("sess-123")}, nil, http.StatusCreated)
+	r := admin.do("GET", "/api/artifacts/"+refOf("sess-123"), nil, nil)
 	if r.StatusCode != http.StatusConflict {
 		t.Errorf("ambiguous reference: %d, want 409", r.StatusCode)
 	}

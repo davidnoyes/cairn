@@ -260,7 +260,7 @@ func (s *Server) handleAcceptTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.deliverMail(prevOwnerEmail, "Ownership of an artifact was transferred",
-		fmt.Sprintf("%s accepted ownership of the artifact %q (%s).\n", caller.Email, a.Name, a.ID))
+		fmt.Sprintf("%s accepted ownership of the artifact %s.\n", caller.Email, a.ID))
 	s.log.Info("ownership transferred", "artifact", a.ID, "to", caller.Email)
 	writeJSON(w, http.StatusOK, map[string]int{"epoch": epoch})
 }
@@ -368,7 +368,7 @@ func (s *Server) handleAdminOfferTransfer(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.deliverMail(ownerEmail, "An administrator offered your artifact to someone else",
-		fmt.Sprintf("An administrator offered your artifact %q (%s) to %s.\n", a.Name, a.ID, toEmail))
+		fmt.Sprintf("An administrator offered your artifact %s to %s.\n", a.ID, toEmail))
 	s.log.Info("ownership offered by an administrator", "artifact", a.ID, "to", req.To, "by", requestUser(r).Email)
 	writeJSON(w, http.StatusOK, map[string]*transferView{"transfer": view})
 }

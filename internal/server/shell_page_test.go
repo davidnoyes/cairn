@@ -147,15 +147,15 @@ func TestValidSubpath(t *testing.T) {
 func TestShellPageResolvesReferences(t *testing.T) {
 	w := newHostWorld(t)
 	id, vid := w.art.id, w.vid
-	w.owner.mustDo("POST", "/api/artifacts/"+id+"/resources", map[string]any{"type": "claude-session", "value": "sess-9"}, nil, http.StatusCreated)
+	w.owner.mustDo("POST", "/api/artifacts/"+id+"/resources", map[string]any{"type": "claude-session", "value": refOf("sess-9")}, nil, http.StatusCreated)
 
 	for from, to := range map[string]string{
-		"/shared/sess-9":                    "/shared/" + id,
-		"/shared/sess-9/" + vid:             "/shared/" + id + "/" + vid,
-		"/shared/sess-9/" + vid + "/a%20b/": "/shared/" + id + "/" + vid + "/a%20b/",
-		"/shared/sess-9?x=1":                "/shared/" + id + "?x=1",
-		"/full/sess-9":                      "/full/" + id,
-		"/full/sess-9/" + vid + "/p":        "/full/" + id + "/" + vid + "/p",
+		"/shared/" + refOf("sess-9"):                         "/shared/" + id,
+		"/shared/" + refOf("sess-9") + "/" + vid:             "/shared/" + id + "/" + vid,
+		"/shared/" + refOf("sess-9") + "/" + vid + "/a%20b/": "/shared/" + id + "/" + vid + "/a%20b/",
+		"/shared/" + refOf("sess-9") + "?x=1":                "/shared/" + id + "?x=1",
+		"/full/" + refOf("sess-9"):                           "/full/" + id,
+		"/full/" + refOf("sess-9") + "/" + vid + "/p":        "/full/" + id + "/" + vid + "/p",
 	} {
 		resp := get(t, w.base+from, w.owner.token, "text/html")
 		body(t, resp)
@@ -165,7 +165,7 @@ func TestShellPageResolvesReferences(t *testing.T) {
 	}
 	// A caller who cannot read the artifact gets a 404, not a sign-in redirect.
 	for _, tok := range []string{w.outside.token, ""} {
-		resp := get(t, w.base+"/shared/sess-9", tok, "text/html")
+		resp := get(t, w.base+"/shared/"+refOf("sess-9"), tok, "text/html")
 		body(t, resp)
 		if resp.StatusCode != http.StatusNotFound {
 			t.Errorf("an unreadable reference: %d, want 404", resp.StatusCode)
@@ -260,27 +260,27 @@ func TestLoginPageRenders(t *testing.T) {
 }
 
 // Cairn's own pages change the page rather than opening tabs, so closing a
-// tab never strands the viewer: the admin page's version links open the
+// tab never strands the viewer: the app page's artifact links open the
 // shell, which has the account link back home.
 func TestPagesStayInOneTab(t *testing.T) {
 	_, ts := testServer(t)
 	admin, aid, _, link := setupArtifact(t, ts.URL, true)
 
 	shell := body(t, getLinked(t, link, ts.URL+"/shared/"+aid, "", "text/html"))
-	adminResp := get(t, ts.URL+"/admin", admin.token, "text/html")
-	if adminResp.StatusCode != http.StatusOK {
-		t.Fatalf("admin page: %d", adminResp.StatusCode)
+	appResp := get(t, ts.URL+"/app", admin.token, "text/html")
+	if appResp.StatusCode != http.StatusOK {
+		t.Fatalf("app page: %d", appResp.StatusCode)
 	}
-	adminHTML := body(t, adminResp)
-	// The admin page builds its version links in JS, so check the source.
-	adminJS := body(t, get(t, ts.URL+"/admin.js", "", ""))
-	if !strings.Contains(adminJS, "open.href = '/shared/' + artifact.id + '/' + v.id;") {
-		t.Errorf("admin version links should open the shared view")
+	appHTML := body(t, appResp)
+	// The app page builds its artifact links in JS, so check the source.
+	appJS := body(t, get(t, ts.URL+"/app.mjs", "", ""))
+	if !strings.Contains(appJS, "open.href = '/shared/' + a.id;") {
+		t.Errorf("app artifact links should open the shared view")
 	}
 	for page, html := range map[string]string{
-		"shell":    shell,
-		"admin":    adminHTML,
-		"admin.js": adminJS,
+		"shell":  shell,
+		"app":    appHTML,
+		"app.js": appJS,
 	} {
 		if strings.Contains(html, "_blank") {
 			t.Errorf("%s page opens a new tab", page)

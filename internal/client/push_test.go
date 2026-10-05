@@ -33,7 +33,7 @@ type recordingTransport struct {
 }
 
 func (rt *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.Method != "GET" && strings.Contains(req.URL.Path, "/versions") {
+	if req.Method != "GET" && strings.Contains(req.URL.Path, "/versions") && !strings.Contains(req.URL.Path, "/meta/") {
 		data, err := io.ReadAll(req.Body)
 		if err != nil {
 			return nil, err

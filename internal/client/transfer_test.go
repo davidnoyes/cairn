@@ -719,6 +719,9 @@ func TestEveryWriteRefusesAnUnacknowledgedHandover(t *testing.T) {
 		{"Public", x.cat, func(c *Client) error { _, err := c.Public(x.artifact, true, nil); return err }},
 		{"Vouch", x.cat, func(c *Client) error { return c.Vouch(x.artifact, "no-such-version") }},
 		{"Push", x.cat, func(c *Client) error { _, err := c.Push(x.artifact, "", site, "v1", ""); return err }},
+		{"UpdateArtifact", x.cat, func(c *Client) error {
+			return c.UpdateArtifact(x.artifact, map[string]string{"name": "renamed"})
+		}},
 		{"OfferTransfer", x.cat, func(c *Client) error { _, err := c.OfferTransfer(x.artifact, "bob@example.com", false); return err }},
 		{"WithdrawTransfer", x.cat, func(c *Client) error { return c.WithdrawTransfer(x.artifact) }},
 		{"AcceptTransfer", x.cat, func(c *Client) error {

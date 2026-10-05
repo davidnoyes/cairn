@@ -171,14 +171,15 @@ func firstRecord(t *testing.T, owner actor, id string) e2e.MembershipBody {
 		AKCommit: testCommit(t, id, 1), Members: []e2e.Member{}, Excluded: []e2e.ExcludedEntry{}, Team: "none"}
 }
 
-// newArtifact creates a private artifact with no members, as owner.
-func newArtifact(t *testing.T, owner actor, name string) *owned {
+// newArtifact creates a private artifact with no members, as owner. The
+// artifact has no name: a name is an encrypted field a test writes itself.
+func newArtifact(t *testing.T, owner actor, _ string) *owned {
 	t.Helper()
 	id := uuid.NewString()
 	b := firstRecord(t, owner, id)
 	env := signRecord(t, owner, b)
 	owner.mustDo("POST", "/api/artifacts", map[string]any{
-		"id": id, "name": name, "description": "", "membership": env,
+		"id": id, "membership": env,
 		"wraps": []any{}, "estate": []any{testEstate(t, id, 1)},
 	}, nil, http.StatusCreated)
 	return &owned{t: t, owner: owner, id: id, latest: b, hash: e2e.BodyHash(env.Body)}
@@ -420,15 +421,19 @@ func TestViewerAndEditorPowers(t *testing.T) {
 	}
 	xAddr := testAddress(t, o.id, 1, "x.txt")
 	wantStatus(t, viewer.testClient, "DELETE", vbase+"/files/"+xAddr, nil, http.StatusForbidden)
-	if r := viewer.upload("POST", base+"/versions", files, nil); r.StatusCode != http.StatusForbidden {
+	if r := viewer.upload("POST", base+"/versions", files); r.StatusCode != http.StatusForbidden {
 		t.Errorf("viewer push: %d", r.StatusCode)
 	}
-	if r := viewer.upload("PUT", vbase, files, nil); r.StatusCode != http.StatusForbidden {
+	if r := viewer.upload("PUT", vbase, files); r.StatusCode != http.StatusForbidden {
 		t.Errorf("viewer replace: %d", r.StatusCode)
 	}
-	wantStatus(t, viewer.testClient, "PATCH", base, map[string]any{"name": "x"}, http.StatusForbidden)
-	wantStatus(t, viewer.testClient, "POST", base+"/resources", map[string]any{"type": "t", "value": "v"}, http.StatusForbidden)
-	wantStatus(t, viewer.testClient, "PATCH", vbase, map[string]any{"name": "x"}, http.StatusForbidden)
+	if r := newMeta(t, viewer, o.id, "", "name", 1, "x").send(t); r.StatusCode != http.StatusForbidden {
+		t.Errorf("viewer artifact meta write: %d", r.StatusCode)
+	}
+	wantStatus(t, viewer.testClient, "POST", base+"/resources", map[string]any{"type": "t", "value": refOf("v")}, http.StatusForbidden)
+	if r := newMeta(t, viewer, o.id, vid, "name", 1, "x").send(t); r.StatusCode != http.StatusForbidden {
+		t.Errorf("viewer version meta write: %d", r.StatusCode)
+	}
 	wantStatus(t, viewer.testClient, "DELETE", vbase, nil, http.StatusForbidden)
 	wantStatus(t, viewer.testClient, "DELETE", base, nil, http.StatusForbidden)
 
@@ -439,7 +444,7 @@ func TestViewerAndEditorPowers(t *testing.T) {
 	if r := viewer.writeFile(t, o.id, vid, "v.txt", "hello"); r.StatusCode != http.StatusForbidden {
 		t.Errorf("viewer file put: %d", r.StatusCode)
 	}
-	r := editor.upload("POST", base+"/versions", files, nil)
+	r := editor.upload("POST", base+"/versions", files)
 	if r.StatusCode != http.StatusCreated {
 		t.Fatalf("editor push: %d", r.StatusCode)
 	}
@@ -456,23 +461,23 @@ func TestViewerAndEditorPowers(t *testing.T) {
 	if got.PushedBy != editor.id || got.Epoch != 1 {
 		t.Errorf("pushed version: %+v, want pushedBy %s at epoch 1", got, editor.id)
 	}
-	if r := editor.upload("PUT", base+"/versions/"+pushed.ID, files, nil); r.StatusCode != http.StatusOK {
+	if r := editor.upload("PUT", base+"/versions/"+pushed.ID, files); r.StatusCode != http.StatusOK {
 		t.Errorf("editor replace: %d", r.StatusCode)
 	}
 	// A replacement records whoever replaced it.
-	r = a.upload("PUT", base+"/versions/"+pushed.ID, files, nil)
+	r = a.upload("PUT", base+"/versions/"+pushed.ID, files)
 	replaced := decode[struct {
 		PushedBy string `json:"pushedBy"`
 	}](t, r)
 	if r.StatusCode != http.StatusOK || replaced.PushedBy != a.id {
 		t.Errorf("owner replace: %d, pushedBy %q, want %s", r.StatusCode, replaced.PushedBy, a.id)
 	}
-	editor.mustDo("PATCH", base, map[string]any{"name": "renamed"}, nil, http.StatusOK)
+	mustMeta(t, newMeta(t, editor, o.id, "", "name", 1, "renamed"))
 	var res store.Resource
-	editor.mustDo("POST", base+"/resources", map[string]any{"type": "t", "value": "v"}, &res, http.StatusCreated)
+	editor.mustDo("POST", base+"/resources", map[string]any{"type": "t", "value": refOf("v")}, &res, http.StatusCreated)
 	wantStatus(t, viewer.testClient, "DELETE", base+"/resources/"+res.ID, nil, http.StatusForbidden)
 	editor.mustDo("DELETE", base+"/resources/"+res.ID, nil, nil, http.StatusOK)
-	editor.mustDo("PATCH", vbase, map[string]any{"name": "first"}, nil, http.StatusOK)
+	mustMeta(t, newMeta(t, editor, o.id, vid, "name", 1, "first"))
 	editor.mustDo("DELETE", vbase+"/files/"+eAddr, nil, nil, http.StatusNoContent)
 
 	// But cannot share, delete, or change membership.
@@ -520,7 +525,7 @@ func TestTeamWrapGrantsRead(t *testing.T) {
 	if r := withWrap.writeDB(t, o.id, vid); r.StatusCode != http.StatusForbidden {
 		t.Errorf("team member db write: %d", r.StatusCode)
 	}
-	if r := withWrap.upload("POST", base+"/versions", map[string]string{"index.html": "x"}, nil); r.StatusCode != http.StatusForbidden {
+	if r := withWrap.upload("POST", base+"/versions", map[string]string{"index.html": "x"}); r.StatusCode != http.StatusForbidden {
 		t.Errorf("team member push: %d", r.StatusCode)
 	}
 
@@ -660,7 +665,7 @@ func TestPublicWrites(t *testing.T) {
 	}
 	// Public writes do not extend to pushing a version.
 	b.link = link
-	if r := b.upload("POST", "/api/artifacts/"+o.id+"/versions", map[string]string{"index.html": "x"}, nil); r.StatusCode != http.StatusForbidden {
+	if r := b.upload("POST", "/api/artifacts/"+o.id+"/versions", map[string]string{"index.html": "x"}); r.StatusCode != http.StatusForbidden {
 		t.Errorf("link holder push: %d", r.StatusCode)
 	}
 }
@@ -692,8 +697,10 @@ func TestChangedKeyReadsButCannotWrite(t *testing.T) {
 	if r := relogged.writeDB(t, o.id, vid); r.StatusCode != http.StatusForbidden {
 		t.Errorf("changed-key db write: %d, want 403", r.StatusCode)
 	}
-	wantStatus(t, relogged.testClient, "PATCH", "/api/artifacts/"+o.id, map[string]any{"name": "x"}, http.StatusForbidden)
-	if r := relogged.upload("POST", "/api/artifacts/"+o.id+"/versions", map[string]string{"index.html": "x"}, nil); r.StatusCode != http.StatusForbidden {
+	if r := newMeta(t, relogged, o.id, "", "name", 1, "x").send(t); r.StatusCode != http.StatusForbidden {
+		t.Errorf("changed-key meta write: %d, want 403", r.StatusCode)
+	}
+	if r := relogged.upload("POST", "/api/artifacts/"+o.id+"/versions", map[string]string{"index.html": "x"}); r.StatusCode != http.StatusForbidden {
 		t.Errorf("changed-key push: %d", r.StatusCode)
 	}
 }
@@ -703,31 +710,25 @@ func TestUnreadableResourceReference(t *testing.T) {
 	a := seedKeyedAccount(t, s, ts.URL, "a@example.com")
 	b := seedKeyedAccount(t, s, ts.URL, "b@example.com")
 	x := newArtifact(t, a, "x")
-	a.mustDo("POST", "/api/artifacts/"+x.id+"/resources", map[string]any{"type": "claude-session", "value": "sess-1"}, nil, http.StatusCreated)
+	a.mustDo("POST", "/api/artifacts/"+x.id+"/resources", map[string]any{"type": "claude-session", "value": refOf("sess-1")}, nil, http.StatusCreated)
 
 	// B cannot see A's artifact through the reference: 404, never 409.
-	wantStatus(t, b.testClient, "GET", "/api/artifacts/sess-1", nil, http.StatusNotFound)
-	if r := get(t, ts.URL+"/shared/sess-1", b.token, ""); r.StatusCode != http.StatusNotFound {
+	wantStatus(t, b.testClient, "GET", "/api/artifacts/"+refOf("sess-1"), nil, http.StatusNotFound)
+	if r := get(t, ts.URL+"/shared/"+refOf("sess-1"), b.token, ""); r.StatusCode != http.StatusNotFound {
 		t.Errorf("B's page via A's reference: %d", r.StatusCode)
 	}
 
 	// With an artifact of B's own on the same reference, it resolves to B's.
 	y := newArtifact(t, b, "y")
-	b.mustDo("POST", "/api/artifacts/"+y.id+"/resources", map[string]any{"type": "claude-session", "value": "sess-1"}, nil, http.StatusCreated)
+	b.mustDo("POST", "/api/artifacts/"+y.id+"/resources", map[string]any{"type": "claude-session", "value": refOf("sess-1")}, nil, http.StatusCreated)
 	var view gotArtifact
-	b.mustDo("GET", "/api/artifacts/sess-1", nil, &view, http.StatusOK)
+	b.mustDo("GET", "/api/artifacts/"+refOf("sess-1"), nil, &view, http.StatusOK)
 	if view.ID != y.id {
 		t.Errorf("B's reference resolved to %s, want %s", view.ID, y.id)
 	}
 
-	// An artifact ID B cannot read does not shadow B's own reference of the
-	// same value: the ID is looked up among readable artifacts only.
-	b.mustDo("POST", "/api/artifacts/"+y.id+"/resources", map[string]any{"type": "t", "value": x.id}, nil, http.StatusCreated)
-	b.mustDo("GET", "/api/artifacts/"+x.id, nil, &view, http.StatusOK)
-	if view.ID != y.id {
-		t.Errorf("B's reference %s resolved to %s, want %s", x.id, view.ID, y.id)
-	}
-	// For A, who can read x, the ID still comes first.
+	// A resource value is a blind index now, never an artifact ID, so no
+	// reference can shadow an ID. For A, who can read x, the ID resolves.
 	a.mustDo("GET", "/api/artifacts/"+x.id, nil, &view, http.StatusOK)
 	if view.ID != x.id {
 		t.Errorf("A's own ID resolved to %s, want %s", view.ID, x.id)
@@ -735,8 +736,8 @@ func TestUnreadableResourceReference(t *testing.T) {
 
 	// Two of A's own artifacts on one reference are still ambiguous.
 	x2 := newArtifact(t, a, "x2")
-	a.mustDo("POST", "/api/artifacts/"+x2.id+"/resources", map[string]any{"type": "claude-session", "value": "sess-1"}, nil, http.StatusCreated)
-	wantStatus(t, a.testClient, "GET", "/api/artifacts/sess-1", nil, http.StatusConflict)
+	a.mustDo("POST", "/api/artifacts/"+x2.id+"/resources", map[string]any{"type": "claude-session", "value": refOf("sess-1")}, nil, http.StatusCreated)
+	wantStatus(t, a.testClient, "GET", "/api/artifacts/"+refOf("sess-1"), nil, http.StatusConflict)
 }
 
 func TestCreateArtifactValidation(t *testing.T) {
@@ -744,7 +745,7 @@ func TestCreateArtifactValidation(t *testing.T) {
 	a := seedKeyedAccount(t, s, ts.URL, "a@example.com")
 	b := seedKeyedAccount(t, s, ts.URL, "b@example.com")
 	create := func(id string, body e2e.MembershipBody, extra map[string]any) (int, string) {
-		req := map[string]any{"id": id, "name": "n", "description": "", "membership": signRecord(t, a, body),
+		req := map[string]any{"id": id, "membership": signRecord(t, a, body),
 			"wraps": []any{}, "estate": []any{testEstate(t, id, 1)}}
 		for k, v := range extra {
 			req[k] = v
@@ -768,8 +769,10 @@ func TestCreateArtifactValidation(t *testing.T) {
 	if got, _ := create(id, firstRecord(t, a, id), map[string]any{"public": true}); got != http.StatusBadRequest {
 		t.Errorf("public in create: %d", got)
 	}
-	if got, msg := create(id, firstRecord(t, a, id), map[string]any{"name": ""}); got != http.StatusBadRequest || msg != "name is required" {
-		t.Errorf("empty name: %d %q", got, msg)
+	for _, f := range []string{"name", "description"} {
+		if got, _ := create(id, firstRecord(t, a, id), map[string]any{f: "plain"}); got != http.StatusBadRequest {
+			t.Errorf("%s in create: %d, want 400", f, got)
+		}
 	}
 
 	// A bad record: 400, naming the rule.
@@ -780,7 +783,7 @@ func TestCreateArtifactValidation(t *testing.T) {
 	}
 	// Signed by someone else for A's artifact.
 	other := firstRecord(t, a, id)
-	req := map[string]any{"id": id, "name": "n", "description": "", "membership": signRecord(t, b, other),
+	req := map[string]any{"id": id, "membership": signRecord(t, b, other),
 		"wraps": []any{}, "estate": []any{testEstate(t, id, 1)}}
 	if got, msg := status(a.testClient, "POST", "/api/artifacts", req); got != http.StatusBadRequest || !strings.Contains(msg, "signer") {
 		t.Errorf("foreign signer: %d %q", got, msg)
@@ -791,7 +794,7 @@ func TestCreateArtifactValidation(t *testing.T) {
 	}
 
 	var view gotArtifact
-	a.mustDo("POST", "/api/artifacts", map[string]any{"id": id, "name": "n", "description": "d",
+	a.mustDo("POST", "/api/artifacts", map[string]any{"id": id,
 		"membership": signRecord(t, a, firstRecord(t, a, id)), "wraps": []any{}, "estate": []any{testEstate(t, id, 1)}}, &view, http.StatusCreated)
 	if view.ID != id || view.Owner != a.id || view.Access != "owner" || view.Epoch != 1 || view.Team != "none" || view.Public || view.Transfer != nil {
 		t.Errorf("created: %+v", view)
@@ -800,7 +803,7 @@ func TestCreateArtifactValidation(t *testing.T) {
 	if got, _ := create(id, firstRecord(t, a, id), nil); got != http.StatusConflict {
 		t.Errorf("taken id: %d", got)
 	}
-	breq := map[string]any{"id": id, "name": "n", "description": "", "membership": signRecord(t, b, firstRecord(t, b, id)),
+	breq := map[string]any{"id": id, "membership": signRecord(t, b, firstRecord(t, b, id)),
 		"wraps": []any{}, "estate": []any{testEstate(t, id, 1)}}
 	if got, _ := status(b.testClient, "POST", "/api/artifacts", breq); got != http.StatusConflict {
 		t.Errorf("taken id by another user: %d", got)
@@ -958,7 +961,7 @@ func TestKeysReturnsOnlyTheCallersWraps(t *testing.T) {
 	}
 }
 
-func TestArtifactJSONAndPatch(t *testing.T) {
+func TestArtifactJSON(t *testing.T) {
 	s, ts := testServer(t)
 	a := seedKeyedAccount(t, s, ts.URL, "a@example.com")
 	e := seedKeyedAccount(t, s, ts.URL, "e@example.com")
@@ -968,9 +971,14 @@ func TestArtifactJSONAndPatch(t *testing.T) {
 
 	var raw map[string]json.RawMessage
 	a.mustDo("GET", base, nil, &raw, http.StatusOK)
-	for _, k := range []string{"id", "name", "description", "owner", "access", "epoch", "team", "public", "publicWrites", "transfer", "createdAt", "updatedAt"} {
+	for _, k := range []string{"id", "owner", "access", "epoch", "team", "public", "publicWrites", "transfer", "createdAt", "updatedAt", "meta"} {
 		if _, ok := raw[k]; !ok {
 			t.Errorf("artifact JSON lacks %q", k)
+		}
+	}
+	for _, k := range []string{"name", "description"} {
+		if _, ok := raw[k]; ok {
+			t.Errorf("artifact JSON has %q, which the server no longer holds", k)
 		}
 	}
 	if string(raw["transfer"]) != "null" {
@@ -989,10 +997,12 @@ func TestArtifactJSONAndPatch(t *testing.T) {
 		t.Errorf("transfer: %+v", view.Transfer)
 	}
 
-	wantStatus(t, a.testClient, "PATCH", base, map[string]any{"public": true}, http.StatusBadRequest)
-	a.mustDo("PATCH", base, map[string]any{"name": "renamed", "description": "d"}, &view, http.StatusOK)
-	if view.Name != "renamed" || view.Access != "owner" {
-		t.Errorf("patched: %+v", view)
+	// Sharing state changes only through PUT /membership.
+	wantStatus(t, a.testClient, "PUT", base+"/meta/public", map[string]any{"public": true}, http.StatusBadRequest)
+	mustMeta(t, newMeta(t, a, o.id, "", "name", 1, "renamed"))
+	a.mustDo("GET", base, nil, &view, http.StatusOK)
+	if view.Access != "owner" || artifactMeta(t, a.testClient, o.id)["name"].Blob == "" {
+		t.Errorf("after a rename: %+v", view)
 	}
 }
 
@@ -1004,12 +1014,12 @@ func TestAdminWithoutAccessGets404(t *testing.T) {
 	vid := pushVersion(t, a.testClient, o.id)
 	base := "/api/artifacts/" + o.id
 	for _, req := range []struct{ method, path string }{
-		{"GET", base}, {"PATCH", base}, {"DELETE", base}, {"GET", base + "/membership"},
+		{"GET", base}, {"PUT", base + "/meta/name"}, {"DELETE", base}, {"GET", base + "/membership"},
 		{"GET", base + "/versions/" + vid}, {"DELETE", base + "/versions/" + vid},
 	} {
 		var body any
-		if req.method == "PATCH" {
-			body = map[string]any{"name": "x"}
+		if req.method == "PUT" {
+			body = newMeta(t, a, o.id, "", "name", 1, "x").request(t)
 		}
 		wantStatus(t, admin, req.method, req.path, body, http.StatusNotFound)
 	}
@@ -1070,7 +1080,7 @@ func TestPushRecordsTheEpochItWasPushedUnder(t *testing.T) {
 		PushedBy string `json:"pushedBy"`
 		Epoch    int    `json:"epoch"`
 	}
-	pushed := decode[written](t, a.upload("POST", base, files, nil))
+	pushed := decode[written](t, a.upload("POST", base, files))
 	if pushed.PushedBy != a.id || pushed.Epoch != 2 {
 		t.Errorf("create answer: %+v, want pushedBy %s at epoch 2", pushed, a.id)
 	}
@@ -1082,7 +1092,7 @@ func TestPushRecordsTheEpochItWasPushedUnder(t *testing.T) {
 
 	// A replacement after another epoch change records the new epoch.
 	o.apply(o.nextEpoch())
-	replaced := decode[written](t, a.upload("PUT", base+"/"+pushed.ID, files, nil))
+	replaced := decode[written](t, a.upload("PUT", base+"/"+pushed.ID, files))
 	if replaced.PushedBy != a.id || replaced.Epoch != 3 {
 		t.Errorf("replace answer: %+v, want pushedBy %s at epoch 3", replaced, a.id)
 	}

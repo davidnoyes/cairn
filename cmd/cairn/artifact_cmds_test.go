@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/aloisdeniel/cairn/internal/client"
-	"github.com/aloisdeniel/cairn/internal/store"
 	"github.com/google/uuid"
 )
 
@@ -83,7 +82,7 @@ func TestApiClientHoldsTheFullKey(t *testing.T) {
 func TestArtifactCreateCommand(t *testing.T) {
 	c := loggedIn(t)
 
-	a := runJSON[store.Artifact](t, runArtifact, "create", "notes", "--description", "my notes", "--json")
+	a := runJSON[client.Artifact](t, runArtifact, "create", "notes", "--description", "my notes", "--json")
 	if u, err := uuid.Parse(a.ID); err != nil || u.Version() != 4 {
 		t.Errorf("id %q is not a random UUID", a.ID)
 	}
@@ -93,13 +92,13 @@ func TestArtifactCreateCommand(t *testing.T) {
 	checkOwnedChain(t, c, a.ID)
 
 	// --name still names it, for scripts written before the positional form.
-	b := runJSON[store.Artifact](t, runArtifact, "create", "--name", "other", "--json")
+	b := runJSON[client.Artifact](t, runArtifact, "create", "--name", "other", "--json")
 	if b.Name != "other" {
 		t.Errorf("--name created %+v", b)
 	}
 
 	// --resource attaches a reference at creation.
-	r := runJSON[store.Artifact](t, runArtifact, "create", "with-ref", "--resource", "claude-session=s-1", "--json")
+	r := runJSON[client.Artifact](t, runArtifact, "create", "with-ref", "--resource", "claude-session=s-1", "--json")
 	got, err := c.ResolveArtifact("s-1")
 	if err != nil || got.ID != r.ID {
 		t.Errorf("resource lookup = %+v, %v", got, err)
@@ -118,8 +117,8 @@ func TestArtifactCreateNeedsAName(t *testing.T) {
 
 func TestArtifactUpdateRenames(t *testing.T) {
 	c := loggedIn(t)
-	a := runJSON[store.Artifact](t, runArtifact, "create", "draft", "--json")
-	u := runJSON[store.Artifact](t, runArtifact, "update", a.ID, "--name", "final", "--description", "done", "--json")
+	a := runJSON[client.Artifact](t, runArtifact, "create", "draft", "--json")
+	u := runJSON[client.Artifact](t, runArtifact, "update", a.ID, "--name", "final", "--description", "done", "--json")
 	if u.ID != a.ID || u.Name != "final" || u.Description != "done" {
 		t.Errorf("update = %+v", u)
 	}
@@ -141,8 +140,8 @@ func TestPushCreatesThroughTheSignedPath(t *testing.T) {
 	}
 
 	out := runJSON[struct {
-		Artifact store.Artifact `json:"artifact"`
-		Version  store.Version  `json:"version"`
+		Artifact client.Artifact `json:"artifact"`
+		Version  client.Version  `json:"version"`
 	}](t, runPush, dir, "--artifact", "site", "--create", "--name", "v1", "--json")
 	if out.Artifact.Name != "site" || out.Version.Seq != 1 {
 		t.Fatalf("push = %+v", out)
@@ -154,8 +153,8 @@ func TestPushCreatesThroughTheSignedPath(t *testing.T) {
 
 	// A second push lands on the same artifact.
 	again := runJSON[struct {
-		Artifact store.Artifact `json:"artifact"`
-		Version  store.Version  `json:"version"`
+		Artifact client.Artifact `json:"artifact"`
+		Version  client.Version  `json:"version"`
 	}](t, runPush, dir, "--artifact", "site", "--create", "--json")
 	if again.Artifact.ID != out.Artifact.ID || again.Version.Seq != 2 {
 		t.Errorf("second push = %+v", again)
@@ -208,7 +207,7 @@ func TestArtifactCreateResourceAndText(t *testing.T) {
 
 func TestArtifactUpdateRefusalsAndText(t *testing.T) {
 	loggedIn(t)
-	a := runJSON[store.Artifact](t, runArtifact, "create", "draft", "--json")
+	a := runJSON[client.Artifact](t, runArtifact, "create", "draft", "--json")
 	if err := runArtifact([]string{"update"}); err == nil || !strings.Contains(err.Error(), "usage:") {
 		t.Errorf("update with no target: %v, want the usage error", err)
 	}
@@ -256,10 +255,10 @@ func TestPushOverwrite(t *testing.T) {
 	loggedIn(t)
 	dir := siteDir(t)
 	type pushed struct {
-		Artifact store.Artifact `json:"artifact"`
-		Version  store.Version  `json:"version"`
+		Artifact client.Artifact `json:"artifact"`
+		Version  client.Version  `json:"version"`
 	}
-	empty := runJSON[store.Artifact](t, runArtifact, "create", "site", "--json")
+	empty := runJSON[client.Artifact](t, runArtifact, "create", "site", "--json")
 
 	// Nothing to overwrite yet.
 	if err := runPush([]string{dir, "--artifact", "site", "--overwrite", "latest"}); err == nil || !strings.Contains(err.Error(), "no versions yet") {
@@ -288,5 +287,51 @@ func TestPushOverwrite(t *testing.T) {
 	out, err := runQuiet(t, runPush, dir, "--artifact", "site")
 	if err != nil || !strings.Contains(out, "pushed "+dir+" as version #2") || !strings.Contains(out, "full screen:") {
 		t.Errorf("text output = %q, %v", out, err)
+	}
+}
+
+// push --create makes an artifact only when none matches: a name two artifacts
+// share is an error, not a reason to make a third.
+func TestPushCreateDoesNotMakeAThirdWhenTheNameIsAmbiguous(t *testing.T) {
+	c := loggedIn(t)
+	a := runJSON[client.Artifact](t, runArtifact, "create", "dup", "--json")
+	b := runJSON[client.Artifact](t, runArtifact, "create", "dup", "--json")
+	err := runPush([]string{siteDir(t), "--artifact", "dup", "--create"})
+	if err == nil || !strings.Contains(err.Error(), a.ID) || !strings.Contains(err.Error(), b.ID) {
+		t.Fatalf("push --create onto an ambiguous name: %v, want both IDs named", err)
+	}
+	if as, _ := c.ListArtifacts(); len(as) != 2 {
+		t.Errorf("%d artifacts after the refused push, want 2", len(as))
+	}
+}
+
+// A resource's value is kept as a blind index, so show lists each resource by
+// type and row ID, and a reference added at creation still finds the artifact.
+func TestArtifactShowListsResourcesByTypeAndRowID(t *testing.T) {
+	c := loggedIn(t)
+	a := runJSON[client.Artifact](t, runArtifact, "create", "refd", "--resource", "claude-session=s-77", "--json")
+	got, err := c.GetArtifact(a.ID)
+	if err != nil || len(got.Resources) != 1 {
+		t.Fatalf("resources = %+v, %v", got, err)
+	}
+	if strings.Contains(got.Resources[0].Value, "s-77") {
+		t.Errorf("the server holds %q, which contains the reference", got.Resources[0].Value)
+	}
+	out, err := runQuiet(t, runArtifact, "show", "s-77")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "  resource claude-session  " + got.Resources[0].ID + "\n"; !strings.Contains(out, want) {
+		t.Errorf("show printed %q, want %q", out, want)
+	}
+	if strings.Contains(out, "s-77") {
+		t.Errorf("show printed the reference, which the server cannot give back: %q", out)
+	}
+	// Renaming by a reference, then finding it by the new name.
+	if _, err := runQuiet(t, runArtifact, "update", "s-77", "--name", "renamed"); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runQuiet(t, runArtifact, "show", "renamed"); err != nil || !strings.HasPrefix(out, "renamed ("+a.ID+", private)") {
+		t.Errorf("show renamed = %q, %v", out, err)
 	}
 }

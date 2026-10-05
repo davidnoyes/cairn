@@ -10,12 +10,12 @@ import (
 
 func dataVersion(t *testing.T, s *Store) (artifactID, versionID string) {
 	t.Helper()
-	a, err := s.CreateArtifact("a", "", false)
+	a, err := s.CreateArtifact(false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	vid := uuid.NewString()
-	if _, err := s.CreateVersion(a.ID, vid, "v1", "", "c1", "", "aa", 0); err != nil {
+	if _, err := s.CreateVersion(a.ID, vid, "c1", "", "aa", 0); err != nil {
 		t.Fatal(err)
 	}
 	return a.ID, vid
@@ -186,7 +186,7 @@ func TestClientDataCascades(t *testing.T) {
 	s := testStore(t)
 	aid, vid := dataVersion(t, s)
 	other := uuid.NewString()
-	if _, err := s.CreateVersion(aid, other, "v2", "", "c2", "", "bb", 0); err != nil {
+	if _, err := s.CreateVersion(aid, other, "c2", "", "bb", 0); err != nil {
 		t.Fatal(err)
 	}
 	for _, v := range []string{vid, other} {

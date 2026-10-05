@@ -95,7 +95,7 @@ func bearer(tok string) map[string]string { return map[string]string{"Authorizat
 
 func TestContentOriginServesNoAppRoute(t *testing.T) {
 	w := newHostWorld(t)
-	for _, p := range []string{"/healthz", "/login", "/admin", "/signup", "/cairn.js", "/shell.js", "/e2e.mjs", "/app.css",
+	for _, p := range []string{"/healthz", "/login", "/app", "/admin", "/signup", "/cairn.js", "/shell.js", "/e2e.mjs", "/app.css",
 		"/artifacts/" + w.art.id, "/shared/" + w.art.id, "/"} {
 		resp := w.onContent(t, "GET", p, nil, nil)
 		if resp.StatusCode != http.StatusNotFound {
@@ -272,7 +272,7 @@ func TestContentOriginAPIAllowlist(t *testing.T) {
 	b := newArtifact(t, w.owner, "other")
 	bvid := pushVersion(t, w.owner.testClient, b.id)
 	w.owner.mustDo("POST", "/api/artifacts/"+w.art.id+"/resources",
-		map[string]string{"type": "claude-session", "value": "w-session"}, nil, http.StatusCreated)
+		map[string]string{"type": "claude-session", "value": refOf("w-session")}, nil, http.StatusCreated)
 
 	for pattern := range contentTokenRoutes {
 		w.putFile(t)
@@ -285,7 +285,7 @@ func TestContentOriginAPIAllowlist(t *testing.T) {
 		}
 		// Another artifact's {id}, by ID or by resource value, and this
 		// artifact reached by its own resource value, are all refused.
-		for _, ref := range []string{b.id, "w-session"} {
+		for _, ref := range []string{b.id, refOf("w-session")} {
 			rq := w.contentRouteRequest(t, pattern, ref, bvid, strings.Repeat("a", 32), strings.Repeat("b", 64), "")
 			if resp := w.onContent(t, rq.method, rq.path, rq.withHeader(bearer(tok)), rq.body); resp.StatusCode != http.StatusNotFound {
 				t.Errorf("%s with {id} %s: %d %s, want 404", pattern, ref, resp.StatusCode, resp.body)
@@ -514,8 +514,8 @@ func TestMintContentToken(t *testing.T) {
 
 	// A resource reference resolves to the artifact's ID in the claim.
 	w.owner.mustDo("POST", "/api/artifacts/"+w.art.id+"/resources",
-		map[string]string{"type": "claude-session", "value": "mint-ref"}, nil, http.StatusCreated)
-	_, tok, _ := mint(t, w.owner.testClient, "mint-ref")
+		map[string]string{"type": "claude-session", "value": refOf("mint-ref")}, nil, http.StatusCreated)
+	_, tok, _ := mint(t, w.owner.testClient, refOf("mint-ref"))
 	if claims, err := auth.VerifyJWT(w.s.secret, tok); err != nil || claims.Artifact != w.art.id {
 		t.Errorf("claim for a reference: %+v %v, want %s", claims, err, w.art.id)
 	}
@@ -690,10 +690,10 @@ func TestSharedRoutesAndShellCSP(t *testing.T) {
 			t.Errorf("GET %s: CSP %q, want the app policy", p, csp)
 		}
 	}
-	resp := get(t, w.base+"/admin", w.owner.token, "text/html")
+	resp := get(t, w.base+"/app", w.owner.token, "text/html")
 	body(t, resp)
 	if csp := resp.Header.Get("Content-Security-Policy"); csp != appCSP {
-		t.Errorf("GET /admin: CSP %q", csp)
+		t.Errorf("GET /app: CSP %q", csp)
 	}
 }
 

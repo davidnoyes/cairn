@@ -685,7 +685,6 @@ func TestAdminUserArtifacts(t *testing.T) {
 	other := newArtifact(t, w.owner, "second")
 	var got []struct {
 		ID      string `json:"id"`
-		Name    string `json:"name"`
 		Editors []struct {
 			ID   string `json:"id"`
 			Name string `json:"name"`
@@ -714,9 +713,6 @@ func TestAdminUserArtifacts(t *testing.T) {
 			}
 		default:
 			t.Errorf("unexpected artifact %s", a.ID)
-		}
-		if a.Name != "" {
-			t.Errorf("artifact %s is named", a.ID)
 		}
 	}
 

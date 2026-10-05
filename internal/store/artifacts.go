@@ -7,15 +7,15 @@ import (
 	"github.com/google/uuid"
 )
 
-// Artifact is a named collection of versions.
+// Artifact is a collection of versions. Its name and description are
+// client-encrypted fields (see MetaField); the server holds no plaintext of
+// either.
 type Artifact struct {
-	ID          string      `json:"id"`
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Public      bool        `json:"public"`
-	CreatedAt   string      `json:"createdAt"`
-	UpdatedAt   string      `json:"updatedAt"`
-	Resources   []*Resource `json:"resources,omitempty"`
+	ID        string      `json:"id"`
+	Public    bool        `json:"public"`
+	CreatedAt string      `json:"createdAt"`
+	UpdatedAt string      `json:"updatedAt"`
+	Resources []*Resource `json:"resources,omitempty"`
 
 	// Sharing state, set from the latest membership record. OwnerID is
 	// empty for an artifact created without one; Epoch is 0 until the first
@@ -28,8 +28,8 @@ type Artifact struct {
 	PublicEpoch     int    `json:"-"`
 }
 
-// Resource associates external references (e.g. a Claude session ID) with an
-// artifact.
+// Resource associates an external reference (e.g. a Claude session ID) with an
+// artifact. Value is a blind index, never the reference itself.
 type Resource struct {
 	ID         string `json:"id"`
 	ArtifactID string `json:"-"`
@@ -43,8 +43,6 @@ type Resource struct {
 type Version struct {
 	ID         string `json:"id"`
 	ArtifactID string `json:"artifactId"`
-	Name       string `json:"name"`
-	Changelog  string `json:"changelog"`
 	Seq        int    `json:"seq"`
 	ContentDir string `json:"-"`
 	CreatedAt  string `json:"createdAt"`
@@ -59,23 +57,23 @@ type Version struct {
 	ManifestHash string `json:"manifestHash"`
 }
 
-const artifactCols = `id, name, description, public, created_at, updated_at,
+const artifactCols = `id, public, created_at, updated_at,
 	COALESCE(owner_id, ''), epoch, team, public_writes, COALESCE(public_token_hash, ''), COALESCE(public_epoch, 0)`
 
 func scanArtifact(row interface{ Scan(...any) error }) (*Artifact, error) {
 	var a Artifact
-	if err := row.Scan(&a.ID, &a.Name, &a.Description, &a.Public, &a.CreatedAt, &a.UpdatedAt,
+	if err := row.Scan(&a.ID, &a.Public, &a.CreatedAt, &a.UpdatedAt,
 		&a.OwnerID, &a.Epoch, &a.Team, &a.PublicWrites, &a.PublicTokenHash, &a.PublicEpoch); err != nil {
 		return nil, err
 	}
 	return &a, nil
 }
 
-func (s *Store) CreateArtifact(name, description string, public bool) (*Artifact, error) {
+func (s *Store) CreateArtifact(public bool) (*Artifact, error) {
 	t := now()
-	a := &Artifact{ID: uuid.NewString(), Name: name, Description: description, Public: public, CreatedAt: t, UpdatedAt: t}
-	_, err := s.db.Exec(`INSERT INTO artifacts (id, name, description, public, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		a.ID, a.Name, a.Description, a.Public, a.CreatedAt, a.UpdatedAt)
+	a := &Artifact{ID: uuid.NewString(), Public: public, CreatedAt: t, UpdatedAt: t}
+	_, err := s.db.Exec(`INSERT INTO artifacts (id, public, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+		a.ID, a.Public, a.CreatedAt, a.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -86,14 +84,8 @@ func (s *Store) ArtifactByID(id string) (*Artifact, error) {
 	return scanArtifact(s.db.QueryRow(`SELECT `+artifactCols+` FROM artifacts WHERE id = ?`, id))
 }
 
-// ArtifactByName returns the artifact with the given exact name. Names are not
-// unique; the oldest match wins (used by the CLI for convenience).
-func (s *Store) ArtifactByName(name string) (*Artifact, error) {
-	return scanArtifact(s.db.QueryRow(`SELECT `+artifactCols+` FROM artifacts WHERE name = ? ORDER BY created_at LIMIT 1`, name))
-}
-
 // ArtifactsByResource returns the artifacts associated with a resource,
-// matched by resource value (e.g. a Claude session id) or resource row id.
+// matched by resource value (a blind index) or resource row id.
 func (s *Store) ArtifactsByResource(ref string) ([]*Artifact, error) {
 	rows, err := s.db.Query(`SELECT `+artifactCols+` FROM artifacts
 		WHERE id IN (SELECT artifact_id FROM artifact_resources WHERE value = ? OR id = ?)
@@ -128,13 +120,6 @@ func (s *Store) ListArtifacts() ([]*Artifact, error) {
 		out = append(out, a)
 	}
 	return out, rows.Err()
-}
-
-// UpdateArtifact renames an artifact. Its sharing state changes only through
-// a membership record.
-func (s *Store) UpdateArtifact(id, name, description string) error {
-	return s.exec1(`UPDATE artifacts SET name = ?, description = ?, updated_at = ? WHERE id = ?`,
-		name, description, now(), id)
 }
 
 func (s *Store) DeleteArtifact(id string) error {
@@ -197,11 +182,11 @@ func (s *Store) DeleteResource(artifactID, resourceID string) error {
 
 // Versions
 
-const versionCols = `id, artifact_id, name, changelog, seq, content_dir, created_at, updated_at, COALESCE(pushed_by, ''), epoch, manifest_hash`
+const versionCols = `id, artifact_id, seq, content_dir, created_at, updated_at, COALESCE(pushed_by, ''), epoch, manifest_hash`
 
 func scanVersion(row interface{ Scan(...any) error }) (*Version, error) {
 	var v Version
-	if err := row.Scan(&v.ID, &v.ArtifactID, &v.Name, &v.Changelog, &v.Seq, &v.ContentDir, &v.CreatedAt, &v.UpdatedAt, &v.PushedBy, &v.Epoch, &v.ManifestHash); err != nil {
+	if err := row.Scan(&v.ID, &v.ArtifactID, &v.Seq, &v.ContentDir, &v.CreatedAt, &v.UpdatedAt, &v.PushedBy, &v.Epoch, &v.ManifestHash); err != nil {
 		return nil, err
 	}
 	return &v, nil
@@ -213,14 +198,14 @@ func scanVersion(row interface{ Scan(...any) error }) (*Version, error) {
 // land between the read and the write. A declaredEpoch other than 0 must be
 // the artifact's current epoch, checked by the same statement; otherwise
 // nothing is written and the answer is ErrEpochMoved.
-func (s *Store) CreateVersion(artifactID, versionID, name, changelog, contentDir, pushedBy, manifestHash string, declaredEpoch int) (*Version, error) {
+func (s *Store) CreateVersion(artifactID, versionID, contentDir, pushedBy, manifestHash string, declaredEpoch int) (*Version, error) {
 	t := now()
-	v := &Version{ID: versionID, ArtifactID: artifactID, Name: name, Changelog: changelog, ContentDir: contentDir, CreatedAt: t, UpdatedAt: t, PushedBy: pushedBy, ManifestHash: manifestHash}
-	err := s.db.QueryRow(`INSERT INTO versions (id, artifact_id, name, changelog, seq, content_dir, created_at, updated_at, pushed_by, epoch, manifest_hash)
-		SELECT ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM versions WHERE artifact_id = ?), ?, ?, ?, NULLIF(?, ''), epoch, ?
+	v := &Version{ID: versionID, ArtifactID: artifactID, ContentDir: contentDir, CreatedAt: t, UpdatedAt: t, PushedBy: pushedBy, ManifestHash: manifestHash}
+	err := s.db.QueryRow(`INSERT INTO versions (id, artifact_id, seq, content_dir, created_at, updated_at, pushed_by, epoch, manifest_hash)
+		SELECT ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM versions WHERE artifact_id = ?), ?, ?, ?, NULLIF(?, ''), epoch, ?
 		FROM artifacts WHERE id = ? AND (? = 0 OR epoch = ?)
 		RETURNING seq, epoch`,
-		v.ID, v.ArtifactID, v.Name, v.Changelog, artifactID, v.ContentDir, v.CreatedAt, v.UpdatedAt, pushedBy, manifestHash, artifactID,
+		v.ID, v.ArtifactID, artifactID, v.ContentDir, v.CreatedAt, v.UpdatedAt, pushedBy, manifestHash, artifactID,
 		declaredEpoch, declaredEpoch).Scan(&v.Seq, &v.Epoch)
 	if isUniqueViolation(err) {
 		// The version ID is unique across every artifact, so a clash can be
@@ -276,7 +261,7 @@ func (s *Store) ListVersions(artifactID string) ([]*Version, error) {
 // declaredEpoch other than 0 must be the artifact's current epoch, checked by
 // the UPDATE itself; otherwise nothing changes and the answer is
 // ErrEpochMoved.
-func (s *Store) SwapVersionContent(artifactID, versionID, contentDir, name, changelog, pushedBy, manifestHash string, declaredEpoch int) (string, error) {
+func (s *Store) SwapVersionContent(artifactID, versionID, contentDir, pushedBy, manifestHash string, declaredEpoch int) (string, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return "", err
@@ -286,10 +271,10 @@ func (s *Store) SwapVersionContent(artifactID, versionID, contentDir, name, chan
 	if err := tx.QueryRow(`SELECT content_dir FROM versions WHERE id = ? AND artifact_id = ?`, versionID, artifactID).Scan(&prev); err != nil {
 		return "", err
 	}
-	res, err := tx.Exec(`UPDATE versions SET content_dir = ?, name = ?, changelog = ?, updated_at = ?, pushed_by = NULLIF(?, ''),
+	res, err := tx.Exec(`UPDATE versions SET content_dir = ?, updated_at = ?, pushed_by = NULLIF(?, ''),
 		manifest_hash = ?, epoch = (SELECT epoch FROM artifacts WHERE id = ?) WHERE id = ?
 		AND (? = 0 OR (SELECT epoch FROM artifacts WHERE id = ?) = ?)`,
-		contentDir, name, changelog, now(), pushedBy, manifestHash, artifactID, versionID, declaredEpoch, artifactID, declaredEpoch)
+		contentDir, now(), pushedBy, manifestHash, artifactID, versionID, declaredEpoch, artifactID, declaredEpoch)
 	if err != nil {
 		return "", err
 	}
@@ -309,11 +294,59 @@ func (s *Store) SwapVersionContent(artifactID, versionID, contentDir, name, chan
 	return prev, nil
 }
 
-func (s *Store) UpdateVersionMeta(artifactID, versionID, name, changelog string) error {
-	return s.exec1(`UPDATE versions SET name = ?, changelog = ?, updated_at = ? WHERE id = ? AND artifact_id = ?`,
-		name, changelog, now(), versionID, artifactID)
-}
-
 func (s *Store) DeleteVersion(artifactID, versionID string) error {
 	return s.exec1(`DELETE FROM versions WHERE id = ? AND artifact_id = ?`, versionID, artifactID)
+}
+
+// MetaField is one encrypted metadata field: the sealed blob, the signed
+// record that covers it, and the Ed25519 key the record verified under when it
+// was written. VersionID is empty for an artifact's own fields.
+type MetaField struct {
+	ArtifactID string
+	VersionID  string
+	Field      string
+	Record     []byte
+	SignerKey  []byte
+	Blob       []byte
+}
+
+// PutMetaField stores f, replacing the field's earlier write. A field of a
+// version that does not exist, or was deleted since the caller looked, is
+// ErrNotFound.
+func (s *Store) PutMetaField(f MetaField) error {
+	res, err := s.db.Exec(`INSERT INTO meta_fields (artifact_id, version_id, field, record, signer_key, blob)
+		SELECT ?, ?, ?, ?, ?, ?
+		WHERE ? = '' OR EXISTS (SELECT 1 FROM versions WHERE id = ? AND artifact_id = ?)
+		ON CONFLICT (artifact_id, version_id, field) DO UPDATE SET record = excluded.record, signer_key = excluded.signer_key, blob = excluded.blob`,
+		f.ArtifactID, f.VersionID, f.Field, f.Record, f.SignerKey, f.Blob,
+		f.VersionID, f.VersionID, f.ArtifactID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNotFound
+	}
+	s.touchArtifact(f.ArtifactID)
+	return nil
+}
+
+// ListMetaFields returns every field of the artifact and of its versions.
+func (s *Store) ListMetaFields(artifactID string) ([]MetaField, error) {
+	rows, err := s.db.Query(`SELECT artifact_id, version_id, field, record, signer_key, blob FROM meta_fields
+		WHERE artifact_id = ? ORDER BY version_id, field`, artifactID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MetaField
+	for rows.Next() {
+		var f MetaField
+		if err := rows.Scan(&f.ArtifactID, &f.VersionID, &f.Field, &f.Record, &f.SignerKey, &f.Blob); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
 }

@@ -55,7 +55,7 @@ const (
 	PushVersion    Action = "push"       // push a version
 	Share          Action = "share"      // share, unshare, make public or private
 	Delete         Action = "delete"     // delete the artifact
-	Rename         Action = "rename"     // PATCH name and description
+	Rename         Action = "rename"     // write metadata fields, add resources
 	ReadMembership Action = "membership" // GET membership records
 	ReadKeys       Action = "keys"       // GET the caller's wraps
 	ListPending    Action = "pending"    // GET team members waiting

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 
 	"github.com/aloisdeniel/cairn/internal/access"
 	"github.com/aloisdeniel/cairn/internal/store"
@@ -44,13 +45,8 @@ func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "user")
 		return
 	}
-	// Name-based lookup convenience for the CLI: ?name= filters exactly.
-	name := r.URL.Query().Get("name")
 	out := []*artifactView{}
 	for _, a := range as {
-		if name != "" && a.Name != name {
-			continue
-		}
 		a, req, err := s.accessRequest(c, a.ID, nil)
 		if errors.Is(err, store.ErrNotFound) {
 			continue
@@ -82,42 +78,6 @@ func (s *Server) handleGetArtifact(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, v)
 }
 
-// renameRequest is the PATCH body: an artifact's sharing state changes only
-// through PUT /membership, so a public field is refused as unknown.
-type renameRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-}
-
-func (s *Server) handleUpdateArtifact(w http.ResponseWriter, r *http.Request) {
-	a := requestArtifact(r)
-	var req renameRequest
-	if !readJSON(w, r, &req) {
-		return
-	}
-	if req.Name == "" {
-		req.Name = a.Name
-	}
-	if req.Description == "" {
-		req.Description = a.Description
-	}
-	if err := s.store.UpdateArtifact(a.ID, req.Name, req.Description); err != nil {
-		s.writeStoreError(w, err, "artifact")
-		return
-	}
-	a, err := s.store.ArtifactByID(a.ID)
-	if err != nil {
-		s.writeStoreError(w, err, "artifact")
-		return
-	}
-	v, err := s.viewOf(a, access.LevelOf(requestAccess(r)))
-	if err != nil {
-		s.writeStoreError(w, err, "artifact")
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
 func (s *Server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 	s.deleteArtifact(w, requestArtifact(r), requestUser(r).Email, s.store.DeleteArtifact)
 }
@@ -141,6 +101,10 @@ func (s *Server) deleteArtifact(w http.ResponseWriter, a *store.Artifact, by str
 
 // Resources
 
+// blindIndexPattern is a resource value: hex(HMAC-SHA256) under the caller's
+// index key, so the server never holds the reference itself.
+var blindIndexPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
 type resourceRequest struct {
 	Type  string `json:"type"`
 	Value string `json:"value"`
@@ -152,8 +116,12 @@ func (s *Server) handleAddResource(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if req.Type == "" || req.Value == "" {
-		writeError(w, http.StatusBadRequest, "type and value are required")
+	if req.Type == "" {
+		writeError(w, http.StatusBadRequest, "type is required")
+		return
+	}
+	if !blindIndexPattern.MatchString(req.Value) {
+		writeError(w, http.StatusBadRequest, "value must be a blind index: 64 lowercase hex characters")
 		return
 	}
 	res, err := s.store.AddResource(a.ID, req.Type, req.Value)
@@ -186,7 +154,13 @@ func (s *Server) handleListVersions(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "versions")
 		return
 	}
-	writeJSON(w, http.StatusOK, viewVersions(vs, vouches))
+	fields, err := s.store.ListMetaFields(id)
+	if err != nil {
+		s.writeStoreError(w, err, "versions")
+		return
+	}
+	_, meta := metaViews(fields)
+	writeJSON(w, http.StatusOK, viewVersions(vs, vouches, meta))
 }
 
 func (s *Server) handleGetVersion(w http.ResponseWriter, r *http.Request) {
@@ -201,37 +175,13 @@ func (s *Server) handleGetVersion(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "version")
 		return
 	}
-	writeJSON(w, http.StatusOK, viewVersions([]*store.Version{v}, vouches)[0])
-}
-
-type versionMetaRequest struct {
-	Name      *string `json:"name"`
-	Changelog *string `json:"changelog"`
-}
-
-func (s *Server) handleUpdateVersionMeta(w http.ResponseWriter, r *http.Request) {
-	v, err := s.store.VersionByID(requestArtifact(r).ID, r.PathValue("vid"))
+	fields, err := s.store.ListMetaFields(id)
 	if err != nil {
 		s.writeStoreError(w, err, "version")
 		return
 	}
-	var req versionMetaRequest
-	if !readJSON(w, r, &req) {
-		return
-	}
-	name, changelog := v.Name, v.Changelog
-	if req.Name != nil {
-		name = *req.Name
-	}
-	if req.Changelog != nil {
-		changelog = *req.Changelog
-	}
-	if err := s.store.UpdateVersionMeta(v.ArtifactID, v.ID, name, changelog); err != nil {
-		s.writeStoreError(w, err, "version")
-		return
-	}
-	v, _ = s.store.VersionByID(v.ArtifactID, v.ID)
-	writeJSON(w, http.StatusOK, v)
+	_, meta := metaViews(fields)
+	writeJSON(w, http.StatusOK, viewVersions([]*store.Version{v}, vouches, meta)[0])
 }
 
 func (s *Server) handleDeleteVersion(w http.ResponseWriter, r *http.Request) {

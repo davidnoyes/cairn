@@ -238,7 +238,7 @@ func forgedManifest(t *testing.T, c *Client, artifact, vid, signer string, seed 
 	if err != nil {
 		t.Fatal(err)
 	}
-	versions, err := c.ListVersions(artifact)
+	versions, err := c.storeVersions(artifact)
 	if err != nil || len(versions) == 0 {
 		t.Fatalf("ListVersions = %v, %v", versions, err)
 	}

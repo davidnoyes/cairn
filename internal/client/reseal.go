@@ -1,15 +1,16 @@
 // Re-sealing data after an epoch change. A record that starts a new epoch makes
 // the new epoch's AK the only one a public link opens, so the person who made
 // it seals the data again under that AK: the latest revision of every
-// version's database, every stored file at its new address, and the latest
-// version's content, as a replacement with the same version ID. See "Epoch
-// changes" in design/e2e-api.md.
+// version's database, every stored file at its new address, the latest
+// version's content, as a replacement with the same version ID, and every
+// encrypted metadata field. See "Epoch changes" in design/e2e-api.md.
 package client
 
 import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
@@ -25,6 +26,7 @@ type ResealResult struct {
 	Databases int
 	Files     int
 	Versions  int
+	Meta      int
 	Skipped   []string
 }
 
@@ -97,9 +99,13 @@ func (c *Client) reseal(k *UnlockedKeys, va *VerifiedArtifact, artifactID string
 	if err != nil {
 		return res, err
 	}
-	versions, err := c.ListVersions(artifactID)
+	views, err := c.listVersions(artifactID)
 	if err != nil {
 		return res, err
+	}
+	versions := make([]*store.Version, len(views))
+	for i, v := range views {
+		versions[i] = &v.Version
 	}
 	for _, v := range versions {
 		d := newData(k, va, artifactID, v, aks, c, now)
@@ -115,7 +121,56 @@ func (c *Client) reseal(k *UnlockedKeys, va *VerifiedArtifact, artifactID string
 	if err := c.resealVersion(k, va, artifactID, aks, versions, res); err != nil {
 		return res, err
 	}
+	if err := c.resealMeta(k, va, artifactID, aks, old, views, res); err != nil {
+		return res, err
+	}
 	return res, nil
+}
+
+// resealMeta writes each metadata field again under the current epoch, signed
+// by the caller, when it was sealed under an earlier one and verifies under
+// the record before the change: a link holder has only the current epoch's AK,
+// so without this they could read no name. A field that fails the check, such
+// as one signed by someone the change removed, is left as it is and noted in
+// Skipped. Fields are checked as a reader checks them, except against old.
+func (c *Client) resealMeta(k *UnlockedKeys, va *VerifiedArtifact, artifactID string, aks map[int][]byte, old map[string]map[string]bool, views []*Version, res *ResealResult) error {
+	a, err := c.getArtifact(artifactID)
+	if err != nil {
+		return err
+	}
+	current := va.Chain.Latest.Epoch
+	chk := &dataChecker{artifact: artifactID, aks: aks, writers: old}
+	again := func(vid string, items map[string]MetaItem, what string) error {
+		for _, field := range slices.Sorted(maps.Keys(items)) {
+			item := items[field]
+			var body e2e.RecordBody
+			if e2e.DecodeStrict(item.Record.Body, &body) == nil && body.Epoch >= current {
+				continue
+			}
+			plain, _, err := openMeta(chk, vid, field, item)
+			if err != nil {
+				res.Skipped = append(res.Skipped, fmt.Sprintf("the %s of %s: %v", field, what, err))
+				continue
+			}
+			if aks[current] == nil {
+				return fmt.Errorf("no key for epoch %d", current)
+			}
+			if err := c.putMeta(k, artifactID, vid, field, current, aks[current], plain); err != nil {
+				return fmt.Errorf("the %s of %s: %w", field, what, err)
+			}
+			res.Meta++
+		}
+		return nil
+	}
+	if err := again("", a.Meta, "the artifact"); err != nil {
+		return err
+	}
+	for _, v := range views {
+		if err := again(v.ID, v.Meta, "version "+v.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // resealDatabase writes the latest revision again under the current epoch,
@@ -245,7 +300,7 @@ func (c *Client) resealVersion(k *UnlockedKeys, va *VerifiedArtifact, artifactID
 		}
 		files[f.Path] = plain
 	}
-	if _, err := c.uploadVersion(k, artifactID, v.ID, true, current, newAK, files, v.Name, v.Changelog); err != nil {
+	if _, err := c.uploadVersion(k, artifactID, v.ID, true, current, newAK, files); err != nil {
 		return fmt.Errorf("version %s: %w", v.ID, err)
 	}
 	res.Versions++

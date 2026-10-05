@@ -46,17 +46,23 @@ export class WeakPasswordError extends Error {
   }
 }
 
-// post sends a JSON body and returns the parsed JSON answer, or throws an
-// ApiError carrying the server's {"error"} message.
-async function post(deps, path, body) {
-  const resp = await deps.fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+// send makes a request, with a JSON body if there is one, and returns the
+// parsed JSON answer, or throws an ApiError carrying the server's {"error"}
+// message.
+async function send(deps, method, path, body) {
+  const options = { method };
+  if (body !== undefined) {
+    options.headers = { 'Content-Type': 'application/json' };
+    options.body = JSON.stringify(body);
+  }
+  const resp = await deps.fetch(path, options);
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new ApiError(data.error || `request failed (${resp.status})`, resp.status);
   return data;
+}
+
+function post(deps, path, body) {
+  return send(deps, 'POST', path, body);
 }
 
 // checkNewPassword enforces the same rules as the CLI's CheckNewPassword:
@@ -128,10 +134,12 @@ export async function signUp(deps, { email, name, password, confirm }) {
   return { recoveryCode };
 }
 
-// parseKdf turns the wire form of the Argon2id parameters into what
-// checkFloor and the stretch function take.
+// parseKdf turns the wire form of the Argon2id parameters into what the
+// stretch function takes, and refuses parameters below the floor.
 function parseKdf(kdf) {
-  return { alg: kdf.alg, m: kdf.m, t: kdf.t, p: kdf.p, salt: e2e.unb64(kdf.salt) };
+  const parsed = { alg: kdf.alg, m: kdf.m, t: kdf.t, p: kdf.p, salt: e2e.unb64(kdf.salt) };
+  e2e.checkFloor(parsed);
+  return parsed;
 }
 
 // signIn runs prelogin, checks the parameters against the floor, stretches the
@@ -142,7 +150,6 @@ export async function signIn(deps, { email, password }) {
   if (password === '') throw new Error('The password must not be empty.');
   email = e2e.normalizeEmail(email);
   const kdf = parseKdf(await post(deps, '/api/auth/prelogin', { email }));
-  e2e.checkFloor(kdf);
   const stretched = await deps.stretch(password, email, kdf);
   let authKey, kek;
   try {
@@ -309,6 +316,92 @@ export function recoveryGroupIndex(display) {
 // recoveryGroupMatches reports whether typed is group index of the code.
 export function recoveryGroupMatches(display, index, typed) {
   return typed.trim().toUpperCase() === display.split('-')[index];
+}
+
+// unlock proves the signed-in user knows their password right now: it
+// stretches it with the account's current parameters and opens MK from the
+// bundle. It returns the account, authKey for the server's own check, and MK
+// as raw bytes, which the caller seals again and must zero.
+async function unlock(deps, password) {
+  if (password === '') throw new Error('Enter your password.');
+  const me = await send(deps, 'GET', '/api/me');
+  const bundle = await send(deps, 'GET', '/api/me/bundle');
+  const kdf = parseKdf(bundle.kdf);
+  const stretched = await deps.stretch(password, me.email, kdf);
+  let authKey, kek;
+  try {
+    ({ authKey, kek } = await e2e.passwordKeys(stretched));
+    return { me, authKey: e2e.b64(authKey), mk: await e2e.open(kek, ['mk'], e2e.unb64(bundle.mkPassword)) };
+  } catch (err) {
+    if (err instanceof e2e.DecryptError) throw new Error('That password is wrong.');
+    throw err;
+  } finally {
+    stretched.fill(0);
+    kek?.fill(0);
+  }
+}
+
+// createApiKey makes an API key with its own sealed copy of MK, as the CLI's
+// login does, so the key opens the account's artifacts and not just the API.
+// The key secret never leaves the browser: it returns the full key, which the
+// page shows once.
+export async function createApiKey(deps, { name, password }) {
+  name = name.trim();
+  if (name === '') throw new Error('Give the key a name.');
+  const { authKey, mk } = await unlock(deps, password);
+  const key = e2e.newApiKey();
+  let kek, sealed;
+  try {
+    kek = await e2e.apiKeyKek(key.keySecret, key.keyId);
+    sealed = await e2e.seal(kek, ['mk', key.keyId], mk);
+  } finally {
+    for (const secret of [mk, key.keySecret, kek]) secret?.fill(0);
+  }
+  const created = await post(deps, '/api/keys', {
+    authKey, name, device: false, keyId: key.keyId, authSecret: key.authSecret, mk: e2e.b64(sealed),
+  });
+  return { ...created, key: key.full };
+}
+
+// changePassword re-seals MK under a freshly stretched new password. MK and
+// the key pairs stay the same, so the keys already unlocked stay valid.
+export async function changePassword(deps, { current, next, confirm }) {
+  if (next === '') throw new Error('The password must not be empty.');
+  if (next !== confirm) throw new Error('The passwords do not match.');
+  const me = await send(deps, 'GET', '/api/me');
+  checkNewPassword(deps, next, confirm, [me.email, me.name]);
+  const { authKey, mk } = await unlock(deps, current);
+  const params = { alg: 'argon2id', m: 65536, t: 3, p: 1, salt: randomBytes(16) };
+  let stretched, newAuthKey, mkPassword;
+  try {
+    stretched = await deps.stretch(next, me.email, params);
+    let kek;
+    ({ authKey: newAuthKey, kek } = await e2e.passwordCryptoKeys(stretched, 'seal'));
+    mkPassword = await sealField(kek, 'mk', mk);
+  } finally {
+    for (const secret of [mk, stretched]) secret?.fill(0);
+  }
+  await send(deps, 'PUT', '/api/me/password', {
+    authKey,
+    newAuthKey: e2e.b64(newAuthKey),
+    kdf: { alg: params.alg, m: params.m, t: params.t, p: params.p, salt: e2e.b64(params.salt) },
+    mkPassword,
+  });
+}
+
+// newRecoveryCode replaces the recovery code: MK sealed under a new one, so
+// the old code stops working. It returns the code, which the page shows once.
+export async function newRecoveryCode(deps, { password }) {
+  const { authKey, mk } = await unlock(deps, password);
+  let recovery, mkRecovery;
+  try {
+    recovery = e2e.newRecoveryCode();
+    mkRecovery = await sealField(await e2e.recoveryKekCryptoKey(recovery.code, 'seal'), 'mk', mk);
+  } finally {
+    for (const secret of [mk, recovery?.code]) secret?.fill(0);
+  }
+  await send(deps, 'PUT', '/api/me/recovery', { authKey, mkRecovery });
+  return { recoveryCode: recovery.display };
 }
 
 // signOut clears the unwrapped keys. The keyring anchor lives in

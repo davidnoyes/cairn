@@ -29,7 +29,9 @@ var mutatingMethods = map[string]bool{
 //   - The body must be declared application/json or application/octet-stream.
 //     A browser can send neither to another site without a preflight, which
 //     rules out a plain HTML form post. A DELETE with no body is exempt,
-//     because a cross-site DELETE needs a preflight too.
+//     because a cross-site DELETE needs a preflight too. multipart/form-data
+//     is also accepted when Sec-Fetch-Site is same-origin: the app's own
+//     uploads use it, and a forged form post cannot claim that header.
 //   - Sec-Fetch-Site, when the browser sends it, must say the request
 //     originated from the same origin; failing that, an explicit Origin
 //     header must match the server's own public origin.
@@ -45,7 +47,8 @@ func protectMutations(publicOrigin string, next http.Handler) http.Handler {
 		}
 		if r.Method != http.MethodDelete || r.ContentLength != 0 {
 			mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-			if err != nil || (mediaType != "application/json" && mediaType != "application/octet-stream") {
+			sameOriginForm := mediaType == "multipart/form-data" && r.Header.Get("Sec-Fetch-Site") == "same-origin"
+			if err != nil || (mediaType != "application/json" && mediaType != "application/octet-stream" && !sameOriginForm) {
 				writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json or application/octet-stream")
 				return
 			}

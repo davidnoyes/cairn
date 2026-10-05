@@ -7,8 +7,9 @@
 import { ApiError } from './account.mjs';
 import { contentTarget } from './content.mjs';
 import { createKeyStore } from './keystore.mjs';
+import { readMeta } from './meta.mjs';
 import {
-  KeyringBusyError, LinkError, NoAccessError, UntrustedVersionError, apiGet, keepToken, keysMessage,
+  KeyringBusyError, LinkError, LockedError, NoAccessError, UntrustedVersionError, apiGet, keepToken, keysMessage,
   VersionGoneError, listVersions, loadContext, mintToken, navigateTarget, openArtifact, prepareVersion, signBodies, takeLink,
   writerKeys,
 } from './viewer.mjs';
@@ -28,8 +29,8 @@ function describe(err) {
   return `This artifact could not be verified, so it is not shown. ${err.message}`;
 }
 
-function versionLabel(v) {
-  return v.name ? `#${v.seq} ${v.name}` : `#${v.seq}`;
+function versionLabel(seq, name) {
+  return name ? `#${seq} ${name}` : `#${seq}`;
 }
 
 const MAX_NAME = 200;
@@ -94,16 +95,21 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
     const info = await apiGet(deps, opened, `/api/artifacts/${artifact}`);
     const versions = (await listVersions(deps, opened)).filter((v) => UUID_RE.test(v.id));
 
-    $('name').textContent = info.name;
-    $('desc').textContent = info.description ?? '';
-    document.title = info.name;
+    // The name and description are sealed fields: one that fails a check,
+    // or that nobody wrote, leaves the artifact shown under its ID.
+    const { values } = await readMeta(deps, opened, info.meta);
+    const name = values.name || artifact;
+    const description = values.description ?? '';
+    $('name').textContent = name;
+    $('desc').textContent = description;
+    document.title = name;
     const chosen = pageVersion || versions[0]?.id;
     if (!chosen) throw new Error('This artifact has no versions yet.');
     const picker = $('version');
     for (const v of versions) {
       const option = document.createElement('option');
       option.value = v.id;
-      option.textContent = versionLabel(v);
+      option.textContent = versionLabel(v.seq, (await readMeta(deps, opened, v.meta, v.id)).values.name);
       option.selected = v.id === chosen;
       picker.appendChild(option);
     }
@@ -113,7 +119,7 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
 
     // Only a trusted version is framed.
     await verify(chosen);
-    const context = await loadContext(deps, opened, info);
+    const context = await loadContext(deps, opened, { name, description });
     const writers = await writerKeys(deps, opened);
     const keeper = keepToken({
       mint: () => mintToken(deps, opened),
@@ -169,10 +175,14 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
 
     frame = document.createElement('iframe');
     frame.setAttribute('src', `${contentOrigin}/_cairn/boot`);
-    frame.setAttribute('title', info.name);
+    frame.setAttribute('title', name);
     frame.setAttribute('sandbox', SANDBOX);
     $('frame-host').appendChild(frame);
   } catch (err) {
+    if (err instanceof LockedError) {
+      window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);
+      return;
+    }
     showStatus(describe(err));
   }
 }

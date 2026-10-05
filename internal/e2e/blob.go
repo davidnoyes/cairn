@@ -150,3 +150,7 @@ func HasBlobHeader(b []byte) bool {
 // version, so it is small next to the files it lists. The client refuses a
 // larger one and the server refuses to store it.
 const MaxManifestBytes = 16 << 20
+
+// MaxMetaPlaintext caps the plaintext of an encrypted metadata field: an
+// artifact's name or description, a version's name or changelog.
+const MaxMetaPlaintext = 16 << 10

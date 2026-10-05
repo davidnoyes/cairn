@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const PAGE_SCRIPTS = [
-  'signup.js', 'verify.js', 'login.js', 'forgot.js', 'reset.js', 'admin.js', 'admin-init.mjs',
+  'signup.js', 'verify.js', 'login.js', 'forgot.js', 'reset.js', 'app.mjs', 'app-init.mjs', 'sharing.mjs', 'meta.mjs', 'data.mjs',
   'account.mjs', 'keystore.mjs', 'argon2-client.mjs', 'ui.mjs', 'e2e.mjs', 'argon2-worker.js',
 ];
 

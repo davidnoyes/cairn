@@ -261,7 +261,7 @@ func TestPasswordChangeEndsOldSessions(t *testing.T) {
 func TestAdminCannotDeleteAnArtifactOwner(t *testing.T) {
 	s, ts := testServer(t)
 	u := seedAccount(t, s, "ada@example.com", "pw", false)
-	if _, err := s.store.CreateOwnedArtifact("11111111-1111-4111-8111-111111111111", "Poll", "", u.ID, nil); err != nil {
+	if _, err := s.store.CreateOwnedArtifact("11111111-1111-4111-8111-111111111111", u.ID, nil); err != nil {
 		t.Fatal(err)
 	}
 	admin := login(t, ts.URL, "admin@example.com", "admin-password")

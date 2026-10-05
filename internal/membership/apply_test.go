@@ -81,7 +81,7 @@ func TestApplyThroughTheStore(t *testing.T) {
 		Excluded: []e2e.ExcludedEntry{}, Team: "viewer",
 	}
 	sortMembers(first.Members)
-	_, err = s.CreateOwnedArtifact(artID, "N", "", o.ID, func(tx *store.ArtifactTx) error {
+	_, err = s.CreateOwnedArtifact(artID, o.ID, func(tx *store.ArtifactTx) error {
 		dir := TxDirectory(tx)
 		cur, err := Load(tx, dir)
 		if err != nil {
@@ -241,7 +241,7 @@ func TestApplyReplacesTheWrapsOfAResetMember(t *testing.T) {
 		Members: []e2e.Member{member(a, "viewer")}, Excluded: []e2e.ExcludedEntry{}, Team: "none",
 	}
 	env := signedBy(t, o, first)
-	_, err = s.CreateOwnedArtifact(artID, "N", "", o.ID, func(tx *store.ArtifactTx) error {
+	_, err = s.CreateOwnedArtifact(artID, o.ID, func(tx *store.ArtifactTx) error {
 		dir := TxDirectory(tx)
 		cur, err := Load(tx, dir)
 		if err != nil {
@@ -292,7 +292,7 @@ func TestTxDirectory(t *testing.T) {
 	if err := s.SetUserDisabled(d.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CreateOwnedArtifact(artID, "N", "", o.ID, nil); err != nil {
+	if _, err := s.CreateOwnedArtifact(artID, o.ID, nil); err != nil {
 		t.Fatal(err)
 	}
 	err = s.WithArtifact(artID, func(tx *store.ArtifactTx) error {

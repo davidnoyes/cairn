@@ -34,35 +34,26 @@ func TestSafeNext(t *testing.T) {
 	}
 }
 
-// TestLoginNextRejectsBackslash covers both places the target is used: the
-// redirect for a signed-in user, and the data attribute the page script
-// navigates to after sign-in.
+// TestLoginNextRejectsBackslash covers the data attribute the page script
+// navigates to, for a visitor and for a signed-in user alike: the page no
+// longer redirects either of them itself.
 func TestLoginNextRejectsBackslash(t *testing.T) {
 	_, ts := testServer(t)
 	admin := login(t, ts.URL, "admin@example.com", "admin-password")
 	next := "/login?next=" + url.QueryEscape(`/\evil.com`)
-
-	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
-	req, _ := http.NewRequest("GET", ts.URL+next, nil)
-	req.Header.Set("Authorization", "Bearer "+admin.token)
-	resp, err := noFollow.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/" {
-		t.Errorf("signed in: status %d, Location %q, want 302 to /", resp.StatusCode, resp.Header.Get("Location"))
-	}
-
-	resp, err = http.Get(ts.URL + next)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if !strings.Contains(string(body), `data-next="/"`) {
-		t.Errorf("login page does not fall back to /:\n%s", body)
+	for _, token := range []string{"", admin.token} {
+		req, _ := http.NewRequest("GET", ts.URL+next, nil)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `data-next="/"`) {
+			t.Errorf("signed in %v: status %d, page does not fall back to /:\n%s", token != "", resp.StatusCode, body)
+		}
 	}
 }

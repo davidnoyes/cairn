@@ -361,7 +361,7 @@ func (c *Client) OpenData(artifactID, versionID string, write bool) (*Data, erro
 			return nil, err
 		}
 	}
-	versions, err := c.ListVersions(artifactID)
+	versions, err := c.storeVersions(artifactID)
 	if err != nil {
 		return nil, err
 	}

@@ -48,7 +48,10 @@ startup, with a message that points at `cairn import`.
     either type to another site without a preflight request, which Cairn
     never approves. A `DELETE` with no body skips this check, because a
     browser cannot send a `DELETE` to another site without a preflight
-    either.
+    either. `multipart/form-data` passes too when `Sec-Fetch-Site` is
+    `same-origin`: the browser uploads a version, a database revision, or a
+    stored file that way, and a form posted from another site cannot carry
+    that header.
   - If `Sec-Fetch-Site` is present, it must be `same-origin`. If it is absent
     and `Origin` is present, `Origin` must equal the public URL's origin.
     Otherwise `403`.
@@ -1786,8 +1789,9 @@ names its ID instead.
 A client reads a field the way it reads a stored file's record. It opens the
 record under `signerKey`, and accepts the signer only when the latest
 membership record lists them as owner or editor. The key must be theirs,
-either as listed or reached through their rotation chain. It checks the blob's hash, opens the blob with
-the record's epoch's `AK`, and refuses invalid UTF-8. A field that fails any
+either as listed or reached through their rotation chain. It checks the
+blob's hash, opens the blob with the record's epoch's `AK`, and refuses
+invalid UTF-8. A field that fails any
 check, or whose epoch's `AK` the reader does not hold, shows as unreadable,
 and the artifact shows under its ID.
 
@@ -1805,16 +1809,19 @@ other value is `400`, so the server never holds a resource value. The
 `cairn` tool resolves a reference by computing its index under each type
 its artifacts' resources carry, then matching. Because `indexKey` comes from
 the caller's `MK`, a reference resolves only for the user who added it.
-`cairn artifact get` lists each resource by type and row ID: the value
-cannot be read back.
+`cairn artifact show` lists each resource by type and row ID: the value
+cannot be read back. Rotating keys replaces `MK`, so a resource added before
+a rotation no longer resolves, and the client cannot index it again because
+it never kept the value. To keep a reference working, add it again after the
+rotation.
 
 ### The app page
 
 `/app` is every signed-in user's home. `/` sends a signed-in visitor there,
 and `/admin` redirects to it. Like the other app pages it carries no user
 data: its script checks sign-in through `GET /api/me` and sends a visitor
-with no session to `/login`. It has four tabs, and a fifth for
-administrators:
+with no session to `/login`. It has three tabs, a fourth for
+administrators, and a successor tab from milestone 7:
 
 - **Artifacts** — *Your artifacts* and *Shared with you*. Each row opens the
   artifact, then shows its name and description from the encrypted fields,
@@ -1827,7 +1834,7 @@ administrators:
 - **Successor** — added in milestone 7.
 - **Users** — administrators only, as the old `/admin` page.
 
-The share dialog lists the members with their name, email, role,
+The share dialog lists the members with their name, email, role, current
 fingerprint, and pin state. The owner can share with a user by email as
 editor or viewer, change a role, remove a member, mark a fingerprint as
 verified after comparing it, and accept a changed key after a warning. The
@@ -1838,6 +1845,11 @@ A change that starts a new epoch re-seals, in the browser, what
 
 Team approval, reviewing versions, ownership transfer, and key rotation stay
 in the `cairn` tool.
+
+`/login` serves every visitor, signed in or not, because the server cannot
+tell whether the browser holds the keys that sign-in unlocked. The page's
+script sends a visitor whose session and keys it finds straight to `next`;
+anyone else signs in again, which unlocks the keys.
 
 Every page renders names, emails, descriptions, and changelogs with
 `textContent` only, under the Trusted Types policy, which refuses any string

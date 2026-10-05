@@ -197,15 +197,15 @@ func TestUnshareReseals(t *testing.T) {
 
 func TestPrintResealReportsAFailure(t *testing.T) {
 	done := captureStdout(t)
-	printReseal("art1", &client.ResealResult{Databases: 1, Skipped: []string{"a file: may not write"}}, errors.New("disk on fire"))
+	printReseal("art1", &client.ResealResult{Databases: 1, Meta: 2, Skipped: []string{"a file: may not write"}}, errors.New("disk on fire"))
 	out := done()
-	for _, want := range []string{"sealed 1 database(s), 0 file(s) and 0 version(s)", "may not write", "disk on fire", "run: cairn reseal art1"} {
+	for _, want := range []string{"sealed 1 database(s), 0 file(s) and 0 version(s)", "sealed 2 name, description or changelog field(s)", "may not write", "disk on fire", "run: cairn reseal art1"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("printReseal printed %q, want %q", out, want)
 		}
 	}
 	j := resealJSON(nil, errors.New("boom"))
-	if j["error"] != "boom" || j["databases"] != 0 {
+	if j["error"] != "boom" || j["databases"] != 0 || j["meta"] != 0 {
 		t.Errorf("resealJSON = %v", j)
 	}
 }

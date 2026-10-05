@@ -284,14 +284,14 @@ func TestContentTokenIsScopedToOneArtifact(t *testing.T) {
 	bbase := "/api/artifacts/" + b.id + "/versions/" + bvid
 	baddr := w.owner.mustWriteFile(t, b.id, bvid, "a.txt", "keep")
 	w.owner.mustDo("POST", "/api/artifacts/"+b.id+"/resources",
-		map[string]string{"type": "claude-session", "value": "b-session"}, nil, http.StatusCreated)
+		map[string]string{"type": "claude-session", "value": refOf("b-session")}, nil, http.StatusCreated)
 	before := readBody(t, w.owner.doRaw("GET", bbase+"/files/"+baddr, nil))
 	tok := w.token(t, w.owner.id)
 	for pattern := range contentTokenRoutes {
 		if !strings.Contains(pattern, " /api/artifacts/{id}") {
 			continue
 		}
-		for _, ref := range []string{b.id, "b-session"} {
+		for _, ref := range []string{b.id, refOf("b-session")} {
 			if code, msg := sendReq(t, tok, w.contentRouteRequest(t, pattern, ref, bvid, strings.Repeat("a", 32), baddr, "")); code != http.StatusNotFound {
 				t.Errorf("%s on another artifact (%s): %d %s, want 404", pattern, ref, code, msg)
 			}

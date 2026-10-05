@@ -1,5 +1,5 @@
 // Package web holds the embedded browser-facing assets: HTML templates for
-// the account pages, shared shell and admin UI, the cairn.js client library,
+// the account pages, shared shell and app page, the cairn.js client library,
 // the account pages' scripts, and a vendored Mermaid bundle for diagram
 // rendering. Everything is
 // self-contained — no CDNs, no build step.
@@ -35,9 +35,10 @@ func buildMermaidJS() []byte {
 // and the modules they import, the argon2 worker, and the vendored strength
 // estimator. The server serves each at the path listed in appAssets.
 //
-//go:embed app.css admin.css shell.css icon.svg
-//go:embed e2e.mjs account.mjs keystore.mjs argon2-client.mjs ui.mjs content.mjs sw.js shell.mjs viewer.mjs
-//go:embed signup.js verify.js login.js forgot.js reset.js admin.js admin-init.mjs argon2-worker.js
+//go:embed app.css home.css shell.css icon.svg
+//go:embed e2e.mjs account.mjs keystore.mjs argon2-client.mjs ui.mjs content.mjs sw.js shell.mjs viewer.mjs app.mjs app-init.mjs
+//go:embed data.mjs meta.mjs sharing.mjs
+//go:embed signup.js verify.js login.js forgot.js reset.js argon2-worker.js
 //go:embed vendor/zxcvbn.js
 var Assets embed.FS
 

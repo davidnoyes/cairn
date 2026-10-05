@@ -68,16 +68,44 @@ pass "pushed guestbook ($AID / $VID)"
 echo "== resource reference"
 # Artifacts are private from creation, so plain HTTP reads carry the bearer.
 AUTH=(-H "Authorization: Bearer $BEARER")
-curl -sf -X POST "$HOST/api/artifacts/$AID/resources" \
+# The tool sends a blind index, so the server holds no session ID: only the
+# person who added it can resolve it, by computing the index again.
+"$BIN" artifact create refdemo --resource claude-session=sess-e2e --json > "$WORK/refdemo.json"
+RID=$(python3 -c "import json;print(json.load(open('$WORK/refdemo.json'))['id'])")
+curl -sf "${AUTH[@]}" "$HOST/api/artifacts/$RID" > "$WORK/refdemo-view.json" || fail "read the artifact with the resource"
+jq -e '(.resources | length == 1) and (.resources[0].value | test("^[0-9a-f]{64}$")) and .resources[0].type == "claude-session"' \
+  "$WORK/refdemo-view.json" >/dev/null || fail "the resource value is not a blind index: $(cat "$WORK/refdemo-view.json")"
+if grep -q "sess-e2e" "$WORK/refdemo-view.json"; then fail "the server's view holds the session ID"; fi
+INDEX=$(jq -r '.resources[0].value' "$WORK/refdemo-view.json")
+pass "the server holds a blind index, not the session ID"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$HOST/api/artifacts/$RID/resources" \
   "${AUTH[@]}" -H 'Content-Type: application/json' \
-  -d '{"type":"claude-session","value":"sess-e2e"}' >/dev/null
-curl -sf "${AUTH[@]}" "$HOST/api/artifacts/sess-e2e" | grep "$AID" >/dev/null || fail "API lookup by resource value"
-pass "API resolves resource value to artifact"
-STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/artifacts/sess-e2e")
+  -d '{"type":"claude-session","value":"sess-e2e"}')
+[[ "$STATUS" == "400" ]] || fail "the server took a plaintext resource value ($STATUS)"
+pass "the server refuses a resource value that is not a blind index"
+curl -sf "${AUTH[@]}" "$HOST/api/artifacts/$INDEX" | grep "$RID" >/dev/null || fail "API lookup by the blind index"
+pass "API resolves the blind index to the artifact"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/artifacts/$RID")
 [[ "$STATUS" == "404" ]] || fail "anonymous lookup of a private artifact ($STATUS)"
 pass "anonymous lookup of a private artifact is not found"
-"$BIN" artifact show sess-e2e | grep "$AID" >/dev/null || fail "CLI lookup by resource value"
-pass "CLI resolves resource value"
+"$BIN" artifact show sess-e2e > "$WORK/refdemo-show.txt" || fail "CLI lookup by resource value"
+grep "$RID" "$WORK/refdemo-show.txt" >/dev/null || fail "CLI lookup by resource value"
+grep -E "resource claude-session +[0-9a-f-]{36}$" "$WORK/refdemo-show.txt" >/dev/null || fail "show lists a resource by type and row ID: $(cat "$WORK/refdemo-show.txt")"
+pass "CLI resolves the resource reference, and lists a resource by type and row ID"
+
+echo "== encrypted names"
+"$BIN" artifact create e2e-created-marker --description "e2e-description-marker" --json > "$WORK/created.json"
+"$BIN" push "$ROOT/examples/guestbook" --artifact e2e-created-marker --name e2e-version-marker --changelog e2e-changelog-marker >/dev/null
+"$BIN" artifact update e2e-created-marker --name e2e-renamed-marker >/dev/null
+"$BIN" artifact show e2e-renamed-marker | grep -E "^e2e-renamed-marker \(" >/dev/null || fail "show by the new name"
+"$BIN" artifact show e2e-renamed-marker | grep "e2e-description-marker" >/dev/null || fail "show the description"
+"$BIN" artifact show e2e-renamed-marker | grep "e2e-version-marker" | grep "e2e-changelog-marker" >/dev/null || fail "show the version's name and changelog"
+"$BIN" artifact list | grep "e2e-renamed-marker" >/dev/null || fail "list shows the decrypted name"
+pass "the tool shows decrypted names, descriptions, and changelogs"
+for marker in e2e-description-marker e2e-version-marker e2e-changelog-marker e2e-renamed-marker e2e-created-marker sess-e2e; do
+  if grep -rqa -- "$marker" "$WORK/data" 2>/dev/null; then fail "'$marker' appears under the data dir"; fi
+done
+pass "no name, description, changelog, or resource value appears under the data dir"
 
 echo "== serving"
 # The app origin serves no artifact file: the old paths go to the shared page.

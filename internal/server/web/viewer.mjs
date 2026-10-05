@@ -43,6 +43,15 @@ export class NoAccessError extends Error {
   }
 }
 
+// LockedError is a session whose keys this browser does not hold: the shell
+// sends the person to sign in again, and never asks for the password itself.
+export class LockedError extends Error {
+  constructor() {
+    super('Sign in again to open this artifact.');
+    this.name = 'LockedError';
+  }
+}
+
 const STALE_KEYS_MESSAGE = 'The keys this browser holds for you were saved by an older version of Cairn. Sign out, then sign in again.';
 
 export class LinkError extends Error {
@@ -77,7 +86,7 @@ const NAVIGATE_RE = new RegExp(`^/shared/(${UUID})(?:/(${UUID}))?/?$`);
 // call sends one request and returns the parsed JSON answer, or the bytes
 // when raw. A failure is an ApiError carrying the server's {"error"} message.
 // A request made through a public link carries its token.
-async function call(deps, linkToken, method, path, { body, raw } = {}) {
+export async function call(deps, linkToken, method, path, { body, raw } = {}) {
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (linkToken) headers['X-Cairn-Link-Token'] = linkToken;
@@ -131,7 +140,7 @@ export function takeLink(location, history, artifact) {
 
 // readKeyring fetches the keyring, opens it against the stored anchor, and
 // stores the new anchor. Mirrors readKeyring and openKeyring in keyring.go.
-async function readKeyring(deps, caller) {
+export async function readKeyring(deps, caller) {
   const anchor = e2e.loadKeyringAnchor(deps.storage, caller.record.userId, caller.fp);
   const resp = await call(deps, null, 'GET', '/api/me/keyring');
   const { keyring, anchor: next } = await e2e.openKeyring(caller.record.mkSeal, resp.rev, e2e.unb64(resp.keyring), anchor);
@@ -142,7 +151,7 @@ async function readKeyring(deps, caller) {
 // updateKeyring reads the keyring, applies change to a copy, and writes it at
 // the next rev, reading again and re-applying change when the server answers
 // 409, up to five times. Mirrors UpdateKeyring in keyring.go.
-async function updateKeyring(deps, caller, change) {
+export async function updateKeyring(deps, caller, change) {
   for (let i = 0; i < KEYRING_RETRIES; i++) {
     const cur = await readKeyring(deps, caller);
     const next = structuredClone(cur);
@@ -191,7 +200,7 @@ async function creatorKeys(deps, membership, creator) {
 // or forked at it, is refused. It stores nothing, and returns the creator and
 // the first-sight pin recordChain would store, or null. Mirrors
 // checkArtifact in keyring.go.
-async function checkArtifact(deps, caller, kr, artifact, membership) {
+export async function checkArtifact(deps, caller, kr, artifact, membership, currentOwnerFp = '') {
   const records = membership.records;
   if (!Array.isArray(records) || records.length === 0) throw new e2e.ChainError('no records');
   const creator = records[0].signer;
@@ -213,6 +222,7 @@ async function checkArtifact(deps, caller, kr, artifact, membership) {
     owners: membership.owners,
     offers: membership.offers,
     anchor,
+    currentOwnerFp,
     pin: epoch && { epoch: epoch.epoch, seq: epoch.seq, head: epoch.head },
     linked: e2e.rotationLinker(membership.rotations),
   });
@@ -224,7 +234,7 @@ async function checkArtifact(deps, caller, kr, artifact, membership) {
 // a merge it keeps whichever entry has the higher seq, and refuses a creator
 // pinned at another fingerprint than the chain was verified against, or the
 // same seq at another head. Mirrors recordChain in keyring.go.
-async function recordChain(deps, caller, kr, artifact, chain, creator, pin) {
+export async function recordChain(deps, caller, kr, artifact, chain, creator, pin) {
   const prior = Object.hasOwn(kr.epochs, artifact) ? kr.epochs[artifact] : null;
   const latest = chain.latest;
   if (prior && pin === null && prior.epoch === latest.epoch && prior.seq === latest.seq && prior.head === chain.head) return kr;
@@ -262,7 +272,7 @@ async function checkCommit(ak, artifact, epoch, commits, what) {
 // owner from the estate copies, for anyone else by opening their own wraps.
 // Each is checked against the akCommit the verified chain lists. Mirrors
 // callerAKs in approve.go and epochAKs in share.go.
-async function callerAKs(deps, caller, artifact, chain) {
+export async function callerAKs(deps, caller, artifact, chain) {
   const commits = epochCommits(chain);
   const keys = await call(deps, null, 'GET', `/api/artifacts/${artifact}/keys`);
   const aks = new Map();
@@ -290,22 +300,28 @@ async function callerAKs(deps, caller, artifact, chain) {
   return aks;
 }
 
-// signedInCaller is the signed-in user: a key-store record with the Ed25519
-// public key, whose user is the one the server's session names. It returns
-// null for a visitor, and {stale: true} for a record written before the
-// Ed25519 public key was added to it, which reads as signed out.
-async function signedInCaller(deps) {
-  const record = await deps.keyStore.load();
-  if (!record) return null;
-  if (!(record.ed25519Pub instanceof Uint8Array)) return { stale: true };
-  let me;
+// sessionUser is the user the server's session names, or null for none.
+async function sessionUser(deps) {
   try {
-    me = await call(deps, null, 'GET', '/api/me');
+    return await call(deps, null, 'GET', '/api/me');
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) return null;
     throw err;
   }
-  if (me.id !== record.userId) return null;
+}
+
+// signedInCaller is the signed-in user: a key-store record with the Ed25519
+// public key, whose user is the one the server's session names. It returns
+// null for a visitor, {stale: true} for a record written before the Ed25519
+// public key was added to it, which reads as signed out, and {locked: true}
+// for a record of another user than the session's.
+export async function signedInCaller(deps) {
+  const record = await deps.keyStore.load();
+  if (!record) return null;
+  if (!(record.ed25519Pub instanceof Uint8Array)) return { stale: true };
+  const me = await sessionUser(deps);
+  if (!me) return null;
+  if (me.id !== record.userId) return { locked: true };
   const fp = e2e.toHex(await e2e.fingerprint(record.x25519.publicKey, record.ed25519Pub));
   return { me, record, fp };
 }
@@ -384,14 +400,18 @@ async function openAsLink(deps, caller, artifact, link) {
 // null), and the link.
 export async function openArtifact(deps, { artifact, link, linkError = null }) {
   const found = await signedInCaller(deps);
-  const caller = found?.stale ? null : found;
+  const caller = found?.record ? found : null;
   if (caller) {
     const opened = await openAsMember(deps, caller, artifact);
     if (opened) return opened;
   }
   if (link) return openAsLink(deps, caller, artifact, link);
   if (linkError) throw linkError;
-  throw new NoAccessError(found?.stale ? STALE_KEYS_MESSAGE : undefined);
+  if (found?.stale) throw new NoAccessError(STALE_KEYS_MESSAGE);
+  // Only now is a visitor with no keys asked about: a session means they
+  // signed in somewhere, and this browser does not hold their keys.
+  if (found?.locked || (!found && await sessionUser(deps))) throw new LockedError();
+  throw new NoAccessError();
 }
 
 // candidatePairs are the public key pairs the server or the caller's own keys
@@ -486,6 +506,13 @@ async function vouched(deps, opened, version) {
 // /api/artifacts/{id}/versions/{vid} returns. Mirrors checkManifest in
 // review.go.
 export async function trustVersion(deps, opened, version) {
+  const { signer } = await trustVersionManifest(deps, opened, version);
+  return { signer };
+}
+
+// trustVersionManifest is trustVersion, and also returns the manifest it
+// opened: {signer, manifest}.
+export async function trustVersionManifest(deps, opened, version) {
   const ak = opened.aks.get(version.epoch);
   if (!ak) throw new LinkError('This version was written under a key this link does not open.');
   const blob = await call(deps, opened.linkToken, 'GET', `/api/artifacts/${opened.artifact}/versions/${version.id}/manifest`, { raw: true });
@@ -494,8 +521,8 @@ export async function trustVersion(deps, opened, version) {
   const env = e2e.decodeEnvelope(plain);
   const signer = await trustedSigner(deps, opened, env);
   if (!signer && !(await vouched(deps, opened, version))) throw new UntrustedVersionError();
-  await openManifest({ ak, artifact: opened.artifact, version: version.id, epoch: version.epoch, signer, manifestHash: version.manifestHash, blob });
-  return { signer };
+  const manifest = await openManifest({ ak, artifact: opened.artifact, version: version.id, epoch: version.epoch, signer, manifestHash: version.manifestHash, blob });
+  return { signer, manifest };
 }
 
 // prepareVersion reads the version of this artifact the server names, checks

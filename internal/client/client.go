@@ -151,69 +151,11 @@ func (c *Client) Users() ([]map[string]any, error) {
 
 // Artifacts
 
-func (c *Client) ListArtifacts() ([]*store.Artifact, error) {
-	var out []*store.Artifact
-	return out, c.doJSON("GET", "/api/artifacts", nil, &out)
-}
-
-func (c *Client) GetArtifact(id string) (*store.Artifact, error) {
-	var out store.Artifact
-	return &out, c.doJSON("GET", "/api/artifacts/"+id, nil, &out)
-}
-
-func (c *Client) UpdateArtifact(id string, fields map[string]any) (*store.Artifact, error) {
-	var out store.Artifact
-	return &out, c.doJSON("PATCH", "/api/artifacts/"+id, fields, &out)
-}
-
 func (c *Client) DeleteArtifact(id string) error {
 	return c.doJSON("DELETE", "/api/artifacts/"+id, nil, nil)
 }
 
-func (c *Client) AddResource(artifactID, typ, value string) error {
-	return c.doJSON("POST", "/api/artifacts/"+artifactID+"/resources", map[string]string{"type": typ, "value": value}, nil)
-}
-
-// ResolveArtifact accepts an artifact id, a resource reference (e.g. a
-// Claude session id — resolved server-side, ambiguity is an error) or an
-// exact artifact name, and returns the artifact.
-func (c *Client) ResolveArtifact(idOrName string) (*store.Artifact, error) {
-	a, err := c.GetArtifact(idOrName)
-	if err == nil {
-		return a, nil
-	}
-	var apiErr *APIError
-	// Fall through to name lookup only on plain not-found; an ambiguous
-	// resource reference (409) or any other failure surfaces as-is.
-	if !errors.As(err, &apiErr) || apiErr.Status != 404 {
-		return nil, err
-	}
-	all, err := c.ListArtifacts()
-	if err != nil {
-		return nil, err
-	}
-	var matches []*store.Artifact
-	for _, a := range all {
-		if a.Name == idOrName {
-			matches = append(matches, a)
-		}
-	}
-	switch len(matches) {
-	case 0:
-		return nil, fmt.Errorf("no artifact with id or name %q", idOrName)
-	case 1:
-		return matches[0], nil
-	default:
-		return nil, fmt.Errorf("%d artifacts named %q — use the id", len(matches), idOrName)
-	}
-}
-
 // Versions
-
-func (c *Client) ListVersions(artifactID string) ([]*store.Version, error) {
-	var out []*store.Version
-	return out, c.doJSON("GET", "/api/artifacts/"+artifactID+"/versions", nil, &out)
-}
 
 // ErrEpochMoved means the artifact's epoch changed while the command ran, so
 // the server refused the write.
@@ -231,7 +173,9 @@ var ErrCannotPush = errors.New("only the artifact's owner or an editor can push 
 // itself when that epoch is below the one the keyring pins. Each file is a
 // blob under a random ID, and the manifest listing them is signed with the
 // caller's key and sealed the same way, so the server holds ciphertext only.
-func (c *Client) Push(artifactID, versionID, dir, name, changelog string) (*store.Version, error) {
+// A name and a changelog, when not empty, are written as the version's
+// encrypted fields once it is uploaded.
+func (c *Client) Push(artifactID, versionID, dir, name, changelog string) (*Version, error) {
 	files, err := pushFiles(dir)
 	if err != nil {
 		return nil, err
@@ -272,14 +216,28 @@ func (c *Client) Push(artifactID, versionID, dir, name, changelog string) (*stor
 		}
 		contents[f.rel] = data
 	}
-	return c.uploadVersion(k, artifactID, versionID, replace, epoch, ak, contents, name, changelog)
+	v, err := c.uploadVersion(k, artifactID, versionID, replace, epoch, ak, contents)
+	if err != nil {
+		return nil, err
+	}
+	out := &Version{Version: *v, Name: name, Changelog: changelog}
+	// A field left empty is left as it was, which for a new version is unset.
+	for _, f := range []struct{ field, text string }{{"name", name}, {"changelog", changelog}} {
+		if f.text == "" {
+			continue
+		}
+		if err := c.putMeta(k, artifactID, v.ID, f.field, epoch, ak, f.text); err != nil {
+			return nil, fmt.Errorf("version %s was uploaded, but writing its %s failed: %w", v.ID, f.field, err)
+		}
+	}
+	return out, nil
 }
 
 // uploadVersion seals files, a map of slash path to content, under ak, the AK
 // of epoch, signs the manifest listing them with k's key, and uploads them as
 // versionID: a replacement when replace is set, else a new version. The upload
 // declares epoch, so the server refuses it if the epoch has moved since.
-func (c *Client) uploadVersion(k *UnlockedKeys, artifactID, versionID string, replace bool, epoch int, ak []byte, files map[string][]byte, name, changelog string) (*store.Version, error) {
+func (c *Client) uploadVersion(k *UnlockedKeys, artifactID, versionID string, replace bool, epoch int, ak []byte, files map[string][]byte) (*store.Version, error) {
 	method, path := "POST", "/api/artifacts/"+artifactID+"/versions"
 	if replace {
 		method, path = "PUT", path+"/"+versionID
@@ -341,7 +299,7 @@ func (c *Client) uploadVersion(k *UnlockedKeys, artifactID, versionID string, re
 		return nil, err
 	}
 	meta, err := json.Marshal(map[string]any{
-		"id": versionID, "epoch": epoch, "manifestHash": e2e.BodyHash(body), "name": name, "changelog": changelog,
+		"id": versionID, "epoch": epoch, "manifestHash": e2e.BodyHash(body),
 	})
 	if err != nil {
 		return nil, err

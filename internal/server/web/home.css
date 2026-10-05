@@ -1,4 +1,4 @@
-/* admin.css — the admin page. The app CSP allows styles only from files. */
+/* home.css — the signed-in app page. The app CSP allows styles only from files. */
 :root{
   --bg:#0B0E13;
   --bg-raise:#10141C;
@@ -72,7 +72,7 @@ h2{font-size:24px; font-weight:600; letter-spacing:-.015em; margin-bottom:2px}
 .hint{color:var(--muted); font-size:14.5px; margin-bottom:1.4rem; max-width:62ch}
 
 /* --------------------------------------------------------------- tables */
-#artifactList, #userList, #keyList{
+.list{
   overflow-x:auto;                 /* tables scroll here, never the page */
   border:1px solid var(--line); border-radius:10px;
   background:var(--bg-panel);
@@ -160,6 +160,51 @@ form.bar input[type=checkbox]{accent-color:var(--accent)}
 .vline{padding:.15rem 0}
 .vline .btn{margin-left:.6rem}
 .status{display:flex; gap:.3rem}
+
+/* ------------------------------------------------------- the app page */
+[role=tab][aria-selected=true]{color:var(--text); background:var(--accent-tint); box-shadow:inset 0 -1px 0 var(--accent)}
+h2.next{margin-top:2.2rem}
+section > h2 + .list, section > h2 + form{margin-top:.8rem}
+/* A name or description is someone else's text: a right-to-left override
+   stays inside its own element, and a long one is cut to two lines rather
+   than wrapped down the page. */
+.name, .desc{unicode-bidi:isolate}
+.clamp{
+  display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2;
+  overflow:hidden; overflow-wrap:anywhere; max-width:28rem;
+}
+.status-line{font-family:var(--mono); font-size:12.5px; color:var(--muted); min-height:1.4em; margin-top:.6rem}
+.status-line.bad{color:var(--danger)}
+.secret{
+  margin-top:.6rem; word-break:break-all; user-select:all;
+  color:var(--accent);
+}
+.secret:empty{display:none}
+.strength{font-family:var(--mono); font-size:12px; color:var(--faint); min-height:1.2em; margin-top:.4rem}
+.strength.bad{color:var(--danger)}
+.btn.armed{border-color:var(--danger-dim); color:var(--danger)}
+dialog{
+  margin:auto; width:min(60rem,94vw); max-height:90vh; overflow:auto;
+  background:var(--bg); color:var(--text);
+  border:1px solid var(--line); border-radius:12px; padding:1.4rem;
+}
+dialog::backdrop{background:rgb(0 0 0 / .6)}
+.dialog-head{display:flex; gap:1rem; align-items:flex-start; justify-content:space-between; margin-bottom:1rem}
+.dialog-head h2{margin:0}
+.warning{
+  border:1px solid var(--danger-dim); border-radius:10px; padding:12px 14px; margin-top:1rem;
+  color:var(--text); font-size:14px; overflow-wrap:anywhere;
+}
+.warning .actions{justify-content:flex-start; margin-top:.6rem}
+.public{display:flex; flex-wrap:wrap; gap:.6rem 1.2rem; align-items:center; margin-top:1rem}
+.public label{font-family:var(--mono); font-size:12.5px; color:var(--muted); display:flex; gap:.4rem; align-items:center}
+.public input[type=checkbox]{accent-color:var(--accent)}
+.public .hint{flex-basis:100%; margin:0}
+td.fp{word-break:break-all; min-width:12rem}
+td select.role{
+  font-family:var(--mono); font-size:12px; background:var(--bg); color:var(--text);
+  border:1px solid var(--line); border-radius:5px; padding:2px 6px;
+}
 
 /* ----------------------------------------------------------- responsive */
 @media (max-width:560px){

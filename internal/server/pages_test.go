@@ -11,11 +11,11 @@ import (
 )
 
 // Every page that carries the app CSP: the signed-out pages need no session,
-// and /admin needs an administrator.
-var accountPages = []string{"/signup", "/verify", "/login", "/forgot", "/reset", "/admin"}
+// and /app needs one.
+var accountPages = []string{"/signup", "/verify", "/login", "/forgot", "/reset", "/app"}
 
 // pageTemplates are the template files behind accountPages.
-var pageTemplates = []string{"signup.html", "verify.html", "login.html", "forgot.html", "reset.html", "admin.html"}
+var pageTemplates = []string{"signup.html", "verify.html", "login.html", "forgot.html", "reset.html", "app.html"}
 
 var (
 	scriptSrcRe = regexp.MustCompile(`<script[^>]*\ssrc="([^"]+)"`)
@@ -26,7 +26,7 @@ var (
 func pageBody(t *testing.T, base, path string) (*http.Response, string) {
 	t.Helper()
 	token := ""
-	if path == "/admin" {
+	if path == "/app" {
 		token = login(t, base, "admin@example.com", "admin-password").token
 	}
 	resp := get(t, base+path, token, "text/html")
@@ -96,7 +96,7 @@ func TestAccountPageAssetsAreServed(t *testing.T) {
 	for _, path := range []string{"/argon2-worker.js", "/wasm_exec.js", "/argon2.wasm"} {
 		fetch(path)
 	}
-	for _, want := range []string{"/e2e.mjs", "/account.mjs", "/zxcvbn.js", "/signup.js", "/reset.js", "/admin.js", "/app.css"} {
+	for _, want := range []string{"/e2e.mjs", "/account.mjs", "/zxcvbn.js", "/signup.js", "/reset.js", "/app.mjs", "/app-init.mjs", "/home.css", "/app.css"} {
 		if !seen[want] {
 			t.Errorf("%s was never reached from a page", want)
 		}
@@ -161,13 +161,13 @@ func TestPageFormsDoNothingWithoutTheScript(t *testing.T) {
 }
 
 // The strength estimator is 800 KB, so only the pages that set a password
-// load it.
+// load it: /app has the password change form.
 func TestStrengthEstimatorOnlyOnPasswordPages(t *testing.T) {
 	_, ts := testServer(t)
 	for _, path := range accountPages {
 		_, html := pageBody(t, ts.URL, path)
 		has := strings.Contains(html, `src="/zxcvbn.js"`)
-		want := path == "/signup" || path == "/reset"
+		want := path == "/signup" || path == "/reset" || path == "/app"
 		if has != want {
 			t.Errorf("%s loads zxcvbn.js = %v, want %v", path, has, want)
 		}
@@ -175,12 +175,19 @@ func TestStrengthEstimatorOnlyOnPasswordPages(t *testing.T) {
 }
 
 // The login page hands ?next= to its script in a data attribute, after the
-// same safe-next rule that guards the redirect for a signed-in user.
+// safe-next rule. A signed-in visitor gets the page too: the server cannot
+// tell whether this browser holds the keys the session's sign-in unlocked, so
+// the script decides whether to skip the form.
 func TestLoginPageCarriesOnlyASafeNext(t *testing.T) {
 	_, ts := testServer(t)
+	user := login(t, ts.URL, "admin@example.com", "admin-password").token
+	resp := get(t, ts.URL+"/login?next=/app", user, "text/html")
+	if html := body(t, resp); resp.StatusCode != http.StatusOK || !strings.Contains(html, `data-next="/app"`) {
+		t.Errorf("signed in: GET /login is %d to %q, want the page with data-next=\"/app\"", resp.StatusCode, resp.Header.Get("Location"))
+	}
 	cases := []struct{ next, want string }{
 		{"/shared/abc/def/", "/shared/abc/def/"},
-		{"/admin", "/admin"},
+		{"/app", "/app"},
 		{"", "/"},
 		{"https://evil.example", "/"},
 		{"//evil.example", "/"},
@@ -251,6 +258,35 @@ func TestAppAssetsRevalidateWithAnETag(t *testing.T) {
 		}
 		if got := body(t, resp); resp.StatusCode != http.StatusOK || got != full {
 			t.Errorf("%s: a stale If-None-Match gave %d, want 200 with the full body", path, resp.StatusCode)
+		}
+	}
+}
+
+// /app is the signed-in home: / and the old /admin send a signed-in visitor
+// there, and /app sends a visitor with no session to sign in, then back.
+func TestAppPageIsTheSignedInHome(t *testing.T) {
+	_, ts := testServer(t)
+	user := login(t, ts.URL, "admin@example.com", "admin-password").token
+	cases := []struct {
+		path, token string
+		want        int
+		location    string
+	}{
+		{"/", "", http.StatusFound, "/login"},
+		{"/", user, http.StatusFound, "/app"},
+		{"/admin", "", http.StatusFound, "/app"},
+		{"/admin", user, http.StatusFound, "/app"},
+		{"/app", "", http.StatusFound, "/login?next=/app"},
+		{"/app", user, http.StatusOK, ""},
+	}
+	for _, c := range cases {
+		resp := get(t, ts.URL+c.path, c.token, "text/html")
+		html := body(t, resp)
+		if resp.StatusCode != c.want || resp.Header.Get("Location") != c.location {
+			t.Errorf("GET %s (signed in %v): %d to %q, want %d to %q", c.path, c.token != "", resp.StatusCode, resp.Header.Get("Location"), c.want, c.location)
+		}
+		if c.want == http.StatusOK && !strings.Contains(html, `src="/app.mjs"`) {
+			t.Errorf("GET %s is not the app page", c.path)
 		}
 	}
 }

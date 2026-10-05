@@ -198,6 +198,37 @@ func TestProtectMutationsSafelistedTypesRefused(t *testing.T) {
 	}
 }
 
+// The browser re-seals a version, a database revision, or a stored file as a
+// multipart upload. A cross-site form can send multipart too, but it cannot
+// say it came from the same origin: multipart passes only with Sec-Fetch-Site
+// set to same-origin, which only the browser can set.
+func TestProtectMutationsMultipartNeedsSameOriginFetch(t *testing.T) {
+	const ct = "multipart/form-data; boundary=x"
+	cases := []struct {
+		site string
+		want int
+	}{
+		{"same-origin", http.StatusOK},
+		{"", http.StatusUnsupportedMediaType},
+		{"same-site", http.StatusUnsupportedMediaType},
+		{"cross-site", http.StatusUnsupportedMediaType},
+		{"none", http.StatusUnsupportedMediaType},
+	}
+	for _, c := range cases {
+		h := map[string]string{"Content-Type": ct, "Origin": "https://cairn.example"}
+		if c.site != "" {
+			h["Sec-Fetch-Site"] = c.site
+		}
+		if rec := protectReq(t, "PUT", "/api/widgets/1", h); rec.Code != c.want {
+			t.Errorf("Sec-Fetch-Site %q: status = %d, want %d", c.site, rec.Code, c.want)
+		}
+	}
+	rec := protectReq(t, "PUT", "/api/widgets/1", map[string]string{"Content-Type": "text/plain", "Sec-Fetch-Site": "same-origin"})
+	if rec.Code != http.StatusUnsupportedMediaType {
+		t.Errorf("text/plain from the same origin: status = %d, want 415", rec.Code)
+	}
+}
+
 func TestProtectMutationsBodylessDeleteSkipsContentType(t *testing.T) {
 	rec := protectBodyless(t, "DELETE", map[string]string{"Sec-Fetch-Site": "same-origin"})
 	if rec.Code != http.StatusOK {

@@ -234,8 +234,6 @@ func viewOfOffer(o *store.Offer) *transferView {
 // GET /api/artifacts return it. Resources are kept from milestone 2.
 type artifactView struct {
 	ID           string            `json:"id"`
-	Name         string            `json:"name"`
-	Description  string            `json:"description"`
 	Owner        string            `json:"owner"`
 	Access       access.Level      `json:"access"`
 	Epoch        int               `json:"epoch"`
@@ -246,10 +244,13 @@ type artifactView struct {
 	CreatedAt    string            `json:"createdAt"`
 	UpdatedAt    string            `json:"updatedAt"`
 	Resources    []*store.Resource `json:"resources,omitempty"`
+	// Meta holds the artifact's encrypted fields; a field nobody wrote is
+	// absent.
+	Meta map[string]metaItemView `json:"meta"`
 }
 
 func (s *Server) viewOf(a *store.Artifact, level access.Level) (*artifactView, error) {
-	v := &artifactView{ID: a.ID, Name: a.Name, Description: a.Description, Owner: a.OwnerID, Access: level,
+	v := &artifactView{ID: a.ID, Owner: a.OwnerID, Access: level,
 		Epoch: a.Epoch, Team: a.Team, Public: a.Public, PublicWrites: a.PublicWrites,
 		CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
 	o, err := s.store.OpenOffer(a.ID)
@@ -262,6 +263,11 @@ func (s *Server) viewOf(a *store.Artifact, level access.Level) (*artifactView, e
 	if v.Resources, err = s.store.ListResources(a.ID); err != nil {
 		return nil, err
 	}
+	fields, err := s.store.ListMetaFields(a.ID)
+	if err != nil {
+		return nil, err
+	}
+	v.Meta, _ = metaViews(fields)
 	return v, nil
 }
 
@@ -329,12 +335,10 @@ func (s *Server) writeChangeError(w http.ResponseWriter, err error) {
 // Creating an artifact
 
 type createArtifactRequest struct {
-	ID          string       `json:"id"`
-	Name        string       `json:"name"`
-	Description string       `json:"description"`
-	Membership  e2e.Envelope `json:"membership"`
-	Wraps       []wrapWire   `json:"wraps"`
-	Estate      []estateWire `json:"estate"`
+	ID         string       `json:"id"`
+	Membership e2e.Envelope `json:"membership"`
+	Wraps      []wrapWire   `json:"wraps"`
+	Estate     []estateWire `json:"estate"`
 }
 
 // isRandomUUID reports whether id is a version 4, RFC 4122 UUID in its
@@ -353,17 +357,13 @@ func (s *Server) handleCreateArtifact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "id must be a random (version 4) UUID")
 		return
 	}
-	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "name is required")
-		return
-	}
 	ch, err := changeOf(req.Membership, req.Wraps, req.Estate, "")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	u := requestUser(r)
-	a, err := s.store.CreateOwnedArtifact(req.ID, req.Name, req.Description, u.ID, func(tx *store.ArtifactTx) error {
+	a, err := s.store.CreateOwnedArtifact(req.ID, u.ID, func(tx *store.ArtifactTx) error {
 		_, err := applyChange(tx, ch)
 		return err
 	})
@@ -380,7 +380,7 @@ func (s *Server) handleCreateArtifact(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "artifact")
 		return
 	}
-	s.log.Info("artifact created", "id", a.ID, "name", a.Name, "by", u.Email)
+	s.log.Info("artifact created", "id", a.ID, "by", u.Email)
 	writeJSON(w, http.StatusCreated, v)
 }
 

@@ -95,7 +95,7 @@ func TestRotateKeysRollsBackWhenFnFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := ownedArtifact(t, s, u)
-	other, err := s.CreateOwnedArtifact("33333333-3333-4333-8333-333333333333", "Other", "", member.ID, nil)
+	other, err := s.CreateOwnedArtifact("33333333-3333-4333-8333-333333333333", member.ID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestRotateTxReadsAndWrites(t *testing.T) {
 	mb := testBundle("m")
 	mfp := hex.EncodeToString(e2e.Fingerprint(mb.X25519Pub, mb.Ed25519Pub))
 	a := ownedArtifact(t, s, u)
-	other, err := s.CreateOwnedArtifact("33333333-3333-4333-8333-333333333333", "Other", "", member.ID, nil)
+	other, err := s.CreateOwnedArtifact("33333333-3333-4333-8333-333333333333", member.ID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

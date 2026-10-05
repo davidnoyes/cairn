@@ -78,6 +78,16 @@ func explainRefusal(c *client.Client, err error) error {
 	return fmt.Errorf("%w\nThe server is serving an older or altered keyring, for example after a restore from backup; it can also be tampering. Do not go on until you confirm with your admin which it is. If the server was restored, remove the \"anchors\" entry %q from %s, then run the command again", err, key, path)
 }
 
+// resolveArtifact is c.ResolveArtifact with a keyring refusal explained: a
+// name is looked up by opening each artifact's, which reads the keyring.
+func resolveArtifact(c *client.Client, ref string) (*client.Artifact, error) {
+	a, err := c.ResolveArtifact(ref)
+	if err != nil {
+		return nil, explainRefusal(c, err)
+	}
+	return a, nil
+}
+
 func runPin(args []string) error {
 	const usage = "cairn pin USER [--verified] [--accept-new-key] [--json]"
 	fs := flag.NewFlagSet("pin", flag.ExitOnError)
@@ -115,7 +125,7 @@ func runMembers(args []string) error {
 	if err != nil {
 		return err
 	}
-	a, err := c.ResolveArtifact(pos[0])
+	a, err := resolveArtifact(c, pos[0])
 	if err != nil {
 		return err
 	}
@@ -222,7 +232,7 @@ func runShare(args []string) error {
 		return err
 	}
 	c.AcceptNewOwner = *accept
-	a, err := c.ResolveArtifact(pos[0])
+	a, err := resolveArtifact(c, pos[0])
 	if err != nil {
 		return err
 	}
@@ -280,12 +290,12 @@ func epochChangeJSON(out map[string]any, ch client.EpochChange) {
 	}
 }
 
-// resealJSON is what a re-seal did: the databases, files, and versions sealed again, what
+// resealJSON is what a re-seal did: the databases, files, versions, and metadata fields sealed again, what
 // was left alone and why, and the error that stopped it, if one did.
 func resealJSON(res *client.ResealResult, err error) map[string]any {
-	out := map[string]any{"databases": 0, "files": 0, "versions": 0, "skipped": []string{}, "error": ""}
+	out := map[string]any{"databases": 0, "files": 0, "versions": 0, "meta": 0, "skipped": []string{}, "error": ""}
 	if res != nil {
-		out["databases"], out["files"], out["versions"] = res.Databases, res.Files, res.Versions
+		out["databases"], out["files"], out["versions"], out["meta"] = res.Databases, res.Files, res.Versions, res.Meta
 		if res.Skipped != nil {
 			out["skipped"] = res.Skipped
 		}
@@ -300,6 +310,9 @@ func resealJSON(res *client.ResealResult, err error) map[string]any {
 func printReseal(artifact string, res *client.ResealResult, err error) {
 	if res != nil && (res.Databases > 0 || res.Files > 0 || res.Versions > 0) {
 		fmt.Printf("sealed %d database(s), %d file(s) and %d version(s) again under the new epoch\n", res.Databases, res.Files, res.Versions)
+	}
+	if res != nil && res.Meta > 0 {
+		fmt.Printf("sealed %d name, description or changelog field(s) again under the new epoch\n", res.Meta)
 	}
 	if res != nil {
 		for _, s := range res.Skipped {
@@ -363,7 +376,7 @@ func runUnshare(args []string) error {
 		return err
 	}
 	c.AcceptNewOwner = *accept
-	a, err := c.ResolveArtifact(pos[0])
+	a, err := resolveArtifact(c, pos[0])
 	if err != nil {
 		return err
 	}
@@ -470,7 +483,7 @@ func runApprove(args []string) error {
 		return err
 	}
 	c.AcceptNewOwner = *accept
-	a, err := c.ResolveArtifact(pos[0])
+	a, err := resolveArtifact(c, pos[0])
 	if err != nil {
 		return err
 	}
@@ -567,7 +580,7 @@ func runReview(args []string) error {
 	if err != nil {
 		return err
 	}
-	a, err := c.ResolveArtifact(pos[0])
+	a, err := resolveArtifact(c, pos[0])
 	if err != nil {
 		return err
 	}
@@ -632,7 +645,7 @@ func runVouch(args []string) error {
 		return err
 	}
 	c.AcceptNewOwner = *accept
-	a, err := c.ResolveArtifact(pos[0])
+	a, err := resolveArtifact(c, pos[0])
 	if err != nil {
 		return err
 	}
@@ -663,7 +676,7 @@ func runTeam(args []string) error {
 		return err
 	}
 	c.AcceptNewOwner = *accept
-	a, err := c.ResolveArtifact(pos[0])
+	a, err := resolveArtifact(c, pos[0])
 	if err != nil {
 		return err
 	}
@@ -739,7 +752,7 @@ func runPublic(args []string) error {
 		return err
 	}
 	c.AcceptNewOwner = *accept
-	a, err := c.ResolveArtifact(pos[0])
+	a, err := resolveArtifact(c, pos[0])
 	if err != nil {
 		return err
 	}
