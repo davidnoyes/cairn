@@ -352,7 +352,6 @@ internal/client/epoch.go	case p.State == PendingKeyChanged:	case false:	go test 
 internal/client/epoch.go	exclude1(p.User, pin.FP, reason)	exclude1(p.User, p.User.FP, reason)	go test ./internal/client -run 'KeyChangedHolderUnderThePinnedKey'
 internal/client/epoch.go	return nil, ErrUnshareOwner	return nil, ErrShareSelf	go test ./internal/client -run TestUnshareTwiceAndUnshareTheOwner
 internal/client/epoch.go	if link != "" {	if false {	go test ./internal/client -run TestUnshareNamesTheNewLinkWhenTheReadBackFails
-internal/client/public.go	Listed: listed}	Listed: listed[:0]}	go test ./cmd/cairn -run TestPublicOffCommandReportsTheTeamMembersItLists
 cmd/cairn/share_cmds.go	printListing(a.ID, "", res.Listed, nil)	_ = res.Listed	go test ./cmd/cairn -run TestPublicOffCommandReportsTheTeamMembersItLists
 cmd/cairn/share_cmds.go	out["listed"], _ = listingJSON(res.Listed, nil)	out["listed"], _ = listingJSON(nil, nil)	go test ./cmd/cairn -run TestPublicOffCommandReportsTheTeamMembersItLists
 
@@ -851,14 +850,12 @@ internal/server/web/sw.js	for (const { keys } of versions.values())	for (const {
 internal/server/web/sw.js	const KEYS_WAIT_MS = 10000;	const KEYS_WAIT_MS = 20000;	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	  if (held) {	  if (false) {	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	const entry = { keys: msg, manifest, seq };	const entry = { keys: msg, manifest: { files: [] }, seq };	node --test internal/server/web/sw_test.mjs
-internal/server/web/sw.js	const client = clientId ? await self.clients.get(clientId) : null;	const client = await self.clients.get(clientId);	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	return client ? (	return true ? (	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	if (!version || !(await requestKeys(version))) return unavailable();	if (false || !(await requestKeys(version))) return unavailable();	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	!(await requestKeys(version))	(await requestKeys(version), false)	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	if (req.method !== 'GET' && req.method !== 'HEAD')	if (req.method !== 'GET')	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	if (req.method !== 'GET' && req.method !== 'HEAD')	if (false)	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	if (navigation) return fetch(	if (false) return fetch(	node --test internal/server/web/sw_test.mjs
-internal/server/web/sw.js	if (!entry) return unavailable();	if (false) return unavailable();	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	u.protocol === 'http:' ||	false ||	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	|| u.protocol === 'https:'	|| false	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	u.protocol === 'http:' || u.protocol === 'https:' ? u.origin	true ? u.origin	node --test internal/server/web/sw_test.mjs
@@ -1057,7 +1054,6 @@ internal/server/web/frame.js	event.metaKey ||	false ||	node --test internal/serv
 internal/server/web/frame.js	event.ctrlKey ||	false ||	node --test internal/server/web/frame_test.mjs
 internal/server/web/frame.js	event.shiftKey ||	false ||	node --test internal/server/web/frame_test.mjs
 internal/server/web/frame.js	event.altKey)	false)	node --test internal/server/web/frame_test.mjs
-internal/server/web/frame.js	|| anchor.hasAttribute('download')	|| false	node --test internal/server/web/frame_test.mjs
 internal/server/web/frame.js	if (target && target !== '_self') return;	if (false) return;	node --test internal/server/web/frame_test.mjs
 internal/server/web/frame.js	target !== '_self') return;	target !== '_blank') return;	node --test internal/server/web/frame_test.mjs
 internal/server/web/frame.js	|| (base && base.getAttribute('target')) ||	|| '' ||	node --test internal/server/web/frame_test.mjs
@@ -1072,9 +1068,6 @@ internal/server/web/frame.js	if (!data || (data.cairn !== 'keys' && data.cairn !
 internal/server/web/frame.js	data.cairn !== 'keys' &&	false &&	node --test internal/server/web/frame_test.mjs
 internal/server/web/frame.js	&& data.cairn !== 'token')	&& false)	node --test internal/server/web/frame_test.mjs
 internal/server/web/frame.js	sw.controller.postMessage(data);	sw.controller.postMessage({ cairn: data.cairn });	node --test internal/server/web/frame_test.mjs
-internal/server/web/frame.js	if (!origin || event.source !== sw.controller) return;	if (!origin) return;	node --test internal/server/web/frame_test.mjs
-internal/server/web/frame.js	data.cairn !== 'need-keys' ||	false ||	node --test internal/server/web/frame_test.mjs
-internal/server/web/frame.js	typeof data.version !== 'string'	false	node --test internal/server/web/frame_test.mjs
 internal/server/web/frame.js	win.parent.postMessage({ cairn: 'need-keys', version: data.version }, origin);	win.parent.postMessage({ cairn: 'need-keys', version: data.version }, '*');	node --test internal/server/web/frame_test.mjs
 internal/server/web/frame.js	win.parent.postMessage({ cairn: 'need-keys', version: data.version }, origin);	win.parent.postMessage(data, origin);	node --test internal/server/web/frame_test.mjs
 internal/server/web/frame.js	if (win.mermaid ||	if (false ||	node --test internal/server/web/frame_test.mjs
@@ -1382,3 +1375,64 @@ internal/server/web/data.mjs	if (kept < floor) throw	if (false) throw	node --tes
 internal/server/web/data.mjs	if (!init.headers) throw new ContentError('a 304	if (false) throw new ContentError('a 304	node --test internal/server/web/data_test.mjs
 internal/server/web/data.mjs	Math.max(revision, ctx.seen.get(keys.version) ?? 0)	revision	node --test internal/server/web/data_test.mjs
 internal/server/web/cairn.js	if (vid !== versionId && counters(db) !== before) throw	if (false) throw	node --test internal/server/web/cairn_db_test.mjs
+internal/client/public.go	Listed: listed,	Listed: listed[:0],	go test ./cmd/cairn -run TestPublicOffCommandReportsTheTeamMembersItLists
+internal/server/web/sw.js	return client ? (parseContentPath(new URL(client.url).pathname)?.version ?? null) : null;	return parseContentPath(new URL(client.url).pathname)?.version ?? null;	node --test internal/server/web/sw_test.mjs
+internal/server/web/sw.js	    if (!entry) return unavailable();	    if (false) return unavailable();	node --test internal/server/web/sw_test.mjs
+internal/server/web/frame.js	if (anchor.hasAttribute('download')) {	if (false) {	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	if (!origin || event.source !== sw.controller || !data) return;	if (!origin || !data) return;	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	data.cairn === 'need-keys' &&	true &&	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	typeof data.version === 'string'	true	node --test internal/server/web/frame_test.mjs
+internal/client/data.go	if !d.anyWriter && !d.writers[env.Signer][e2e.B64(key)] {	if !d.anyWriter && false && !d.writers[env.Signer][e2e.B64(key)] {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if err := e2e.OpenEnvelope(env, key, purpose, out); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if len(key) != ed25519.PublicKeySize {	if len(key) < ed25519.PublicKeySize-100 {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if artifact != d.artifact {	if false && artifact != d.artifact {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if version != d.version {	if false && version != d.version {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if epoch != named {	if false && epoch != named {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if epoch < d.versionEpoch {	if false && epoch < d.versionEpoch {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	return nil, unverified("no key for epoch %d", epoch)	return nil, nil	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if b.Revision != revision {	if false && b.Revision != revision {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if b.Kind != kind {	if false && b.Kind != kind {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if b.Name != name {	if false && b.Name != name {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if blob != nil && e2e.BodyHash(blob) != sha256 {	if blob != nil && e2e.BodyHash(blob) != sha256 && false {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	err != nil || want != item.Address {	err != nil || want == "" {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if err := e2e.DecodeStrict(plain, &m); err != nil {	if err := json.Unmarshal(plain, &m); err != nil {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if m.V != 1 {	if false && m.V != 1 {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if !validFilePath(m.Path) {	if false && !validFilePath(m.Path) {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	revision < seen {	revision < 0 && revision < seen {	go test ./internal/client -run TestLatestRefusesARollback
+internal/client/data.go	if f.epoch != epoch {	if false && f.epoch != epoch {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	if linked(user, fp, kp.fp()) {	if linked(user, fp, kp.fp()) || true {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	anyWriter: va.Chain.Latest.PublicWrites,	anyWriter: false,	go test ./internal/client -run TestPublicWritesAcceptAnySigner
+internal/client/data.go	if n != 0 && f.revision != n {	if false && n != 0 && f.revision != n {	go test ./internal/client -run TestRevisionReadByNumberChecksTheNumber
+internal/client/data.go	chk.writers = writers	chk.writers = d.now.writers; _ = writers	go test ./internal/client -run TestRestoreAcceptsARevisionFromARemovedEditor
+internal/client/data.go	for range maxRestoreTries {	for range 1 {	go test ./internal/client -run 'TestRestoreFollowsA412|TestRestoreGivesUpAfterFiveTries'
+internal/client/data.go	base = conflict.Latest	base = conflict.Latest + 1	go test ./internal/client -run 'TestRestoreFollowsA412|TestRestoreGivesUpAfterFiveTries'
+internal/client/data.go	strconv.Itoa(base)	strconv.Itoa(0)	go test ./internal/client -run 'TestDataRevisionsRoundTrip|TestExecConcurrentWritersBothLand'
+internal/client/data.go	case http.StatusPreconditionFailed:	case -1:	go test ./internal/client -run 'TestDataRevisionsRoundTrip|TestExecConcurrentWritersBothLand'
+internal/client/data.go	(--max-db-mb on the server)	(on the server)	go test ./internal/client -run TestDatabaseOverTheServersCapIsRefused
+internal/client/data.go	d.removeOlder(path)	_ = path	go test ./internal/client -run TestResealReportsAFailurePartWay
+internal/client/data.go	e >= d.version.Epoch	e > d.version.Epoch	go test ./internal/client -run 'TestFilesRoundTrip|TestResealReportsAFailurePartWay'
+internal/client/data.go	return e2e.FileAddress(fk, path)	return e2e.FileAddress(fk, path+"x")	go test ./internal/client -run TestDataIsSealedUnderTheSpecifiedContexts
+internal/client/data.go	Kind: "database"	Kind: "databasex"	go test ./internal/client -run TestDataIsSealedUnderTheSpecifiedContexts
+internal/client/data.go	d.fileCtx("file", address), plain)	d.fileCtx("filex", address), plain)	go test ./internal/client -run TestDataIsSealedUnderTheSpecifiedContexts
+internal/client/data.go	d.fileCtx("file-meta", address), metaJSON)	d.fileCtx("file-metax", address), metaJSON)	go test ./internal/client -run TestDataIsSealedUnderTheSpecifiedContexts
+internal/client/data.go	sign("file", blob)	sign("filex", blob)	go test ./internal/client -run TestDataIsSealedUnderTheSpecifiedContexts
+internal/client/reseal.go	if !approverOf(va.Chain.Latest, k) {	if false && !approverOf(va.Chain.Latest, k) {	go test ./internal/client -run TestResealRefusesAReader
+internal/client/reseal.go	if chain.Bodies[i].Epoch < chain.Latest.Epoch {	if chain.Bodies[i].Epoch <= chain.Latest.Epoch {	go test ./internal/client -run 'TestResealKeepsARemovedEditorsLastRevision|TestResealLeavesWhatAnEarlierRemovalLeft'
+internal/client/reseal.go	if f.epoch >= d.va.Chain.Latest.Epoch {	if f.epoch > d.va.Chain.Latest.Epoch {	go test ./internal/client -run 'TestUnshareResealsTheData|TestResealReportsAFailurePartWay'
+internal/client/reseal.go	if item.Epoch >= current {	if item.Epoch > current {	go test ./internal/client -run 'TestUnshareResealsTheData|TestResealReportsAFailurePartWay'
+internal/client/reseal.go	if _, err := d.deleteAddress(item.Address); err != nil {	if _, err := d.deleteAddress(d.version.ID); err != nil {	go test ./internal/client -run 'TestUnshareResealsTheData|TestResealReportsAFailurePartWay'
+internal/client/epoch.go	c.resealInto(k, artifactID, change)	_ = change	go test ./internal/client -run 'TestUnshareResealsTheData|TestResealReportsAFailurePartWay'
+internal/client/public.go	c.resealInto(k, artifactID, change)	_ = change	go test ./internal/client -run 'TestEveryEpochChangeReseals'
+internal/client/share.go	c.resealInto(k, artifactID, change)	_ = change	go test ./internal/client -run 'TestEveryEpochChangeReseals'
+internal/client/approve.go	c.resealInto(k, artifactID, change)	_ = change	go test ./internal/client -run TestTeamNoneResealsTheData
+internal/client/transfer.go	c.resealInto(k, artifactID, &res.EpochChange)	_ = res	go test ./internal/client -run TestTransferDroppingThePreviousOwnerResealsTheData
+cmd/cairn/share_cmds.go	printReseal(artifact, ch.Resealed, ch.ResealErr)	_ = ch	go test ./cmd/cairn -run TestUnshareReseals
+internal/client/dbexec.go	return results, before != after, nil	return results, false && before != after, nil	go test ./internal/client -run 'TestExecRunsSQLOnAPrivateCopy|TestExecDetectsAWriteBySignal'
+internal/client/dbexec.go	return results, before != after, nil	return results, true || before != after, nil	go test ./internal/client -run 'TestExecRunsSQLOnAPrivateCopy|TestExecDetectsAWriteBySignal'
+internal/client/dbexec.go	{"SELECT total_changes()", &s.totalChanges},	{"SELECT 0", &s.totalChanges},	go test ./internal/client -run 'TestExecRunsSQLOnAPrivateCopy|TestExecDetectsAWriteBySignal'
+internal/client/dbexec.go	{"PRAGMA schema_version", &s.schemaVersion},	{"SELECT 0", &s.schemaVersion},	go test ./internal/client -run 'TestExecRunsSQLOnAPrivateCopy|TestExecDetectsAWriteBySignal'
+internal/client/dbexec.go	{"PRAGMA user_version", &s.userVersion},	{"SELECT 0", &s.userVersion},	go test ./internal/client -run 'TestExecRunsSQLOnAPrivateCopy|TestExecDetectsAWriteBySignal'
+internal/client/dbexec.go	for range maxExecTries {	for range 1 {	go test ./internal/client -run 'TestExecConcurrentWritersBothLand|TestExecGivesUpAfterFiveTries'
+internal/client/dbexec.go	const maxExecTries = 5	const maxExecTries = 50	go test ./internal/client -run TestExecGivesUpAfterFiveTries
+internal/sqlrun/sqlrun.go	if !IsSingleStatement(stmt.SQL) {	if false && !IsSingleStatement(stmt.SQL) {	go test ./internal/sqlrun ./internal/client -run 'TestRunRefuses|TestExecRefuses'
+internal/sqlrun/sqlrun.go	return isBlank(s[i+1:])	return true	go test ./internal/sqlrun -run TestSingleStatementScanner

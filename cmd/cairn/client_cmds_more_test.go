@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/aloisdeniel/cairn/internal/client"
+	"github.com/aloisdeniel/cairn/internal/sqlrun"
 	"github.com/aloisdeniel/cairn/internal/store"
-	"github.com/aloisdeniel/cairn/internal/versiondb"
 )
 
 // pushedSite logs in, creates an artifact called "site" and pushes one
@@ -151,7 +151,7 @@ func TestDBQuery(t *testing.T) {
 	if err != nil || out != "id\tname\n1\tada\n2\tNULL\n" {
 		t.Errorf("select output = %q, %v", out, err)
 	}
-	res := runJSON[versiondb.Result](t, runDB, "query", "--artifact", "site", "--json", "SELECT count(*) AS n FROM t")
+	res := runJSON[sqlrun.Result](t, runDB, "query", "--artifact", "site", "--json", "SELECT count(*) AS n FROM t")
 	if len(res.Rows) != 1 || res.Columns[0] != "n" || res.Rows[0][0] != float64(2) {
 		t.Errorf("json result = %+v", res)
 	}
@@ -164,8 +164,8 @@ func TestDBQueryRefusals(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"no subcommand", nil, "usage: cairn db query"},
-		{"wrong subcommand", []string{"exec"}, "usage: cairn db query"},
+		{"no subcommand", nil, "usage: cairn db <query|batch|revisions|restore|download>"},
+		{"wrong subcommand", []string{"exec"}, `unknown db subcommand "exec"`},
 		{"no sql", []string{"query", "--artifact", "x"}, "usage: cairn db query"},
 		{"no artifact", []string{"query", "SELECT 1"}, "usage: cairn db query"},
 		{"bad params", []string{"query", "--artifact", "x", "--params", "{", "SELECT 1"}, "--params must be a JSON array"},

@@ -596,7 +596,7 @@ func (c *Client) shareNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 	if err != nil {
 		return nil, err
 	}
-	res.EpochChange, res.Listed, res.Unlisted, res.Epoch = *change, listed, nil, va.Chain.Latest.Epoch+1
+	res.Listed, res.Unlisted, res.Epoch = listed, nil, va.Chain.Latest.Epoch+1
 	if pin != nil {
 		if err := c.storePin(k, u.ID, *pin, basedOn); err != nil {
 			return nil, fmt.Errorf("the server accepted the new membership record, but pinning %s failed: %w", u.Email, err)
@@ -605,6 +605,8 @@ func (c *Client) shareNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 	if err := c.readBack(k, artifactID, change.Link); err != nil {
 		return nil, err
 	}
+	c.resealInto(k, artifactID, change)
+	res.EpochChange = *change
 	return res, nil
 }
 

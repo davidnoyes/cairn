@@ -466,6 +466,7 @@ func (c *Client) teamNoneNextEpoch(k *UnlockedKeys, artifactID string, va *Verif
 	if err := c.readBack(k, artifactID, change.Link); err != nil {
 		return nil, err
 	}
+	c.resealInto(k, artifactID, change)
 	res.EpochChange, res.Epoch = *change, va.Chain.Latest.Epoch+1
 	return res, nil
 }

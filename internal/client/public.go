@@ -31,6 +31,9 @@ type PublicResult struct {
 	NewEpoch bool
 	Excluded []ExcludedUser
 	Listed   []DirectoryUser
+	// Resealed and ResealErr are as in EpochChange.
+	Resealed  *ResealResult
+	ResealErr error
 }
 
 // Public makes the artifact public, or sets whether a signed-in link holder
@@ -132,7 +135,9 @@ func (c *Client) publicOffNextEpoch(k *UnlockedKeys, artifactID string, va *Veri
 	if err := c.readBack(k, artifactID, ""); err != nil {
 		return nil, err
 	}
-	return &PublicResult{Epoch: va.Chain.Latest.Epoch + 1, NewEpoch: true, Excluded: change.Excluded, Listed: listed}, nil
+	c.resealInto(k, artifactID, change)
+	return &PublicResult{Epoch: va.Chain.Latest.Epoch + 1, NewEpoch: true, Excluded: change.Excluded, Listed: listed,
+		Resealed: change.Resealed, ResealErr: change.ResealErr}, nil
 }
 
 // linkTokenHashFor is the hash of the epoch's link token the server stores

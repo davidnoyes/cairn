@@ -41,11 +41,14 @@ type ExcludedUser struct {
 
 // EpochChange is what a command that started a new epoch reports. Link is
 // the artifact's new public link when it stays public: the old one stops
-// working.
+// working. Resealed is what re-sealing the artifact's data under the new
+// epoch did, and ResealErr why it stopped short: cairn reseal runs it again.
 type EpochChange struct {
-	NewEpoch bool
-	Excluded []ExcludedUser
-	Link     string
+	NewEpoch  bool
+	Excluded  []ExcludedUser
+	Link      string
+	Resealed  *ResealResult
+	ResealErr error
 }
 
 // nextEpochRecord is what putNextEpoch needs to know about the change.
@@ -437,5 +440,6 @@ func (c *Client) Unshare(artifactID, who string) (*UnshareResult, error) {
 	if err := c.readBack(k, artifactID, change.Link); err != nil {
 		return nil, err
 	}
+	c.resealInto(k, artifactID, change)
 	return &UnshareResult{EpochChange: *change, User: u, Epoch: latest.Epoch + 1, Listed: listed}, nil
 }

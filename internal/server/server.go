@@ -33,8 +33,6 @@ type Config struct {
 	Mail          mail.Mailer // required: sign-up and reset cannot work without it
 	MaxUploadMB   int64       // size cap per pushed version or stored file, encrypted bytes
 	MaxDBMB       int64       // size cap per database revision, encrypted bytes
-	QueryTimeout  time.Duration
-	MaxQueryRows  int
 	Logger        *slog.Logger
 	Clock         clock.Clock // defaults to the wall clock; tests move it without sleeping
 }
@@ -54,12 +52,6 @@ func (c *Config) applyDefaults() {
 	}
 	if c.MaxDBMB == 0 {
 		c.MaxDBMB = 50
-	}
-	if c.QueryTimeout == 0 {
-		c.QueryTimeout = 10 * time.Second
-	}
-	if c.MaxQueryRows == 0 {
-		c.MaxQueryRows = 10_000
 	}
 	if c.Logger == nil {
 		c.Logger = slog.Default()

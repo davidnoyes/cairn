@@ -3,10 +3,7 @@ package client
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
-
-	"github.com/aloisdeniel/cairn/internal/versiondb"
 )
 
 // authedClient signs up, verifies, and logs in a fresh account, returning a
@@ -72,7 +69,7 @@ func TestArtifactLifecycle(t *testing.T) {
 	}
 }
 
-func TestPushAndFiles(t *testing.T) {
+func TestPush(t *testing.T) {
 	c := authedClient(t)
 	a, err := c.CreateArtifact("site", "")
 	if err != nil {
@@ -92,50 +89,6 @@ func TestPushAndFiles(t *testing.T) {
 		t.Fatalf("ListVersions = %+v, %v", versions, err)
 	}
 
-	// Shared database: create a table, insert, and read it back.
-	if _, err := c.Query(a.ID, v.ID, "CREATE TABLE t (n INTEGER)", nil); err != nil {
-		t.Fatalf("Query create: %v", err)
-	}
-	batchResults, err := c.Batch(a.ID, v.ID, []versiondb.Statement{
-		{SQL: "INSERT INTO t (n) VALUES (?)", Params: []any{1}},
-		{SQL: "INSERT INTO t (n) VALUES (?)", Params: []any{2}},
-	})
-	if err != nil || len(batchResults) != 2 {
-		t.Fatalf("Batch = %+v, %v", batchResults, err)
-	}
-	res, err := c.Query(a.ID, v.ID, "SELECT n FROM t ORDER BY n", nil)
-	if err != nil {
-		t.Fatalf("Query select: %v", err)
-	}
-	if len(res.Rows) != 2 {
-		t.Fatalf("Query select rows = %+v", res.Rows)
-	}
-
-	// File storage.
-	if _, err := c.UploadFile(a.ID, v.ID, "notes/hello.txt", strings.NewReader("hello file")); err != nil {
-		t.Fatalf("UploadFile: %v", err)
-	}
-	files, err := c.ListFiles(a.ID, v.ID)
-	if err != nil || len(files) != 1 || files[0].Path != "notes/hello.txt" {
-		t.Fatalf("ListFiles = %+v, %v", files, err)
-	}
-	body, err := c.DownloadFile(a.ID, v.ID, "notes/hello.txt")
-	if err != nil {
-		t.Fatalf("DownloadFile: %v", err)
-	}
-	defer body.Close()
-	data := make([]byte, 32)
-	n, _ := body.Read(data)
-	if string(data[:n]) != "hello file" {
-		t.Fatalf("DownloadFile content = %q", data[:n])
-	}
-	if err := c.DeleteFile(a.ID, v.ID, "notes/hello.txt"); err != nil {
-		t.Fatalf("DeleteFile: %v", err)
-	}
-	files, err = c.ListFiles(a.ID, v.ID)
-	if err != nil || len(files) != 0 {
-		t.Fatalf("ListFiles after delete = %+v, %v", files, err)
-	}
 }
 
 func TestResolveArtifactAmbiguousName(t *testing.T) {

@@ -112,7 +112,10 @@ STATUS=$(curl -s -o /dev/null -w '%{http_code}' --resolve "$CONTENT_HOST:127.0.0
 [[ "$STATUS" == "401" ]] || fail "content origin /api/me with an API key ($STATUS)"
 pass "the content origin refuses routes outside the allowlist, and API keys"
 
-echo "== shared database"
+echo "== client-side database"
+OCTET='Content-Type: application/octet-stream'  # the CSRF guard lets an anonymous write through only as JSON or octet-stream
+# The CLI downloads the latest revision, runs the SQL on its own copy, and
+# uploads a new encrypted revision when the statement wrote.
 "$BIN" db query --artifact guestbook \
   "CREATE TABLE entries (id INTEGER PRIMARY KEY, message TEXT NOT NULL, author TEXT NOT NULL, created_at TEXT NOT NULL)" >/dev/null
 "$BIN" db query --artifact guestbook \
@@ -121,17 +124,38 @@ echo "== shared database"
 "$BIN" db query --artifact guestbook "SELECT message FROM entries" | grep "hello from e2e" >/dev/null || fail "db round trip"
 pass "SQL write + read through CLI"
 
-# The bearer reads over plain HTTP. The artifact is private, so an anonymous
-# caller finds nothing, read or write.
-curl -sf -X POST "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/db/query" \
-  -H 'Content-Type: application/json' -d '{"sql":"SELECT COUNT(*) FROM entries"}' | grep '\[\[1\]\]' >/dev/null \
-  || fail "bearer read"
-pass "bearer read over HTTP"
-for SQL in 'SELECT COUNT(*) FROM entries' 'DELETE FROM entries'; do
-  STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$HOST/api/artifacts/$AID/versions/$VID/db/query" \
-    -H 'Content-Type: application/json' -d "{\"sql\":\"$SQL\"}")
-  [[ "$STATUS" == "404" ]] || fail "anonymous query not refused ($SQL: $STATUS)"
-done
+"$BIN" db revisions --artifact guestbook --json | jq -e 'length == 2 and .[0].revision == 2 and .[0].epoch == 1' >/dev/null \
+  || fail "db revisions: a read must not add one"
+pass "each write is a revision, and a read adds none"
+
+echo '[{"sql":"INSERT INTO entries (message, author, created_at) VALUES (?, ?, ?)","params":["from a batch","e2e","2026-01-02T00:00:00Z"]},{"sql":"SELECT count(*) AS n FROM entries"}]' \
+  | "$BIN" db batch --artifact guestbook --json | jq -e 'length == 2 and .[1].rows[0][0] == 2' >/dev/null || fail "db batch"
+pass "db batch runs a script in one transaction, one result per statement"
+
+if "$BIN" db query --artifact guestbook "SELECT 1; DROP TABLE entries" >/dev/null 2>"$WORK/multi.err"; then
+  fail "a statement string with two statements ran"
+fi
+grep -q "only one SQL statement" "$WORK/multi.err" || fail "multi-statement refusal: $(cat "$WORK/multi.err")"
+pass "a statement string holding two statements is refused"
+
+"$BIN" db download --artifact guestbook --out "$WORK/guestbook.db" >/dev/null
+[[ "$(head -c 15 "$WORK/guestbook.db")" == "SQLite format 3" ]] || fail "db download is not a SQLite file"
+"$BIN" db restore --artifact guestbook --revision 2 --json | jq -e '.restored == 2 and .revision == 4' >/dev/null || fail "db restore"
+pass "db download writes the plaintext, and db restore uploads an old revision as a new one"
+
+# The server holds ciphertext only: no entry text anywhere under dbs/, and an
+# anonymous caller finds nothing on a private artifact.
+if grep -rqa "hello from e2e" "$WORK/data/dbs"; then fail "plaintext database under the data dir"; fi
+pass "no plaintext under the data dir's dbs/"
+curl -sf -D "$WORK/db.headers" -o "$WORK/db.bin" "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/db" || fail "bearer read of the latest revision"
+[[ "$(head -c 4 "$WORK/db.bin")" == "CRNB" ]] || fail "the revision is not a blob"
+grep -qi '^x-cairn-revision: 4' "$WORK/db.headers" || fail "revision header: $(cat "$WORK/db.headers")"
+grep -qi '^etag: "4"' "$WORK/db.headers" || fail "etag header: $(cat "$WORK/db.headers")"
+pass "the server serves the latest revision as a sealed blob with its record"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/artifacts/$AID/versions/$VID/db")
+[[ "$STATUS" == "404" ]] || fail "anonymous read of a private database ($STATUS)"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H 'If-Match: "0"' -H "$OCTET" "$HOST/api/artifacts/$AID/versions/$VID/db")
+[[ "$STATUS" == "404" ]] || fail "anonymous write of a private database ($STATUS)"
 pass "anonymous read and write on a private artifact are not found"
 
 echo "== file storage"
@@ -140,29 +164,32 @@ echo "hello file" > "$WORK/note.txt"
 "$BIN" files list --artifact guestbook | grep "notes/hello.txt" >/dev/null || fail "file list"
 "$BIN" files get notes/hello.txt --artifact guestbook | grep "hello file" >/dev/null || fail "file get"
 pass "file put + list + get through CLI"
-curl -sf "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt" | grep "hello file" >/dev/null \
-  || fail "bearer file read"
-pass "bearer file read over HTTP"
-STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt")
-[[ "$STATUS" == "404" ]] || fail "anonymous file read not refused ($STATUS)"
-pass "anonymous file read on a private artifact is not found"
-STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
-  -H 'Content-Type: application/octet-stream' \
-  "$HOST/api/artifacts/$AID/versions/$VID/files/evil.txt" --data-binary 'x')
+# The server keeps no name: its list shows an address and an encrypted blob.
+curl -sf "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/files" > "$WORK/files.json" || fail "bearer file list"
+jq -e 'length == 1 and (.[0].address | test("^[0-9a-f]{64}$")) and .[0].epoch == 1' "$WORK/files.json" >/dev/null || fail "file list shape: $(cat "$WORK/files.json")"
+if grep -q "hello" "$WORK/files.json"; then fail "the file list names the file"; fi
+if grep -rqa "hello" "$WORK/data/files"; then fail "plaintext or a name under the data dir's files/"; fi
+pass "the server lists an address and ciphertext, and keeps no name"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/artifacts/$AID/versions/$VID/files")
+[[ "$STATUS" == "404" ]] || fail "anonymous file list not refused ($STATUS)"
+pass "anonymous file list on a private artifact is not found"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "$OCTET" \
+  "$HOST/api/artifacts/$AID/versions/$VID/files/$(printf 'a%.0s' $(seq 1 64))" --data-binary 'x')
 [[ "$STATUS" == "404" ]] || fail "anonymous file write not rejected ($STATUS)"
 pass "anonymous file write rejected"
 "$BIN" files delete notes/hello.txt --artifact guestbook >/dev/null
-STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/files/notes/hello.txt")
-[[ "$STATUS" == "404" ]] || fail "deleted file still served ($STATUS)"
+"$BIN" files list --artifact guestbook --json | jq -e 'length == 0' >/dev/null || fail "deleted file still listed"
+if "$BIN" files get notes/hello.txt --artifact guestbook >/dev/null 2>&1; then fail "deleted file still served"; fi
 pass "file delete"
 
 echo "== re-upload + cross-version read"
 "$BIN" push "$ROOT/examples/guestbook" --artifact guestbook --name v2 --changelog "second" --json > "$WORK/push2.json"
 VID2=$(python3 -c "import json;print(json.load(open('$WORK/push2.json'))['version']['id'])")
 [[ "$VID2" != "$VID" ]] || fail "second push created no new version"
-# v2's database is fresh; the old version's data is still reachable read-only.
-curl -sf -X POST "${AUTH[@]}" "$HOST/api/artifacts/$AID/versions/$VID/db/query" \
-  -H 'Content-Type: application/json' -d '{"sql":"SELECT message FROM entries"}' \
+# v2's database is fresh; the old version's data is still reachable.
+"$BIN" db query --artifact guestbook --version "$VID2" "SELECT name FROM sqlite_master" | grep -v '^name$' | grep . >/dev/null \
+  && fail "v2's database is not empty"
+"$BIN" db query --artifact guestbook --version "$VID" "SELECT message FROM entries" \
   | grep "hello from e2e" >/dev/null || fail "old version data lost"
 pass "per-version databases isolated; old data readable"
 "$BIN" push "$ROOT/examples/guestbook" --artifact guestbook --overwrite latest --changelog "rewritten" >/dev/null
@@ -344,10 +371,15 @@ CAIRN_CONFIG="$CONFIG3" "$BIN" confirm-email "$VERIFY_LINK4" >/dev/null
 echo "team-flow-strong-pw-1" | CAIRN_CONFIG="$CONFIG3" "$BIN" login --host "$HOST" --email team@e2e.test --password-stdin >/dev/null
 BEARER3=$(python3 -c "import json;print('_'.join(json.load(open('$CONFIG3'))['apiKey'].split('_')[:3]))")
 AUTH3=(-H "Authorization: Bearer $BEARER3")
-BATCH='{"statements":[{"sql":"CREATE TABLE IF NOT EXISTS team_probe (x INTEGER)"}]}'
+# team_batch makes a write as team@e2e.test through the CLI, each one a new
+# table so it is always a write, and prints 200 or the status the server refused it with.
 team_batch() {
-  curl -s -o /dev/null -w '%{http_code}' "${AUTH3[@]}" -H 'Content-Type: application/json' -d "$BATCH" \
-    "$HOST/api/artifacts/$TID/versions/$TVID/db/batch"
+  if CAIRN_CONFIG="$CONFIG3" "$BIN" db query --artifact teamdoc --version "$TVID" \
+      "CREATE TABLE team_probe_$RANDOM$RANDOM (x INTEGER)" >/dev/null 2>"$WORK/team-write.err"; then
+    echo 200
+  else
+    sed -n 's/.*(\([0-9][0-9][0-9]\))$/\1/p' "$WORK/team-write.err" | tail -1
+  fi
 }
 
 "$BIN" team teamdoc viewer | grep "team set to viewer for teamdoc" >/dev/null || fail "cairn team viewer"
@@ -403,7 +435,6 @@ echo "== public link"
 PID=$(jq -r .id "$WORK/pubdoc.json")
 "$BIN" push "$ROOT/examples/guestbook" --artifact pubdoc --name v1 --json > "$WORK/pubdoc-push.json"
 PVID=$(jq -r .version.id "$WORK/pubdoc-push.json")
-PUB_BATCH='{"statements":[{"sql":"CREATE TABLE IF NOT EXISTS pub_probe (x INTEGER)"}]}'
 pub_status() { # pub_status METHOD PATH [CURL ARGS...]
   local method="$1" path="$2"; shift 2
   curl -s -o /dev/null -w '%{http_code}' -X "$method" "$@" "$HOST$path"
@@ -446,18 +477,21 @@ curl -sf "${LINKH[@]}" "$HOST/api/artifacts/$PID/membership" \
   | jq -e '.records | length == 2' >/dev/null || fail "the link's membership holds the public record"
 pass "an anonymous caller reads with the right token, and gets 404 with none or a wrong one"
 
-JSONH=(-H 'Content-Type: application/json')
-PUB_DB="/api/artifacts/$PID/versions/$PVID/db/batch"
-[[ "$(pub_status POST "$PUB_DB" "${LINKH[@]}" "${JSONH[@]}" -d "$PUB_BATCH")" == "403" ]] || fail "an anonymous write with the token is not refused"
-[[ "$(pub_status POST "$PUB_DB" "${AUTH3[@]}" "${LINKH[@]}" "${JSONH[@]}" -d "$PUB_BATCH")" == "403" ]] || fail "a signed-in link holder writes while writes are off"
+# A write needs a signed multipart body, which curl cannot make, so these
+# probes send an empty PUT: the access gate answers 403 or 404 before the body
+# is read, and a write the gate admits is refused as malformed, with 400.
+PUB_DB="/api/artifacts/$PID/versions/$PVID/db"
+pub_put() { pub_status PUT "$PUB_DB" -H 'If-Match: "0"' -H "$OCTET" "$@"; }
+[[ "$(pub_put "${LINKH[@]}")" == "403" ]] || fail "an anonymous write with the token is not refused"
+[[ "$(pub_put "${AUTH3[@]}" "${LINKH[@]}")" == "403" ]] || fail "a signed-in link holder writes while writes are off"
 pass "public writes are refused while the switch is off, and to an anonymous caller"
 
 "$BIN" public pubdoc on --writes on --json > "$WORK/pub-writes.json" || fail "cairn public on --writes on"
 jq -e '.public == true and .publicWrites == true and .unchanged == false and .link == "'"$LINK"'"' \
   "$WORK/pub-writes.json" >/dev/null || fail "public --writes on --json: $(cat "$WORK/pub-writes.json")"
-[[ "$(pub_status POST "$PUB_DB" "${AUTH3[@]}" "${LINKH[@]}" "${JSONH[@]}" -d "$PUB_BATCH")" == "200" ]] || fail "a signed-in link holder cannot write with writes on"
-[[ "$(pub_status POST "$PUB_DB" "${LINKH[@]}" "${JSONH[@]}" -d "$PUB_BATCH")" == "403" ]] || fail "an anonymous write with the token succeeds with writes on"
-[[ "$(pub_status POST "$PUB_DB" "${AUTH3[@]}" "${JSONH[@]}" -d "$PUB_BATCH")" == "404" ]] || fail "a session without the token writes"
+[[ "$(pub_put "${AUTH3[@]}" "${LINKH[@]}")" == "400" ]] || fail "the gate does not admit a signed-in link holder with writes on"
+[[ "$(pub_put "${LINKH[@]}")" == "403" ]] || fail "an anonymous write with the token passes the gate with writes on"
+[[ "$(pub_put "${AUTH3[@]}")" == "404" ]] || fail "a session without the token passes the gate"
 [[ "$(pub_status GET "/api/artifacts/$PID/membership" "${LINKH[@]}")" == "200" ]] || fail "the link stopped working after the writes switch"
 pass "cairn public --writes on lets a signed-in link holder write, with the same link"
 

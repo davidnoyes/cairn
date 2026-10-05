@@ -275,6 +275,40 @@ func epochChangeJSON(out map[string]any, ch client.EpochChange) {
 		excluded = append(excluded, map[string]string{"user": x.User.ID, "name": x.User.Name, "email": x.User.Email, "fp": x.User.FP, "reason": x.Reason})
 	}
 	out["newEpoch"], out["excluded"], out["link"] = ch.NewEpoch, excluded, ch.Link
+	if ch.NewEpoch {
+		out["resealed"] = resealJSON(ch.Resealed, ch.ResealErr)
+	}
+}
+
+// resealJSON is what a re-seal did: the databases and files sealed again, what
+// was left alone and why, and the error that stopped it, if one did.
+func resealJSON(res *client.ResealResult, err error) map[string]any {
+	out := map[string]any{"databases": 0, "files": 0, "skipped": []string{}, "error": ""}
+	if res != nil {
+		out["databases"], out["files"] = res.Databases, res.Files
+		if res.Skipped != nil {
+			out["skipped"] = res.Skipped
+		}
+	}
+	if err != nil {
+		out["error"] = err.Error()
+	}
+	return out
+}
+
+// printReseal says what re-sealing the data under the new epoch did.
+func printReseal(artifact string, res *client.ResealResult, err error) {
+	if res != nil && (res.Databases > 0 || res.Files > 0) {
+		fmt.Printf("sealed %d database(s) and %d file(s) again under the new epoch\n", res.Databases, res.Files)
+	}
+	if res != nil {
+		for _, s := range res.Skipped {
+			fmt.Printf("left as it is, because it does not verify under the record before the change: %s\n", s)
+		}
+	}
+	if err != nil {
+		fmt.Printf("sealing the data again under the new epoch failed: %v\nrun: cairn reseal %s\n", err, artifact)
+	}
 }
 
 // excludedLabel names an excluded user by email and name, or by user ID when
@@ -304,6 +338,7 @@ func printEpochChange(c *client.Client, artifact string, epoch int, ch client.Ep
 	if ch.Link != "" {
 		fmt.Printf("\nthe public link changed, and the old link no longer works. The new link is:\n\n%s\n\n", ch.Link)
 	}
+	printReseal(artifact, ch.Resealed, ch.ResealErr)
 	// Only a hint: the record is already in, so a failed lookup is not an error.
 	switch list, _ := c.Review(artifact); len(list) {
 	case 0:
@@ -718,13 +753,13 @@ func runPublic(args []string) error {
 			"link": res.Link, "unchanged": res.Unchanged,
 		}
 		out["listed"], _ = listingJSON(res.Listed, nil)
-		epochChangeJSON(out, client.EpochChange{NewEpoch: res.NewEpoch, Excluded: res.Excluded, Link: res.Link})
+		epochChangeJSON(out, client.EpochChange{NewEpoch: res.NewEpoch, Excluded: res.Excluded, Link: res.Link, Resealed: res.Resealed, ResealErr: res.ResealErr})
 		return printArtifactJSON(a.ID, out)
 	}
 	if !res.Public {
 		if res.NewEpoch {
 			fmt.Printf("%s is private\n", a.Name)
-			printEpochChange(c, a.ID, res.Epoch, client.EpochChange{NewEpoch: true, Excluded: res.Excluded})
+			printEpochChange(c, a.ID, res.Epoch, client.EpochChange{NewEpoch: true, Excluded: res.Excluded, Resealed: res.Resealed, ResealErr: res.ResealErr})
 			printListing(a.ID, "", res.Listed, nil)
 		} else {
 			fmt.Printf("%s is already private; nothing changed\n", a.Name)

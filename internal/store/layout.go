@@ -51,12 +51,6 @@ func (l Layout) ArtifactContentRoot(artifactID string) string {
 	return filepath.Join(l.ContentRoot(), artifactID)
 }
 
-// VersionDB is the single-file database internal/versiondb still opens, kept
-// until that package goes. The server no longer uses it.
-func (l Layout) VersionDB(artifactID, versionID string) string {
-	return filepath.Join(l.DBRoot(), artifactID, versionID+".db")
-}
-
 func (l Layout) VersionDBDir(artifactID, versionID string) string {
 	return filepath.Join(l.DBRoot(), artifactID, versionID)
 }

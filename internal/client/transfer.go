@@ -526,5 +526,8 @@ func (c *Client) AcceptTransfer(artifactID string, opts AcceptTransferOptions) (
 	if err := c.readBack(k, artifactID, res.Link); err != nil {
 		return nil, err
 	}
+	if res.NewEpoch {
+		c.resealInto(k, artifactID, &res.EpochChange)
+	}
 	return res, nil
 }
