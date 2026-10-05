@@ -106,7 +106,7 @@ $('signout').addEventListener('click', async (event) => {
 // ------------------------------------------------------------- artifacts
 // The server holds each name and description sealed, so a row shows the
 // artifact's ID until its own keys open them.
-async function loadArtifacts({ me }) {
+async function listArtifacts({ me }) {
   const list = await api('/api/artifacts');
   const rows = new Map(list.map((a) => [a.id, artifactRow(a, a.owner === me.id)]));
   const fill = (body, mine, empty) => {
@@ -127,8 +127,20 @@ async function loadArtifacts({ me }) {
     // user learns why the row shows an ID.
     row.reasonText.textContent = got.error ? describeError(got.error) : '';
     // The share dialog may have opened on this row before its name was read.
-    if (sharing?.id === a.id) $('share-title').textContent = got.name;
+    if (sharing?.id === a.id) {
+      sharing.name = got.name;
+      $('share-title').textContent = got.name;
+    }
   }
+}
+
+// One load at a time: two loads opening the same artifact for the first time
+// would both pin its owner at the keyring's next revision.
+let artifactsLoad = Promise.resolve();
+function loadArtifacts(ctx) {
+  const run = artifactsLoad.then(() => listArtifacts(ctx));
+  artifactsLoad = run.catch(() => {});
+  return run;
 }
 
 function artifactRow(a, mine) {
@@ -170,7 +182,7 @@ const reloadArtifacts = () => loadArtifacts({ me }).catch(failIn('artifacts-stat
 let sharing = null;
 
 async function openShare(id, name) {
-  sharing = { id, link: null, changed: false };
+  sharing = { id, name, link: null, changed: false };
   $('share-title').textContent = name;
   status('share-status', '');
   $('accept-warning').hidden = true;
@@ -198,6 +210,9 @@ async function act(working, change, retry) {
   // again on another artifact: the controls and status are that dialog's now.
   if (s !== sharing) {
     if (s.changed) reloadArtifacts();
+    if (failed && !(failed instanceof UnauthenticatedError)) {
+      status('artifacts-status', `A change to how ${s.name} is shared did not go through: ${describeError(failed)}`, true);
+    }
     return;
   }
   if (failed instanceof KeyChangedError && retry) {
@@ -213,7 +228,8 @@ async function act(working, change, retry) {
     if (!failed && s === sharing) status('share-status', said ?? '');
   } catch (err) {
     if (!failed && s === sharing && !(err instanceof UnauthenticatedError)) {
-      status('share-status', `${said ?? ''} The members could not be listed again: ${describeError(err)}`.trim(), true);
+      const listed = `The members could not be listed: ${describeError(err)}`;
+      status('share-status', said === null ? listed : `${said} ${listed}`, true);
     }
   } finally {
     if (s === sharing) {

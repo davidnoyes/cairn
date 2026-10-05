@@ -73,6 +73,33 @@ test('app: the owner lists their artifacts by name, and a viewer finds the share
   }
 });
 
+test('app: a name that cannot be read says why in the row, and the row shows the ID', async ({ ownerPage, browserName }) => {
+  const s = loadState();
+  const name = `unreadable-${browserName}`;
+  const { id } = JSON.parse(cli('owner', ['push', `${s.fixturesDir}/marker`, '--artifact', name, '--create', '--json'])).artifact;
+
+  // The server answers with the name's sealed blob altered by one character.
+  const list = `${s.appOrigin}/api/artifacts`;
+  await ownerPage.route(list, async (route) => {
+    const response = await route.fetch();
+    const views = await response.json();
+    const blob = views.find((a) => a.id === id).meta.name.blob;
+    const at = Math.floor(blob.length / 2);
+    views.find((a) => a.id === id).meta.name.blob = blob.slice(0, at) + (blob[at] === 'A' ? 'B' : 'A') + blob.slice(at + 1);
+    return route.fulfill({ response, json: views });
+  });
+  try {
+    await ownerPage.goto(`${s.appOrigin}/app`);
+    await openTab(ownerPage, 'Artifacts');
+    const row = ownerPage.locator(`#own tr[data-id="${id}"]`);
+    await expect(row.locator('td.name .unreadable')).toBeVisible();
+    await expect(row.locator('td.name .unreadable')).toHaveText('Could not read the name of this artifact.');
+    await expect(row.locator('td.name .clamp')).toHaveText(id);
+  } finally {
+    await ownerPage.unroute(list);
+  }
+});
+
 test('app: hostile names and descriptions render as text in the list, the share dialog, and the shell', async ({ ownerPage, browserName }) => {
   const s = loadState();
   const nameMarker = `CAIRN-NAME-MARKER-${browserName}-c81e`;

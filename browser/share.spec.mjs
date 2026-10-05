@@ -226,3 +226,74 @@ test('share: a change still running when the dialog closes stays with its own ar
     await ownerPage.unroute(membership);
   }
 });
+
+test('share: a change whose dialog was closed reports its failure in the artifact list', async ({ ownerPage, browserName }) => {
+  const s = loadState();
+  const name = `stale-fail-${browserName}`;
+  const { id } = pushDoc(name);
+  const viewer = s.users[`peer-${browserName}`];
+  const dialog = await openShare(ownerPage, id);
+  await expect(dialog.locator('#share-title')).toHaveText(name);
+
+  const membership = `**/api/artifacts/${id}/membership`;
+  let release, reached;
+  const held = new Promise((resolve) => { release = resolve; });
+  const arrived = new Promise((resolve) => { reached = resolve; });
+  await ownerPage.route(membership, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback();
+    reached();
+    await held;
+    return route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: 'refused for the test' }) });
+  });
+  try {
+    await dialog.locator('#share-email').fill(viewer.email);
+    await dialog.getByRole('button', { name: 'Share', exact: true }).click();
+    await arrived;
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    release();
+    const said = ownerPage.locator('#artifacts-status');
+    await expect(said).toContainText('did not go through');
+    await expect(said).toContainText(name);
+    await expect(said).toContainText('refused for the test');
+    expect(Object.keys(members(id))).not.toContain(viewer.email);
+  } finally {
+    release();
+    await ownerPage.unroute(membership);
+  }
+});
+
+test('share: a change that went through says so, even when the members cannot be listed again', async ({ ownerPage, browserName }) => {
+  const s = loadState();
+  const { id } = pushDoc(`list-fail-${browserName}`);
+  const viewer = s.users[`peer-${browserName}`];
+  const dialog = await openShare(ownerPage, id);
+
+  // share reads the record back once after writing it; every membership read
+  // after that, which is the list, fails.
+  const membership = `**/api/artifacts/${id}/membership`;
+  let written = false;
+  let readBack = false;
+  await ownerPage.route(membership, async (route) => {
+    const method = route.request().method();
+    if (method === 'PUT') {
+      const response = await route.fetch();
+      written = true;
+      return route.fulfill({ response });
+    }
+    if (method === 'GET' && written && readBack) {
+      return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'listing broke for the test' }) });
+    }
+    if (method === 'GET' && written) readBack = true;
+    return route.fallback();
+  });
+  try {
+    await dialog.locator('#share-email').fill(viewer.email);
+    await dialog.getByRole('button', { name: 'Share', exact: true }).click();
+    const said = dialog.locator('#share-status');
+    await expect(said).toContainText(`Shared with ${viewer.email}`);
+    await expect(said).toContainText('The members could not be listed: listing broke for the test');
+    expect(Object.keys(members(id))).toContain(viewer.email);
+  } finally {
+    await ownerPage.unroute(membership);
+  }
+});
