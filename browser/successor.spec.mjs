@@ -169,7 +169,7 @@ test('successor: a deactivated user refuses from /refuse with no session, by pas
         tries++;
         await choice.check({ timeout: 5_000 });
       }).toPass({ timeout: 20_000 });
-      if (tries > 1) test.info().annotations.push({ type: 'retried', description: `the ${mode} choice took ${tries} clicks` });
+      if (tries > 1) test.info().annotations.push({ type: 'retried', description: `the ${mode} choice took ${tries} tries` });
       await page.locator(mode === 'password' ? '#password' : '#code').fill(secret);
       await page.locator('#submit').click();
     };
