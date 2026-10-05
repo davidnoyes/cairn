@@ -102,6 +102,8 @@ function fakeDoc({ readyState = 'complete', baseTarget = null, diagram = null, s
   doc.added = [];
   doc.createElement = (tag) => ({ tagName: tag.toUpperCase() });
   doc.body = { appendChild: (el) => doc.added.push(el) };
+  doc.inside = new Set();
+  doc.contains = (el) => doc.inside.has(el);
   return doc;
 }
 
@@ -122,7 +124,19 @@ function setup({ sw = CTRL_URL, doc: docOpts, win: winOpts } = {}) {
   win.location = { origin: CONTENT };
   win.opened = [];
   win.open = (...args) => win.opened.push(args);
-  win.parent = { posted: [], postMessage(m, o) { this.posted.push([m, o]); } };
+  win.parent = { posted: [], transfers: [], postMessage(m, o, t) { this.posted.push([m, o]); this.transfers.push(t); } };
+  win.warnings = [];
+  win.console = { warn: (m) => win.warnings.push(m) };
+  win.fetched = [];
+  win.fetch = async (url) => {
+    win.fetched.push(url);
+    return new Response('bytes', { headers: { 'Content-Disposition': 'attachment; filename="database.db"' } });
+  };
+  win.HTMLAnchorElement = class {
+    click() {
+      win.nativeClicks = (win.nativeClicks ?? 0) + 1;
+    }
+  };
   Object.assign(win, winOpts);
   const doc = fakeDoc(docOpts);
   const container = new EventTarget();
@@ -339,4 +353,134 @@ test('frame.js tolerates a browser with no service worker object', () => {
   win.location = { origin: CONTENT };
   install(win, fakeDoc(), {});
   win.dispatchEvent(msg(KEYS, win.parent, APP));
+});
+
+// --- downloads ---
+
+const flush = () => new Promise((r) => setTimeout(r, 10));
+const text = (buf) => new TextDecoder().decode(buf);
+
+test('a download of this origin is fetched through the worker and handed to the shell', async () => {
+  const { win, doc } = setup();
+  const ev = click(doc, fakeAnchor({ href: 'data/report.csv', download: 'mine.csv' }));
+  assert.equal(ev.defaultPrevented, true);
+  await flush();
+  assert.deepEqual(win.fetched, [`${CONTENT}/${VID}/data/report.csv`]);
+  const [[m, origin]] = win.parent.posted;
+  assert.equal(origin, APP);
+  assert.equal(m.cairn, 'download');
+  assert.equal(m.name, 'mine.csv');
+  assert.equal(text(m.bytes), 'bytes');
+  assert.deepEqual(win.parent.transfers, [[m.bytes]], 'the bytes are transferred, not copied');
+});
+
+test('a download with no name takes the Content-Disposition filename, else the last segment', async () => {
+  const a = setup();
+  click(a.doc, fakeAnchor({ href: `/api/artifacts/${ID}/versions/${VID}/db/download`, download: '' }));
+  await flush();
+  assert.equal(a.win.parent.posted[0][0].name, 'database.db');
+  const b = setup({ win: { fetch: async () => new Response('x') } });
+  click(b.doc, fakeAnchor({ href: 'files/my%20notes.txt?x=1#y', download: '' }));
+  await flush();
+  assert.equal(b.win.parent.posted[0][0].name, 'my notes.txt');
+  const c = setup({ win: { fetch: async () => new Response('x') } });
+  click(c.doc, fakeAnchor({ href: 'files/bad%E0', download: '' }));
+  await flush();
+  assert.equal(c.win.parent.posted[0][0].name, 'bad%E0');
+});
+
+test('a blob: download is handed to the shell', async () => {
+  const { win, doc } = setup();
+  const url = `blob:${CONTENT}/0b0e5b1e-0000-4000-8000-000000000000`;
+  const ev = click(doc, fakeAnchor({ href: url, download: 'export.json' }));
+  assert.equal(ev.defaultPrevented, true);
+  await flush();
+  assert.deepEqual(win.fetched, [url]);
+  assert.equal(win.parent.posted[0][0].name, 'export.json');
+});
+
+test('a download from another origin, or with no app origin, is left to the browser', async () => {
+  const { win, doc } = setup();
+  const evs = [
+    click(doc, fakeAnchor({ href: 'https://example.com/x.zip', download: '' })),
+    click(doc, fakeAnchor({ href: `${APP}/x.zip`, download: '' })),
+    click(doc, fakeAnchor({ href: 'data:text/plain,hi', download: 'a.txt' })),
+    click(doc, fakeAnchor({ href: 'http://[bad', download: '' })),
+  ];
+  const none = setup({ sw: null });
+  evs.push(click(none.doc, fakeAnchor({ href: 'x.csv', download: '' })));
+  await flush();
+  assert.ok(evs.every((ev) => !ev.defaultPrevented));
+  assert.deepEqual([win.fetched, win.parent.posted, none.win.parent.posted], [[], [], []]);
+});
+
+test('a download that fails to fetch is reported, and nothing is posted', async () => {
+  const { win, doc } = setup({ win: { fetch: async () => new Response('no', { status: 404 }) } });
+  click(doc, fakeAnchor({ href: 'gone.csv', download: '' }));
+  await flush();
+  assert.deepEqual(win.parent.posted, []);
+  assert.deepEqual(win.warnings, ['[cairn] the download failed: HTTP 404']);
+  const b = setup({ win: { fetch: async () => { throw new Error('offline'); } } });
+  click(b.doc, fakeAnchor({ href: 'x.csv', download: '' }));
+  await flush();
+  assert.deepEqual(b.win.warnings, ['[cairn] the download failed: offline']);
+});
+
+test('a script click on a detached download anchor is handed to the shell', async () => {
+  const { win } = setup();
+  const a = Object.assign(new win.HTMLAnchorElement(), fakeAnchor({ href: 'x.csv', download: 'x.csv' }));
+  a.click();
+  await flush();
+  assert.equal(win.nativeClicks, undefined, 'the browser is not asked to click it');
+  assert.equal(win.parent.posted[0][0].name, 'x.csv');
+});
+
+test('a script click on an anchor in the document, or on any other anchor, clicks as usual', async () => {
+  const { win, doc } = setup();
+  const inDoc = Object.assign(new win.HTMLAnchorElement(), fakeAnchor({ href: 'x.csv', download: '' }));
+  doc.inside.add(inDoc);
+  inDoc.click();
+  Object.assign(new win.HTMLAnchorElement(), fakeAnchor({ href: 'page.html' })).click();
+  Object.assign(new win.HTMLAnchorElement(), fakeAnchor({ href: 'https://example.com/x', download: '' })).click();
+  const none = setup({ sw: null });
+  Object.assign(new none.win.HTMLAnchorElement(), fakeAnchor({ href: 'x.csv', download: '' })).click();
+  await flush();
+  assert.equal(win.nativeClicks, 3);
+  assert.equal(none.win.nativeClicks, 1);
+  assert.deepEqual([win.parent.posted, win.fetched], [[], []]);
+});
+
+test('frame.js tolerates a window with no HTMLAnchorElement', () => {
+  setup({ win: { HTMLAnchorElement: undefined } });
+});
+
+// --- signing ---
+
+test('sign from the worker is relayed to the parent at the app origin, with its port', () => {
+  const { win, container, controller } = setup();
+  const port = { port: true };
+  const ev = msg({ cairn: 'sign', purpose: 'revision', bodies: [{ a: 1 }], extra: 1 }, controller, undefined);
+  ev.ports = [port];
+  container.dispatchEvent(ev);
+  assert.deepEqual(win.parent.posted, [[{ cairn: 'sign', purpose: 'revision', bodies: [{ a: 1 }] }, APP]]);
+  assert.deepEqual(win.parent.transfers, [[port]]);
+});
+
+test('sign with no port, or from another source, is not relayed', () => {
+  const { win, container, controller } = setup();
+  container.dispatchEvent(msg({ cairn: 'sign', purpose: 'revision', bodies: [] }, controller, undefined));
+  const empty = msg({ cairn: 'sign', purpose: 'revision', bodies: [] }, controller, undefined);
+  empty.ports = [];
+  container.dispatchEvent(empty);
+  const other = msg({ cairn: 'sign', purpose: 'revision', bodies: [] }, { other: true }, undefined);
+  other.ports = [{}];
+  container.dispatchEvent(other);
+  assert.deepEqual(win.parent.posted, []);
+});
+
+test('sign from the shell side is not passed to the worker', () => {
+  const { win, controller } = setup();
+  win.dispatchEvent(msg({ cairn: 'sign', purpose: 'revision', bodies: [] }, win.parent, APP));
+  win.dispatchEvent(msg({ cairn: 'download', name: 'a', bytes: new ArrayBuffer(1) }, win.parent, APP));
+  assert.deepEqual(controller.posted, []);
 });

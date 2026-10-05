@@ -251,6 +251,10 @@ const KEYS_FIELDS = [
   'linkToken',
   'context',
   'path',
+  'aks',
+  'currentEpoch',
+  'writers',
+  'publicWrites',
 ];
 
 function isObject(v) {
@@ -289,6 +293,29 @@ function checkExpires(v) {
   }
 }
 
+// checkData validates the fields the data routes use: an AK for each epoch
+// from the version's to the current one the caller holds, among them the
+// version's own; the writers' keys; and publicWrites.
+function checkData(msg) {
+  if (!Number.isSafeInteger(msg.currentEpoch) || msg.currentEpoch < msg.epoch) {
+    throw new ContentError('currentEpoch must be an integer no lower than epoch');
+  }
+  if (!isObject(msg.aks)) throw new ContentError('aks must be an object');
+  for (const [k, v] of Object.entries(msg.aks)) {
+    const e = /^(0|[1-9][0-9]*)$/.test(k) ? Number(k) : NaN;
+    if (!(e >= msg.epoch && e <= msg.currentEpoch)) throw new ContentError(`aks holds epoch ${k}, outside the version's to the current one`);
+    checkB64(v, 32, `aks ${k}`);
+  }
+  if (msg.aks[String(msg.epoch)] !== msg.ak) throw new ContentError("aks must hold the version's AK");
+  if (!isObject(msg.writers)) throw new ContentError('writers must be an object');
+  for (const [user, list] of Object.entries(msg.writers)) {
+    checkUuid(user, 'writer');
+    if (!Array.isArray(list)) throw new ContentError('writer keys must be an array');
+    for (const k of list) checkB64(k, 32, 'writer key');
+  }
+  if (typeof msg.publicWrites !== 'boolean') throw new ContentError('publicWrites must be a boolean');
+}
+
 // checkKeysMessage validates the shell's keys message field by field and
 // returns it. Unknown and missing fields are refused.
 export function checkKeysMessage(msg) {
@@ -324,6 +351,7 @@ export function checkKeysMessage(msg) {
   }
   checkString(msg.path, 'path');
   if (!contentTarget(msg.version, msg.path)) throw new ContentError('path must stay inside the version');
+  checkData(msg);
   return msg;
 }
 

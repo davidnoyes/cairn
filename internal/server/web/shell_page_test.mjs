@@ -11,7 +11,7 @@ import {
   vouchFor,
 } from './viewer_fixture.mjs';
 import { UNTRUSTED_MESSAGE } from './viewer.mjs';
-import { run } from './shell.mjs';
+import { downloadName, run } from './shell.mjs';
 
 const CONTENT = `http://${ARTIFACT}.localhost:8080`;
 const U = {};
@@ -38,6 +38,12 @@ function fakeDom(dataset) {
       addEventListener(type, fn) {
         this.listeners[type] = fn;
       },
+      click() {
+        this.clicked = (this.clicked ?? 0) + 1;
+      },
+      remove() {
+        this.removed = true;
+      },
     };
     for (const sink of ['innerHTML', 'outerHTML']) {
       Object.defineProperty(el, sink, {
@@ -54,12 +60,14 @@ function fakeDom(dataset) {
   const els = {};
   for (const id of ['name', 'desc', 'version', 'fullscreen', 'account', 'status', 'frame-host']) els[id] = make(id);
   els.status.hidden = true;
+  const body = make('body');
+  body.dataset = dataset;
   return {
     violations,
     els,
     document: {
       title: '',
-      body: { dataset },
+      body,
       getElementById: (id) => els[id],
       createElement: make,
       write: () => violations.push('document.write'),
@@ -97,6 +105,18 @@ async function page({ who = null, mode = 'shared', version = '', path = '/', isP
       return timers.length;
     },
     clearTimeout: () => {},
+    Blob,
+    URL: {
+      created: [],
+      revoked: [],
+      createObjectURL(blob) {
+        this.created.push(blob);
+        return `blob:${ORIGIN}/${this.created.length}`;
+      },
+      revokeObjectURL(url) {
+        this.revoked.push(url);
+      },
+    },
   };
   const keyStore = fakeKeyStore(who ? await keyStoreRecord(U[who]) : null);
   const p = { world, server, dom, window, handlers, timers, assigned, replaced, keyStore };
@@ -105,8 +125,8 @@ async function page({ who = null, mode = 'shared', version = '', path = '/', isP
   p.start = () => run(window, dom.document, keyStore);
   if (!noRun) await p.start();
   // post delivers a message to the shell as the frame, or as source/origin say.
-  p.post = async (data, { source = p.frame()?.contentWindow, origin = CONTENT } = {}) => {
-    handlers.message({ data, source, origin });
+  p.post = async (data, { source = p.frame()?.contentWindow, origin = CONTENT, ports = [] } = {}) => {
+    handlers.message({ data, source, origin, ports });
     await settle();
   };
   p.posted = () => p.frame().contentWindow.posted;
@@ -461,4 +481,102 @@ test('a version id the server lists that is not a UUID is left out of the picker
   assert.equal(p.status().hidden, true, p.status().textContent);
   assert.deepEqual(p.dom.els.version.children.map((o) => o.value), [V2, V1]);
   assert.equal(p.dom.els.fullscreen.href, `/full/${ARTIFACT}/${V2}`);
+});
+
+// port is the shell's end of a MessageChannel, recording what it is sent.
+function port() {
+  return { sent: [], postMessage(m) { this.sent.push(m); } };
+}
+
+const signReq = (p, over = {}) => ({
+  cairn: 'sign',
+  purpose: 'revision',
+  bodies: [{ artifact: ARTIFACT, version: V1, revision: 1, epoch: p.world.top, sha256: 'a'.repeat(64) }],
+  ...over,
+});
+
+test('keys carry the writers: the owner and each editor under their listed key', async () => {
+  const p = await page({ who: 'viewer', version: V1 });
+  await p.post({ cairn: 'ready', version: null, path: null });
+  const [msg] = p.posted()[0];
+  checkKeysMessage(msg);
+  assert.deepEqual(msg.writers, { [U.owner.id]: [e2e.b64(U.owner.ed.pub)], [U.editor.id]: [e2e.b64(U.editor.ed.pub)] });
+  assert.equal(msg.publicWrites, false);
+  assert.equal(msg.currentEpoch, p.world.top);
+});
+
+test('sign: an editor gets the bodies signed under their key, on the port the frame sent', async () => {
+  const p = await page({ who: 'editor' });
+  const reply = port();
+  await p.post(signReq(p), { ports: [reply] });
+  assert.equal(reply.sent.length, 1);
+  assert.equal(reply.sent[0].cairn, 'signed');
+  const [env] = reply.sent[0].envelopes;
+  assert.equal(env.signer, U.editor.id);
+  const body = await e2e.openEnvelope(env, U.editor.ed.pub, 'revision');
+  assert.equal(body.version, V1);
+  assert.deepEqual(p.posted(), [], 'nothing goes to the frame window itself');
+});
+
+test('sign: a viewer, or a body the shell will not sign, gets a sign-error', async () => {
+  const viewer = await page({ who: 'viewer' });
+  const r1 = port();
+  await viewer.post(signReq(viewer), { ports: [r1] });
+  assert.equal(r1.sent.length, 1);
+  assert.equal(r1.sent[0].cairn, 'sign-error');
+  assert.match(r1.sent[0].error, /cannot change/);
+  const editor = await page({ who: 'editor' });
+  const r2 = port();
+  await editor.post(signReq(editor, { purpose: 'manifest' }), { ports: [r2] });
+  assert.deepEqual(r2.sent, [{ cairn: 'sign-error', error: 'unknown purpose' }]);
+});
+
+test('sign: a request with no port, or from another window or origin, is not answered', async () => {
+  const p = await page({ who: 'editor' });
+  await p.post(signReq(p));
+  const r = port();
+  await p.post(signReq(p), { ports: [r], source: { postMessage() {} } });
+  await p.post(signReq(p), { ports: [r], origin: ORIGIN });
+  assert.deepEqual(r.sent, []);
+  assert.deepEqual(p.posted(), []);
+});
+
+test('download: the bytes are saved as an octet-stream file under the name asked for', async () => {
+  const p = await page({ who: 'viewer' });
+  const bytes = new TextEncoder().encode('SQLite format 3');
+  await p.post({ cairn: 'download', name: 'database.db', bytes: bytes.buffer });
+  const [blob] = p.window.URL.created;
+  assert.equal(blob.type, 'application/octet-stream');
+  assert.equal(await blob.text(), 'SQLite format 3');
+  const a = p.dom.document.body.children[0];
+  assert.equal(a.tag, 'a');
+  assert.equal(a.href, `blob:${ORIGIN}/1`);
+  assert.equal(a.download, 'database.db');
+  assert.equal(a.clicked, 1);
+  assert.equal(a.removed, true);
+  assert.deepEqual(p.window.URL.revoked, [], 'not revoked before the browser reads it');
+  const timer = p.timers.find((t) => t.ms === 60000);
+  timer.fn();
+  assert.deepEqual(p.window.URL.revoked, [`blob:${ORIGIN}/1`]);
+  await p.post({ cairn: 'download', name: 'x.bin', bytes: new Uint8Array([1, 2]) });
+  assert.equal(p.window.URL.created.length, 2, 'a typed array is accepted too');
+});
+
+test('download: anything that is not bytes, or not from the frame, saves nothing', async () => {
+  const p = await page({ who: 'viewer' });
+  for (const bytes of ['text', null, [1, 2], { length: 2 }]) await p.post({ cairn: 'download', name: 'a', bytes });
+  await p.post({ cairn: 'download', name: 'a', bytes: new ArrayBuffer(1) }, { origin: ORIGIN });
+  await p.post({ cairn: 'download', name: 'a', bytes: new ArrayBuffer(1) }, { source: { postMessage() {} } });
+  assert.deepEqual(p.window.URL.created, []);
+  assert.deepEqual(p.dom.document.body.children, []);
+});
+
+test('downloadName keeps the last segment, without control characters, or falls back', () => {
+  assert.equal(downloadName('database.db'), 'database.db');
+  assert.equal(downloadName('a/b/report.csv'), 'report.csv');
+  assert.equal(downloadName('a\\b\\report.csv'), 'report.csv');
+  assert.equal(downloadName('re\u0000po\u001frt\u007f.txt'), 'report.txt');
+  assert.equal(downloadName('  spaced.txt  '), 'spaced.txt');
+  assert.equal(downloadName('x'.repeat(300)).length, 200);
+  for (const bad of ['', '/', 'a/', '.', '..', 'a/..', '\u0001', 5, null, undefined]) assert.equal(downloadName(bad), 'download', String(bad));
 });

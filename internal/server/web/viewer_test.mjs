@@ -11,8 +11,9 @@ import {
   makeServer, makeUser, makeVersion, readServerKeyring, rotationRecord, seedKeyring, vouchFor,
 } from './viewer_fixture.mjs';
 import {
-  KeyringBusyError, LinkError, NoAccessError, UNTRUSTED_MESSAGE, UntrustedVersionError, VersionGoneError, keepToken, keysMessage,
-  listVersions, loadContext, mintToken, navigateTarget, openArtifact, prepareVersion, takeLink, trustVersion,
+  KeyringBusyError, LinkError, NoAccessError, UNTRUSTED_MESSAGE, UntrustedVersionError, VersionGoneError, WriteError, canWrite, keepToken,
+  keysMessage, listVersions, loadContext, mintToken, navigateTarget, openArtifact, prepareVersion, signBodies, takeLink, trustVersion,
+  writerKeys,
 } from './viewer.mjs';
 
 const U = {};
@@ -27,8 +28,8 @@ const STD_MEMBERS = [
 
 // scene is a world, a fake server with `who` signed in (or nobody), and the
 // deps the viewer takes. record overrides the key-store record.
-async function scene({ who = null, members = STD_MEMBERS, isPublic = false, epoch2 = false, record, owner = U.owner } = {}) {
-  const world = await buildWorld({ owner, members, isPublic, epoch2 });
+async function scene({ who = null, members = STD_MEMBERS, isPublic = false, epoch2 = false, publicWrites = false, record, owner = U.owner } = {}) {
+  const world = await buildWorld({ owner, members, isPublic, epoch2, publicWrites });
   const server = makeServer(world, { who: who && U[who], linkTokenB64: '*' });
   const rec = record === undefined ? (who ? records[who] : null) : record;
   const deps = { fetch: server.fetch, keyStore: fakeKeyStore(rec), storage: fakeStorage(), origin: ORIGIN };
@@ -773,8 +774,16 @@ test('keysMessage builds what checkKeysMessage accepts, with the AK of the versi
   const t = await trust(s, { signer: signerOf(U.owner), epoch: 2 });
   const { signer } = await t.run();
   const context = await loadContext(s.deps, s.opened, s.server.artifact);
-  const msg = keysMessage(s.opened, t.v.json, { signer, token: 'tok', tokenExpires: 123, path: '/a/b', context });
+  const writers = await writerKeys(s.deps, s.opened);
+  const msg = keysMessage(s.opened, t.v.json, { signer, token: 'tok', tokenExpires: 123, path: '/a/b', context, writers });
   checkKeysMessage(msg);
+  assert.deepEqual(msg.aks, { 2: e2e.b64(s.world.aks[2]) }, 'no AK from before the version');
+  assert.equal(msg.currentEpoch, 2);
+  assert.equal(msg.writers, writers);
+  assert.equal(msg.publicWrites, false);
+  const older = keysMessage(s.opened, { ...t.v.json, epoch: 1 }, { signer, token: null, tokenExpires: null, path: '/', context, writers });
+  checkKeysMessage(older);
+  assert.deepEqual(older.aks, { 1: e2e.b64(s.world.aks[1]), 2: e2e.b64(s.world.aks[2]) }, 'every AK from the version to the latest');
   assert.equal(msg.artifact, ARTIFACT);
   assert.equal(msg.version, V1);
   assert.equal(msg.epoch, 2);
@@ -786,7 +795,7 @@ test('keysMessage builds what checkKeysMessage accepts, with the AK of the versi
   assert.equal(msg.token, 'tok');
   assert.equal(msg.tokenExpires, 123);
   // A vouched version has no signer, and a visitor no tokens.
-  const bare = keysMessage(s.opened, t.v.json, { signer: null, token: null, tokenExpires: null, path: '/', context });
+  const bare = keysMessage(s.opened, t.v.json, { signer: null, token: null, tokenExpires: null, path: '/', context, writers });
   checkKeysMessage(bare);
   assert.equal(bare.signer, null);
 });
@@ -795,10 +804,142 @@ test('keysMessage carries the link token, and refuses an epoch the link does not
   const s = await trustScene({ who: null, isPublic: true, epoch2: true });
   const t = await trust(s, { signer: signerOf(U.owner), epoch: 2 });
   const context = await loadContext(s.deps, s.opened, s.server.artifact);
-  const msg = keysMessage(s.opened, t.v.json, { signer: null, token: null, tokenExpires: null, path: '/', context });
+  const msg = keysMessage(s.opened, t.v.json, { signer: null, token: null, tokenExpires: null, path: '/', context, writers: await writerKeys(s.deps, s.opened) });
   checkKeysMessage(msg);
   assert.equal(msg.linkToken, s.opened.linkToken);
+  assert.deepEqual(msg.aks, { 2: e2e.b64(s.world.aks[2]) }, 'a link opens its own epoch only');
   assert.throws(() => keysMessage(s.opened, { ...t.v.json, epoch: 1 }, { signer: null, token: null, tokenExpires: null, path: '/', context }), LinkError);
+});
+
+test('writerKeys lists the owner and each editor under their listed key, and no viewer', async () => {
+  const s = await trustScene();
+  const w = await writerKeys(s.deps, s.opened);
+  assert.deepEqual(Object.keys(w).sort(), [U.owner.id, U.editor.id].sort());
+  assert.deepEqual(w[U.owner.id], [e2e.b64(U.owner.ed.pub)]);
+  assert.deepEqual(w[U.editor.id], [e2e.b64(U.editor.ed.pub)]);
+});
+
+test('writerKeys leaves out a key the directory serves under another fingerprint', async () => {
+  const s = await trustScene();
+  const next = await makeUser('editor');
+  s.server.directory.set(U.editor.id, { id: U.editor.id, name: 'editor', email: 'e@example.com', x25519Pub: next.pair.x25519, ed25519Pub: next.pair.ed25519 });
+  const w = await writerKeys(s.deps, s.opened);
+  assert.deepEqual(w[U.editor.id], []);
+});
+
+test('writerKeys follows a rotation from the listed key, and keeps the listed one', async () => {
+  const next = await makeUser('editor');
+  const s = await trustScene({
+    prepare: async (sc) => {
+      sc.server.rotations = { [U.editor.id]: [await rotationRecord(U.editor, next)] };
+      sc.server.directory.set(U.editor.id, { id: U.editor.id, name: 'editor', email: 'e@example.com', x25519Pub: next.pair.x25519, ed25519Pub: next.pair.ed25519 });
+    },
+  });
+  const w = await writerKeys(s.deps, s.opened);
+  assert.deepEqual(w[U.editor.id].sort(), [e2e.b64(U.editor.ed.pub), e2e.b64(next.ed.pub)].sort());
+});
+
+test('writerKeys skips a candidate pair that does not decode', async () => {
+  const s = await trustScene();
+  s.server.directory.set(U.editor.id, { id: U.editor.id, name: 'editor', email: 'e@example.com', x25519Pub: 'AAAA', ed25519Pub: 'AAAA' });
+  const w = await writerKeys(s.deps, s.opened);
+  assert.deepEqual(w[U.editor.id], []);
+  assert.deepEqual(w[U.owner.id], [e2e.b64(U.owner.ed.pub)]);
+});
+
+test('writerKeys through a link uses the editor keys the membership answer serves', async () => {
+  const s = await trustScene({ who: null, isPublic: true });
+  const w = await writerKeys(s.deps, s.opened);
+  assert.deepEqual(w[U.owner.id], [e2e.b64(U.owner.ed.pub)]);
+  assert.equal(s.server.calls.some((c) => c.path.startsWith('/api/users/')), false, 'a link visitor asks no directory');
+});
+
+test('canWrite: the owner and an editor can, a viewer and a visitor cannot', async () => {
+  assert.equal(canWrite((await trustScene({ who: 'owner' })).opened), true);
+  assert.equal(canWrite((await trustScene({ who: 'editor' })).opened), true);
+  assert.equal(canWrite((await trustScene({ who: 'viewer' })).opened), false);
+  assert.equal(canWrite((await trustScene({ who: null, isPublic: true })).opened), false);
+});
+
+test('canWrite: through a link, a signed-in caller can only while public writes are on', async () => {
+  const on = await scene({ who: 'outsider', isPublic: true, publicWrites: true });
+  const opened = await open(on, linkFor(on.world));
+  assert.equal(opened.mode, 'link');
+  assert.equal(canWrite(opened), true);
+  const off = await scene({ who: 'outsider', isPublic: true });
+  assert.equal(canWrite(await open(off, linkFor(off.world))), false);
+  const visitor = await scene({ isPublic: true, publicWrites: true });
+  assert.equal(canWrite(await open(visitor, linkFor(visitor.world))), false, 'a visitor has no keys to sign with');
+  // A member who is a viewer opens as a member, not through the link.
+  const viewer = await scene({ who: 'viewer', isPublic: true, publicWrites: true });
+  assert.equal(canWrite(await open(viewer, linkFor(viewer.world))), false);
+});
+
+test('canWrite: a caller with no key-store record cannot', async () => {
+  const s = await trustScene({ who: 'owner' });
+  assert.equal(canWrite({ ...s.opened, record: null }), false);
+});
+
+const H = (c) => c.repeat(64);
+const revisionBody = (over = {}) => ({ artifact: ARTIFACT, version: V2, revision: 3, epoch: 1, sha256: H('a'), ...over });
+const recordBody = (over = {}) => ({ artifact: ARTIFACT, version: V2, kind: 'file', name: H('b'), epoch: 1, sha256: H('c'), ...over });
+
+test('signBodies signs as the caller, {v: 1} in schema order, and the worker can verify it', async () => {
+  const s = await trustScene({ who: 'editor' });
+  const [env] = await signBodies(s.opened, 'revision', [revisionBody()]);
+  assert.equal(env.signer, U.editor.id);
+  assert.equal(new TextDecoder().decode(e2e.unb64(env.body)), JSON.stringify({ v: 1, artifact: ARTIFACT, version: V2, revision: 3, epoch: 1, sha256: H('a') }));
+  assert.deepEqual(await e2e.openEnvelope(env, U.editor.ed.pub, 'revision'), { v: 1, ...revisionBody() });
+  const two = await signBodies(s.opened, 'record', [recordBody(), recordBody({ kind: 'file-meta', name: H('d') })]);
+  assert.equal(two.length, 2);
+  assert.equal(new TextDecoder().decode(e2e.unb64(two[1].body)), JSON.stringify({ v: 1, artifact: ARTIFACT, version: V2, kind: 'file-meta', name: H('d'), epoch: 1, sha256: H('c') }));
+  assert.equal(await e2e.verifyEnvelope(U.editor.ed.pub, 'manifest', env), false, 'signed for its purpose only');
+});
+
+test('signBodies refuses a caller who cannot write', async () => {
+  const s = await trustScene({ who: 'viewer' });
+  await assert.rejects(signBodies(s.opened, 'revision', [revisionBody()]), WriteError);
+});
+
+test('signBodies refuses a body it was not built to sign', async () => {
+  const s = await trustScene({ who: 'owner', epoch2: true });
+  const rev = (over) => [revisionBody({ epoch: 2, ...over })];
+  const rec = (over) => [recordBody({ epoch: 2, ...over })];
+  assert.equal((await signBodies(s.opened, 'revision', rev({}))).length, 1, 'the good body signs');
+  const cases = [
+    ['manifest', rev({}), 'purpose'],
+    ['membership', rev({}), 'purpose'],
+    ['toString', rev({}), 'inherited purpose'],
+    ['revision', [], 'no bodies'],
+    ['revision', [...rev({}), ...rev({}), ...rev({})], 'three bodies'],
+    ['revision', revisionBody({ epoch: 2 }), 'not an array'],
+    ['revision', [null], 'null body'],
+    ['revision', [[1]], 'array body'],
+    ['revision', rev({ extra: 1 }), 'extra field'],
+    ['revision', [{ artifact: ARTIFACT, version: V2, revision: 3, epoch: 2 }], 'missing field'],
+    ['revision', rev({ v: 2 }), 'v supplied'],
+    ['revision', rev({ artifact: OTHER_ARTIFACT }), 'other artifact'],
+    ['revision', rev({ version: 'x' }), 'version'],
+    ['revision', rev({ version: V2.toUpperCase().replace(/5/g, 'A') }), 'upper version'],
+    ['revision', rev({ epoch: 1 }), 'old epoch'],
+    ['revision', rev({ epoch: 3 }), 'future epoch'],
+    ['revision', rev({ epoch: '2' }), 'string epoch'],
+    ['revision', rev({ sha256: H('A') }), 'upper sha'],
+    ['revision', rev({ sha256: 'a'.repeat(63) }), 'short sha'],
+    ['revision', rev({ revision: 0 }), 'revision 0'],
+    ['revision', rev({ revision: 1.5 }), 'fraction revision'],
+    ['revision', rev({ revision: '3' }), 'string revision'],
+    ['revision', rec({}), 'record body for a revision'],
+    ['record', rev({}), 'revision body for a record'],
+    ['record', rec({ kind: 'database' }), 'kind'],
+    ['record', rec({ name: 'notes.txt' }), 'name'],
+    ['record', rec({ name: H('B') }), 'upper name'],
+  ];
+  for (const [purpose, bodies, what] of cases) {
+    await assert.rejects(signBodies(s.opened, purpose, bodies), WriteError, what);
+  }
+  // A good first body does not carry a bad second one.
+  await assert.rejects(signBodies(s.opened, 'record', [...rec({}), ...rec({ artifact: OTHER_ARTIFACT })]), WriteError);
 });
 
 test('loadContext lists the owner and members from the directory, and nobody for a visitor', async () => {

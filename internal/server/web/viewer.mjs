@@ -542,9 +542,15 @@ export async function loadContext(deps, opened, info) {
 // keysMessage builds the keys message for version, which checkKeysMessage in
 // content.mjs accepts. signer is trustVersion's, token and tokenExpires are
 // mintToken's.
-export function keysMessage(opened, version, { signer, token, tokenExpires, path, context }) {
+export function keysMessage(opened, version, { signer, token, tokenExpires, path, context, writers }) {
   const ak = opened.aks.get(version.epoch);
   if (!ak) throw new LinkError('This version was written under a key this link does not open.');
+  // The worker reads the version's data under any epoch from the version's
+  // to the latest, and writes it under the latest.
+  const aks = {};
+  for (let e = version.epoch; e <= opened.latest.epoch; e++) {
+    if (opened.aks.has(e)) aks[e] = e2e.b64(opened.aks.get(e));
+  }
   return {
     cairn: 'keys',
     artifact: opened.artifact,
@@ -558,7 +564,103 @@ export function keysMessage(opened, version, { signer, token, tokenExpires, path
     linkToken: opened.linkToken,
     context,
     path,
+    aks,
+    currentEpoch: opened.latest.epoch,
+    writers,
+    publicWrites: opened.latest.publicWrites === true,
   };
+}
+
+// writerKeys lists, for the latest record's owner and each editor it lists,
+// the Ed25519 keys a stored revision or file may be signed under: those of a
+// candidate pair whose fingerprint is the one the record lists, or one a
+// rotation chain links to it. The worker accepts a data record only under a
+// key listed here, unless publicWrites is on. Mirrors trustedSigner.
+export async function writerKeys(deps, opened) {
+  const latest = opened.latest;
+  const listedFps = [[latest.owner, latest.ownerFp]];
+  for (const m of latest.members) if (m.role === 'editor') listedFps.push([m.user, m.fp]);
+  const linked = e2e.rotationLinker(opened.membership.rotations);
+  const out = {};
+  for (const [user, listedFp] of listedFps) {
+    const keys = (out[user] ??= []);
+    for (const kp of await candidatePairs(deps, opened, user)) {
+      let fp;
+      try {
+        fp = await fingerprintOf(kp);
+      } catch {
+        continue;
+      }
+      if (!(await linked(user, listedFp, fp))) continue;
+      const ed25519 = e2e.b64(e2e.unb64(kp.ed25519));
+      if (!keys.includes(ed25519)) keys.push(ed25519);
+    }
+  }
+  return out;
+}
+
+// canWrite says whether the caller may change the artifact's data: signed in
+// with keys, and the latest record's owner or an editor, or holding a link
+// while public writes are on. Mirrors the write rule of access.go; the server
+// enforces it either way.
+export function canWrite(opened) {
+  if (!opened.caller || !opened.record) return false;
+  const id = opened.record.userId;
+  const latest = opened.latest;
+  if (id === latest.owner || latest.members.some((m) => m.user === id && m.role === 'editor')) return true;
+  return opened.mode === 'link' && latest.publicWrites === true;
+}
+
+// WriteError is a signing request the shell refuses.
+export class WriteError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'WriteError';
+  }
+}
+
+const SIGN_FIELDS = {
+  revision: ['artifact', 'version', 'revision', 'epoch', 'sha256'],
+  record: ['artifact', 'version', 'kind', 'name', 'epoch', 'sha256'],
+};
+const HEX64_RE = /^[0-9a-f]{64}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+// checkSignBody checks one body the worker asks the shell to sign: exactly
+// the fields of its purpose, for this artifact, under the latest epoch.
+function checkSignBody(opened, purpose, b) {
+  const fields = SIGN_FIELDS[purpose];
+  if (typeof b !== 'object' || b === null || Array.isArray(b)) throw new WriteError('a body is not an object');
+  const keys = Object.keys(b).sort();
+  if (keys.join() !== [...fields].sort().join()) throw new WriteError('a body has the wrong fields');
+  if (b.artifact !== opened.artifact) throw new WriteError('a body is for another artifact');
+  if (typeof b.version !== 'string' || !UUID_RE.test(b.version)) throw new WriteError('a body names no version');
+  if (b.epoch !== opened.latest.epoch) throw new WriteError('a body is not for the current epoch');
+  if (typeof b.sha256 !== 'string' || !HEX64_RE.test(b.sha256)) throw new WriteError('a body has no sha256');
+  if (purpose === 'revision' && !(Number.isSafeInteger(b.revision) && b.revision >= 1)) throw new WriteError('a body has no revision');
+  if (purpose === 'record') {
+    if (b.kind !== 'file' && b.kind !== 'file-meta') throw new WriteError('a body has the wrong kind');
+    if (typeof b.name !== 'string' || !HEX64_RE.test(b.name)) throw new WriteError('a body names no address');
+  }
+}
+
+// signBodies signs data records for the worker: one or two bodies of the
+// purpose 'revision' or 'record', each checked, then signed as {v: 1, ...}
+// in schema order under the caller's own key. It throws WriteError for a
+// caller who cannot write, or a body it will not sign.
+export async function signBodies(opened, purpose, bodies) {
+  if (!canWrite(opened)) throw new WriteError('You cannot change the data of this artifact.');
+  if (!Object.hasOwn(SIGN_FIELDS, purpose)) throw new WriteError('unknown purpose');
+  if (!Array.isArray(bodies) || bodies.length < 1 || bodies.length > 2) throw new WriteError('one or two bodies are signed at a time');
+  for (const b of bodies) checkSignBody(opened, purpose, b);
+  const enc = new TextEncoder();
+  return Promise.all(
+    bodies.map((b) => {
+      const body = { v: 1 };
+      for (const f of SIGN_FIELDS[purpose]) body[f] = b[f];
+      return e2e.newEnvelope(opened.record.ed25519, opened.record.userId, purpose, enc.encode(JSON.stringify(body)));
+    }),
+  );
 }
 
 // mintToken asks for a content-origin token when the caller is signed in,

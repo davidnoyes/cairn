@@ -1776,6 +1776,14 @@ export const BODY_SCHEMAS = {
   },
 };
 
+// FILE_META_SCHEMA is the plaintext of a stored file's file-meta blob.
+export const FILE_META_SCHEMA = {
+  v: field('number'),
+  path: field('string'),
+  size: field('number'),
+  modifiedAt: field('string'),
+};
+
 // zeroValue is what a field decodes to when it's absent from the input,
 // matching the zero value Go gives an unset struct field: "" for a string,
 // 0 for a number, false for a boolean, a nested object of its own zero

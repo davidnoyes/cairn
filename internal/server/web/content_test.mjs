@@ -279,12 +279,13 @@ describe('contentHeaders', () => {
 });
 
 function goodKeys() {
+  const ak = e2e.b64(randomBytes(32));
   return {
     cairn: 'keys',
     artifact: ARTIFACT,
     version: VERSION,
     epoch: 3,
-    ak: e2e.b64(randomBytes(32)),
+    ak,
     signer: { user: USER, ed25519: e2e.b64(randomBytes(32)) },
     manifestHash: '0'.repeat(64),
     token: 'tok',
@@ -295,6 +296,10 @@ function goodKeys() {
       users: [{ id: USER, name: 'u', email: 'u@example.com' }],
     },
     path: '/index.html',
+    aks: { 3: ak, 4: e2e.b64(randomBytes(32)) },
+    currentEpoch: 4,
+    writers: { [USER]: [e2e.b64(randomBytes(32))], [OTHER]: [] },
+    publicWrites: false,
   };
 }
 
@@ -341,6 +346,31 @@ describe('checkKeysMessage', () => {
     bad({ context: { artifact: goodKeys().context.artifact, users: [{ id: 'x', name: 'u', email: 'e' }] } }, 'user id');
     assert.throws(() => c.checkKeysMessage(null));
     assert.throws(() => c.checkKeysMessage([]));
+  });
+  test('accepts the data keys at the bounds, and refuses anything else', () => {
+    const g = goodKeys();
+    assert.ok(c.checkKeysMessage({ ...g, aks: { 3: g.ak }, currentEpoch: 3, writers: {}, publicWrites: true }));
+    const bad = (over, why) => assert.throws(() => c.checkKeysMessage({ ...g, ...over }), c.ContentError, why);
+    const key = () => e2e.b64(randomBytes(32));
+    bad({ currentEpoch: 2 }, 'current epoch before the version');
+    bad({ currentEpoch: '4' }, 'string current epoch');
+    bad({ currentEpoch: 4.5 }, 'fraction current epoch');
+    bad({ aks: null }, 'null aks');
+    bad({ aks: [g.ak] }, 'array aks');
+    bad({ aks: { 3: g.ak, 2: key() } }, 'aks before the version');
+    bad({ aks: { 3: g.ak, 5: key() } }, 'aks after the current epoch');
+    bad({ aks: { 3: g.ak, '04': key() } }, 'aks epoch not canonical');
+    bad({ aks: { 3: g.ak, x: key() } }, 'aks epoch not a number');
+    bad({ aks: { 3: g.ak, 4: 'AAAA' } }, 'short ak in aks');
+    bad({ aks: { 4: key() } }, "aks without the version's AK");
+    bad({ aks: { 3: key() } }, "aks with another AK for the version's epoch");
+    bad({ writers: null }, 'null writers');
+    bad({ writers: [] }, 'array writers');
+    bad({ writers: { x: [] } }, 'writer not a uuid');
+    bad({ writers: { [USER]: key() } }, 'writer keys not an array');
+    bad({ writers: { [USER]: ['AAAA'] } }, 'short writer key');
+    bad({ publicWrites: 'false' }, 'string publicWrites');
+    bad({ publicWrites: null }, 'null publicWrites');
   });
 });
 

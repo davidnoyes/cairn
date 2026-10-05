@@ -18,6 +18,7 @@ let matchGate = null; // a promise clients.matchAll waits on
 let getGate = null; // a promise clients.get waits on
 let clientUrl = `${ORIGIN}/${VERSION}/index.html`; // what clients.get finds; null for none
 let netHook = null; // (request) => promise of a Response, or of nothing to use the table
+let signHook = null; // (message, port) => void, for a sign request posted to the page
 
 globalThis.self = {
   location: new URL(`${ORIGIN}/_cairn/sw.js?app=${encodeURIComponent(APP)}`),
@@ -38,7 +39,7 @@ globalThis.self = {
     },
     get: async () => {
       await getGate;
-      return clientUrl === null ? null : { url: clientUrl };
+      return clientUrl === null ? null : { url: clientUrl, postMessage: (m, transfer) => signHook?.(m, transfer[0]) };
     },
   },
 };
@@ -89,6 +90,10 @@ async function keysFor(f, over = {}) {
     linkToken: null,
     context: { artifact: { id: ARTIFACT, name: 'n', description: 'd' }, users: [] },
     path: '/index.html',
+    aks: { 3: e2e.b64(f.ak) },
+    currentEpoch: 3,
+    writers: { [USER]: [e2e.b64(f.key.pub)] },
+    publicWrites: false,
     ...over,
   };
 }
@@ -228,6 +233,7 @@ async function fresh(search = `?app=${encodeURIComponent(APP)}`, scope = `${ORIG
   getGate = null;
   clientUrl = `${ORIGIN}/${VERSION}/index.html`;
   netHook = null;
+  signHook = null;
   posted.length = 0;
   calls.length = 0;
   await import(`./sw.js?fresh=${++loads}`);
@@ -460,7 +466,7 @@ test('keys: a wrong signature, epoch, or signer is reported with its reason', as
   const other = await e2e.generateEd25519();
   const cases = [
     [{ signer: { user: USER, ed25519: e2e.b64(other.pub) } }, 'manifest signature does not verify'],
-    [{ epoch: 4 }, 'manifest epoch mismatch'],
+    [{ epoch: 4, currentEpoch: 4, aks: { 4: e2e.b64(f.ak) } }, 'manifest epoch mismatch'],
     [{ signer: { user: OTHER, ed25519: e2e.b64(f.key.pub) } }, 'manifest signer mismatch'],
   ];
   for (const [over, error] of cases) {
@@ -509,4 +515,119 @@ test('messages: data that is not a message is ignored', async () => {
     assert.deepEqual(await send(data), [], String(data));
   }
   assert.equal(calls.length, 0);
+});
+
+const DATA = `${ORIGIN}/api/artifacts/${ARTIFACT}/versions/${VERSION}`;
+const ENVELOPE = { body: 'b', sig: 's', signer: USER };
+
+test('data: a route for another artifact is not found, and nothing is sent', async () => {
+  await fresh();
+  const res = await dispatch(`${ORIGIN}/api/artifacts/${OTHER}/versions/${VERSION}/db`);
+  assert.equal(res.status, 404);
+  assert.equal(calls.length, 0);
+});
+
+test('data: a navigation that is not a GET is refused, and nothing is sent', async () => {
+  await fresh();
+  const res = await dispatch(`${DATA}/db`, { mode: 'navigate', method: 'PUT', body: 'x' });
+  assert.equal(res.status, 405);
+  assert.equal(calls.length, 0);
+});
+
+test('data: without keys it asks the page, then answers 503 after 10 seconds', async () => {
+  await fresh();
+  await fakeTimers(async () => {
+    const p = dispatch(`${DATA}/db`);
+    await tick();
+    assert.deepEqual(posted, [{ cairn: 'need-keys', version: VERSION }]);
+    mock.timers.tick(10000);
+    assert.equal((await p).status, 503);
+  });
+  assert.equal(calls.length, 0);
+});
+
+test('data: with keys a read goes to the server with the token', async () => {
+  await fresh();
+  await send(await keysFor(f));
+  const res = await dispatch(`${DATA}/db`);
+  assert.equal(res.status, 404);
+  assert.match(await res.text(), /no database yet/);
+  assert.equal(calls.at(-1).url, `${DATA}/db`);
+  assert.equal(calls.at(-1).headers.get('Authorization'), 'Bearer tok');
+});
+
+test('data: a write is signed through the page that made it, then sent with the token', async () => {
+  await fresh();
+  await send(await keysFor(f));
+  const asked = [];
+  signHook = (m, port) => {
+    asked.push(m);
+    port.postMessage({ cairn: 'signed', envelopes: [ENVELOPE] });
+  };
+  netHook = async (req) => (req.method === 'PUT' ? new Response('{}') : undefined);
+  const res = await dispatch(`${DATA}/db`, { method: 'PUT', headers: { 'If-Match': '"0"' }, body: 'db' });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { revision: 1 });
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].cairn, 'sign');
+  assert.equal(asked[0].purpose, 'revision');
+  assert.deepEqual(Object.keys(asked[0].bodies[0]), ['artifact', 'version', 'revision', 'epoch', 'sha256']);
+  const put = calls.at(-1);
+  assert.equal(put.headers.get('Authorization'), 'Bearer tok');
+  assert.equal(put.headers.get('If-Match'), '"0"');
+  assert.deepEqual(JSON.parse((await put.formData()).get('record')), ENVELOPE);
+});
+
+test('data: a write the shell refuses is a 403 that carries its reason', async () => {
+  await fresh();
+  await send(await keysFor(f));
+  signHook = (m, port) => port.postMessage({ cairn: 'sign-error', error: 'You cannot change the data of this artifact.' });
+  const res = await dispatch(`${DATA}/db`, { method: 'PUT', headers: { 'If-Match': '"0"' }, body: 'db' });
+  assert.equal(res.status, 403);
+  assert.match(await res.text(), /You cannot change the data/);
+  assert.ok(!calls.some((r) => r.method === 'PUT'));
+});
+
+test('data: an answer that is neither signed nor a sign error is refused', async () => {
+  await fresh();
+  await send(await keysFor(f));
+  signHook = (m, port) => port.postMessage({ cairn: 'sign-error', error: 42 });
+  const res = await dispatch(`${DATA}/db`, { method: 'PUT', headers: { 'If-Match': '"0"' }, body: 'db' });
+  assert.equal(res.status, 403);
+  assert.match(await res.text(), /the shell did not sign/);
+});
+
+test('data: a write with no page to sign through is a 403', async () => {
+  for (const [id, url] of [['c1', null], ['', `${ORIGIN}/${VERSION}/index.html`]]) {
+    await fresh();
+    await send(await keysFor(f));
+    clientUrl = url;
+    signHook = () => assert.fail('nothing to ask');
+    const res = await dispatch(`${DATA}/db`, { method: 'PUT', headers: { 'If-Match': '"0"' }, body: 'db' }, id);
+    assert.equal(res.status, 403, `client ${JSON.stringify(id)}`);
+    assert.match(await res.text(), /no page to sign through/);
+  }
+});
+
+test('data: a shell that does not answer is a 403 after 30 seconds', async () => {
+  await fresh();
+  await send(await keysFor(f));
+  let asked = 0;
+  signHook = () => asked++;
+  await fakeTimers(async () => {
+    let done = false;
+    const p = dispatch(`${DATA}/db`, { method: 'PUT', headers: { 'If-Match': '"0"' }, body: 'db' }).then((r) => {
+      done = true;
+      return r;
+    });
+    for (let i = 0; i < 20 && asked === 0; i++) await tick();
+    assert.equal(asked, 1);
+    mock.timers.tick(29999);
+    await tick();
+    assert.equal(done, false);
+    mock.timers.tick(1);
+    const res = await p;
+    assert.equal(res.status, 403);
+    assert.match(await res.text(), /the shell did not answer/);
+  });
 });

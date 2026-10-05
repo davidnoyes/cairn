@@ -71,7 +71,7 @@ function membershipBody(o) {
     excluded: [],
     team: 'none',
     public: o.public,
-    publicWrites: false,
+    publicWrites: o.publicWrites ?? false,
     prev: o.prev,
     transfer: '',
     handover: '',
@@ -83,7 +83,7 @@ function membershipBody(o) {
 // {user, role}, with fp defaulting to the user's) and sets public. epoch2
 // adds a third record that starts epoch 2 under a new AK. It also holds each
 // epoch's estate copy and every member's wrap.
-export async function buildWorld({ owner, members = [], isPublic = false, epoch2 = false }) {
+export async function buildWorld({ owner, members = [], isPublic = false, epoch2 = false, publicWrites = false }) {
   const aks = { 1: randomBytes(32), 2: randomBytes(32) };
   const commits = {
     1: await e2e.akCommit(aks[1], ARTIFACT, 1),
@@ -92,9 +92,9 @@ export async function buildWorld({ owner, members = [], isPublic = false, epoch2
   const listed = members.map((m) => ({ user: m.user.id, role: m.role, fp: m.fp ?? m.user.fp }));
   const specs = [
     { epoch: 1, seq: 1, members: [], public: false },
-    { epoch: 1, seq: 2, members: listed, public: isPublic },
+    { epoch: 1, seq: 2, members: listed, public: isPublic, publicWrites },
   ];
-  if (epoch2) specs.push({ epoch: 2, seq: 3, members: listed, public: isPublic });
+  if (epoch2) specs.push({ epoch: 2, seq: 3, members: listed, public: isPublic, publicWrites });
   const records = [];
   let prev = '';
   for (const s of specs) {

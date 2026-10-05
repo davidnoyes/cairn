@@ -15,8 +15,10 @@ import {
   parseContentPath,
   serveFile,
 } from './content.mjs';
+import { handleData, parseDataPath } from './data.mjs';
 
 const KEYS_WAIT_MS = 10000;
+const SIGN_WAIT_MS = 30000;
 
 const origin = self.location.origin;
 // Artifact code shares this origin and could register this script at a
@@ -51,6 +53,9 @@ let latest = null;
 let seqCounter = 0;
 let latestSeq = 0;
 let latestToken = null;
+// seen is the highest database revision read or written for each version,
+// which a later read may not go below. It lasts as long as the worker.
+const seen = new Map();
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -171,9 +176,56 @@ async function handleContent(event, { version, path }) {
   return serveFile({ keys: entry.keys, manifest: entry.manifest, path, navigation, origin, appOrigin, fetchFn: (r) => fetch(r) });
 }
 
+// signVia asks the shell, through the page that made the request, to sign
+// bodies, and waits for the envelopes on a port of its own.
+async function signVia(clientId, purpose, bodies) {
+  const client = clientId ? await self.clients.get(clientId) : null;
+  if (!client) throw new ContentError('no page to sign through');
+  const { port1, port2 } = new MessageChannel();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      port1.close();
+      reject(new ContentError('the shell did not answer'));
+    }, SIGN_WAIT_MS);
+    port1.onmessage = (event) => {
+      clearTimeout(timer);
+      port1.close();
+      const m = event.data;
+      if (m?.cairn === 'signed') resolve(m.envelopes);
+      else reject(new ContentError(m?.cairn === 'sign-error' && typeof m.error === 'string' ? m.error : 'the shell did not sign'));
+    };
+    client.postMessage({ cairn: 'sign', purpose, bodies }, [port2]);
+  });
+}
+
+// handleDataRequest answers a database or stored-file request with the keys
+// of the version it names, which may not be the page's own.
+async function handleDataRequest(event, route) {
+  const req = event.request;
+  if (route.artifact !== artifact) return new Response('not found', { status: 404 });
+  if (req.mode === 'navigate' && req.method !== 'GET') return new Response('method not allowed', { status: 405 });
+  const entry = versions.get(route.version) ?? (await requestKeys(route.version));
+  if (!entry) return unavailable();
+  const ctx = {
+    keys: entry.keys,
+    origin,
+    fetchFn: (r) => fetch(r),
+    sign: (purpose, bodies) => signVia(event.clientId, purpose, bodies),
+    seen,
+    now: () => new Date(),
+    warn: (m) => console.warn(m),
+  };
+  return handleData(ctx, route, req);
+}
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== origin) return;
+  const data = parseDataPath(url.pathname);
+  if (data) {
+    event.respondWith(handleDataRequest(event, data));
+    return;
+  }
   const route = classifyRequest(url.pathname);
   if (route.kind === 'api') event.respondWith(handleApi(event));
   else if (route.kind === 'content') event.respondWith(handleContent(event, route));

@@ -9,7 +9,8 @@ import { contentTarget } from './content.mjs';
 import { createKeyStore } from './keystore.mjs';
 import {
   KeyringBusyError, LinkError, NoAccessError, UntrustedVersionError, apiGet, keepToken, keysMessage,
-  VersionGoneError, listVersions, loadContext, mintToken, navigateTarget, openArtifact, prepareVersion, takeLink,
+  VersionGoneError, listVersions, loadContext, mintToken, navigateTarget, openArtifact, prepareVersion, signBodies, takeLink,
+  writerKeys,
 } from './viewer.mjs';
 
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads';
@@ -29,6 +30,34 @@ function describe(err) {
 
 function versionLabel(v) {
   return v.name ? `#${v.seq} ${v.name}` : `#${v.seq}`;
+}
+
+const MAX_NAME = 200;
+const REVOKE_MS = 60000;
+
+// downloadName is the last segment of the name the frame asked for, without
+// control characters, or "download".
+export function downloadName(name) {
+  const last = typeof name === 'string' ? name.split(/[/\\]/).pop() : '';
+  const clean = [...last].filter((ch) => ch.charCodeAt(0) >= 0x20 && ch !== '\x7f').join('').trim().slice(0, MAX_NAME);
+  return clean === '' || clean === '.' || clean === '..' ? 'download' : clean;
+}
+
+// download saves bytes the frame sent as a file. The sandboxed frame cannot
+// save a response its worker built in every browser, so it hands the bytes
+// to the shell. They are typed application/octet-stream, so nothing is
+// rendered on this origin.
+function download(window, document, msg) {
+  const bytes = msg.bytes;
+  if (!(bytes instanceof ArrayBuffer) && !ArrayBuffer.isView(bytes)) return;
+  const url = window.URL.createObjectURL(new window.Blob([bytes], { type: 'application/octet-stream' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = downloadName(msg.name);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(url), REVOKE_MS);
 }
 
 // run starts the shell on window and document. keyStore is the signed-in
@@ -85,6 +114,7 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
     // Only a trusted version is framed.
     await verify(chosen);
     const context = await loadContext(deps, opened, info);
+    const writers = await writerKeys(deps, opened);
     const keeper = keepToken({
       mint: () => mintToken(deps, opened),
       onToken: ({ token, tokenExpires }) => send({ cairn: 'token', token, tokenExpires }),
@@ -101,7 +131,7 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
       try {
         const { version, signer } = await verify(versionId);
         const { token, tokenExpires } = keeper.current();
-        send(keysMessage(opened, version, { signer, token, tokenExpires, path, context }));
+        send(keysMessage(opened, version, { signer, token, tokenExpires, path, context, writers }));
       } catch (err) {
         if (err instanceof VersionGoneError && versionId !== chosen) return;
         showStatus(describe(err));
@@ -123,6 +153,17 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
       } else if (msg.cairn === 'navigate') {
         const target = typeof msg.href === 'string' ? navigateTarget(msg.href, { origin: window.location.origin, mode }) : null;
         if (target) window.location.assign(target);
+      } else if (msg.cairn === 'sign') {
+        // The worker asks, through the frame, for data records to be signed;
+        // the answer goes back on the port it sent.
+        const port = event.ports?.[0];
+        if (!port) return;
+        signBodies(opened, msg.purpose, msg.bodies).then(
+          (envelopes) => port.postMessage({ cairn: 'signed', envelopes }),
+          (err) => port.postMessage({ cairn: 'sign-error', error: err.message }),
+        );
+      } else if (msg.cairn === 'download') {
+        download(window, document, msg);
       }
     });
 
