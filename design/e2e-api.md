@@ -1078,9 +1078,12 @@ API key stops working when it finishes.
 
 Milestone 4. A version's files reach the server already encrypted, and each
 artifact renders on its own content origin, decrypted by a service worker
-that the app-origin shell hands the keys to. The database and stored files
-stay as they are until milestone 5, and so do artifact and version names,
-descriptions, and changelogs, which milestone 5 encrypts as `meta` records.
+that the app-origin shell hands the keys to. Milestone 5 encrypts the
+database and stored files; see
+[Client-side database and files](#client-side-database-and-files). Artifact
+and version names, descriptions, and changelogs stay readable to the server
+until milestone 6, which encrypts them as `meta` records alongside the lists
+the client renders.
 
 ### Content domain
 
@@ -1357,8 +1360,8 @@ through the worker. Measured with Playwright in 2026-10:
 | WebKit | Skips the worker, so it reaches the server with no token, and gets `404` |
 
 A blob URL from `cairn.files.download` downloaded in Chromium. Playwright saw
-no download from one in Firefox or WebKit. Downloads therefore remain open
-for milestone 5, which replaces file and database storage.
+no download from one in Firefox or WebKit. Milestone 5 hands downloads to the
+shell instead; see [Downloads](#downloads).
 
 It never intercepts `/_cairn/`.
 
@@ -1412,3 +1415,304 @@ limit. It then:
 
 `cairn open` prints the `/shared/` address, or the `/full/` address with
 `--full`. `--shared` is still accepted and does nothing.
+
+## Client-side database and files
+
+Milestone 5. The server stores each version's database and files as blobs
+it cannot read. Clients decrypt them, run SQL on their own copy, and upload
+a new encrypted copy for every write. The server keeps no file names: each
+stored file goes under its address, and its path is inside an encrypted
+metadata blob.
+
+### Server flags in milestone 5
+
+| Flag | Environment | Meaning |
+| --- | --- | --- |
+| `--max-db-mb` | `CAIRN_MAX_DB_MB` | The largest database revision the server accepts, as an encrypted blob, in MiB. Defaults to 50. |
+
+A stored file is limited by `--max-upload-mb`, as before.
+
+### Data directory in milestone 5
+
+| Path | Holds |
+| --- | --- |
+| `dbs/<artifact>/<version>/<revision>` | One encrypted database revision |
+| `files/<artifact>/<version>/<address>` | One encrypted stored file |
+
+Deleting a version or an artifact deletes its database revisions and stored
+files: both the rows and the directories. `cairn backup` copies both trees.
+
+### Database revisions
+
+A version's database is a series of revisions, numbered from 1. Each is the
+whole SQLite file, sealed as a blob with kind `database` and the revision
+number as `name`, and signed with a `revision` envelope.
+
+| Method and path | Access | Does |
+| --- | --- | --- |
+| `GET /api/artifacts/{id}/versions/{vid}/db` | Read | Returns the latest revision |
+| `PUT /api/artifacts/{id}/versions/{vid}/db` | Write data | Adds a revision |
+| `GET /api/artifacts/{id}/versions/{vid}/db/revisions` | Read | Lists the revisions kept |
+| `GET /api/artifacts/{id}/versions/{vid}/db/revisions/{rev}` | Read | Returns one revision |
+
+All four join the content-origin token's allowlist.
+
+A revision is returned as `application/octet-stream` with
+`Cache-Control: no-store`, and these headers:
+
+| Header | Value |
+| --- | --- |
+| `ETag` | `"<revision>"` |
+| `X-Cairn-Revision` | The revision number |
+| `X-Cairn-Epoch` | The epoch it was sealed under |
+| `X-Cairn-Record` | `b64` of the `revision` envelope, as JSON |
+| `X-Cairn-Signer-Key` | `b64` of the Ed25519 key the server checked the envelope against when it took the write |
+
+`GET .../db` answers `304` when `If-None-Match` names the latest revision,
+and `404` when the version has no database yet. `GET .../db/revisions/{rev}`
+answers `404` for a revision the server no longer keeps.
+
+`PUT .../db` takes `multipart/form-data` with two parts, in this order:
+
+- `record`, the `revision` envelope as JSON, at most 64 KiB;
+- `blob`, the sealed database.
+
+It must send `If-Match: "<revision>"`, naming the latest revision, or `"0"`
+when the version has no database. The server refuses:
+
+| Status | When |
+| --- | --- |
+| `428` | `If-Match` is missing or not a quoted number |
+| `412` | `If-Match` does not name the latest revision. The answer carries the latest `ETag`. |
+| `413` | The blob is larger than `--max-db-mb` |
+| `400` | A part is missing, out of order, or malformed; the envelope does not decode strictly; or the blob has no blob header |
+| `403` | The envelope's signer is not the caller, or it does not verify under the caller's current Ed25519 key |
+| `409` | The body's `epoch` is not the artifact's current epoch |
+| `400` | The body's `artifact` or `version` is not this one, its `revision` is not the latest plus one, or its `sha256` is not the blob's |
+
+The server checks the epoch and takes the write under the epoch lock, as a
+push does. On success it answers `200` with `{"revision"}` and the new
+`ETag`. It then keeps the newest 10 revisions and deletes the rest.
+
+`GET .../db/revisions` answers, newest first:
+
+```json
+[{"revision": 12, "epoch": 3, "size": 40960, "writtenBy": "<user ID>", "createdAt": "<RFC 3339>"}]
+```
+
+The server's checks stop a reader of the artifact from writing; they prove
+nothing to a client, which trusts the server for none of them. A client
+checks a revision as
+[Checking data a client reads](#checking-data-a-client-reads) describes.
+
+### Stored files
+
+A stored file has an address, `hex(HMAC-SHA256(fileKey, path))` under the
+epoch it was written in. It is two blobs, each with its own `record`
+envelope:
+
+- the file, sealed with kind `file` and the address as `name`;
+- its metadata, sealed with kind `file-meta` and the address as `name`, whose
+  plaintext is `{"v":1,"path","size","modifiedAt"}`. `size` is the file's
+  plaintext size, and `modifiedAt` is an RFC 3339 time.
+
+Both blobs name the address rather than the path, so a client can open the
+metadata of a file whose path it does not yet know.
+
+| Method and path | Access | Does |
+| --- | --- | --- |
+| `GET /api/artifacts/{id}/versions/{vid}/files` | Read | Lists the stored files |
+| `GET /api/artifacts/{id}/versions/{vid}/files/{address}` | Read | Returns one file |
+| `PUT /api/artifacts/{id}/versions/{vid}/files/{address}` | Write data | Stores or replaces one file |
+| `DELETE /api/artifacts/{id}/versions/{vid}/files/{address}` | Write data | Deletes one file |
+
+All four join the content-origin token's allowlist. `{address}` is 64
+lowercase `hex` characters, or the route answers `404`.
+
+`GET .../files` answers:
+
+```json
+[{"address", "epoch", "size", "updatedAt", "record", "meta", "metaRecord", "signerKey"}]
+```
+
+`record` and `metaRecord` are the envelopes as JSON objects, `meta` is the
+metadata blob in `b64`, `size` is the file blob's size, and `signerKey` is
+`b64` of the Ed25519 key the server checked both envelopes against.
+
+`GET .../files/{address}` returns the file blob as `application/octet-stream`
+with `Cache-Control: no-store`, `X-Cairn-Epoch`, `X-Cairn-Record`, and
+`X-Cairn-Signer-Key`, or `404`.
+
+`PUT .../files/{address}` takes `multipart/form-data` with four parts, in this
+order: `record`, `blob`, `metaRecord`, and `meta`. The records are at most
+64 KiB each, the metadata blob at most 4 KiB, and the file blob at most
+`--max-upload-mb`, or the server answers `413`. The server refuses with the
+statuses of `PUT .../db`, except `412` and `428`, when:
+
+- either envelope is not signed by the caller under their current key;
+- either body names another artifact or version, or an epoch other than the
+  current one;
+- `record` does not have kind `file`, or `metaRecord` kind `file-meta`, or
+  either `name` is not `{address}`;
+- either `sha256` is not that of its blob, or either blob has no blob header.
+
+A replacement swaps the file in whole; a reader sees the old file or the new
+one. `DELETE` answers `204`, or `404` when there is no file at the address.
+A delete carries no signature, so anyone who may write data can delete any
+stored file of the version, and a client cannot tell a deleted file from one
+the server hid.
+
+### Checking data a client reads
+
+A client accepts a revision, a file, or a file's metadata only when all of
+these hold:
+
+1. The envelope decodes strictly and verifies under the key the server
+   supplied.
+2. That key belongs to someone who may write. The latest membership record
+   must list the signer as owner or editor, and the key must be the one
+   listed for them or one a rotation chain links to it. While `publicWrites`
+   is on, any signer is accepted, as the
+   [wire formats](e2e-wire-formats.md#signatures) say.
+3. The body's `artifact`, `version`, and `kind` and `name` or `revision`
+   match what was asked for, its `sha256` is the blob's, and the client holds
+   `AK` for its `epoch`.
+4. The blob opens with that `AK` and the context the body names.
+5. For metadata, `FileAddress(fileKey(epoch), path)` equals the address. A
+   server that moved a metadata blob onto another file's address fails here.
+6. For a revision, the number is no lower than the highest the client has
+   seen for that version since it started. The service worker forgets this
+   when the browser stops it, so the check narrows a rollback without
+   closing it.
+
+A client never accepts a revision or a file from an epoch below the
+version's own.
+
+### Epoch changes
+
+A record that starts a new epoch, made by `cairn unshare`, `cairn public`,
+`cairn share` demoting an editor, or `cairn approve`, makes the new epoch's
+`AK` the only one a public link opens. The command therefore re-seals,
+under the new epoch and signed by the person running it:
+
+- the latest revision of every version's database, as a new revision;
+- every stored file of every version, at its new address, deleting the old
+  one;
+- the latest version, when someone the new record still trusts signed it,
+  as a replacement with the same version ID.
+
+It re-seals only what it can verify under the record before the change. A
+version or a revision signed by someone the change removed is left as it
+is: the version waits for the owner's review, and the database cannot be
+read until someone writes to it again. If re-sealing fails part way,
+`cairn reseal ARTIFACT` runs it again; it is safe to run at any time.
+
+Re-sealing a removed editor's last revision means the owner signs data that
+editor wrote. They wrote it while they could write, and the server refuses
+any write they try after the record that removes them.
+
+### The worker's data routes
+
+The service worker answers these routes itself, in plaintext, and never
+forwards them to the server. Every answer carries the `/api/` sandbox CSP
+and `X-Content-Type-Options: nosniff`.
+
+| Method and path | Does |
+| --- | --- |
+| `GET .../db` | Returns the plaintext SQLite file, with `ETag: "<revision>"`. Answers `304` to a matching `If-None-Match`, and `404` when there is no database. |
+| `PUT .../db` | Takes the plaintext SQLite file with `If-Match: "<revision>"`, seals and signs it, and uploads it. Passes on the server's `412`, `409`, and `413`. |
+| `GET .../db/download` | The plaintext file as an attachment named `database.db` |
+| `GET .../files` | `[{"path", "size", "modifiedAt"}]`, one entry per path, from the highest epoch that has it. An entry that fails a check is left out, with a console warning. |
+| `GET .../files/{path...}` | The file, with a media type taken from the extension |
+| `PUT .../files/{path...}` | Seals, signs, and stores the request body under the current epoch, then deletes the same path's addresses under earlier epochs |
+| `DELETE .../files/{path...}` | Deletes the path's address under every epoch, and answers `404` when none had it |
+
+`{path...}` follows the rules `cairn.files` already applies: no empty, `.`,
+or `..` segment, and no backslash. A path looks up its address under
+each epoch from the current one down to the version's, and uses the first
+the server has.
+
+`cairn.js` reads the version's database through `GET .../db` into sql.js and
+keeps it with its revision. Before each query or batch it sends
+`If-None-Match`, so it runs on the latest copy. A query or batch runs in a
+transaction on that copy. The client treats it as a write when, after it
+runs, `total_changes()`, `PRAGMA schema_version`, or `PRAGMA user_version`
+differs from before; it never parses the SQL. A write is exported and sent
+with `PUT .../db`. On `412` the client reloads the latest revision and runs
+the statements again, up to five times. A statement string that holds more
+than one statement is refused, as the server refused it before.
+
+sql.js loads from `/_cairn/sql-wasm.js` only, never from a CDN, so an
+artifact on a content origin works with no access to the internet.
+
+### Keys and signing
+
+The `keys` message gains four fields:
+
+| Field | Holds |
+| --- | --- |
+| `aks` | `{"<epoch>": b64(AK)}` for every epoch from the version's to the current one that the caller holds |
+| `currentEpoch` | The artifact's current epoch |
+| `writers` | `{"<user ID>": [b64(Ed25519 key), …]}`: the latest record's owner and editors, each with the key listed for them and the keys a rotation chain links to it |
+| `publicWrites` | Whether the latest record allows public writes |
+
+The worker holds no signing key. For a write it asks the page that made the
+request to have the shell sign:
+
+1. The worker sends `{"cairn": "sign", "purpose", "bodies"}` to that window
+   client, with a `MessagePort`.
+2. `frame.js` passes it to the shell with the port.
+3. The shell answers on the port with `{"cairn": "signed", "envelopes"}`, in
+   the order of `bodies`, or `{"cairn": "sign-error", "error"}`.
+
+The shell builds each body itself from the fields it is sent, and signs only
+when all of these hold:
+
+- `purpose` is `revision` or `record`;
+- `artifact` is the shell's artifact, `version` is a lowercase UUID, and
+  `epoch` is the current epoch;
+- for a revision, `revision` is a positive integer; for a record, `kind` is
+  `file` or `file-meta` and `name` is 64 lowercase `hex` characters;
+- `sha256` is 64 lowercase `hex` characters;
+- the caller is signed in and is the owner or a listed editor, or opened the
+  artifact with a public link while `publicWrites` is on.
+
+The frame runs the artifact's code, so the artifact can ask for any
+signature these rules allow. That is the same as the write access the caller
+already has, and the server still checks every write.
+
+### Downloads
+
+`frame.js` takes over a click of an `<a download>` whose `href` is on the
+content origin or is a `blob:` URL, including a click made from script. It
+fetches the bytes through the worker and sends
+`{"cairn": "download", "name", "bytes"}` to the shell. The shell makes the
+name safe and starts the download from its own page, as
+`application/octet-stream`. A browser treats that as a top-level download,
+which works in Chromium, Firefox, and WebKit alike.
+
+### Commands in milestone 5
+
+`cairn db query` and the new `cairn db batch` download the latest revision,
+check it as the browser does, and open it in a private temporary directory
+with mode `0700`. They run the statements on one connection, detect a write
+the same way, upload a write with `If-Match`, and retry on `412`. A query's
+output is the same as before, and a batch prints one result per statement.
+
+Every `db` and `files` command takes `--artifact <id|name>` and
+`--version <vid>`, which defaults to the latest version.
+
+| Command | Does |
+| --- | --- |
+| `cairn db query [--params '[...]'] "<sql>"` | Runs one statement |
+| `cairn db batch [--file <path>]` | Runs a JSON array of `{"sql", "params"}` from the file, or from standard input, in one transaction |
+| `cairn db revisions` | Lists the revisions the server keeps |
+| `cairn db restore --revision <n>` | Uploads that revision's plaintext as a new revision, signed by the caller |
+| `cairn db download [--out <file>]` | Writes the latest revision's plaintext, to `database.db` by default |
+| `cairn files list`, `get`, `put`, `delete` | Work by path, as before, through addresses |
+| `cairn reseal ARTIFACT` | Runs the re-sealing an epoch change does |
+
+A restore accepts a revision signed by anyone the membership chain has ever
+listed as owner or editor, because an old revision may predate a removal.
+Anyone who may write data may restore, not only the owner: a restore is a
+write like any other.

@@ -255,8 +255,8 @@ Blob contexts:
 | `content` | Version ID | Path in the version | One file of a pushed version |
 | `manifest` | Version ID | Empty | The version's signed manifest |
 | `database` | Version ID | Revision number | One database revision |
-| `file` | Version ID | Path | One stored file |
-| `file-meta` | Version ID | Path | A stored file's metadata record |
+| `file` | Version ID | File address | One stored file |
+| `file-meta` | Version ID | File address | A stored file's metadata record |
 | `meta` | Version ID, or empty for the artifact | Field name | One metadata record |
 
 A sealed `manifest` blob is at most 16 MiB (`e2e.MaxManifestBytes`). The
@@ -469,7 +469,12 @@ characters separated by spaces.
   are separated by single dots.
 - **Link token.** Sent as the `X-Cairn-Link-Token` header, `b64(linkToken)`.
   The server stores `hex(SHA-256(linkToken))` and compares in constant time.
-- **File address.** `hex(HMAC-SHA256(fileKey, path))`.
+- **File address.** `hex(HMAC-SHA256(fileKey, path))`, with `fileKey` from
+  the epoch the file was written in. A stored file's blob and its metadata
+  blob both take the address as `name`, so the server never holds a path. The
+  metadata plaintext is `{"v":1,"path","size","modifiedAt"}`, decoded
+  strictly. A reader checks that the address computed from its `path` is the
+  address it read the metadata from.
 - **Blind index.** `hex(HMAC-SHA256(indexKey, enc("cairn/v1/blind", type,
   value)))`.
 
