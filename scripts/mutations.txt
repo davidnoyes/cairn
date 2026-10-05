@@ -2159,3 +2159,5 @@ internal/server/web/successor.mjs	if (s.deactivatedAt) view.text +=	if (false) v
 internal/server/web/successor.mjs	const who = (u) => (u.name ?	const who = (u) => (false ?	node --test internal/server/web/successor_test.mjs
 internal/server/web/successor.mjs	const day = (time) => time.slice(0, 10);	const day = (time) => time;	node --test internal/server/web/successor_test.mjs
 internal/server/web/successor.mjs	const deactivated = answer.deactivatedAt	const deactivated = false	node --test internal/server/web/successor_test.mjs
+internal/server/web/ui.mjs	const PROBE_ATTEMPTS = 3;	const PROBE_ATTEMPTS = 1;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	attempt < PROBE_ATTEMPTS;	attempt < PROBE_ATTEMPTS + 1;	node --test internal/server/web/ui_test.mjs

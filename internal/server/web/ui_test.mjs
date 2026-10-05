@@ -190,6 +190,30 @@ test('browserCanRunCairn runs against the real WebCrypto of this runtime', async
   assert.equal(await browserCanRunCairn({ isSecureContext: true, crypto: globalThis.crypto }), true);
 });
 
+// flakySubtle fails the first `failures` generateKey calls, as WebKit
+// occasionally does under load, and counts every call.
+const flakySubtle = (failures) => {
+  const subtle = { calls: 0 };
+  subtle.generateKey = async () => {
+    subtle.calls += 1;
+    if (subtle.calls <= failures) throw new Error('transient');
+    return {};
+  };
+  return subtle;
+};
+
+test('browserCanRunCairn retries a probe that fails once before calling the browser unsupported', async () => {
+  const subtle = flakySubtle(1);
+  assert.equal(await browserCanRunCairn({ isSecureContext: true, crypto: { subtle } }), true);
+  assert.equal(subtle.calls, 3);
+});
+
+test('browserCanRunCairn gives up after three failed probes', async () => {
+  const subtle = flakySubtle(Infinity);
+  assert.equal(await browserCanRunCairn({ isSecureContext: true, crypto: { subtle } }), false);
+  assert.equal(subtle.calls, 3);
+});
+
 test('browserCanRunCairn refuses an insecure context, no crypto.subtle, or a missing curve', async () => {
   assert.equal(await browserCanRunCairn({ isSecureContext: false, crypto: { subtle: subtleThat() } }), false);
   assert.equal(await browserCanRunCairn({ crypto: { subtle: subtleThat() } }), false);

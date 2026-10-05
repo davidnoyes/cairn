@@ -54,17 +54,23 @@ export function pageDeps() {
 // browserCanRunCairn reports whether the page can run Cairn's encryption: a
 // secure context, WebCrypto, and working X25519 and Ed25519 key generation,
 // which older browsers lack. scope is the global object, so a test can pass a
-// fake one.
+// fake one. WebKit occasionally fails a generateKey it supports, so the probe
+// runs up to PROBE_ATTEMPTS times before the browser is called unsupported.
+const PROBE_ATTEMPTS = 3;
+
 export async function browserCanRunCairn(scope = globalThis) {
   const subtle = scope.crypto && scope.crypto.subtle;
   if (!scope.isSecureContext || !subtle) return false;
-  try {
-    await subtle.generateKey('X25519', false, ['deriveBits']);
-    await subtle.generateKey('Ed25519', false, ['sign']);
-    return true;
-  } catch {
-    return false;
+  for (let attempt = 0; attempt < PROBE_ATTEMPTS; attempt++) {
+    try {
+      await subtle.generateKey('X25519', false, ['deriveBits']);
+      await subtle.generateKey('Ed25519', false, ['sign']);
+      return true;
+    } catch {
+      // Try again: one failure is not proof the algorithm is missing.
+    }
   }
+  return false;
 }
 
 // startPage prepares a page that does cryptography before it does anything
