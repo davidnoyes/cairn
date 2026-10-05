@@ -948,7 +948,7 @@ internal/client/client.go	"manifestHash": e2e.BodyHash(body)	"manifestHash": e2e
 internal/client/client.go	"epoch": epoch, "manifestHash"	"epoch": epoch + 1, "manifestHash"	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
 internal/client/client.go	Epoch: epoch, Files: make(	Epoch: 0, Files: make(	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
 internal/client/client.go	versionID = uuid.NewString()	versionID = uuid.NewString()[:0] + "not-a-uuid"	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
-internal/client/client.go	slices.SortFunc(files, func(a, b pushFile) int { return strings.Compare(a.rel, b.rel) })	_ = files	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
+internal/client/client.go	slices.Sort(paths)	_ = paths	go test ./internal/client -run TestPushSealsAndSignsWhatItUploads
 internal/client/client.go	if !approverOf(va.Chain.Latest, k) {	if false {	go test ./internal/client -run TestPushNeedsTheOwnerOrAnEditor
 internal/client/client.go	if !d.Type().IsRegular() {	if false {	go test ./internal/client -run TestPushRefusesATreeTheServerWouldRefuse
 internal/client/client.go	if !fs.ValidPath(rel) || strings.Contains(rel, `\`) {	if !fs.ValidPath(rel) {	go test ./internal/client -run TestPushRefusesATreeTheServerWouldRefuse
