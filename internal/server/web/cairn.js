@@ -5,8 +5,10 @@
  * load it with a relative <script src="./cairn.js"></script>.
  *
  * Two backends, same API:
- *  - remote: the page is served by Cairn under /artifacts/{id}/{vid}/ and all
- *    calls proxy to the server APIs (auth travels with the session cookie).
+ *  - remote: the page is served by Cairn on the artifact's content origin and
+ *    calls go through the shell's service worker, which decrypts what it
+ *    reads and seals what it writes. The database runs here, in the bundled
+ *    sql.js from /_cairn/, on a copy of the version's latest revision.
  *  - debug: the page runs outside a Cairn server (local dev server, file://).
  *    Data lives in an in-browser SQLite (sql.js/WebAssembly) persisted to
  *    browser storage (IndexedDB), and the user is {id: 0, name: "Debug"}.
@@ -46,20 +48,15 @@
   function api(path, options) {
     return fetch(path, options).then(function (resp) {
       if (resp.status === 401) return null;
-      if (!resp.ok) {
-        return resp.json().catch(function () { return {}; }).then(function (body) {
-          throw new Error(body.error || ('HTTP ' + resp.status));
-        });
-      }
+      if (!resp.ok) return failure(resp);
       return resp.json();
     });
   }
 
-  function post(path, body) {
-    return api(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+  // failure rejects with the error a JSON answer carries, else the status.
+  function failure(resp) {
+    return resp.json().catch(function () { return {}; }).then(function (body) {
+      throw new Error(body.error || ('HTTP ' + resp.status));
     });
   }
 
@@ -77,12 +74,16 @@
     versions: function () { return api('/api/artifacts/' + artifactId + '/versions'); },
     query: function (sql, params, opts) {
       var vid = (opts && opts.version) || versionId;
-      return post('/api/artifacts/' + artifactId + '/versions/' + vid + '/db/query',
-        { sql: sql, params: params || [] });
+      return serial(function () {
+        return runAll(vid, [{ sql: sql, params: params }], false, 0).then(function (r) { return r[0]; });
+      });
     },
     batch: function (statements) {
-      return post('/api/artifacts/' + artifactId + '/versions/' + versionId + '/db/batch',
-        { statements: statements });
+      var ok = Array.isArray(statements) && statements.every(function (s) {
+        return s && typeof s.sql === 'string';
+      });
+      if (!ok) return Promise.reject(new Error('batch takes a list of statements: [{sql, params}]'));
+      return serial(function () { return runAll(versionId, statements, true, 0); });
     },
     listFiles: function (opts) {
       var vid = (opts && opts.version) || versionId;
@@ -105,9 +106,161 @@
       });
     },
     removeFile: function (path) {
-      return api(fileURL(path), { method: 'DELETE' }).then(function () { return true; });
+      return fetch(fileURL(path), { method: 'DELETE' }).then(function (resp) {
+        return resp.ok ? true : failure(resp);
+      });
     },
   };
+
+  // --------------------------------------------------------- remote database
+  // The worker answers the version's latest database revision as plaintext,
+  // tagged with its number. Statements run here, on a cached copy, inside one
+  // transaction; when they change anything, the whole file goes back under
+  // If-Match. A 412 means another writer landed first: reload the newer
+  // revision and run the statements again on it.
+  var RETRIES = 5;
+  var sqlReady = null;
+  var dbCache = {};
+  var dbQueue = Promise.resolve();
+
+  // remoteSql loads the sql.js Cairn bundles, never a copy from elsewhere.
+  function remoteSql() {
+    if (!sqlReady) {
+      sqlReady = loadScript('/_cairn/sql-wasm.js').then(function () {
+        return global.initSqlJs({ locateFile: function (f) { return '/_cairn/' + f; } });
+      });
+      sqlReady.catch(function () { sqlReady = null; });
+    }
+    return sqlReady;
+  }
+
+  // serial runs database operations one at a time, so two calls from one
+  // page never race each other for the same revision.
+  function serial(fn) {
+    var run = dbQueue.then(fn);
+    dbQueue = run.catch(function () { /* the caller has it */ });
+    return run;
+  }
+
+  function dbURL(vid) {
+    return '/api/artifacts/' + artifactId + '/versions/' + vid + '/db';
+  }
+
+  function forget(vid) {
+    if (dbCache[vid]) dbCache[vid].db.close();
+    delete dbCache[vid];
+  }
+
+  function hold(vid, db, revision) {
+    forget(vid);
+    dbCache[vid] = { db: db, revision: revision };
+    return dbCache[vid];
+  }
+
+  // latestDb brings the cached copy up to the latest revision; with no
+  // database yet it is an empty one at revision 0.
+  function latestDb(vid) {
+    return remoteSql().then(function (SQL) {
+      var held = dbCache[vid];
+      var headers = {};
+      if (held && held.revision > 0) headers['If-None-Match'] = '"' + held.revision + '"';
+      return fetch(dbURL(vid), { headers: headers }).then(function (resp) {
+        if (resp.status === 304 && held) return held;
+        if (resp.status === 404) return hold(vid, new SQL.Database(), 0);
+        if (!resp.ok) return failure(resp);
+        var tag = /^"(\d+)"$/.exec(resp.headers.get('ETag') || '');
+        if (!tag) throw new Error('the database answer carries no revision');
+        return resp.arrayBuffer().then(function (buf) {
+          return hold(vid, new SQL.Database(new Uint8Array(buf)), Number(tag[1]));
+        });
+      });
+    });
+  }
+
+  function scalar(db, sql) { return db.exec(sql)[0].values[0][0]; }
+
+  // counters move whenever a statement changed rows, the schema, or
+  // user_version: the three ways a write can leave its mark on the file.
+  function counters(db) {
+    return [scalar(db, 'SELECT total_changes()'), scalar(db, 'PRAGMA schema_version'),
+      scalar(db, 'PRAGMA user_version')].join(':');
+  }
+
+  function base64(bytes) {
+    var s = '';
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
+  }
+
+  // runOne runs a single statement and answers in the server's old result
+  // shape. sql.js does not expose declared column types, so types are ''.
+  function runOne(db, sql, params) {
+    var it = db.iterateStatements(sql);
+    if (it.next().done) return { columns: [], types: [], rows: [], rowsAffected: 0, lastInsertId: 0 };
+    var more;
+    try { more = !it.next().done; } catch (e) { more = true; }
+    if (more) throw new Error('only one SQL statement per call is allowed; use batch for scripts');
+    var before = scalar(db, 'SELECT total_changes()');
+    var stmt = db.prepare(sql);
+    try {
+      stmt.bind(params || []);
+      var rows = [];
+      while (stmt.step()) {
+        rows.push(stmt.get().map(function (v) { return ArrayBuffer.isView(v) ? base64(v) : v; }));
+      }
+      var columns = stmt.getColumnNames();
+      return {
+        columns: columns,
+        types: columns.map(function () { return ''; }),
+        rows: rows,
+        rowsAffected: scalar(db, 'SELECT total_changes()') > before ? db.getRowsModified() : 0,
+        lastInsertId: scalar(db, 'SELECT last_insert_rowid()'),
+      };
+    } finally {
+      stmt.free();
+    }
+  }
+
+  // runAll runs statements as one transaction on the latest revision, and
+  // uploads the result when they changed anything. A batch error names the
+  // statement, counting from 1.
+  function runAll(vid, statements, batch, attempt) {
+    return latestDb(vid).then(function (held) {
+      var db = held.db;
+      var before = counters(db);
+      var results;
+      try {
+        db.exec('BEGIN');
+        results = statements.map(function (s, i) {
+          try { return runOne(db, s.sql, s.params); } catch (e) {
+            throw batch ? new Error('statement ' + (i + 1) + ': ' + e.message) : e;
+          }
+        });
+        db.exec('COMMIT');
+      } catch (e) {
+        try { db.exec('ROLLBACK'); } catch (_) { /* no transaction open */ }
+        if (counters(db) !== before) forget(vid);
+        throw e;
+      }
+      if (counters(db) === before) return results;
+      return fetch(dbURL(vid), {
+        method: 'PUT',
+        headers: { 'If-Match': '"' + held.revision + '"', 'Content-Type': 'application/octet-stream' },
+        body: db.export(),
+      }).then(function (resp) {
+        if (resp.ok) {
+          return resp.json().then(function (body) { held.revision = body.revision; return results; });
+        }
+        forget(vid); // the change did not land: drop it with its copy
+        if (resp.status !== 412) return failure(resp);
+        if (attempt >= RETRIES) {
+          throw new Error('the database kept changing under this write; gave up after ' +
+            RETRIES + ' retries');
+        }
+        return runAll(vid, statements, batch, attempt + 1);
+      });
+    });
+  }
 
   // ------------------------------------------------------------------- debug
   var DEBUG_USER = { id: 0, name: 'Debug', email: 'debug@localhost', isAdmin: true };

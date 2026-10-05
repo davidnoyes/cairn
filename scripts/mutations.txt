@@ -1279,6 +1279,38 @@ internal/server/web/cairn.js	var content = host && new RegExp(	var content = new
 internal/server/web/cairn.js	'^(' + UUID + ')\\.'	'^(' + UUID + ')'	node --test internal/server/web/cairn_files_test.mjs
 internal/server/web/cairn.js	'^/(' + UUID + ')/'	'^/(' + UUID + ')'	node --test internal/server/web/cairn_files_test.mjs
 internal/server/web/cairn.js	[null, host[1], content[1]]	[null, content[1], host[1]]	node --test internal/server/web/cairn_files_test.mjs
+internal/server/web/cairn.js	loadScript('/_cairn/sql-wasm.js')	loadScript(new URL('sql-wasm.js', location.href).href)	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	return '/_cairn/' + f;	return f;	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	sqlReady.catch(function () { sqlReady = null; });	sqlReady.catch(function () { /* kept */ });	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	if (!sqlReady) {	if (true) {	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	var run = dbQueue.then(fn);	var run = fn();	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	dbQueue = run.catch(	dbQueue = run.then(	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	if (held && held.revision > 0) headers	if (false) headers	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	if (resp.status === 304 && held) return held;	if (resp.status === 304 && held) return hold(vid, held.db, held.revision);	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	if (resp.status === 404) return hold(vid, new SQL.Database(), 0);	if (resp.status === 404) return failure(resp);	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	return hold(vid, new SQL.Database(), 0);	return hold(vid, new SQL.Database(), 0); if (resp.status >= 500) return hold(vid, new SQL.Database(), 0);	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	if (!tag) throw new Error('the database answer carries no revision');	if (!tag) tag = [0, 0];	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	scalar(db, 'PRAGMA schema_version'),	0,	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	scalar(db, 'PRAGMA user_version')].join(':');	0].join(':');	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	return [scalar(db, 'SELECT total_changes()'), scalar	return [0, scalar	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	ArrayBuffer.isView(v) ? base64(v) : v	v	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	if (it.next().done) return { columns	if (false) return { columns	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	try { more = !it.next().done; } catch (e) { more = true; }	try { more = !it.next().done; } catch (e) { more = false; }	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	if (more) throw new Error(	if (false) throw new Error(	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	scalar(db, 'SELECT total_changes()') > before ? db.getRowsModified() : 0	db.getRowsModified()	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	throw batch ? new Error(	throw false ? new Error(	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	'statement ' + (i + 1) + ': '	'statement ' + i + ': '	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	db.exec('BEGIN');	db.exec('SELECT 1');	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	if (counters(db) !== before) forget(vid);	if (false) forget(vid);	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	if (counters(db) === before) return results;	if (false) return results;	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	'If-Match': '"' + held.revision + '"'	'If-Match': '"' + (held.revision + 1) + '"'	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	held.revision = body.revision;	held.revision = held.revision;	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	forget(vid); // the change did not land	// the change did not land	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	if (resp.status !== 412) return failure(resp);	if (resp.status === 0) return failure(resp);	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	if (attempt >= RETRIES) {	if (attempt > RETRIES) {	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	return s && typeof s.sql === 'string';	return true;	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	if (!ok) return Promise.reject(	if (false) return Promise.reject(	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	return resp.ok ? true : failure(resp);	return true;	node --test internal/server/web/cairn_files_test.mjs
 internal/server/web/sw.js	if (self.registration.scope !== origin + '/') throw	if (false) throw	node --test internal/server/web/sw_test.mjs
 internal/server/web/shell.mjs	const keep = opened.mode === 'link' ? hash : '';	const keep = link ? hash : '';	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	const keep = opened.mode === 'link' ? hash : '';	const keep = hash;	node --test internal/server/web/shell_page_test.mjs

@@ -10,7 +10,8 @@ import vm from 'node:vm';
 const source = readFileSync(new URL('./cairn.js', import.meta.url), 'utf8');
 
 // load runs cairn.js as a page served by Cairn, recording every fetch.
-function load(location = { protocol: 'https:', hostname: 'cairn.example', pathname: '/artifacts/a1/v1/index.html' }) {
+// answer, when given, is the response every fetch gets.
+function load(location = { protocol: 'https:', hostname: 'cairn.example', pathname: '/artifacts/a1/v1/index.html' }, answer) {
   const calls = [];
   const window = {};
   const ctx = {
@@ -18,7 +19,7 @@ function load(location = { protocol: 'https:', hostname: 'cairn.example', pathna
     location,
     fetch: (url, opts = {}) => {
       calls.push({ url, opts });
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+      return Promise.resolve(answer ?? { ok: true, status: 200, json: () => Promise.resolve({}) });
     },
   };
   vm.runInNewContext(source, ctx);
@@ -41,6 +42,13 @@ test('files.remove sends a DELETE with no body', async () => {
   assert.equal(del.opts.body, undefined);
 });
 
+test('files.remove answers true on the worker\'s 204, and throws its error otherwise', async () => {
+  const gone = load(undefined, new Response(null, { status: 204 }));
+  assert.equal(await gone.cairn.files.remove('photo.png'), true);
+  const missing = load(undefined, Response.json({ error: 'file not found' }, { status: 404 }));
+  await assert.rejects(missing.cairn.files.remove('photo.png'), /file not found/);
+});
+
 const A = '0123abcd-0123-4abc-8abc-0123456789ab';
 const V = '89abcdef-89ab-4def-8def-89abcdef0123';
 const at = (hostname, pathname) => load({ protocol: 'http:', hostname, pathname });
@@ -50,8 +58,8 @@ test('on a content origin, the artifact is the host label and the version the fi
   assert.equal(cairn.mode, 'remote');
   assert.equal(cairn.db.downloadURL, `/api/artifacts/${A}/versions/${V}/db/download`);
   assert.equal(cairn.files.url('a b/c.txt'), `/api/artifacts/${A}/versions/${V}/files/a%20b/c.txt`);
-  await cairn.db.query('SELECT 1');
-  assert.equal(calls[0].url, `/api/artifacts/${A}/versions/${V}/db/query`);
+  await cairn.files.list();
+  assert.equal(calls[0].url, `/api/artifacts/${A}/versions/${V}/files`);
 });
 
 test('anything short of a content-origin page of one version stays in debug mode', () => {
