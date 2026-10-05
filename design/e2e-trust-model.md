@@ -1,7 +1,8 @@
 # End-to-end encrypted trust model
 
 Status: **decisions agreed**, including the fixes from the security review.
-Nothing in this document is implemented yet.
+It is implemented, in the milestones of the
+[execution and test plan](e2e-execution-plan.md).
 
 ## Goal
 

@@ -1,6 +1,6 @@
 # End-to-end encryption — execution and test plan
 
-Status: **draft for review**. This plan delivers the
+Status: **complete**; every milestone is built. This plan delivers the
 [end-to-end encrypted trust model](e2e-trust-model.md). The design says what
 to build; this document says in what order, how each step is tested, and
 what "done" means for each milestone.

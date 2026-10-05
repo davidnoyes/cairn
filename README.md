@@ -408,8 +408,8 @@ artifacts across from a snapshot instead.
 
 The import reads the snapshot in place and only reads it. It never writes into
 the snapshot, and it refuses a live data directory, so always import a
-`cairn backup` copy. It also refuses a snapshot that reaches outside itself
-through a symbolic link.
+`cairn backup` copy. It also refuses a symbolic link anywhere among the
+snapshot's content, databases, and stored files.
 
 If the import fails, or you press Ctrl-C, it deletes the artifact it was
 importing and lists the ones it finished. A second Ctrl-C stops it at once,
