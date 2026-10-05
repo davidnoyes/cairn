@@ -57,14 +57,20 @@ export async function signIn(page, email, password) {
 // contentFrame returns the artifact's frame: the one on a <uuid>.localhost
 // origin, once it has left the boot page for the content. A frame taken while
 // still on /_cairn/boot navigates under the caller, and Firefox can then hang
-// a locator on it past its own timeout. It throws when none appears within
-// the timeout.
+// a locator on it past its own timeout. Firefox can also leave a frame's
+// reported URL on the boot page after the content has loaded, so a frame
+// still reported there is asked for its own location. It throws when none
+// appears within the timeout.
 export async function contentFrame(page, timeout = 20_000) {
-  const find = () => page.frames().find((f) => /^[0-9a-f-]{36}\.localhost$/.test(safeHost(f.url())) && !safePath(f.url()).startsWith('/_cairn/'));
+  const artifactFrames = () => page.frames().filter((f) => /^[0-9a-f-]{36}\.localhost$/.test(safeHost(f.url())));
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    const f = find();
-    if (f) return f;
+    for (const f of artifactFrames()) {
+      if (!safePath(f.url()).startsWith('/_cairn/')) return f;
+      const asked = f.evaluate(() => location.pathname).catch(() => '/_cairn/');
+      const actual = await Promise.race([asked, page.waitForTimeout(1000).then(() => '/_cairn/')]);
+      if (!actual.startsWith('/_cairn/')) return f;
+    }
     await page.waitForTimeout(250);
   }
   const seen = page.frames().map((f) => f.url()).join(', ');
