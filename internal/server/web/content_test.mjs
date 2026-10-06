@@ -345,10 +345,10 @@ describe('checkKeysMessage', () => {
     bad({ path: '/%2e%2e/api/x' }, 'path climbing out of the version');
     bad({ path: '/.\t./api/x' }, 'path a browser resolves out of the version');
     bad({ context: null }, 'context');
-    bad({ context: { artifact: { id: OTHER, name: 'n', description: 'd' }, users: [] } }, 'context artifact id');
-    bad({ context: { artifact: { id: ARTIFACT, name: 1, description: 'd' }, users: [] } }, 'context name');
-    bad({ context: { artifact: goodKeys().context.artifact, users: {} } }, 'users type');
-    bad({ context: { artifact: goodKeys().context.artifact, users: [{ id: 'x', name: 'u', email: 'e' }] } }, 'user id');
+    bad({ context: { ...goodKeys().context, artifact: { id: OTHER, name: 'n', description: 'd' } } }, 'context artifact id');
+    bad({ context: { ...goodKeys().context, artifact: { id: ARTIFACT, name: 1, description: 'd' } } }, 'context name');
+    bad({ context: { ...goodKeys().context, users: {} } }, 'users type');
+    bad({ context: { ...goodKeys().context, users: [{ id: 'x', name: 'u', email: 'e' }] } }, 'user id');
     const ver = (over) => ({ context: { ...goodKeys().context, versions: [{ ...goodKeys().context.versions[0], ...over }] } });
     bad({ context: { ...goodKeys().context, versions: {} } }, 'versions type');
     bad(ver({ id: 'x' }), 'version id');
