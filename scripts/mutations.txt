@@ -2281,17 +2281,23 @@ internal/server/web/ui.mjs	form.hidden = true;	void 0;	node --test internal/serv
 internal/server/web/ui.mjs	save.hidden = false;	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	await win.navigator.clipboard.writeText(display);	void display;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	copied.textContent = 'Copied.';	void 0;	node --test internal/server/web/ui_test.mjs
-internal/server/web/ui.mjs	win.getSelection().selectAllChildren(codeEl);	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	win.getSelection()?.selectAllChildren(codeEl);	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	win.getSelection()?.selectAllChildren(codeEl);	win.getSelection().selectAllChildren(codeEl);	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	Cairn recovery code for ${win.location.origin}	Cairn recovery code for 	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	a.download = RECOVERY_FILE;	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	a.click();	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	a.remove();	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	copied.textContent = `Download started: ${RECOVERY_FILE}.`;	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	save.hidden = true;	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	masked.textContent = recoveryCodeMasked(display, index);	masked.textContent = display;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	input.value = '';	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	errorEl.hidden = true; // a wrong group's error, from before Show the code again	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	form.hidden = false;	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	input.focus();	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	masked.setAttribute('aria-label',	void ('aria-label',	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	with group ${index + 1} of	with group ${index} of	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	on(input, 'input', () => { errorEl.hidden = true; });	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	input.select();	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	on(again, 'click', () => {	on(again, 'click', () => { return;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	next.focus();	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	if (!recoveryGroupMatches(display, index, input.value)) {	if (false) {	node --test internal/server/web/ui_test.mjs
@@ -2306,3 +2312,7 @@ internal/server/web/account.mjs	(i === index ? '_'.repeat(group.length) : group)
 internal/server/web/account.mjs	(i === index ? '_'.repeat(group.length) : group)	(i !== index ? '_'.repeat(group.length) : group)	node --test internal/server/web/account_test.mjs
 cmd/cairn/client_cmds.go	masked := slices.Clone(groups)	masked := slices.Clip(groups)	go test ./cmd/cairn -run TestConfirmRecoveryCode
 cmd/cairn/client_cmds.go	masked[idx] = strings.Repeat("_", len(groups[idx]))	masked[idx] = groups[idx]	go test ./cmd/cairn -run TestConfirmRecoveryCode
+cmd/cairn/client_cmds.go	fill in the missing group from your saved copy: %s	type the missing group: %s	go test ./cmd/cairn -run TestConfirmRecoveryCode
+internal/server/web/signup.html	data-part="again"	data-part="agains"	node --test internal/server/web/ui_test.mjs
+internal/server/web/reset.html	data-part="masked"	data-part="maskeds"	node --test internal/server/web/ui_test.mjs
+internal/server/web/app.html	data-part="copied"	data-part="copieds"	node --test internal/server/web/ui_test.mjs

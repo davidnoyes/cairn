@@ -3,6 +3,7 @@
 // node --test internal/server/web/*_test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as e2e from './e2e.mjs';
 import { ApiError, WeakPasswordError, takeToken } from './account.mjs';
 import {
@@ -21,6 +22,8 @@ function fakeEl(props = {}) {
     },
     removeEventListener(type, fn) { el.listeners.set(type, (el.listeners.get(type) ?? []).filter((f) => f !== fn)); },
     focus() { el.focused++; },
+    select() { el.selected = (el.selected ?? 0) + 1; },
+    setAttribute(name, value) { (el.attributes ??= {})[name] = String(value); },
     count: (type) => (el.listeners.get(type) ?? []).length,
     async fire(type, event = {}) {
       const e = { preventDefault() { e.prevented = true; }, ...event };
@@ -115,7 +118,7 @@ test('onSubmit re-enables the button after success and clears an earlier error',
 
 // confirmPage is a recovery-code panel: its parts are found by data-part, the
 // way the three pages mark them. win stands in for the window.
-function confirmPage({ clipboard } = {}) {
+function confirmPage({ clipboard, selection = true } = {}) {
   const parts = {
     save: fakeEl(), code: fakeEl(), copy: fakeEl(), download: fakeEl(), copied: fakeEl(), next: fakeEl(),
     confirm: fakeEl({ hidden: true }), masked: fakeEl(), group: fakeEl(), error: fakeEl({ hidden: true }), again: fakeEl(),
@@ -126,7 +129,7 @@ function confirmPage({ clipboard } = {}) {
   const win = fakeEl({
     navigator: clipboard === undefined ? {} : { clipboard },
     location: { origin: 'https://cairn.example' },
-    getSelection: () => ({ selectAllChildren: (el) => selected.push(el) }),
+    getSelection: () => (selection ? { selectAllChildren: (el) => selected.push(el) } : null),
     document: {
       body: { append: (el) => appended.push(el) },
       createElement: (tag) => {
@@ -178,6 +181,13 @@ test('Copy without a clipboard selects the code and says how to copy it', async 
   }
 });
 
+test('Copy still says how to copy when the browser has no selection to give', async () => {
+  const { panel, parts, win } = confirmPage({ selection: false });
+  confirmRecoveryCode(panel, CODE, () => {}, win);
+  await parts.copy.fire('click');
+  assert.match(parts.copied.textContent, /Ctrl\+C/);
+});
+
 test('Download saves the code, with the server it belongs to, as a text file', async () => {
   const { panel, parts, win, appended } = confirmPage();
   confirmRecoveryCode(panel, CODE, () => {}, win);
@@ -193,7 +203,7 @@ test('Download saves the code, with the server it belongs to, as a text file', a
   const text = decodeURIComponent(a.href.slice(prefix.length));
   assert.match(text, /^Cairn recovery code for https:\/\/cairn\.example\n/);
   assert.ok(text.includes(`\n${CODE}\n`));
-  assert.match(parts.copied.textContent, /cairn-recovery-code\.txt/);
+  assert.equal(parts.copied.textContent, 'Download started: cairn-recovery-code.txt.', 'started, not saved: the browser may still refuse it');
 });
 
 test('Next hides the code and asks for one blanked-out group', async () => {
@@ -211,6 +221,7 @@ test('Next hides the code and asks for one blanked-out group', async () => {
   const index = missingGroup(parts);
   assert.ok(index >= 0, 'one group is blanked');
   assert.equal(parts.masked.textContent, CODE.split('-').map((g, i) => (i === index ? '_'.repeat(g.length) : g)).join('-'));
+  assert.equal(parts.masked.attributes['aria-label'], `Your code, with group ${index + 1} of 7 left blank`, 'a screen reader says which group, not underscores');
 });
 
 test('Show the code again goes back to step one', async () => {
@@ -238,9 +249,22 @@ test('a wrong group shows an error and keeps the warning', async () => {
   assert.equal(event.prevented, true);
   assert.equal(parts.error.hidden, false);
   assert.match(parts.error.textContent, /does not match/);
+  assert.equal(parts.group.selected, 1, 'the wrong answer is selected, to type over');
   assert.equal(panel.hidden, false);
   assert.equal(win.count('beforeunload'), 1);
   assert.equal(confirmed, 0);
+});
+
+test('editing a wrong group hides its error, so the next wrong try announces it again', async () => {
+  const { panel, parts, win } = confirmPage();
+  confirmRecoveryCode(panel, CODE, () => {}, win);
+  await parts.next.fire('click');
+  parts.group.value = 'ZZZZ';
+  await parts.confirm.fire('submit');
+  await parts.group.fire('input');
+  assert.equal(parts.error.hidden, true);
+  await parts.confirm.fire('submit');
+  assert.equal(parts.error.hidden, false);
 });
 
 test('the right group clears the code, hides the panel, drops the warning, and continues', async () => {
@@ -257,6 +281,7 @@ test('the right group clears the code, hides the panel, drops the warning, and c
   assert.equal(confirmed, 1);
   for (const name of ['copy', 'download', 'next', 'again']) assert.equal(parts[name].count('click'), 0, name);
   assert.equal(parts.confirm.count('submit'), 0);
+  assert.equal(parts.group.count('input'), 0);
 });
 
 test('the right group after a wrong one hides the earlier error', async () => {
@@ -281,10 +306,24 @@ test('wiring the panel again leaves one listener of each kind, for the new code'
   assert.equal(win.count('beforeunload'), 1);
   assert.equal(parts.confirm.count('submit'), 1);
   for (const name of ['copy', 'download', 'next', 'again']) assert.equal(parts[name].count('click'), 1, name);
+  assert.equal(parts.group.count('input'), 1);
   await parts.next.fire('click');
   parts.group.value = OTHER.split('-')[missingGroup(parts)];
   await parts.confirm.fire('submit');
   assert.equal(confirmed, 1);
+});
+
+// The pages carry the parts confirmRecoveryCode looks up. The fake panel above
+// cannot catch a typo in the markup, so each page is read for every part,
+// exactly once: a second one would shadow the first in querySelector.
+const RECOVERY_PARTS = ['save', 'code', 'copy', 'download', 'copied', 'next', 'confirm', 'masked', 'group', 'error', 'again'];
+
+test('signup, reset and the account page each carry every recovery-code part once', () => {
+  for (const page of ['signup.html', 'reset.html', 'app.html']) {
+    const html = readFileSync(new URL(`./${page}`, import.meta.url), 'utf8');
+    const found = [...html.matchAll(/data-part="([^"]*)"/g)].map((m) => m[1]).sort();
+    assert.deepEqual(found, [...RECOVERY_PARTS].sort(), page);
+  }
 });
 
 // ------------------------------------------------------------ capability check

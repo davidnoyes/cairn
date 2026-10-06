@@ -42,6 +42,9 @@ if (session) {
     }
     const { recoveryCode } = await resetWithoutRecovery(deps, fields);
     form.hidden = true;
-    confirmRecoveryCode($('recovery'), recoveryCode, () => { $('done').hidden = false; });
+    confirmRecoveryCode($('recovery'), recoveryCode, () => {
+      $('done').hidden = false;
+      $('done').querySelector('a').focus(); // the Confirm button that had focus is gone
+    });
   });
 }

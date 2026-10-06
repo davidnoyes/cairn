@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -78,30 +78,35 @@ func TestConfirmRecoveryCodeCaseInsensitive(t *testing.T) {
 }
 
 // The prompt shows the code with the asked-for group blanked out, so the
-// user knows which part to type without counting groups.
-func TestConfirmRecoveryCodePromptBlanksOneGroup(t *testing.T) {
+// user knows which part to type without counting groups, and that group, and
+// no other, is accepted. Each index in turn, with randIndex pinned to it.
+func TestConfirmRecoveryCodePromptBlanksTheAskedGroup(t *testing.T) {
 	const display = "ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ"
-	withStdin(t, "WRONG\n")
-	done := captureStdout(t)
-	_ = confirmRecoveryCode(display)
-	out := done()
-	m := regexp.MustCompile(`type the missing group: (\S+)`).FindStringSubmatch(out)
-	if m == nil {
-		t.Fatalf("prompt = %q, want the code with a group blanked", out)
-	}
-	got, want := strings.Split(m[1], "-"), strings.Split(display, "-")
-	blanked := 0
-	for i := range want {
-		switch got[i] {
-		case want[i]:
-		case strings.Repeat("_", len(want[i])):
-			blanked++
-		default:
-			t.Fatalf("group %d = %q, want %q or blanks", i, got[i], want[i])
+	groups := strings.Split(display, "-")
+	pick := randIndex
+	t.Cleanup(func() { randIndex = pick })
+	for idx := range groups {
+		randIndex = func(n int) int {
+			if n != len(groups) {
+				t.Fatalf("randIndex(%d), want %d", n, len(groups))
+			}
+			return idx
 		}
-	}
-	if len(got) != len(want) || blanked != 1 {
-		t.Fatalf("prompt code %q blanks %d groups, want 1", m[1], blanked)
+		masked := slices.Clone(groups)
+		masked[idx] = strings.Repeat("_", len(groups[idx]))
+		want := "fill in the missing group from your saved copy: " + strings.Join(masked, "-") + "\n"
+		other := groups[(idx+1)%len(groups)]
+		for answer, ok := range map[string]bool{strings.ToLower(groups[idx]): true, other: false} {
+			withStdin(t, answer+"\n")
+			done := captureStdout(t)
+			err := confirmRecoveryCode(display)
+			if out := done(); !strings.Contains(out, want) {
+				t.Fatalf("group %d: prompt = %q, want it to contain %q", idx, out, want)
+			}
+			if (err == nil) != ok {
+				t.Fatalf("group %d: answer %q gave %v, want accepted = %v", idx, answer, err, ok)
+			}
+		}
 	}
 }
 

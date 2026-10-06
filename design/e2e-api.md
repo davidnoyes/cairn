@@ -309,7 +309,8 @@ which reads one line. Scripts and tests use it.
 | `cairn keys revoke ID` | Revokes one |
 
 `cairn signup` shows the recovery code again with one group blanked out, and
-asks the user to type that group, unless `--password-stdin` is set.
+asks the user to fill in that group from their saved copy, unless
+`--password-stdin` is set.
 `cairn reset --no-recovery-code` warns that the user's own artifacts become
 unreadable, and needs `--yes` when standard input is not a terminal.
 
