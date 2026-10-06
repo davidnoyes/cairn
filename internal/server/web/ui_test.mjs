@@ -14,7 +14,11 @@ import {
 function fakeEl(props = {}) {
   const el = {
     hidden: false, disabled: false, textContent: '', value: '', focused: 0, listeners: new Map(), ...props,
-    addEventListener(type, fn) { (el.listeners.get(type) ?? el.listeners.set(type, []).get(type)).push(fn); },
+    addEventListener(type, fn, options) {
+      if (options?.signal?.aborted) return;
+      (el.listeners.get(type) ?? el.listeners.set(type, []).get(type)).push(fn);
+      options?.signal?.addEventListener('abort', () => el.removeEventListener(type, fn));
+    },
     removeEventListener(type, fn) { el.listeners.set(type, (el.listeners.get(type) ?? []).filter((f) => f !== fn)); },
     focus() { el.focused++; },
     count: (type) => (el.listeners.get(type) ?? []).length,
@@ -109,76 +113,177 @@ test('onSubmit re-enables the button after success and clears an earlier error',
 
 // ------------------------------------------------- recovery-code confirm
 
-function confirmPage() {
-  const els = {
-    form: fakeEl(), panel: fakeEl({ hidden: true }), codeEl: fakeEl(), promptEl: fakeEl(),
-    input: fakeEl(), errorEl: fakeEl({ hidden: true }),
+// confirmPage is a recovery-code panel: its parts are found by data-part, the
+// way the three pages mark them. win stands in for the window.
+function confirmPage({ clipboard } = {}) {
+  const parts = {
+    save: fakeEl(), code: fakeEl(), copy: fakeEl(), download: fakeEl(), copied: fakeEl(), next: fakeEl(),
+    confirm: fakeEl({ hidden: true }), masked: fakeEl(), group: fakeEl(), error: fakeEl({ hidden: true }), again: fakeEl(),
   };
-  return { els, win: fakeEl() };
+  const panel = fakeEl({ hidden: true, querySelector: (sel) => parts[sel.match(/^\[data-part="(\w+)"\]$/)[1]] });
+  const appended = [];
+  const selected = [];
+  const win = fakeEl({
+    navigator: clipboard === undefined ? {} : { clipboard },
+    location: { origin: 'https://cairn.example' },
+    getSelection: () => ({ selectAllChildren: (el) => selected.push(el) }),
+    document: {
+      body: { append: (el) => appended.push(el) },
+      createElement: (tag) => {
+        const el = { tag, clicked: 0, removed: 0, click() { el.clicked++; }, remove() { el.removed++; } };
+        return el;
+      },
+    },
+  });
+  return { panel, parts, win, appended, selected };
 }
 const CODE = 'ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ';
 
-test('confirmRecoveryCode shows the code and panel, and warns before the page unloads', () => {
-  const { els, win } = confirmPage();
-  confirmRecoveryCode(els, CODE, () => {}, win);
-  assert.equal(els.codeEl.textContent, CODE);
-  assert.equal(els.panel.hidden, false);
-  assert.equal(els.input.focused, 1);
+// missingGroup reads which group step two blanked out.
+function missingGroup(parts) {
+  return parts.masked.textContent.split('-').findIndex((g) => /^_+$/.test(g));
+}
+
+test('confirmRecoveryCode shows the code with its buttons, and warns before the page unloads', () => {
+  const { panel, parts, win } = confirmPage();
+  confirmRecoveryCode(panel, CODE, () => {}, win);
+  assert.equal(parts.code.textContent, CODE);
+  assert.equal(panel.hidden, false);
+  assert.equal(parts.save.hidden, false);
+  assert.equal(parts.confirm.hidden, true, 'step two waits for Next');
+  assert.equal(parts.copy.focused, 1);
   assert.equal(win.count('beforeunload'), 1);
   const event = { preventDefault() { this.prevented = true; } };
   win.listeners.get('beforeunload')[0](event);
   assert.equal(event.prevented, true, 'the warning asks the browser to confirm leaving');
 });
 
-test('a wrong group shows an error and keeps the code and the warning', async () => {
-  const { els, win } = confirmPage();
+test('Copy puts the code on the clipboard and says so', async () => {
+  const written = [];
+  const { panel, parts, win, selected } = confirmPage({ clipboard: { writeText: async (t) => { written.push(t); } } });
+  confirmRecoveryCode(panel, CODE, () => {}, win);
+  await parts.copy.fire('click');
+  assert.deepEqual(written, [CODE]);
+  assert.equal(parts.copied.textContent, 'Copied.');
+  assert.deepEqual(selected, []);
+});
+
+test('Copy without a clipboard selects the code and says how to copy it', async () => {
+  for (const clipboard of [undefined, { writeText: async () => { throw new Error('denied'); } }]) {
+    const { panel, parts, win, selected } = confirmPage({ clipboard });
+    confirmRecoveryCode(panel, CODE, () => {}, win);
+    await parts.copy.fire('click');
+    assert.deepEqual(selected, [parts.code]);
+    assert.match(parts.copied.textContent, /selected.*Ctrl\+C/);
+  }
+});
+
+test('Download saves the code, with the server it belongs to, as a text file', async () => {
+  const { panel, parts, win, appended } = confirmPage();
+  confirmRecoveryCode(panel, CODE, () => {}, win);
+  await parts.download.fire('click');
+  assert.equal(appended.length, 1);
+  const [a] = appended;
+  assert.equal(a.tag, 'a');
+  assert.equal(a.download, 'cairn-recovery-code.txt');
+  assert.equal(a.clicked, 1);
+  assert.equal(a.removed, 1, 'the link does not stay in the page');
+  const prefix = 'data:text/plain;charset=utf-8,';
+  assert.ok(a.href.startsWith(prefix));
+  const text = decodeURIComponent(a.href.slice(prefix.length));
+  assert.match(text, /^Cairn recovery code for https:\/\/cairn\.example\n/);
+  assert.ok(text.includes(`\n${CODE}\n`));
+  assert.match(parts.copied.textContent, /cairn-recovery-code\.txt/);
+});
+
+test('Next hides the code and asks for one blanked-out group', async () => {
+  const { panel, parts, win } = confirmPage();
+  confirmRecoveryCode(panel, CODE, () => {}, win);
+  parts.copied.textContent = 'Copied.';
+  parts.group.value = 'left over';
+  await parts.next.fire('click');
+  assert.equal(parts.code.textContent, '', 'the code leaves the page');
+  assert.equal(parts.copied.textContent, '');
+  assert.equal(parts.save.hidden, true);
+  assert.equal(parts.confirm.hidden, false);
+  assert.equal(parts.group.value, '');
+  assert.equal(parts.group.focused, 1);
+  const index = missingGroup(parts);
+  assert.ok(index >= 0, 'one group is blanked');
+  assert.equal(parts.masked.textContent, CODE.split('-').map((g, i) => (i === index ? '_'.repeat(g.length) : g)).join('-'));
+});
+
+test('Show the code again goes back to step one', async () => {
+  const { panel, parts, win } = confirmPage();
+  confirmRecoveryCode(panel, CODE, () => {}, win);
+  await parts.next.fire('click');
+  parts.group.value = 'ZZZZ';
+  await parts.confirm.fire('submit');
+  await parts.again.fire('click');
+  assert.equal(parts.code.textContent, CODE);
+  assert.equal(parts.save.hidden, false);
+  assert.equal(parts.confirm.hidden, true);
+  assert.equal(parts.next.focused, 1);
+  await parts.next.fire('click');
+  assert.equal(parts.error.hidden, true, 'a wrong answer from before does not greet the next try');
+});
+
+test('a wrong group shows an error and keeps the warning', async () => {
+  const { panel, parts, win } = confirmPage();
   let confirmed = 0;
-  confirmRecoveryCode(els, CODE, () => confirmed++, win);
-  els.input.value = 'ZZZZ';
-  const event = await els.form.fire('submit');
+  confirmRecoveryCode(panel, CODE, () => confirmed++, win);
+  await parts.next.fire('click');
+  parts.group.value = 'ZZZZ';
+  const event = await parts.confirm.fire('submit');
   assert.equal(event.prevented, true);
-  assert.equal(els.errorEl.hidden, false);
-  assert.match(els.errorEl.textContent, /not the group shown/);
-  assert.equal(els.codeEl.textContent, CODE);
+  assert.equal(parts.error.hidden, false);
+  assert.match(parts.error.textContent, /does not match/);
+  assert.equal(panel.hidden, false);
   assert.equal(win.count('beforeunload'), 1);
   assert.equal(confirmed, 0);
 });
 
-test('the right group clears the code field, hides the panel, drops the warning, and continues', async () => {
-  const { els, win } = confirmPage();
+test('the right group clears the code, hides the panel, drops the warning, and continues', async () => {
+  const { panel, parts, win } = confirmPage();
   let confirmed = 0;
-  confirmRecoveryCode(els, CODE, () => confirmed++, win);
-  const group = els.promptEl.textContent.match(/group (\d+) of/)[1] - 1;
-  els.input.value = CODE.split('-')[group].toLowerCase();
-  await els.form.fire('submit');
-  assert.equal(els.codeEl.textContent, '', 'the code does not stay in the page');
-  assert.equal(els.panel.hidden, true);
+  confirmRecoveryCode(panel, CODE, () => confirmed++, win);
+  await parts.next.fire('click');
+  parts.group.value = ` ${CODE.split('-')[missingGroup(parts)].toLowerCase()} `;
+  await parts.confirm.fire('submit');
+  assert.equal(parts.code.textContent, '', 'the code does not stay in the page');
+  assert.equal(parts.masked.textContent, '');
+  assert.equal(panel.hidden, true);
   assert.equal(win.count('beforeunload'), 0);
   assert.equal(confirmed, 1);
+  for (const name of ['copy', 'download', 'next', 'again']) assert.equal(parts[name].count('click'), 0, name);
+  assert.equal(parts.confirm.count('submit'), 0);
 });
 
 test('the right group after a wrong one hides the earlier error', async () => {
-  const { els, win } = confirmPage();
-  confirmRecoveryCode(els, CODE, () => {}, win);
-  els.input.value = 'ZZZZ';
-  await els.form.fire('submit');
-  assert.equal(els.errorEl.hidden, false);
-  const group = els.promptEl.textContent.match(/group (\d+) of/)[1] - 1;
-  els.input.value = CODE.split('-')[group];
-  await els.form.fire('submit');
-  assert.equal(els.errorEl.hidden, true);
+  const { panel, parts, win } = confirmPage();
+  confirmRecoveryCode(panel, CODE, () => {}, win);
+  await parts.next.fire('click');
+  parts.group.value = 'ZZZZ';
+  await parts.confirm.fire('submit');
+  assert.equal(parts.error.hidden, false);
+  parts.group.value = CODE.split('-')[missingGroup(parts)];
+  await parts.confirm.fire('submit');
+  assert.equal(parts.error.hidden, true);
 });
 
-test('wiring the confirmation again leaves one submit listener and one warning', async () => {
-  const { els, win } = confirmPage();
+test('wiring the panel again leaves one listener of each kind, for the new code', async () => {
+  const { panel, parts, win } = confirmPage();
   let confirmed = 0;
-  confirmRecoveryCode(els, CODE, () => confirmed++, win);
-  confirmRecoveryCode(els, CODE, () => confirmed++, win);
-  assert.equal(els.form.count('submit'), 1);
+  const OTHER = 'QQQQ-RRRR-SSSS-TTTT-UUUU-VVVV-WW';
+  confirmRecoveryCode(panel, CODE, () => confirmed++, win);
+  confirmRecoveryCode(panel, OTHER, () => confirmed++, win);
+  assert.equal(parts.code.textContent, OTHER);
   assert.equal(win.count('beforeunload'), 1);
-  const group = els.promptEl.textContent.match(/group (\d+) of/)[1] - 1;
-  els.input.value = CODE.split('-')[group];
-  await els.form.fire('submit');
+  assert.equal(parts.confirm.count('submit'), 1);
+  for (const name of ['copy', 'download', 'next', 'again']) assert.equal(parts[name].count('click'), 1, name);
+  await parts.next.fire('click');
+  parts.group.value = OTHER.split('-')[missingGroup(parts)];
+  await parts.confirm.fire('submit');
   assert.equal(confirmed, 1);
 });
 

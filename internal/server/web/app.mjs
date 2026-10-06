@@ -8,7 +8,7 @@ import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { describeArtifact } from './meta.mjs';
 import { KeyChangedError, members, pin, publicLinkFor, setPublic, share, unshare } from './sharing.mjs';
 import { bannerView, myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions, who } from './successor.mjs';
-import { describeError, pageDeps, watchStrength } from './ui.mjs';
+import { confirmRecoveryCode, describeError, pageDeps, watchStrength } from './ui.mjs';
 
 const $ = (id) => document.getElementById(id);
 // viewer.mjs and sharing.mjs also need the keyring anchor's storage and the
@@ -454,12 +454,11 @@ $('rc-form').addEventListener('submit', async (event) => {
   const button = event.submitter;
   const password = $('rc-password');
   button.disabled = true;
-  $('rc-new').textContent = '';
   status('account-status', 'Making a new recovery code…');
   try {
     const { recoveryCode } = await newRecoveryCode(deps, { password: password.value });
-    $('rc-new').textContent = recoveryCode;
-    status('account-status', 'Write the new recovery code down now: it is not shown again, and the old one no longer works.');
+    status('account-status', 'Save the new recovery code now: it is not shown again, and the old one no longer works.');
+    confirmRecoveryCode($('rc-panel'), recoveryCode, () => status('account-status', 'New recovery code saved.'));
   } catch (err) {
     failIn('account-status')(err);
   } finally {

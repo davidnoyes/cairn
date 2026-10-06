@@ -70,11 +70,15 @@ allows: a domain set with `--signup-domain`, or the `--admin-email` address.
 
 1. Enter your email, your name, and a password. Choose a long passphrase. The
    page refuses a password that its strength estimator scores below 3 of 4.
-2. Save the recovery code the page shows. Cairn shows it once. Without it, a
-   password reset gives you new keys, and artifacts that others shared with you
-   stay unreadable until they share them again.
-3. Open the link in the verification email. It works for 24 hours.
-4. Sign in at `/login`.
+2. Save the recovery code the page shows. **Copy** puts it on the clipboard,
+   for a password manager, and **Download** saves it as a text file. Cairn
+   shows it once. Without it, a password reset gives you new keys, and
+   artifacts that others shared with you stay unreadable until they share them
+   again.
+3. Select **Next**, and fill in the group that the code is missing from your
+   saved copy.
+4. Open the link in the verification email. It works for 24 hours.
+5. Sign in at `/login`.
 
 If you forget your password, open `/forgot`. The emailed link works for 30
 minutes. On the reset page, enter your recovery code to keep your keys, or

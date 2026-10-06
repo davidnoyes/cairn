@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -73,6 +74,34 @@ func TestConfirmRecoveryCodeCaseInsensitive(t *testing.T) {
 	withStdin(t, "abcd\n")
 	if err := confirmRecoveryCode("ABCD"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The prompt shows the code with the asked-for group blanked out, so the
+// user knows which part to type without counting groups.
+func TestConfirmRecoveryCodePromptBlanksOneGroup(t *testing.T) {
+	const display = "ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ"
+	withStdin(t, "WRONG\n")
+	done := captureStdout(t)
+	_ = confirmRecoveryCode(display)
+	out := done()
+	m := regexp.MustCompile(`type the missing group: (\S+)`).FindStringSubmatch(out)
+	if m == nil {
+		t.Fatalf("prompt = %q, want the code with a group blanked", out)
+	}
+	got, want := strings.Split(m[1], "-"), strings.Split(display, "-")
+	blanked := 0
+	for i := range want {
+		switch got[i] {
+		case want[i]:
+		case strings.Repeat("_", len(want[i])):
+			blanked++
+		default:
+			t.Fatalf("group %d = %q, want %q or blanks", i, got[i], want[i])
+		}
+	}
+	if len(got) != len(want) || blanked != 1 {
+		t.Fatalf("prompt code %q blanks %d groups, want 1", m[1], blanked)
 	}
 }
 

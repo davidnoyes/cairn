@@ -80,6 +80,16 @@ a{color:var(--accent)}
 }
 .links a{color:var(--muted); text-decoration:none}
 .links a:hover, .links a:focus-visible{color:var(--accent)}
+.links button.link{
+  width:auto; margin:0; padding:0; background:none; border:none;
+  font-family:var(--mono); font-size:12px; color:var(--muted);
+}
+.links button.link:hover, .links button.link:focus-visible{color:var(--accent); filter:none}
+.pair{display:flex; gap:.6rem; margin-top:.8rem}
+.pair button{margin-top:0}
+button.secondary{background:none; color:var(--text); border-color:var(--line)}
+button.secondary:hover, button.secondary:focus-visible{border-color:var(--accent-dim); color:var(--accent); filter:none}
+.copied{min-height:1.3em; margin-top:.6rem}
 .note{
   margin-top:1.2rem; padding:.7rem .8rem; border-radius:7px;
   background:var(--accent-tint); border:1px solid var(--accent-dim);

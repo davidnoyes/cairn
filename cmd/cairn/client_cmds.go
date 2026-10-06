@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -96,12 +97,14 @@ func runSignup(args []string) error {
 	return nil
 }
 
-// confirmRecoveryCode asks the user to retype one randomly chosen group of
-// the displayed recovery code, to prove they saved it.
+// confirmRecoveryCode shows the recovery code with one randomly chosen group
+// blanked out, and asks the user to type it, to prove they saved it.
 func confirmRecoveryCode(display string) error {
 	groups := strings.Split(display, "-")
 	idx := randIndex(len(groups))
-	fmt.Printf("To confirm you saved it, retype group %d of %d: ", idx+1, len(groups))
+	masked := slices.Clone(groups)
+	masked[idx] = strings.Repeat("_", len(groups[idx]))
+	fmt.Printf("To confirm you saved it, type the missing group: %s\n> ", strings.Join(masked, "-"))
 	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
 	if err != nil {
 		return err

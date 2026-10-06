@@ -250,8 +250,6 @@ internal/server/web/ui.mjs	} finally {	} finally { if (false)	node --test intern
 internal/server/web/ui.mjs	button.disabled = false; // listening now	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/account.mjs	/^#token=([A-Za-z0-9_-]+)$/	/^#token=([A-Za-z0-9_-]+)/	node --test internal/server/web/account_test.mjs
 internal/server/web/account.mjs	/^#token=([A-Za-z0-9_-]+)$/	/#token=([A-Za-z0-9_-]+)$/	node --test internal/server/web/account_test.mjs
-internal/server/web/ui.mjs	codeEl.textContent = '';	void 0;	node --test internal/server/web/ui_test.mjs
-internal/server/web/ui.mjs	form.removeEventListener('submit', previous.submit);	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	if (!scope.isSecureContext || !subtle) return false;	if (!subtle) return false;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	await subtle.generateKey('X25519', false, ['deriveBits']);	void 0;	node --test internal/server/web/ui_test.mjs
 internal/server/web/ui.mjs	await subtle.generateKey('Ed25519', false, ['sign']);	void 0;	node --test internal/server/web/ui_test.mjs
@@ -2274,3 +2272,37 @@ internal/server/web/shell.mjs	changelog: fields.changelog ?? ''	changelog: ''	no
 internal/server/web/cairn.js	encodeURIComponent(location.pathname + location.search)	encodeURIComponent(location.pathname)	node --test internal/server/web/cairn_db_test.mjs
 internal/server/web/cairn.js	else location.href = '/login?next=' + encodeURIComponent(	else location.href = '/login?next=' + (	node --test internal/server/web/cairn_db_test.mjs
 internal/server/web/account.mjs	return (next || '/') + hash;	return next + hash;	node --test internal/server/web/account_test.mjs
+
+# Recovery-code confirmation: two steps, Copy, Download, and a blanked group.
+internal/server/web/ui.mjs	panelWiring.get(panel)?.abort();	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	const on = (target, type, fn) => target.addEventListener(type, fn, { signal: wiring.signal });	const on = (target, type, fn) => target.addEventListener(type, fn);	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	codeEl.textContent = display;	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	form.hidden = true;	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	save.hidden = false;	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	await win.navigator.clipboard.writeText(display);	void display;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	copied.textContent = 'Copied.';	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	win.getSelection().selectAllChildren(codeEl);	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	Cairn recovery code for ${win.location.origin}	Cairn recovery code for 	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	a.download = RECOVERY_FILE;	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	a.click();	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	a.remove();	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	save.hidden = true;	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	masked.textContent = recoveryCodeMasked(display, index);	masked.textContent = display;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	input.value = '';	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	errorEl.hidden = true; // a wrong group's error, from before Show the code again	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	form.hidden = false;	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	input.focus();	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	on(again, 'click', () => {	on(again, 'click', () => { return;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	next.focus();	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	if (!recoveryGroupMatches(display, index, input.value)) {	if (false) {	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	masked.textContent = '';	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	panel.hidden = true;	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	wiring.abort();	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	onConfirmed();	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	on(win, 'beforeunload', (event) => {	on({ addEventListener() {} }, 'beforeunload', (event) => {	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	panel.hidden = false;	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/ui.mjs	copy.focus();	void 0;	node --test internal/server/web/ui_test.mjs
+internal/server/web/account.mjs	(i === index ? '_'.repeat(group.length) : group)	(i === index ? '____' : group)	node --test internal/server/web/account_test.mjs
+internal/server/web/account.mjs	(i === index ? '_'.repeat(group.length) : group)	(i !== index ? '_'.repeat(group.length) : group)	node --test internal/server/web/account_test.mjs
+cmd/cairn/client_cmds.go	masked := slices.Clone(groups)	masked := slices.Clip(groups)	go test ./cmd/cairn -run TestConfirmRecoveryCode
+cmd/cairn/client_cmds.go	masked[idx] = strings.Repeat("_", len(groups[idx]))	masked[idx] = groups[idx]	go test ./cmd/cairn -run TestConfirmRecoveryCode

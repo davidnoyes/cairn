@@ -352,7 +352,7 @@ export async function resetWithoutRecovery(deps, { token, info, password, confir
 }
 
 // recoveryGroupIndex picks which group of a displayed recovery code the user
-// must retype, to show they saved it. Like the CLI, it is chosen at random.
+// fills in from their saved copy. Like the CLI, it is chosen at random.
 export function recoveryGroupIndex(display) {
   return crypto.getRandomValues(new Uint8Array(1))[0] % display.split('-').length;
 }
@@ -360,6 +360,12 @@ export function recoveryGroupIndex(display) {
 // recoveryGroupMatches reports whether typed is group index of the code.
 export function recoveryGroupMatches(display, index, typed) {
   return typed.trim().toUpperCase() === display.split('-')[index];
+}
+
+// recoveryCodeMasked is the displayed code with one group blanked out, for
+// the user to fill in from their saved copy.
+export function recoveryCodeMasked(display, index) {
+  return display.split('-').map((group, i) => (i === index ? '_'.repeat(group.length) : group)).join('-');
 }
 
 // unlock proves the signed-in user knows their password right now: it

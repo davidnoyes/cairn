@@ -308,10 +308,10 @@ which reads one line. Scripts and tests use it.
 | `cairn keys list` | Lists the user's API keys |
 | `cairn keys revoke ID` | Revokes one |
 
-`cairn signup` asks the user to retype one group of the recovery code, unless
-`--password-stdin` is set. `cairn reset --no-recovery-code` warns that the
-user's own artifacts become unreadable, and needs `--yes` when standard input
-is not a terminal.
+`cairn signup` shows the recovery code again with one group blanked out, and
+asks the user to type that group, unless `--password-stdin` is set.
+`cairn reset --no-recovery-code` warns that the user's own artifacts become
+unreadable, and needs `--yes` when standard input is not a terminal.
 
 The config file stores the host, the email, the full four-part API key, and
 the keyring anchor for each account, which `cairn logout` keeps.

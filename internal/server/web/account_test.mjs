@@ -654,6 +654,13 @@ test('the recovery confirmation picks a group, and accepts only that group, in a
   assert.equal(account.recoveryGroupMatches(display, 2, ''), false);
 });
 
+test('recoveryCodeMasked blanks only the chosen group, keeping its length', () => {
+  const display = 'ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ';
+  assert.equal(account.recoveryCodeMasked(display, 0), '____-EFGH-IJKL-MNOP-QRST-UVWX-YZ');
+  assert.equal(account.recoveryCodeMasked(display, 2), 'ABCD-EFGH-____-MNOP-QRST-UVWX-YZ');
+  assert.equal(account.recoveryCodeMasked(display, 6), 'ABCD-EFGH-IJKL-MNOP-QRST-UVWX-__');
+});
+
 // -------------------------------------------------------------- sign-out
 
 test('signOut clears the stored keys', async () => {
