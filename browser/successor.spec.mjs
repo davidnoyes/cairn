@@ -131,6 +131,8 @@ test('successor: Refuse on a stale banner says why and clears the banner', async
     await page.locator('#refuse-succession').click();
     await expect(page.locator('#app-status')).toContainText('no request is pending');
     await expect(banner).toBeHidden();
+    // The button works again, for the next request this page shows.
+    await expect(page.locator('#refuse-succession')).toBeEnabled();
   } finally {
     await context.close();
   }
