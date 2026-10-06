@@ -2257,3 +2257,4 @@ internal/server/web/e2e.mjs	  h[31] |= 64;	  void 0;	node --test internal/server
 internal/server/web/e2e.mjs	for (let i = 254n; i >= 0n; i--) {	for (let i = 254n; i > 0n; i--) {	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	if ((a >> i) & 1n) R = sum;	if (((a >> i) & 1n) === 0n) R = sum;	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	pub[31] |= Number(x & 1n) << 7;	void x;	node --test internal/server/web/e2e_test.mjs
+internal/store/successor.go	const SuccessionWait = 14 * 24 * time.Hour	const SuccessionWait = 15 * 24 * time.Hour	go test ./internal/server ./cmd/cairn -run 'TestThePagesNameTheSuccessionWait|TestSuccessorNominateNeedsTheRightCode'
