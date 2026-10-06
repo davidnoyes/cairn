@@ -219,9 +219,11 @@ Authentication: `Authorization: Bearer <jwt>` (from `POST /api/auth/login`) or
 artifacts need no auth; **writes always need auth**.
 
 The `{id}` segment of artifact routes (APIs and page URLs alike) accepts
-either the artifact id or a **resource reference** — a resource value such as
-a Claude session id, or a resource row id. If the reference matches more than
-one artifact the request fails with `409 Conflict`; use the artifact id then.
+either the artifact id or a **resource reference**: a resource's stored blind
+index, or its row id. The server never sees a raw value such as a Claude
+session id, so only `cairn`, which computes the blind index, accepts one. If
+the reference matches more than one artifact, the request fails with
+`409 Conflict`; use the artifact id then.
 
 ```
 POST   /api/auth/login                      {email, password[, confirm]}
@@ -278,8 +280,8 @@ cairn db download --artifact my-app --out notes.db
 Commands that print a result accept `--json`; errors exit non-zero with a
 message on stderr.
 Associate an agent session with `cairn artifact create --resource
-claude-session=<id>` or `POST /api/artifacts/{id}/resources` — afterwards the
-session id works anywhere an artifact id or name does:
+claude-session=<id>`. Afterwards the session id works in any `cairn` command
+that takes an artifact id or name:
 
 ```sh
 cairn push ./dist --artifact <claude-session-id> --overwrite latest
@@ -385,6 +387,32 @@ storage, trusts the first keyring it sees. Headless use with `CAIRN_HOST` and
 `CAIRN_CONFIG` at a persistent, writable file. Otherwise each run starts
 with no anchor and gets no rollback protection.
 
+When you remove an editor, the versions they pushed need your vouch before
+anyone runs them. `cairn review` lists those versions, and `cairn vouch`
+signs one after you have looked at it. Clients refuse to run a version that
+needs a vouch.
+
+```sh
+cairn review my-app                # versions waiting for your vouch
+cairn vouch my-app VERSION         # vouch for one
+```
+
+To hand an artifact to an editor, the owner offers ownership. The artifact
+stays with the owner until the editor accepts. A new offer closes the
+earlier one. The editor can decline, and the owner can withdraw the offer.
+
+```sh
+cairn transfer my-app bob@example.com   # offer; add --accept-new-key if bob's keys changed
+cairn transfer accept my-app            # bob accepts; the old owner stays an editor
+cairn transfer accept my-app --drop-previous-owner   # or a new epoch excludes them
+cairn transfer decline my-app           # bob declines
+cairn transfer withdraw my-app          # the owner withdraws the offer
+```
+
+If an administrator handed an artifact to a new owner, `push`, `share`,
+`vouch`, and the other commands that change it refuse until you confirm the
+handover with the people involved and pass `--accept-new-owner`.
+
 A ready-made **Claude Code skill** ships in
 [`.claude/skills/cairn-artifact/`](.claude/skills/cairn-artifact/SKILL.md): it
 teaches Claude the whole build → test locally → publish → iterate workflow and
@@ -392,6 +420,48 @@ the `cairn.js` API. It is picked up automatically when working inside this
 repo; copy the directory into any other project's `.claude/skills/` (or
 `~/.claude/skills/` for global use) to let Claude publish artifacts from
 there.
+
+### Successors and key rotation
+
+A successor is one user you choose who can read the artifacts you own if you
+cannot. They never read what others shared with you. Nobody becomes a
+successor without a code from their own device, so a server cannot swap in a
+different key.
+
+```sh
+cairn successor code                                     # carol runs this and sends you the code
+cairn successor nominate carol@example.com --code CODE   # asks for your password
+cairn successor status                                   # your successor, any request, who named you
+cairn successor remove                                   # remove your successor
+cairn successor notice-email me@example.org              # a personal address for notices
+```
+
+To read an owner's artifacts, the successor runs `cairn successor request
+USER`. Cairn tells the owner by email, by a banner in the app, and by a
+warning in `cairn`. If the owner does not refuse, access starts 14 days after
+the request. To refuse, the owner runs `cairn successor refuse`, uses the
+**Refuse** button in the app, or opens the `/refuse` page on the server. The
+`/refuse` page needs no session, so it works on a deactivated account. It
+takes the email address and the password or the recovery code. A refusal
+ends the request and keeps the nomination. The **Successor** tab in `/app`
+does the same as these commands.
+
+After the server releases access to a successor, it refuses the owner's
+changes until the owner runs `cairn rotate-keys`.
+
+`cairn rotate-keys` replaces your keys and prints a new recovery code. Save
+it, because the old one stops working. It also revokes every API key and
+moves each artifact you own to a new epoch. Run it after a leaked key, a lost
+device, or a successor release. Because it revokes API keys, unset
+`CAIRN_HOST` and `CAIRN_API_KEY` and sign in with `cairn login` first.
+
+```sh
+cairn rotate-keys                  # asks for your password
+cairn rotate-keys --keep-epochs    # keep your artifacts at their current epochs
+```
+
+The design is in
+[`design/e2e-trust-model.md`](design/e2e-trust-model.md#successor).
 
 ## Moving from an older server
 
@@ -476,3 +546,19 @@ content domain to Cairn.
 go test ./...        # unit + integration tests
 ./scripts/e2e.sh     # full end-to-end smoke test against a real server
 ```
+
+### Verifying a server
+
+`cairn verify` checks that a server serves the files and pages of a signed
+release without change. It checks the server you are signed in to, or the
+`URL` you give.
+
+```sh
+cairn verify --version v1.1.0 https://cairn.example.com
+```
+
+Sign in with `cairn login` first. Otherwise the check skips `/app` and fails,
+unless you pass `--allow-skip`. Use `--manifest FILE` to check against a
+manifest file, and `--key KEY` (repeatable) to trust another release public
+key. [Check a server](deploy/gcp/README.md#check-a-server) explains what a
+pass proves.
