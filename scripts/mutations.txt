@@ -1967,7 +1967,6 @@ internal/server/web/shell.mjs	frame.setAttribute('title', name);	frame.setAttrib
 internal/server/web/shell.mjs	if (err instanceof LockedError) {	if (false) {	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/viewer.mjs	if (found?.locked || (!found && await sessionUser(deps))) throw new LockedError();	if (found?.locked) throw new LockedError();	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (found?.locked || (!found && await sessionUser(deps))) throw new LockedError();	if (!found && await sessionUser(deps)) throw new LockedError();	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	if (me.id !== record.userId) return { locked: true };	if (false) return { locked: true };	node --test internal/server/web/viewer_test.mjs
 internal/server/web/sharing.mjs	if (!caller?.record) throw new SharingError('not-signed-in'	if (!caller) throw new SharingError('not-signed-in'	node --test internal/server/web/sharing_test.mjs
 
 # Encrypted metadata fields (milestone 6): the server writes.
