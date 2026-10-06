@@ -336,7 +336,7 @@ export function checkKeysMessage(msg) {
   if (msg.token !== null) checkString(msg.token, 'token');
   checkExpires(msg.tokenExpires);
   if (msg.linkToken !== null) checkB64(msg.linkToken, undefined, 'linkToken');
-  exactFields(msg.context, ['artifact', 'users'], 'context');
+  exactFields(msg.context, ['artifact', 'users', 'versions'], 'context');
   exactFields(msg.context.artifact, ['id', 'name', 'description'], 'context artifact');
   checkUuid(msg.context.artifact.id, 'context artifact id');
   if (msg.context.artifact.id !== msg.artifact) throw new ContentError('context artifact is not the keys artifact');
@@ -348,6 +348,15 @@ export function checkKeysMessage(msg) {
     checkUuid(u.id, 'context user id');
     checkString(u.name, 'context user name');
     checkString(u.email, 'context user email');
+  }
+  if (!Array.isArray(msg.context.versions)) throw new ContentError('context versions must be an array');
+  for (const v of msg.context.versions) {
+    exactFields(v, ['id', 'seq', 'name', 'changelog', 'createdAt'], 'context version');
+    checkUuid(v.id, 'context version id');
+    if (!Number.isSafeInteger(v.seq)) throw new ContentError('context version seq must be an integer');
+    checkString(v.name, 'context version name');
+    checkString(v.changelog, 'context version changelog');
+    checkString(v.createdAt, 'context version createdAt');
   }
   checkString(msg.path, 'path');
   if (!contentTarget(msg.version, msg.path)) throw new ContentError('path must stay inside the version');
@@ -375,7 +384,7 @@ function jsonResponse(value) {
   });
 }
 
-// apiRequest answers the two reads the worker serves from context, or
+// apiRequest answers the three reads the worker serves from context, or
 // returns the request with credentials set from keys. A credential header
 // the caller supplied is always dropped, so a page cannot choose its own.
 export function apiRequest(request, keys) {
@@ -383,6 +392,7 @@ export function apiRequest(request, keys) {
   if (request.method === 'GET' && keys) {
     if (url.pathname === `/api/artifacts/${keys.artifact}`) return jsonResponse(keys.context.artifact);
     if (url.pathname === '/api/users') return jsonResponse(keys.context.users);
+    if (url.pathname === `/api/artifacts/${keys.artifact}/versions`) return jsonResponse(keys.context.versions);
   }
   const headers = new Headers(request.headers);
   headers.delete('Authorization');

@@ -1275,6 +1275,7 @@ is an object with a `cairn` field naming its type:
 | Shell | Frame | `{"cairn": "token", "token", "tokenExpires"}` |
 | Frame | Shell | `{"cairn": "need-keys", "version"}` |
 | Frame | Shell | `{"cairn": "navigate", "href"}` |
+| Frame | Shell | `{"cairn": "login"}` |
 
 - The shell sends to the content origin's exact origin, never `*`, and acts
   on a message only when its `source` is the frame's window and its `origin`
@@ -1291,9 +1292,16 @@ is an object with a `cairn` field naming its type:
   `linkToken` may be `null`. `signer` is `{"user", "ed25519"}`, the key the
   manifest must verify under, or `null` when the version is trusted through a
   vouch. `context` is
-  `{"artifact": {"id", "name", "description"}, "users": [{"id", "name", "email"}]}`,
-  where `users` lists the latest record's owner and members, or is empty for
-  an anonymous visitor.
+  `{"artifact": {"id", "name", "description"}, "users": [{"id", "name", "email"}],`
+  `"versions": [{"id", "seq", "name", "changelog", "createdAt"}]}`.
+  `users` lists the latest record's owner and members, or is empty for an
+  anonymous visitor. `versions` lists the versions the shell opened for its
+  picker, newest first. Each name and changelog is the one the shell opened.
+- `login` carries nothing. The frame cannot reach the sign-in page, so
+  `cairn.login()` asks the shell to go there. The shell goes to
+  `/login?next=<its path>`, and for a public link adds the link's fragment,
+  which the sign-in page passes on to `next`. The fragment never reaches the
+  server.
 
 The boot page passes `keys` to the active worker of the registration its
 own `register` call returned, waits for it to confirm, then replaces its own
@@ -1352,10 +1360,13 @@ For a request to `/<version>/<path>`, the worker:
 For a request to `/api/`, including a navigation such as a link to
 `cairn.db.downloadURL`, the worker adds `Authorization: Bearer <token>`
 when it has a token, and `X-Cairn-Link-Token` when it has a link token. It
-answers two reads itself, from `context`, so they never reach the server:
-`GET /api/artifacts/{id}` and `GET /api/users`. That keeps `cairn.artifact()`
-and `cairn.users()` working without widening the allowlist, and limits the
-users an artifact can list to the people who can open it.
+answers three reads itself, from `context`, so they never reach the server:
+`GET /api/artifacts/{id}`, `GET /api/users`, and
+`GET /api/artifacts/{id}/versions`. That keeps `cairn.artifact()`,
+`cairn.users()`, and `cairn.versions()` working without widening the
+allowlist, limits the users an artifact can list to the people who can open
+it, and gives `cairn.versions()` the names and changelogs the server holds
+only sealed.
 
 A navigation therefore reaches the server with the token behind it. Every
 `/api/` response carries the sandboxed CSP that refuses framing, so a stored

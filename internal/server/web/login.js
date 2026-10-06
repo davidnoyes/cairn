@@ -6,7 +6,9 @@ import { signedInCaller } from './viewer.mjs';
 
 const form = $('form');
 const deps = await startPage({ form, errorEl: $('error') });
-const next = document.body.dataset.next || '/';
+// A public link's key arrives in this page's fragment, which the server never
+// sees, and goes on to the page signed in to.
+const next = (document.body.dataset.next || '/') + location.hash;
 
 if (deps) {
   // A session whose keys this browser holds goes straight through. With no

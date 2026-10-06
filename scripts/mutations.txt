@@ -2258,3 +2258,9 @@ internal/server/web/e2e.mjs	for (let i = 254n; i >= 0n; i--) {	for (let i = 254n
 internal/server/web/e2e.mjs	if ((a >> i) & 1n) R = sum;	if (((a >> i) & 1n) === 0n) R = sum;	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	pub[31] |= Number(x & 1n) << 7;	void x;	node --test internal/server/web/e2e_test.mjs
 internal/store/successor.go	const SuccessionWait = 14 * 24 * time.Hour	const SuccessionWait = 15 * 24 * time.Hour	go test ./internal/server ./cmd/cairn -run 'TestThePagesNameTheSuccessionWait|TestSuccessorNominateNeedsTheRightCode'
+internal/server/web/cairn.js	if (content) global.parent.postMessage	if (false) global.parent.postMessage	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/shell.mjs	(window.location.pathname)}${keep}`);	(window.location.pathname)}`);	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	} else if (msg.cairn === 'login') {	} else if (false) {	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/content.mjs	if (url.pathname === `/api/artifacts/${keys.artifact}/versions`) return	if (false) return	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	exactFields(v, ['id', 'seq', 'name', 'changelog', 'createdAt'], 'context version');	if (false) exactFields(v, [], 'context version');	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (!Number.isSafeInteger(v.seq))	if (false)	node --test internal/server/web/content_test.mjs

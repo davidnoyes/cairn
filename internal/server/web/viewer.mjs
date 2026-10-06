@@ -616,11 +616,13 @@ export async function listVersions(deps, opened) {
 }
 
 // loadContext is the context a keys message carries: the artifact's id, name,
-// and description, and the latest record's owner and members from the
-// directory. A visitor with no account has no directory, so users is empty.
+// and description, the versions info lists with their opened names and
+// changelogs, and the latest record's owner and members from the directory.
+// A visitor with no account has no directory, so users is empty.
 export async function loadContext(deps, opened, info) {
   const artifact = { id: opened.artifact, name: info.name, description: info.description ?? '' };
-  if (!opened.caller) return { artifact, users: [] };
+  const versions = info.versions ?? [];
+  if (!opened.caller) return { artifact, users: [], versions };
   const users = [];
   for (const id of [opened.latest.owner, ...opened.latest.members.map((m) => m.user)]) {
     try {
@@ -630,7 +632,7 @@ export async function loadContext(deps, opened, info) {
       if (!notFound(err)) throw err;
     }
   }
-  return { artifact, users };
+  return { artifact, users, versions };
 }
 
 // keysMessage builds the keys message for version, which checkKeysMessage in

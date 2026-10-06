@@ -140,7 +140,7 @@ export async function vouchFor(owner, vid, manifestHash, { over = {}, seed = own
 export async function makeVersion(world, vid, { epoch = 1, signer, over, vouch, seq = 1, hash } = {}) {
   const m = await manifestFor(world, vid, { epoch, signer, over });
   return {
-    json: { id: vid, artifactId: ARTIFACT, name: '', seq, epoch, manifestHash: hash ?? m.manifestHash, vouch: vouch ?? null },
+    json: { id: vid, artifactId: ARTIFACT, name: '', seq, epoch, createdAt: new Date(Date.UTC(2026, 0, seq)).toISOString(), manifestHash: hash ?? m.manifestHash, vouch: vouch ?? null },
     blob: m.blob,
     manifestHash: m.manifestHash,
   };

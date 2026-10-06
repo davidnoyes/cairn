@@ -1144,6 +1144,9 @@ test('loadContext lists the owner and members from the directory, and nobody for
   assert.deepEqual(ctx.artifact, { id: ARTIFACT, name: 'Guestbook', description: 'Sign here' });
   assert.deepEqual(ctx.users.map((u) => u.id).sort(), [U.owner.id, U.editor.id, U.viewer.id].sort());
   assert.deepEqual(Object.keys(ctx.users[0]).sort(), ['email', 'id', 'name']);
+  assert.deepEqual(ctx.versions, [], 'no versions given, none listed');
+  const versions = [{ id: V1, seq: 1, name: 'v1', changelog: '', createdAt: '2026-01-01T00:00:00Z' }];
+  assert.deepEqual((await loadContext(s.deps, s.opened, { name: 'n', versions })).versions, versions);
   s.server.notFound.add(U.editor.id);
   assert.equal((await loadContext(s.deps, s.opened, { name: 'n' })).users.length, 2, 'a user the directory dropped is skipped');
   assert.equal((await loadContext(s.deps, s.opened, { name: 'n' })).artifact.description, '');
@@ -1151,6 +1154,7 @@ test('loadContext lists the owner and members from the directory, and nobody for
   const pub = await scene({ isPublic: true });
   const visitor = await open(pub, linkFor(pub.world));
   assert.deepEqual((await loadContext(pub.deps, visitor, { name: 'n' })).users, []);
+  assert.deepEqual((await loadContext(pub.deps, visitor, { name: 'n', versions })).versions, versions, 'a visitor sees the versions too');
 });
 
 test('mintToken posts for a member without a link token', async () => {

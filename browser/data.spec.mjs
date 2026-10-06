@@ -4,6 +4,7 @@
 // engine, and puts back any membership it changes.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, test } from './test.mjs';
 import { MARKER, cli, contentFrame, files, loadState, openShared, signIn } from './helpers.mjs';
 
@@ -72,6 +73,60 @@ test('guestbook: a viewer is told their note was not saved, and keeps it', async
   } finally {
     await context.close();
   }
+});
+
+test('guestbook: a visitor with a public link who signs in to write comes back to it, and the note lands', async ({ ownerPage, browser, browserName }) => {
+  const s = loadState();
+  const name = `guestbook-public-${browserName}`;
+  const dir = fileURLToPath(new URL('../examples/guestbook', import.meta.url));
+  const id = JSON.parse(cli('owner', ['push', dir, '--artifact', name, '--create', '--json'])).artifact.id;
+  const { link } = JSON.parse(cli('owner', ['public', id, 'on', '--writes', 'on', '--json']));
+  // The owner's visit creates the table; an anonymous visitor's could not.
+  const owned = await openShared(ownerPage, id);
+  await expect(owned.locator('#who')).not.toHaveText('…');
+
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await page.goto(link);
+    let frame = await contentFrame(page, { url: link });
+    await expect(frame.locator('#who')).toHaveText('anonymous (read-only)');
+    await frame.locator('#message').fill('first');
+    await frame.locator('#message').press('Enter');
+    await page.waitForURL((u) => u.pathname === '/login');
+    expect(new URL(page.url()).searchParams.get('next')).toBe(`/shared/${id}`);
+
+    // A signed-in visitor who is not a member writes through the link.
+    const visitor = s.users.viewer;
+    await page.locator('#email').fill(visitor.email);
+    await page.locator('#password').fill(visitor.password);
+    await page.locator('#submit').click();
+    await page.waitForURL((u) => u.pathname === `/shared/${id}`, { timeout: 60_000 });
+    expect(new URL(page.url()).hash, 'the key leaves the address bar again').toBe('');
+    frame = await contentFrame(page, { url: link });
+    await expect(frame.locator('#who')).not.toHaveText(/…|anonymous/);
+    const note = `link-${browserName}-${Date.now()}`;
+    await frame.locator('#message').fill(note);
+    await frame.locator('#message').press('Enter');
+    await expect(frame.locator('#entries')).toContainText(note);
+  } finally {
+    await context.close();
+  }
+});
+
+test('versions: cairn.versions() lists each version with its opened name and changelog', async ({ ownerPage, browserName }) => {
+  const s = loadState();
+  const push = (args) => JSON.parse(cli('owner', ['push', `${s.fixturesDir}/marker`, ...args, '--json']));
+  const first = push(['--artifact', `versions-${browserName}`, '--create', '--name', 'one', '--changelog', 'the first']);
+  const second = push(['--artifact', first.artifact.id, '--name', 'two', '--changelog', 'the second']);
+  const frame = await openShared(ownerPage, first.artifact.id);
+  await expect(frame.locator('#marker')).toHaveText(MARKER);
+  const listed = await frame.evaluate(() => window.cairn.versions());
+  expect(listed.map(({ id, seq, name, changelog }) => ({ id, seq, name, changelog }))).toEqual([
+    { id: second.version.id, seq: 2, name: 'two', changelog: 'the second' },
+    { id: first.version.id, seq: 1, name: 'one', changelog: 'the first' },
+  ]);
+  expect(listed.every((v) => !Number.isNaN(Date.parse(v.createdAt))), 'each version has its time').toBe(true);
 });
 
 test('poll: a vote is counted', async ({ ownerPage }) => {

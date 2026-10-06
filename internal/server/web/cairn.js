@@ -544,7 +544,12 @@
     artifact: function () { return backend.artifact(); },
     versions: function () { return backend.versions(); },
     login: function () {
-      location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
+      // On a content origin the page is the shell's sandboxed frame, which
+      // cannot reach the sign-in page, so the shell goes there. The message
+      // carries nothing, and the content origin's frame-ancestors makes the
+      // shell the only possible parent.
+      if (content) global.parent.postMessage({ cairn: 'login' }, '*');
+      else location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
     },
     db: {
       query: function (sql, params, opts) { return backend.query(sql, params, opts); },
