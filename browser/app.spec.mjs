@@ -90,11 +90,71 @@ test('app: Account holds API keys and the successor, and only an admin has the A
   await expect(admin.getByRole('heading')).toHaveText(['Users']);
   await expect(admin.locator('#users tr[data-user]').filter({ hasText: s.users.owner.email })).toHaveCount(1);
 
-  const { context, page } = await signedInContext(browser, 'viewer');
+  // The viewer's page never asks for an administrator route: hiding the tab
+  // is not enough if the app still loads the users list behind it.
+  const context = await browser.newContext();
+  const api = [];
+  context.on('request', (req) => {
+    const { pathname } = new URL(req.url());
+    if (pathname.startsWith('/api/')) api.push(pathname);
+  });
   try {
+    const page = await context.newPage();
+    await signIn(page, s.users.viewer.email, s.users.viewer.password);
     await openTab(page, 'Artifacts');
     await expect(page.getByRole('tab')).toHaveText(['Artifacts', 'Account']);
+    await page.waitForLoadState('networkidle');
+    expect(api).toContain('/api/keys');
+    expect(api.filter((p) => p.startsWith('/api/admin/'))).toEqual([]);
     await expect(page.locator('#users tr')).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test('app: the arrow keys, Home, and End move between tabs, past one that is hidden', async ({ ownerPage, browser }) => {
+  const s = loadState();
+  // expectTab checks the named tab is selected, focused, and showing its panel.
+  const expectTab = async (page, name) => {
+    const tab = page.getByRole('tab', { name, exact: true });
+    await expect(tab).toHaveAttribute('aria-selected', 'true');
+    await expect(tab).toBeFocused();
+    await expect(page.getByRole('tabpanel', { name, exact: true })).toBeVisible();
+  };
+  // WebKit does not focus a button on click, so focus the tab directly.
+  await openTab(ownerPage, 'Artifacts');
+  await ownerPage.getByRole('tab', { name: 'Artifacts' }).focus();
+  for (const [key, name] of [['ArrowRight', 'Account'], ['ArrowRight', 'Admin'], ['ArrowRight', 'Artifacts'], ['ArrowLeft', 'Admin'], ['Home', 'Artifacts'], ['End', 'Admin']]) {
+    await ownerPage.keyboard.press(key);
+    await expectTab(ownerPage, name);
+  }
+
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await signIn(page, s.users.viewer.email, s.users.viewer.password);
+    await openTab(page, 'Artifacts');
+    await page.getByRole('tab', { name: 'Artifacts' }).focus();
+    for (const [key, name] of [['End', 'Account'], ['ArrowRight', 'Artifacts'], ['ArrowLeft', 'Account']]) {
+      await page.keyboard.press(key);
+      await expectTab(page, name);
+    }
+  } finally {
+    await context.close();
+  }
+});
+
+test('app: a message at the foot of a long tab scrolls into view when it appears', async ({ browser }) => {
+  const s = loadState();
+  const context = await browser.newContext({ viewport: { width: 800, height: 400 } });
+  try {
+    const page = await context.newPage();
+    await signIn(page, s.users.viewer.email, s.users.viewer.password);
+    await openTab(page, 'Account');
+    await page.getByRole('button', { name: 'Name successor' }).click();
+    const msg = page.locator('#successor-status');
+    await expect(msg).not.toHaveText('');
+    await expect(msg).toBeInViewport();
   } finally {
     await context.close();
   }

@@ -117,6 +117,37 @@ func TestNoAdminEndpointCreatesAccountsOrKeysOrSetsPasswords(t *testing.T) {
 	loginAgain(t, c, "x@example.com", "x-pw")
 }
 
+// TestAdminRoutesRefuseEveryoneElse sends each administrator route a request
+// from a signed-in user who is not an administrator, and one from a visitor:
+// each is refused, and the account the requests name is unchanged.
+func TestAdminRoutesRefuseEveryoneElse(t *testing.T) {
+	s, ts := testServer(t)
+	u := seedAccount(t, s, "user@example.com", "user-pw", false)
+	user := login(t, ts.URL, "user@example.com", "user-pw")
+	visitor := &testClient{t: t, base: ts.URL}
+	for _, call := range []struct {
+		method, path string
+		body         any
+	}{
+		{"GET", "/api/admin/users", nil},
+		{"PATCH", "/api/admin/users/" + u.ID, map[string]any{"isAdmin": true}},
+		{"DELETE", "/api/admin/users/" + u.ID, nil},
+		{"GET", "/api/admin/users/" + u.ID + "/artifacts", nil},
+		{"POST", "/api/admin/artifacts/x/transfer", map[string]any{"to": u.ID}},
+		{"DELETE", "/api/admin/artifacts/x", nil},
+	} {
+		wantStatus(t, user, call.method, call.path, call.body, http.StatusForbidden)
+		wantStatus(t, visitor, call.method, call.path, call.body, http.StatusUnauthorized)
+	}
+	got, err := s.store.UserByEmail("user@example.com")
+	if err != nil {
+		t.Fatalf("the account is gone: %v", err)
+	}
+	if got.IsAdmin {
+		t.Error("the account became an administrator")
+	}
+}
+
 func TestDirectoryExcludesDisabledAndUnverified(t *testing.T) {
 	s, ts := newTestServer(t, func(c *Config) { c.SignupDomains = []string{"example.com"} })
 	seedAccount(t, s, "admin@example.com", "admin-password", true)

@@ -1,9 +1,10 @@
 // Milestone 7 browser tests: the successor. See design/e2e-api.md "Successor".
 //
 // The page's contract with these tests:
-// - The Account tab's successor section, with #current-successor, #nominate-form (#nominate-user,
-//   #nominate-code, #nominate-password, "Name successor"), #my-code, the
-//   #successions rows (tr[data-user]) and #successor-status.
+// - The Account tab's successor sections, with #current-successor,
+//   #nominate-form (#nominate-user, #nominate-code, #nominate-password,
+//   "Name successor"), #my-code, the #successions rows (tr[data-user]) and
+//   #successor-status.
 // - On every tab: #succession-banner with #refuse-succession while a request
 //   is pending, and #rotate-banner once the successor is released.
 // - /refuse: #email, input[name=mode] (password or recovery), #password,

@@ -178,7 +178,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAppPage serves the signed-in home; the page itself talks to the JSON
-// APIs, and shows the Users tab to an administrator. A visitor with no session
+// APIs, and shows the Admin tab to an administrator. A visitor with no session
 // is sent to sign in, and back.
 func (s *Server) handleAppPage(w http.ResponseWriter, r *http.Request) {
 	if u, err := s.currentUser(r); err != nil || u == nil {

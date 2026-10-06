@@ -481,12 +481,12 @@ first:
 Browser tests, written first:
 
 - The user nominates a successor with the code from the successor's
-  **Successor** tab, and a wrong code changes nothing.
+  **Account** tab, and a wrong code changes nothing.
 - A pending request shows the banner on every tab, and **Refuse** ends it.
 - `/refuse` works for a deactivated account by password or by recovery
   code. It shows the deactivation.
 - A released successor opens an artifact the user owns from the
-  **Successor** tab, and the user sees the banner that asks them to rotate.
+  **Account** tab, and the user sees the banner that asks them to rotate.
 
 Security regressions added: refusal survives deactivation, and the estate key
 does not open shared artifacts (H5, M2).

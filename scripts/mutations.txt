@@ -2319,3 +2319,10 @@ internal/server/web/app.html	data-part="copied"	data-part="copieds"	node --test 
 internal/server/web/signup.html	role="img" data-part="masked"	data-part="masked"	node --test internal/server/web/ui_test.mjs
 internal/server/web/reset.html	role="img" data-part="masked"	data-part="masked"	node --test internal/server/web/ui_test.mjs
 internal/server/web/app.html	role="img" data-part="masked"	data-part="masked"	node --test internal/server/web/ui_test.mjs
+internal/server/routes.go	s.requireAdmin(s.handleAdminListUsers)	s.handleAdminListUsers	go test ./internal/server -run TestAdminRoutesRefuseEveryoneElse -count=1
+internal/server/routes.go	s.requireAdmin(s.handleAdminUpdateUser)	s.handleAdminUpdateUser	go test ./internal/server -run TestAdminRoutesRefuseEveryoneElse -count=1
+internal/server/routes.go	s.requireAdmin(s.handleAdminDeleteUser)	s.handleAdminDeleteUser	go test ./internal/server -run TestAdminRoutesRefuseEveryoneElse -count=1
+internal/server/routes.go	s.requireAdmin(s.handleAdminUserArtifacts)	s.handleAdminUserArtifacts	go test ./internal/server -run TestAdminRoutesRefuseEveryoneElse -count=1
+internal/server/routes.go	s.requireAdmin(s.handleAdminOfferTransfer)	s.handleAdminOfferTransfer	go test ./internal/server -run TestAdminRoutesRefuseEveryoneElse -count=1
+internal/server/routes.go	s.requireAdmin(s.handleAdminDeleteArtifact)	s.handleAdminDeleteArtifact	go test ./internal/server -run TestAdminRoutesRefuseEveryoneElse -count=1
+internal/server/middleware.go	if !requestUser(r).IsAdmin {	if false {	go test ./internal/server -run TestAdminRoutesRefuseEveryoneElse -count=1

@@ -32,6 +32,8 @@ function status(id, msg, bad = false) {
   const el = $(id);
   el.textContent = msg;
   el.classList.toggle('bad', bad);
+  // A message can sit below the fold of a long tab; bring it into view.
+  if (msg) el.scrollIntoView({ block: 'nearest' });
 }
 function failIn(id) {
   return (err) => { if (!(err instanceof UnauthenticatedError)) status(id, describeError(err), true); };
@@ -92,10 +94,25 @@ function selectTab(tab) {
     $(t.getAttribute('aria-controls')).classList.toggle('active', on);
   }
 }
+// The arrow keys, Home, and End move between the tabs a user can see, and
+// select the one they land on.
+const moves = { ArrowLeft: -1, ArrowRight: 1 };
 for (const t of tabs) {
   t.addEventListener('click', () => {
     selectTab(t);
     if (me) refreshBanners();
+  });
+  t.addEventListener('keydown', (event) => {
+    const shown = tabs.filter((x) => !x.hidden);
+    const i = shown.indexOf(t);
+    const to = event.key === 'Home' ? shown[0]
+      : event.key === 'End' ? shown[shown.length - 1]
+      : event.key in moves ? shown[(i + moves[event.key] + shown.length) % shown.length]
+      : null;
+    if (!to) return;
+    event.preventDefault();
+    to.focus();
+    to.click();
   });
 }
 selectTab(tabs[0]);
