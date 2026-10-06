@@ -1952,7 +1952,7 @@ internal/server/web/sharing.mjs	manifestHash: await e2e.bodyHash(body) })	manife
 internal/server/web/sharing.mjs	if (epoch !== null && epoch >= va.latest.epoch) continue;	if (false) continue;	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	writers: old.writers, publicWrites: false };	writers: old.writers, publicWrites: true };	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	res.skipped.push({ what: `the ${field} of ${label}`, reason: err.message });	throw err;	node --test internal/server/web/sharing_test.mjs
-internal/server/web/meta.mjs	if (values.name) Object.assign(out, { name: values.name, named: true });	if (values.name !== undefined) Object.assign(out, { name: values.name, named: true });	node --test internal/server/web/meta_test.mjs
+internal/server/web/meta.mjs	if (values.name?.trim()) Object.assign(out, { name: values.name, named: true });	if (values.name !== undefined) Object.assign(out, { name: values.name, named: true });	node --test internal/server/web/meta_test.mjs
 internal/server/web/meta.mjs	out.description = values.description ?? '';	out.description = view.description ?? '';	node --test internal/server/web/meta_test.mjs
 internal/server/web/meta.mjs	if (unreadable.length > 0) out.error	if (unreadable.length > 1) out.error	node --test internal/server/web/meta_test.mjs
 internal/server/web/sharing.mjs	r.currentFp = u ? u.fp : '';	r.currentFp = r.fp;	node --test internal/server/web/sharing_test.mjs
