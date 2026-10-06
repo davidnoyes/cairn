@@ -1175,7 +1175,7 @@ internal/server/web/viewer.mjs	return opened.mode === 'link' ? versions.filter	r
 internal/server/web/viewer.mjs	v.epoch === opened.link.epoch	true	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (!opened.caller) return { token: null, tokenExpires: null };	void 0;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	call(deps, opened.linkToken, 'POST'	call(deps, null, 'POST'	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	if (!opened.caller) return { artifact, users: [] };	void 0;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!opened.caller) return { artifact, users: [], versions };	void 0;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	    linkToken: opened.linkToken,	    linkToken: null,	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	    epoch: version.epoch,	    epoch: 1,	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	- 60000 - now()	- 0 - now()	node --test internal/server/web/viewer_test.mjs
@@ -1960,9 +1960,9 @@ internal/server/web/meta.mjs	if (unreadable.length > 0) out.error	if (unreadable
 internal/server/web/sharing.mjs	r.currentFp = u ? u.fp : '';	r.currentFp = r.fp;	node --test internal/server/web/sharing_test.mjs
 internal/server/web/shell.mjs	const name = values.name || artifact;	const name = info.name || values.name || artifact;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	const description = values.description ?? '';	const description = info.description ?? values.description ?? '';	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	(await readMeta(deps, opened, v.meta, v.id)).values.name	v.name	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	(await readMeta(deps, opened, v.meta, v.id)).values.name	(await readMeta(deps, opened, v.meta)).values.name	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	const context = await loadContext(deps, opened, { name, description });	const context = await loadContext(deps, opened, info);	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	const { values: fields } = await readMeta(deps, opened, v.meta, v.id);	const fields = v;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	const { values: fields } = await readMeta(deps, opened, v.meta, v.id);	const { values: fields } = await readMeta(deps, opened, v.meta);	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	const context = await loadContext(deps, opened, { name, description, versions: listed });	const context = await loadContext(deps, opened, { ...info, versions: listed });	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	frame.setAttribute('title', name);	frame.setAttribute('title', info.name);	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	if (err instanceof LockedError) {	if (false) {	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/viewer.mjs	if (found?.locked || (!found && await sessionUser(deps))) throw new LockedError();	if (found?.locked) throw new LockedError();	node --test internal/server/web/viewer_test.mjs
@@ -2264,3 +2264,10 @@ internal/server/web/shell.mjs	} else if (msg.cairn === 'login') {	} else if (fal
 internal/server/web/content.mjs	if (url.pathname === `/api/artifacts/${keys.artifact}/versions`) return	if (false) return	node --test internal/server/web/content_test.mjs
 internal/server/web/content.mjs	exactFields(v, ['id', 'seq', 'name', 'changelog', 'createdAt'], 'context version');	if (false) exactFields(v, [], 'context version');	node --test internal/server/web/content_test.mjs
 internal/server/web/content.mjs	if (!Number.isSafeInteger(v.seq))	if (false)	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	if (!Array.isArray(msg.context.versions)) throw	if (false) throw	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	checkString(v.name, 'context version name');	void 0;	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	checkString(v.changelog, 'context version changelog');	void 0;	node --test internal/server/web/content_test.mjs
+internal/server/web/content.mjs	checkString(v.createdAt, 'context version createdAt');	void 0;	node --test internal/server/web/content_test.mjs
+internal/server/web/cairn.js	if (content) global.parent.postMessage	if (true) global.parent.postMessage	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/account.mjs	return (next || '/') + hash;	return next || '/';	node --test internal/server/web/account_test.mjs
+internal/server/web/shell.mjs	changelog: fields.changelog ?? ''	changelog: ''	node --test internal/server/web/shell_page_test.mjs
