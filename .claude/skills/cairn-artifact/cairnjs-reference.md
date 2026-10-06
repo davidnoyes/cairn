@@ -49,6 +49,8 @@ writes on.
 
 `cairn.login()` takes the whole page to the sign-in page, so anything typed
 and not yet saved is lost. Save it, or warn the visitor, before you call it.
+The visitor comes back to the version's start page, without any query string
+or other state your page held.
 
 ## Metadata
 
@@ -59,8 +61,8 @@ await cairn.versions();   // [{id, seq, name, changelog, createdAt}], newest fir
 
 `cairn.artifact()` has no `public` or `resources` field in remote mode.
 
-`cairn.versions()` lists the versions that existed when the page loaded. A
-version pushed later appears after a reload.
+On the shared and full pages, `cairn.versions()` lists the versions that
+existed when the page loaded. A version pushed later appears after a reload.
 
 ## Shared database
 

@@ -125,12 +125,12 @@ test('login asks the shell to sign in, since the frame cannot reach the sign-in 
   assert.deepEqual(JSON.parse(JSON.stringify(posted)), [[{ cairn: 'login' }, '*']]);
 });
 
-test('login off a content origin goes to the sign-in page itself, and back to this page', () => {
+test('login on the app origin goes to the sign-in page itself, and back to this page', () => {
   const posted = [];
-  const location = { protocol: 'file:', hostname: '', pathname: '/notes/index.html', search: '?tab=2' };
+  const location = { protocol: 'http:', hostname: 'localhost', pathname: `/artifacts/${A}/${V}/index.html`, search: '?tab=2' };
   const { cairn } = load(worker(), 0, { parent: { postMessage: (msg) => posted.push(msg) } }, location);
   cairn.login();
-  assert.equal(location.href, '/login?next=%2Fnotes%2Findex.html%3Ftab%3D2');
+  assert.equal(location.href, `/login?next=${encodeURIComponent(`/artifacts/${A}/${V}/index.html?tab=2`)}`);
   assert.deepEqual(posted, []);
 });
 
