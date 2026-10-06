@@ -177,6 +177,12 @@ test('the name, description, and version names come from the sealed fields, neve
   assert.equal(p.dom.els.desc.textContent, 'Sign here');
   assert.deepEqual(p.dom.els.version.children.map((o) => o.textContent), ['#2 Release', '#1']);
   assert.equal(p.frame().attrs.title, 'Guestbook');
+  await p.post({ cairn: 'ready', version: null, path: null });
+  const created = (v) => p.server.versions.get(v).json.createdAt;
+  assert.deepEqual(p.posted()[0][0].context.versions, [
+    { id: V2, seq: 2, name: 'Release', changelog: '', createdAt: created(V2) },
+    { id: V1, seq: 1, name: '', changelog: '', createdAt: created(V1) },
+  ]);
 });
 
 test('a name that fails its checks, or that nobody wrote, shows the artifact ID', async () => {
@@ -263,6 +269,7 @@ test('a message from another window, or another origin, is ignored', async () =>
     { cairn: 'ready', version: null, path: null },
     { cairn: 'need-keys', version: V1 },
     { cairn: 'navigate', href: `/shared/${ARTIFACT}` },
+    { cairn: 'login' },
   ];
   for (const m of msgs) {
     await p.post(m, { source: { postMessage() {} } });
@@ -491,6 +498,21 @@ test('navigate ignores everything else', async () => {
     await p.post({ cairn: 'navigate', href });
   }
   assert.deepEqual(p.assigned, []);
+});
+
+test('login goes to sign in and back to this page, carrying a public link but not a member\'s anchor', async () => {
+  const p = await page({ isPublic: true, members: [], noRun: true });
+  const hash = `#k=${e2e.b64(p.world.aks[1])}&e=1&o=${U.owner.fp}`;
+  p.window.location.hash = hash;
+  await p.start();
+  await p.post({ cairn: 'login' });
+  assert.deepEqual(p.assigned, [`/login?next=${encodeURIComponent(`/shared/${ARTIFACT}`)}${hash}`]);
+
+  const member = await page({ who: 'viewer', mode: 'full', hash: '#section', noRun: true });
+  member.window.location.pathname = `/full/${ARTIFACT}/${V1}`;
+  await member.start();
+  await member.post({ cairn: 'login' });
+  assert.deepEqual(member.assigned, [`/login?next=${encodeURIComponent(`/full/${ARTIFACT}/${V1}`)}`]);
 });
 
 test('the content token is renewed and posted to the frame', async () => {

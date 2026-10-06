@@ -294,6 +294,7 @@ function goodKeys() {
     context: {
       artifact: { id: ARTIFACT, name: 'n', description: 'd' },
       users: [{ id: USER, name: 'u', email: 'u@example.com' }],
+      versions: [{ id: VERSION, seq: 1, name: 'v1', changelog: 'first', createdAt: '2026-01-01T00:00:00Z' }],
     },
     path: '/index.html',
     aks: { 3: ak, 4: e2e.b64(randomBytes(32)) },
@@ -307,7 +308,7 @@ describe('checkKeysMessage', () => {
   test('accepts a full message and the nullable forms', () => {
     assert.ok(c.checkKeysMessage(goodKeys()));
     const k = { ...goodKeys(), signer: null, token: null, tokenExpires: null, linkToken: null };
-    k.context = { artifact: k.context.artifact, users: [] };
+    k.context = { artifact: k.context.artifact, users: [], versions: [] };
     assert.ok(c.checkKeysMessage(k));
   });
   test('refuses unknown and missing fields', () => {
@@ -319,6 +320,8 @@ describe('checkKeysMessage', () => {
     const ctx = goodKeys().context;
     assert.throws(() => c.checkKeysMessage({ ...goodKeys(), context: { ...ctx, extra: 1 } }), /fields/);
     assert.throws(() => c.checkKeysMessage({ ...goodKeys(), context: { ...ctx, users: [{ id: USER, name: 'u' }] } }), /fields/);
+    assert.throws(() => c.checkKeysMessage({ ...goodKeys(), context: { artifact: ctx.artifact, users: [] } }), /fields/);
+    assert.throws(() => c.checkKeysMessage({ ...goodKeys(), context: { ...ctx, versions: [{ ...ctx.versions[0], meta: {} }] } }), /fields/);
   });
   test('refuses wrong types and values', () => {
     const bad = (over, why) => assert.throws(() => c.checkKeysMessage({ ...goodKeys(), ...over }), c.ContentError, why);
@@ -346,6 +349,14 @@ describe('checkKeysMessage', () => {
     bad({ context: { artifact: { id: ARTIFACT, name: 1, description: 'd' }, users: [] } }, 'context name');
     bad({ context: { artifact: goodKeys().context.artifact, users: {} } }, 'users type');
     bad({ context: { artifact: goodKeys().context.artifact, users: [{ id: 'x', name: 'u', email: 'e' }] } }, 'user id');
+    const ver = (over) => ({ context: { ...goodKeys().context, versions: [{ ...goodKeys().context.versions[0], ...over }] } });
+    bad({ context: { ...goodKeys().context, versions: {} } }, 'versions type');
+    bad(ver({ id: 'x' }), 'version id');
+    bad(ver({ seq: 1.5 }), 'fraction seq');
+    bad(ver({ seq: '1' }), 'string seq');
+    bad(ver({ name: 1 }), 'version name');
+    bad(ver({ changelog: null }), 'version changelog');
+    bad(ver({ createdAt: 7 }), 'version createdAt');
     assert.throws(() => c.checkKeysMessage(null));
     assert.throws(() => c.checkKeysMessage([]));
   });
@@ -400,10 +411,16 @@ describe('apiRequest', () => {
     const res = c.apiRequest(req('/api/users'), keys);
     assert.deepEqual(await res.json(), keys.context.users);
   });
+  test('answers the versions read from context, since the server holds only their sealed names', async () => {
+    const res = c.apiRequest(req(`/api/artifacts/${ARTIFACT}/versions`), keys);
+    assert.ok(res instanceof Response);
+    assert.deepEqual(await res.json(), keys.context.versions);
+  });
   test('forwards any other artifact or method', () => {
     assert.ok(c.apiRequest(req(`/api/artifacts/${OTHER}`), keys) instanceof Request);
     assert.ok(c.apiRequest(req(`/api/artifacts/${ARTIFACT}`, { method: 'DELETE' }), keys) instanceof Request);
-    assert.ok(c.apiRequest(req(`/api/artifacts/${ARTIFACT}/versions`), keys) instanceof Request);
+    assert.ok(c.apiRequest(req(`/api/artifacts/${OTHER}/versions`), keys) instanceof Request);
+    assert.ok(c.apiRequest(req(`/api/artifacts/${ARTIFACT}/versions`, { method: 'POST' }), keys) instanceof Request);
   });
   test('adds the held credentials', () => {
     const out = c.apiRequest(req(`/api/artifacts/${ARTIFACT}/db`), keys);

@@ -75,10 +75,9 @@ function worker() {
 // load runs cairn.js as a page on the artifact's content origin. Loading a
 // script tag defines initSqlJs, which records where it was told the wasm is.
 // failLoads is how many script loads fail before one succeeds.
-function load(w = worker(), failLoads = 0) {
+function load(w = worker(), failLoads = 0, window = {}) {
   const scripts = [];
   const located = [];
-  const window = {};
   const document = {
     createElement: () => ({}),
     head: {
@@ -118,6 +117,13 @@ function load(w = worker(), failLoads = 0) {
   };
   return { cairn, w, scripts, located };
 }
+
+test('login asks the shell to sign in, since the frame cannot reach the sign-in page', () => {
+  const posted = [];
+  const { cairn } = load(worker(), 0, { parent: { postMessage: (msg, origin) => posted.push([msg, origin]) } });
+  cairn.login();
+  assert.deepEqual(JSON.parse(JSON.stringify(posted)), [[{ cairn: 'login' }, '*']]);
+});
 
 test('sql.js loads once, from /_cairn/ on the same origin', async () => {
   const { cairn, scripts, located } = load();

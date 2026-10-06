@@ -88,7 +88,7 @@ async function keysFor(f, over = {}) {
     token: 'tok',
     tokenExpires: null,
     linkToken: null,
-    context: { artifact: { id: ARTIFACT, name: 'n', description: 'd' }, users: [] },
+    context: { artifact: { id: ARTIFACT, name: 'n', description: 'd' }, users: [], versions: [{ id: VERSION, seq: 1, name: 'v1', changelog: '', createdAt: '2026-01-01T00:00:00.000Z' }] },
     path: '/index.html',
     aks: { 3: e2e.b64(f.ak) },
     currentEpoch: 3,
@@ -144,7 +144,7 @@ test('without keys: a subresource asks the page, then answers 503 after 10 secon
 test('refuses keys from another origin, for another artifact, or with an unknown field', async () => {
   assert.deepEqual(await send(await keysFor(f), 'http://evil.example'), []);
   calls.length = 0;
-  const other = await send(await keysFor(f, { artifact: OTHER, context: { artifact: { id: OTHER, name: 'n', description: 'd' }, users: [] } }));
+  const other = await send(await keysFor(f, { artifact: OTHER, context: { artifact: { id: OTHER, name: 'n', description: 'd' }, users: [], versions: [] } }));
   assert.equal(other[0].cairn, 'keys-error');
   assert.equal(calls.length, 0, 'no fetch for another artifact');
   const extra = await send(await keysFor(f, { extra: 1 }));
@@ -184,7 +184,7 @@ test('it does not intercept /_cairn/ or another origin', () => {
   assert.equal(dispatch(`${ORIGIN}/plain`), null);
 });
 
-test('api: answers two reads itself, and adds the token to the rest', async () => {
+test('api: answers three reads itself, and adds the token to the rest', async () => {
   calls.length = 0;
   const art = await dispatch(`${ORIGIN}/api/artifacts/${ARTIFACT}`);
   assert.equal(art.status, 200);
@@ -192,6 +192,9 @@ test('api: answers two reads itself, and adds the token to the rest', async () =
   const users = await dispatch(`${ORIGIN}/api/users`);
   assert.equal(users.status, 200);
   assert.deepEqual(await users.json(), []);
+  const versions = await dispatch(`${ORIGIN}/api/artifacts/${ARTIFACT}/versions`);
+  assert.equal(versions.status, 200);
+  assert.deepEqual(await versions.json(), [{ id: VERSION, seq: 1, name: 'v1', changelog: '', createdAt: '2026-01-01T00:00:00.000Z' }]);
   assert.equal(calls.length, 0);
 
   await dispatch(`${ORIGIN}/api/artifacts/${ARTIFACT}/db`, { headers: { Authorization: 'Bearer evil' } });

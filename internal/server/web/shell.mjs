@@ -106,10 +106,13 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
     const chosen = pageVersion || versions[0]?.id;
     if (!chosen) throw new Error('This artifact has no versions yet.');
     const picker = $('version');
+    const listed = [];
     for (const v of versions) {
+      const { values: fields } = await readMeta(deps, opened, v.meta, v.id);
+      listed.push({ id: v.id, seq: v.seq, name: fields.name ?? '', changelog: fields.changelog ?? '', createdAt: v.createdAt });
       const option = document.createElement('option');
       option.value = v.id;
-      option.textContent = versionLabel(v.seq, (await readMeta(deps, opened, v.meta, v.id)).values.name);
+      option.textContent = versionLabel(v.seq, fields.name);
       option.selected = v.id === chosen;
       picker.appendChild(option);
     }
@@ -119,7 +122,7 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
 
     // Only a trusted version is framed.
     await verify(chosen);
-    const context = await loadContext(deps, opened, { name, description });
+    const context = await loadContext(deps, opened, { name, description, versions: listed });
     const writers = await writerKeys(deps, opened);
     const keeper = keepToken({
       mint: () => mintToken(deps, opened),
@@ -156,6 +159,10 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
         } else if (validVersion(msg.version) && contentTarget(msg.version, msg.path)) answer(msg.version, msg.path);
       } else if (msg.cairn === 'need-keys') {
         if (validVersion(msg.version)) answer(msg.version, '/');
+      } else if (msg.cairn === 'login') {
+        // A public link's key rides on the sign-in page's fragment, which
+        // never reaches the server, and comes back with the person.
+        window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}${keep}`);
       } else if (msg.cairn === 'navigate') {
         const target = typeof msg.href === 'string' ? navigateTarget(msg.href, { origin: window.location.origin, mode }) : null;
         if (target) window.location.assign(target);
