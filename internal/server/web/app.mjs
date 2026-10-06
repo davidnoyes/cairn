@@ -461,14 +461,14 @@ $('rc-form').addEventListener('submit', async (event) => {
   try {
     const { recoveryCode } = await newRecoveryCode(deps, { password: password.value });
     status('account-status', 'Save the new recovery code now: it is not shown again, and the old one no longer works.');
-    showing = true;
-    password.disabled = true;
     confirmRecoveryCode($('rc-panel'), recoveryCode, () => {
       password.disabled = false;
       button.disabled = false;
       password.focus();
       status('account-status', 'New recovery code saved.');
     });
+    showing = true; // only once the panel is up, or nothing could turn the form back on
+    password.disabled = true;
   } catch (err) {
     failIn('account-status')(err);
   } finally {

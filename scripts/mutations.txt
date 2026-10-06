@@ -2316,3 +2316,6 @@ cmd/cairn/client_cmds.go	fill in the missing group from your saved copy: %s	type
 internal/server/web/signup.html	data-part="again"	data-part="agains"	node --test internal/server/web/ui_test.mjs
 internal/server/web/reset.html	data-part="masked"	data-part="maskeds"	node --test internal/server/web/ui_test.mjs
 internal/server/web/app.html	data-part="copied"	data-part="copieds"	node --test internal/server/web/ui_test.mjs
+internal/server/web/signup.html	role="img" data-part="masked"	data-part="masked"	node --test internal/server/web/ui_test.mjs
+internal/server/web/reset.html	role="img" data-part="masked"	data-part="masked"	node --test internal/server/web/ui_test.mjs
+internal/server/web/app.html	role="img" data-part="masked"	data-part="masked"	node --test internal/server/web/ui_test.mjs

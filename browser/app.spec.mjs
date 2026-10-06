@@ -229,7 +229,11 @@ test('signup: the page shows the recovery code with Copy, then asks for one blan
   const masked = (await panel.locator('#masked').textContent()).split('-');
   const missing = masked.findIndex((g) => /^_+$/.test(g));
   const group = panel.getByLabel('fill in the missing group from your saved copy');
-  await expect(group).toHaveAccessibleDescription(`Your code, with group ${missing + 1} of ${masked.length} left blank`);
+  // Read aloud, the masked code names the blank group, from the field and on
+  // its own, rather than a run of underscores.
+  const blank = `Your code, with group ${missing + 1} of ${masked.length} left blank`;
+  await expect(group).toHaveAccessibleDescription(blank);
+  await expect(panel.getByRole('img', { name: blank })).toBeVisible();
   await expect(panel.getByText('Lost it later?')).toBeVisible();
   await group.fill(code.split('-')[missing]);
   await panel.getByRole('button', { name: 'Confirm' }).click();
@@ -264,6 +268,9 @@ test('reset: without the recovery code, the page shows the new one, then asks fo
   const masked = (await panel.locator('#masked').textContent()).split('-');
   const missing = masked.findIndex((g) => /^_+$/.test(g));
   const group = panel.getByLabel('fill in the missing group from your saved copy');
+  const blank = `Your code, with group ${missing + 1} of ${masked.length} left blank`;
+  await expect(group).toHaveAccessibleDescription(blank);
+  await expect(panel.getByRole('img', { name: blank })).toBeVisible();
   await group.fill('ZZZZ');
   await panel.getByRole('button', { name: 'Confirm' }).click();
   await expect(panel.getByRole('alert')).toHaveText(/does not match/);
@@ -414,6 +421,9 @@ test('account: a new recovery code is shown once, and resets a forgotten passwor
     const masked = (await page.locator('#rc-masked').textContent()).split('-');
     const missing = masked.findIndex((g) => /^_+$/.test(g));
     expect(masked.map((g, i) => (i === missing ? code.split('-')[i] : g)).join('-')).toBe(code);
+    const blank = `Your code, with group ${missing + 1} of ${masked.length} left blank`;
+    await expect(page.locator('#rc-group')).toHaveAccessibleDescription(blank);
+    await expect(panel.getByRole('img', { name: blank })).toBeVisible();
     await page.locator('#rc-group').fill('ZZZZ');
     await panel.getByRole('button', { name: 'Confirm' }).click();
     await expect(panel.locator('[data-part=error]')).toHaveText(/does not match/);
