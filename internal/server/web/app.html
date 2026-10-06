@@ -19,10 +19,8 @@
     <h1 class="word">cairn</h1>
     <nav role="tablist" aria-label="Sections">
       <button role="tab" id="tab-artifacts" aria-controls="artifacts" aria-selected="true">Artifacts</button>
-      <button role="tab" id="tab-keys" aria-controls="keys-panel" aria-selected="false">API keys</button>
-      <button role="tab" id="tab-successor" aria-controls="successor-panel" aria-selected="false">Successor</button>
       <button role="tab" id="tab-account" aria-controls="account" aria-selected="false">Account</button>
-      <button role="tab" id="tab-users" aria-controls="users-panel" aria-selected="false" hidden>Users</button>
+      <button role="tab" id="tab-admin" aria-controls="admin" aria-selected="false" hidden>Admin</button>
     </nav>
     <span class="spacer"></span>
     <span class="chip" id="who"></span>
@@ -60,54 +58,6 @@
       <p class="status-line" id="artifacts-status" role="status"></p>
     </section>
 
-    <section id="keys-panel" role="tabpanel" aria-labelledby="tab-keys">
-      <h2>API keys</h2>
-      <p class="hint">A key signs in as you and opens your artifacts. It is shown once, when you create it.</p>
-      <div class="list">
-        <table>
-          <thead><tr><th>name</th><th>created</th><th>last used</th><th>type</th><th></th></tr></thead>
-          <tbody id="keys"></tbody>
-        </table>
-      </div>
-      <form class="bar" id="key-form" method="dialog">
-        <input id="key-name" placeholder="key name" aria-label="Key name" autocomplete="off">
-        <input id="key-password" type="password" placeholder="your password" aria-label="Your password" autocomplete="current-password">
-        <button class="btn primary" type="submit">Create key</button>
-      </form>
-      <p class="status-line" id="keys-status" role="status"></p>
-      <p class="secret mono" id="key-new"></p>
-    </section>
-
-    <section id="successor-panel" role="tabpanel" aria-labelledby="tab-successor">
-      <h2>Your successor</h2>
-      <p class="hint">Name one person who can read the artifacts you own, 14 days after they ask, unless you refuse. Ask them for their code, from this tab or <span class="mono">cairn successor code</span>.</p>
-      <p id="current-successor"></p>
-      <div class="actions" id="successor-actions"></div>
-      <form class="bar" id="nominate-form" method="dialog">
-        <input id="nominate-user" type="email" placeholder="their email" aria-label="Successor's email" autocomplete="off">
-        <input id="nominate-code" placeholder="their code" aria-label="Successor's code" autocomplete="off" spellcheck="false">
-        <input id="nominate-password" type="password" placeholder="your password" aria-label="Your password" autocomplete="current-password">
-        <button class="btn primary" type="submit">Name successor</button>
-      </form>
-      <h2 class="next">Your code</h2>
-      <p class="secret mono" id="my-code"></p>
-      <p class="hint">Give this code to someone who names you as their successor.</p>
-      <h2 class="next">Notice address</h2>
-      <p class="hint">Notices about a request go to your account address, and to this one once you verify it. Leave it empty to clear it.</p>
-      <form class="bar" id="notice-form" method="dialog">
-        <input id="notice-email" type="email" placeholder="a personal address" aria-label="Notice address" autocomplete="off">
-        <button class="btn primary" type="submit">Save address</button>
-      </form>
-      <h2 class="next">Users who named you</h2>
-      <div class="list">
-        <table>
-          <thead><tr><th>user</th><th>state</th><th></th></tr></thead>
-          <tbody id="successions"></tbody>
-        </table>
-      </div>
-      <p class="status-line" id="successor-status" role="status"></p>
-    </section>
-
     <section id="account" role="tabpanel" aria-labelledby="tab-account">
       <h2>Password</h2>
       <form class="bar" id="pw-form" method="dialog">
@@ -143,9 +93,51 @@
         </form>
       </div>
       <p class="status-line" id="account-status" role="status"></p>
+      <h2 class="next">API keys</h2>
+      <p class="hint">A key signs in as you and opens your artifacts. It is shown once, when you create it.</p>
+      <div class="list">
+        <table>
+          <thead><tr><th>name</th><th>created</th><th>last used</th><th>type</th><th></th></tr></thead>
+          <tbody id="keys"></tbody>
+        </table>
+      </div>
+      <form class="bar" id="key-form" method="dialog">
+        <input id="key-name" placeholder="key name" aria-label="Key name" autocomplete="off">
+        <input id="key-password" type="password" placeholder="your password" aria-label="Your password" autocomplete="current-password">
+        <button class="btn primary" type="submit">Create key</button>
+      </form>
+      <p class="status-line" id="keys-status" role="status"></p>
+      <p class="secret mono" id="key-new"></p>
+      <h2 class="next">Your successor</h2>
+      <p class="hint">Name one person who can read the artifacts you own, 14 days after they ask, unless you refuse. Ask them for their code, from here or <span class="mono">cairn successor code</span>.</p>
+      <p id="current-successor"></p>
+      <div class="actions" id="successor-actions"></div>
+      <form class="bar" id="nominate-form" method="dialog">
+        <input id="nominate-user" type="email" placeholder="their email" aria-label="Successor's email" autocomplete="off">
+        <input id="nominate-code" placeholder="their code" aria-label="Successor's code" autocomplete="off" spellcheck="false">
+        <input id="nominate-password" type="password" placeholder="your password" aria-label="Your password" autocomplete="current-password">
+        <button class="btn primary" type="submit">Name successor</button>
+      </form>
+      <h2 class="next">Your code</h2>
+      <p class="secret mono" id="my-code"></p>
+      <p class="hint">Give this code to someone who names you as their successor.</p>
+      <h2 class="next">Notice address</h2>
+      <p class="hint">Notices about a request go to your account address, and to this one once you verify it. Leave it empty to clear it.</p>
+      <form class="bar" id="notice-form" method="dialog">
+        <input id="notice-email" type="email" placeholder="a personal address" aria-label="Notice address" autocomplete="off">
+        <button class="btn primary" type="submit">Save address</button>
+      </form>
+      <h2 class="next">Users who named you</h2>
+      <div class="list">
+        <table>
+          <thead><tr><th>user</th><th>state</th><th></th></tr></thead>
+          <tbody id="successions"></tbody>
+        </table>
+      </div>
+      <p class="status-line" id="successor-status" role="status"></p>
     </section>
 
-    <section id="users-panel" role="tabpanel" aria-labelledby="tab-users">
+    <section id="admin" role="tabpanel" aria-labelledby="tab-admin">
       <h2>Users</h2>
       <p class="hint">People sign up themselves, at /signup. You can grant the admin role, deactivate an account, or delete it.</p>
       <div class="list">

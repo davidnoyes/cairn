@@ -1851,22 +1851,23 @@ rotation.
 `/app` is every signed-in user's home. `/` sends a signed-in visitor there,
 and `/admin` redirects to it. Like the other app pages it carries no user
 data: its script checks sign-in through `GET /api/me` and sends a visitor
-with no session to `/login`. It has four tabs, and a fifth for
+with no session to `/login`. It has two tabs, and a third for
 administrators:
 
 - **Artifacts** — *Your artifacts* and *Shared with you*. Each row opens the
   artifact, then shows its name and description from the encrypted fields,
   its access, whether it is public, and when it changed. The owner can open
   the share dialog and delete the artifact.
-- **API keys** — list and revoke keys, and create one. Creating a key asks
-  for the password again, and shows the full key once.
-- **Account** — change the password, and make a new recovery code, which
-  also asks for the password and shows the code once.
-- **Successor** — the user's own successor code; their successor, who they
-  can nominate, replace, or remove; a personal address for notices; and the
-  users who nominated them, with a button to ask for access and, once
-  released, the artifacts each one owns.
-- **Users** — administrators only, as the old `/admin` page.
+- **Account** — the user's own settings, one section after another:
+  - **Password** changes the password.
+  - **Recovery code** makes a new recovery code, which asks for the
+    password and shows the code once.
+  - **API keys** lists and revokes keys, and creates one. Creating a key
+    asks for the password again, and shows the full key once.
+  - The successor sections, which
+    [The successor in the browser](#the-successor-in-the-browser) describes.
+- **Admin** — administrators only. Its **Users** section does what the old
+  `/admin` page did. Later administrator tools get their own sections here.
 
 The share dialog lists the members with their name, email, role, current
 fingerprint, and pin state. The owner can share with a user by email as
@@ -2126,7 +2127,7 @@ only as a successor.
 
 ### The successor in the browser
 
-The app's **Successor** tab does what the commands do:
+The successor sections of the app's **Account** tab do what the commands do:
 
 - **Your successor** shows the current successor and any request, and
   nominates someone from their email, their code, and the user's password.

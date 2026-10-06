@@ -22,9 +22,9 @@ cairn whoami --json
 
 - If the binary is missing, build it from this repo: `go build ./cmd/cairn`.
 - If not authenticated, either environment variables are set (`CAIRN_HOST` +
-  `CAIRN_API_KEY`, the full key from `cairn login` or the app's API keys tab)
-  or a stored login exists (`cairn login --host <url> --email <email>
-  --password-stdin`, with the password on stdin).
+  `CAIRN_API_KEY`, the full key from `cairn login` or API keys on the app's
+  Account tab) or a stored login exists (`cairn login --host <url> --email
+  <email> --password-stdin`, with the password on stdin).
 - A new account needs `cairn signup --host <url> --email <email> --name
   <name> --password-stdin`. It prints a recovery code. Show it to the user
   and tell them to save it. Never store it yourself.

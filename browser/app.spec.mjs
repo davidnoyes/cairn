@@ -2,7 +2,9 @@
 // lists, API keys and account settings. See design/e2e-api.md "The app page".
 //
 // The page's contract with these tests:
-// - Tabs are role=tab: Artifacts, API keys, Account, and Users for an admin.
+// - Tabs are role=tab: Artifacts, Account, and Admin for an admin. Account
+//   holds the password, recovery code, API keys and successor; Admin holds
+//   Users, listed in #users as tr[data-user] rows.
 // - #own and #shared list artifacts as tr[data-id] rows with td.name, td.desc,
 //   td.access and td.public. An owner's row has Share and Delete buttons.
 // - API keys: #key-name, #key-password, a "Create key" button, #key-new for
@@ -60,7 +62,7 @@ test('app: the owner lists their artifacts by name, and a viewer finds the share
   await expect(own.locator('td.name')).toHaveText('plain-doc');
   await expect(own.getByRole('button', { name: 'Share' })).toBeVisible();
   await expect(own.locator('td.public')).toHaveText(/public/i);
-  await expect(ownerPage.getByRole('tab', { name: 'Users' })).toBeVisible();
+  await expect(ownerPage.getByRole('tab', { name: 'Admin' })).toBeVisible();
 
   const { context, page } = await signedInContext(browser, 'viewer');
   try {
@@ -70,7 +72,29 @@ test('app: the owner lists their artifacts by name, and a viewer finds the share
     await expect(shared.locator('td.access')).toHaveText(/viewer/i);
     await expect(shared.getByRole('button', { name: 'Share' })).toHaveCount(0);
     await expect(page.locator(`#own tr[data-id="${plain}"]`)).toHaveCount(0);
-    await expect(page.getByRole('tab', { name: 'Users' })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Admin' })).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test('app: Account holds API keys and the successor, and only an admin has the Admin tab, with Users in it', async ({ ownerPage, browser }) => {
+  const s = loadState();
+  await openTab(ownerPage, 'Account');
+  await expect(ownerPage.getByRole('tab')).toHaveText(['Artifacts', 'Account', 'Admin']);
+  const account = ownerPage.getByRole('tabpanel', { name: 'Account' });
+  await expect(account.getByRole('heading')).toHaveText(['Password', 'Recovery code', 'API keys', 'Your successor', 'Your code', 'Notice address', 'Users who named you']);
+
+  await openTab(ownerPage, 'Admin');
+  const admin = ownerPage.getByRole('tabpanel', { name: 'Admin' });
+  await expect(admin.getByRole('heading')).toHaveText(['Users']);
+  await expect(admin.locator('#users tr[data-user]').filter({ hasText: s.users.owner.email })).toHaveCount(1);
+
+  const { context, page } = await signedInContext(browser, 'viewer');
+  try {
+    await openTab(page, 'Artifacts');
+    await expect(page.getByRole('tab')).toHaveText(['Artifacts', 'Account']);
+    await expect(page.locator('#users tr')).toHaveCount(0);
   } finally {
     await context.close();
   }
@@ -306,7 +330,7 @@ test('keys: an API key needs the password, is shown once, works for the CLI, and
   const user = `acct-${browserName}`;
   const { context, page } = await signedInContext(browser, user);
   try {
-    await openTab(page, 'API keys');
+    await openTab(page, 'Account');
     // The CLI's sign-in in setup left a device key, listed with the rest.
     const rows = page.locator('#keys tr[data-key]');
     await expect(rows.locator('td.name')).toContainText(['device']);
@@ -334,7 +358,7 @@ test('keys: an API key needs the password, is shown once, works for the CLI, and
     expect(listed.map((a) => a.name)).toContain(`acct-doc-${browserName}`);
 
     await page.reload();
-    await openTab(page, 'API keys');
+    await openTab(page, 'Account');
     await expect(page.locator('#key-new')).toHaveText('');
     expect(await page.content(), 'page after reload').not.toContain(key.split('_')[3]);
 

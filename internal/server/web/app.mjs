@@ -648,7 +648,7 @@ await startApp({
     me = user;
     showBanners();
     $('who').textContent = user.email;
-    $('tab-users').hidden = !user.isAdmin;
+    $('tab-admin').hidden = !user.isAdmin;
   },
   listFailed(name, err) {
     status(lists.find((l) => l.name === name)?.status ?? 'app-status', 'Could not load ' + name + ': ' + describeError(err), true);

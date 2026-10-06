@@ -261,7 +261,7 @@ test('bannerView offers no Refuse once released, and says the successor can read
 test('refusalView names who asked and when, and the deactivation only when there was one', () => {
   const answer = { successor: { name: 'Heir', email: 'heir@example.com' }, requestedAt: '2026-10-01T10:00:00Z' };
   assert.deepEqual(successor.refusalView(answer), {
-    done: 'You refused the request that Heir (heir@example.com) made on 2026-10-01. They stay your successor; to remove them, use the Successor tab or run cairn successor remove.',
+    done: 'You refused the request that Heir (heir@example.com) made on 2026-10-01. They stay your successor; to remove them, use Your successor on the Account tab, or run cairn successor remove.',
     deactivated: '',
   });
   const dead = successor.refusalView({ ...answer, successor: { email: 'heir@example.com' }, deactivatedAt: '2026-10-02T09:00:00Z' });

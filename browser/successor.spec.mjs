@@ -1,7 +1,7 @@
 // Milestone 7 browser tests: the successor. See design/e2e-api.md "Successor".
 //
 // The page's contract with these tests:
-// - A Successor tab with #current-successor, #nominate-form (#nominate-user,
+// - The Account tab's successor section, with #current-successor, #nominate-form (#nominate-user,
 //   #nominate-code, #nominate-password, "Name successor"), #my-code, the
 //   #successions rows (tr[data-user]) and #successor-status.
 // - On every tab: #succession-banner with #refuse-succession while a request
@@ -37,11 +37,11 @@ function advanceClock() {
   writeFileSync(file, `${hours + 360}h\n`);
 }
 
-// heirCode reads heir-*'s code from their own Successor tab.
+// heirCode reads heir-*'s code from their own Account tab.
 async function heirCode(browser, e) {
   const { context, page } = await signedInContext(browser, `heir-${e}`);
   try {
-    await openTab(page, 'Successor');
+    await openTab(page, 'Account');
     const code = page.locator('#my-code');
     await expect(code).toHaveText(/\S+-\S+/);
     return (await code.textContent()).trim();
@@ -66,7 +66,7 @@ test('successor: a wrong code names nobody, and the heir\'s own code names them'
 
   const { context, page } = await signedInContext(browser, `succ-${e}`);
   try {
-    await openTab(page, 'Successor');
+    await openTab(page, 'Account');
     await expect(page.locator('#current-successor')).toHaveText('You have not named a successor.');
     const submit = page.locator('#nominate-form').getByRole('button', { name: 'Name successor' });
     await page.locator('#nominate-user').fill(heir.email);
@@ -96,19 +96,19 @@ test('successor: a request shows the banner on every tab, and Refuse ends it', a
     await expect(banner).toBeHidden();
     // A request made after the page loaded shows at the next tab change.
     cli(`heir-${e}`, ['successor', 'request', s.users[`succ-${e}`].email]);
-    for (const tab of ['Artifacts', 'API keys', 'Successor', 'Account']) {
+    for (const tab of ['Artifacts', 'Account']) {
       await openTab(page, tab);
       await expect(banner).toBeVisible();
       await expect(page.locator('#succession-text')).toContainText('asked for access to your artifacts');
     }
-    // The refusal stands even when the Successor tab then fails to refresh.
+    // The refusal stands even when the successor section then fails to refresh.
     await page.route('**/api/me/successor', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"stubbed"}' }));
     await page.locator('#refuse-succession').click();
     await expect(banner).toBeHidden();
     await expect(page.locator('#app-status')).toHaveText('You refused the request. Your successor stays named, and was told.');
     await page.unroute('**/api/me/successor');
     await page.reload();
-    await expect(page.locator('#tab-successor')).toBeVisible();
+    await expect(page.locator('#tab-account')).toBeVisible();
     await expect(banner).toBeHidden();
     expect(JSON.parse(cli(`succ-${e}`, ['successor', 'status', '--json'])).request).toBeNull();
   } finally {
@@ -214,7 +214,7 @@ test('successor: once released, the heir reads the owner\'s artifacts and nothin
   const heir = await signedInContext(browser, `heir-${e}`);
   try {
     const { page } = heir;
-    await openTab(page, 'Successor');
+    await openTab(page, 'Account');
     const row = page.locator('#successions tr', { hasText: succ.email });
     await expect(row).toContainText('released');
     await expect(row.locator(`a[href="/shared/${plain}"]`)).toHaveCount(0);

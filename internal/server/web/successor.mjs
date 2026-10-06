@@ -158,7 +158,7 @@ export function bannerView(me) {
 // the request was pending.
 export function refusalView(answer) {
   const done = `You refused the request that ${who(answer.successor)} made on ${day(answer.requestedAt)}. ` +
-    'They stay your successor; to remove them, use the Successor tab or run cairn successor remove.';
+    'They stay your successor; to remove them, use Your successor on the Account tab, or run cairn successor remove.';
   const deactivated = answer.deactivatedAt
     ? `An administrator deactivated your account on ${day(answer.deactivatedAt)}, while the request was pending.`
     : '';

@@ -265,7 +265,7 @@ Set two environment variables and every command works headlessly:
 
 ```sh
 export CAIRN_HOST=https://cairn.example.com
-export CAIRN_API_KEY=cairn_xxxxxxxx_yyyyyyyy    # from the app's API keys tab
+export CAIRN_API_KEY=cairn_xxxxxxxx_yyyyyyyy    # from API keys, on the app's Account tab
 
 cairn whoami --json
 cairn artifact list --json
@@ -447,8 +447,8 @@ the request. To refuse, the owner runs `cairn successor refuse`, uses the
 **Refuse** button in the app, or opens the `/refuse` page on the server. The
 `/refuse` page needs no session, so it works on a deactivated account. It
 takes the email address and the password or the recovery code. A refusal
-ends the request and keeps the nomination. The **Successor** tab in `/app`
-does the same as these commands.
+ends the request and keeps the nomination. The successor sections of the
+**Account** tab in `/app` do the same as these commands.
 
 After the server releases access to a successor, it refuses the owner's
 changes until the owner runs `cairn rotate-keys`.
