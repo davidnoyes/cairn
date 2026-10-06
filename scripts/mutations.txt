@@ -2271,3 +2271,6 @@ internal/server/web/content.mjs	checkString(v.createdAt, 'context version create
 internal/server/web/cairn.js	if (content) global.parent.postMessage	if (true) global.parent.postMessage	node --test internal/server/web/cairn_db_test.mjs
 internal/server/web/account.mjs	return (next || '/') + hash;	return next || '/';	node --test internal/server/web/account_test.mjs
 internal/server/web/shell.mjs	changelog: fields.changelog ?? ''	changelog: ''	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/cairn.js	encodeURIComponent(location.pathname + location.search)	encodeURIComponent(location.pathname)	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/cairn.js	else location.href = '/login?next=' + encodeURIComponent(	else location.href = '/login?next=' + (	node --test internal/server/web/cairn_db_test.mjs
+internal/server/web/account.mjs	return (next || '/') + hash;	return next + hash;	node --test internal/server/web/account_test.mjs
