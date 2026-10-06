@@ -47,12 +47,13 @@ function fakeDoc(bodyChildren, { bodyBg = TRANSPARENT, metaScheme = null } = {})
   const body = new El('body', '', bodyChildren, bodyBg);
   const html = new El('html', '', [body]);
   const all = (el, tag) => el.children.filter((c) => c instanceof El)
-    .flatMap((c) => (c.tagName === tag ? [c] : []).concat(all(c, tag)));
+    .flatMap((c) => (tag === '*' || c.tagName === tag ? [c] : []).concat(all(c, tag)));
   return {
     body,
     documentElement: html,
     createElement: (tag) => new El(tag),
     getElementsByTagName: (tag) => all(html, tag.toUpperCase()),
+    querySelectorAll: (sel) => (sel === '.mermaid' ? all(html, '*') : []).filter((el) => el.classList.contains('mermaid')),
     querySelector: (sel) => (sel === 'meta[name="color-scheme"]' && metaScheme !== null
       ? { getAttribute: () => metaScheme } : null),
   };
@@ -132,6 +133,12 @@ test('render keeps strict security and suppresses the aggregate error', async ()
   assert.deepEqual(win.calls[0][2], { startOnLoad: false, securityLevel: 'strict', theme: 'default' });
   assert.equal(win.calls[1][2].suppressErrors, true);
   assert.deepEqual(win.calls[1][2].nodes, [doc.body.children[0]]);
+});
+
+test('render draws a <div class="mermaid"> as well as a <pre>', async () => {
+  const win = fakeWin();
+  await render(win, fakeDoc([new El('div', 'mermaid', ['graph TD']), diagram('pie')]));
+  assert.deepEqual(themes(win), [['default', ['graph TD', 'pie']]]);
 });
 
 test('render does nothing without mermaid blocks', async () => {
@@ -249,7 +256,7 @@ function boot(readyState, extra = {}) {
   const listeners = {};
   const touched = [];
   const context = {
-    document: { readyState, getElementsByTagName: () => { touched.push(readyState); return []; } },
+    document: { readyState, getElementsByTagName: () => { touched.push(readyState); return []; }, querySelectorAll: () => [] },
     addEventListener: (type, fn) => { (listeners[type] ||= []).push(fn); },
     ...extra,
   };
@@ -274,4 +281,11 @@ test('included while the page loads, it waits for load, not DOMContentLoaded', (
 test('a second copy on the same page does nothing', () => {
   const { touched } = boot('complete', { __cairnMermaidBooted: true });
   assert.equal(touched.length, 0);
+});
+
+test("the bundle's own start on load is off, on a second copy too, so render is the one to draw", () => {
+  for (const booted of [false, true]) {
+    const { context } = boot('complete', { mermaid: { startOnLoad: true }, __cairnMermaidBooted: booted });
+    assert.equal(context.mermaid.startOnLoad, false, `booted before: ${booted}`);
+  }
 });

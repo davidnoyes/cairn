@@ -86,10 +86,13 @@ test('links: internal links replace the page, external links open a tab, Mermaid
 });
 
 // The markup pandoc and a Markdown renderer emit for a mermaid fence, with
-// and without the artifact loading ./mermaid.js itself.
-for (const [name, body, diagrams] of [
-  ['pandoc', '<pre class="mermaid"><code>graph TD; A--&gt;B</code></pre>', 1],
-  ['combined', '<pre class="mermaid"><code>graph TD; A--&gt;B</code></pre>\n<pre><code class="language-mermaid">graph TD; C--&gt;D</code></pre>\n<script src="./mermaid.js"></script>', 2],
+// and without the artifact loading ./mermaid.js itself, and the <div> that
+// hand-written pages use with it. Mermaid's error box is an <svg> too, so each
+// diagram's node labels must show as well.
+for (const [name, body, diagrams, labels] of [
+  ['pandoc', '<pre class="mermaid"><code>graph TD; A--&gt;B</code></pre>', 1, ['A', 'B']],
+  ['combined', '<pre class="mermaid"><code>graph TD; A--&gt;B</code></pre>\n<pre><code class="language-mermaid">graph TD; C--&gt;D</code></pre>\n<script src="./mermaid.js"></script>', 2, ['A', 'B', 'C', 'D']],
+  ['div', '<div class="mermaid">graph TD; E--&gt;F</div>\n<script src="./mermaid.js"></script>', 1, ['E', 'F']],
 ]) {
   test(`mermaid: the ${name} markup renders every diagram, with no syntax error`, async ({ ownerPage, browserName }) => {
     const s = loadState();
@@ -98,7 +101,8 @@ for (const [name, body, diagrams] of [
     writeFileSync(path.join(dir, 'index.html'), `<!doctype html><html><body>\n<h1>${name}</h1>\n${body}\n</body></html>\n`);
     const { id } = JSON.parse(cli('owner', ['push', dir, '--artifact', `mermaid-${name}-${browserName}`, '--create', '--json'])).artifact;
     const frame = await openShared(ownerPage, id);
-    await expect(frame.locator('pre.mermaid svg')).toHaveCount(diagrams);
+    await expect(frame.locator('.mermaid svg')).toHaveCount(diagrams);
+    for (const label of labels) await expect(frame.locator('.mermaid svg').getByText(label, { exact: true }).first()).toBeVisible();
     await expect(frame.getByText(/syntax error/i)).toHaveCount(0);
   });
 }

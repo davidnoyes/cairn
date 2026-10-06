@@ -180,7 +180,7 @@ test('app: an artifact opens from its name, and the row shows when it was update
     const local = new Date(Date.parse(updatedAt) + 330 * 60_000).toISOString();
     const row = page.locator(`#own tr[data-id="${id}"]`);
     await expect(row.locator('td.updated')).toHaveText(`${local.slice(0, 10)} ${local.slice(11, 16)}`);
-    await expect(row.getByRole('link', { name: 'Open' })).toHaveCount(0);
+    await expect(row.getByRole('link', { name: 'Open', exact: true })).toHaveCount(0);
     await row.getByRole('link', { name }).click();
     await expect(page).toHaveURL(`${s.appOrigin}/shared/${id}`);
   } finally {

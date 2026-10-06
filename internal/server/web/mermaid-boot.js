@@ -99,7 +99,8 @@
     return lum < 0.179;
   }
 
-  // render normalizes doc and draws its diagrams with win.mermaid, in
+  // render normalizes doc and draws its diagrams — every .mermaid element,
+  // a <div> as well as a <pre> — with win.mermaid, in
   // Mermaid's dark theme where the diagram sits on a dark background. The
   // theme is global, so each group is initialized and run in turn. A syntax
   // error still shows Mermaid's error box in place of that one diagram;
@@ -108,10 +109,9 @@
     normalizeMermaidBlocks(doc);
     if (!win.mermaid) return;
     var groups = { default: [], dark: [] };
-    var pres = doc.getElementsByTagName("pre");
-    for (var i = 0; i < pres.length; i++) {
-      if (!pres[i].classList.contains("mermaid")) continue;
-      groups[backgroundIsDark(win, doc, pres[i]) ? "dark" : "default"].push(pres[i]);
+    var blocks = doc.querySelectorAll(".mermaid");
+    for (var i = 0; i < blocks.length; i++) {
+      groups[backgroundIsDark(win, doc, blocks[i]) ? "dark" : "default"].push(blocks[i]);
     }
     for (var theme in groups) {
       if (!groups[theme].length) continue;
@@ -127,7 +127,8 @@
   // The bundle renders every .mermaid block on load by itself, before render
   // has unwrapped the <code>, which it then shows as a syntax error. Turn
   // that off on each copy of the bundle, even a second one, so render is the
-  // only one to draw.
+  // only one to draw at load. A page's own initialize({startOnLoad: true}) no
+  // longer reaches the bundle, but render draws the same blocks.
   if (global.mermaid) global.mermaid.startOnLoad = false;
 
   if (typeof document === "undefined" || global.__cairnMermaidBooted) return;

@@ -265,6 +265,8 @@ test('describeArtifact shows an artifact with no name, or an empty one, under it
   assert.deepEqual(await describeArtifact(s.deps, { id: ARTIFACT }), { name: ARTIFACT, description: '', named: false, error: null });
   const empty = { id: ARTIFACT, meta: { name: await item(s.world, { value: '' }) } };
   assert.deepEqual(await describeArtifact(s.deps, empty), { name: ARTIFACT, description: '', named: false, error: null });
+  const blank = { id: ARTIFACT, meta: { name: await item(s.world, { value: ' \t ' }) } };
+  assert.deepEqual(await describeArtifact(s.deps, blank), { name: ARTIFACT, description: '', named: false, error: null }, 'a blank name would leave nothing to click');
 });
 
 test('describeArtifact shows an unreadable name under the ID, and says why', async () => {

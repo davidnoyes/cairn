@@ -2326,3 +2326,6 @@ internal/server/routes.go	s.requireAdmin(s.handleAdminUserArtifacts)	s.handleAdm
 internal/server/routes.go	s.requireAdmin(s.handleAdminOfferTransfer)	s.handleAdminOfferTransfer	go test ./internal/server -run TestAdminRoutesRefuseEveryoneElse -count=1
 internal/server/routes.go	s.requireAdmin(s.handleAdminDeleteArtifact)	s.handleAdminDeleteArtifact	go test ./internal/server -run TestAdminRoutesRefuseEveryoneElse -count=1
 internal/server/middleware.go	if !requestUser(r).IsAdmin {	if false {	go test ./internal/server -run TestAdminRoutesRefuseEveryoneElse -count=1
+internal/server/web/meta.mjs	if (values.name?.trim()) Object.assign	if (values.name) Object.assign	node --test internal/server/web/meta_test.mjs
+internal/server/web/mermaid-boot.js	doc.querySelectorAll(".mermaid")	doc.querySelectorAll("pre.mermaid")	node --test internal/server/web/mermaid-boot_test.mjs
+internal/server/web/mermaid-boot.js	if (global.mermaid) global.mermaid.startOnLoad = false;	if (global.mermaid && !global.__cairnMermaidBooted) global.mermaid.startOnLoad = false;	node --test internal/server/web/mermaid-boot_test.mjs

@@ -85,14 +85,14 @@ export async function readMeta(deps, opened, meta, versionId = '') {
 // describeArtifact is an artifact as the app's list shows it: view is its
 // entry in GET /api/artifacts. It opens the artifact as a member to read the
 // encrypted name and description, and never throws: an artifact that does not
-// open, or whose name fails a check or is empty, shows under its ID, named is
+// open, or whose name fails a check or is blank, shows under its ID, named is
 // false, and error says why when something failed.
 export async function describeArtifact(deps, view) {
   const out = { name: view.id, description: '', named: false, error: null };
   try {
     const opened = await openArtifact(deps, { artifact: view.id, link: null });
     const { values, unreadable } = await readMeta(deps, opened, view.meta);
-    if (values.name) Object.assign(out, { name: values.name, named: true });
+    if (values.name?.trim()) Object.assign(out, { name: values.name, named: true });
     out.description = values.description ?? '';
     if (unreadable.length > 0) out.error = new Error(`Could not read the ${unreadable.join(' and ')} of this artifact.`);
   } catch (err) {
