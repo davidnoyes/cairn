@@ -323,6 +323,9 @@ test('signup, reset and the account page each carry every recovery-code part onc
     const html = readFileSync(new URL(`./${page}`, import.meta.url), 'utf8');
     const found = [...html.matchAll(/data-part="([^"]*)"/g)].map((m) => m[1]).sort();
     assert.deepEqual(found, [...RECOVERY_PARTS].sort(), page);
+    // role=img, so a screen reader reads the masked code's label, not its
+    // underscores: a plain text element cannot carry a name.
+    assert.match(html.match(/<[^>]*data-part="masked"[^>]*>/)[0], /\brole="img"/, page);
   }
 });
 
