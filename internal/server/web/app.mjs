@@ -58,6 +58,13 @@ const btn = (label, cls, fn) => {
 };
 const pill = (label, cls) => el('span', 'pill ' + (cls || ''), label);
 const day = (ts) => (ts || '').slice(0, 10);
+// minute shows a time in the browser's own zone, as 2006-01-02 15:04.
+const minute = (ts) => {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
 function emptyRow(body, cols, text) {
   const cell = td(text, 'empty');
   cell.colSpan = cols;
@@ -103,11 +110,12 @@ for (const t of tabs) {
     if (me) refreshBanners();
   });
   t.addEventListener('keydown', (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
     const shown = tabs.filter((x) => !x.hidden);
     const i = shown.indexOf(t);
     const to = event.key === 'Home' ? shown[0]
       : event.key === 'End' ? shown[shown.length - 1]
-      : event.key in moves ? shown[(i + moves[event.key] + shown.length) % shown.length]
+      : Object.hasOwn(moves, event.key) ? shown[(i + moves[event.key] + shown.length) % shown.length]
       : null;
     if (!to) return;
     event.preventDefault();
@@ -167,7 +175,8 @@ function loadArtifacts(ctx) {
 }
 
 function artifactRow(a, mine) {
-  const row = { name: a.id, nameText: el('div', 'clamp', a.id), descText: el('div', 'clamp', '') };
+  const row = { name: a.id, nameText: el('a', 'clamp', a.id), descText: el('div', 'clamp', '') };
+  row.nameText.href = '/shared/' + a.id;
   const tr = el('tr');
   tr.dataset.id = a.id;
   row.reasonText = el('div', 'unreadable', '');
@@ -178,12 +187,9 @@ function artifactRow(a, mine) {
     td(row.descText, 'desc'),
     td(a.access, 'access'),
     td(a.public ? 'public' : 'private', 'public'),
-    td(day(a.updatedAt), 'mono'),
+    td(minute(a.updatedAt), 'mono updated'),
   );
   const actions = el('div', 'actions');
-  const open = el('a', 'btn', 'Open');
-  open.href = '/shared/' + a.id;
-  actions.appendChild(open);
   if (mine) {
     actions.append(
       btn('Share', '', () => openShare(a.id, row.name)),

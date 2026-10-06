@@ -274,7 +274,7 @@ func TestPagesStayInOneTab(t *testing.T) {
 	appHTML := body(t, appResp)
 	// The app page builds its artifact links in JS, so check the source.
 	appJS := body(t, get(t, ts.URL+"/app.mjs", "", ""))
-	if !strings.Contains(appJS, "open.href = '/shared/' + a.id;") {
+	if !strings.Contains(appJS, "row.nameText.href = '/shared/' + a.id;") {
 		t.Errorf("app artifact links should open the shared view")
 	}
 	for page, html := range map[string]string{

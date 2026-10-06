@@ -139,6 +139,10 @@ func TestAdminRoutesRefuseEveryoneElse(t *testing.T) {
 		wantStatus(t, user, call.method, call.path, call.body, http.StatusForbidden)
 		wantStatus(t, visitor, call.method, call.path, call.body, http.StatusUnauthorized)
 	}
+	// The gate lets an administrator through, so the refusals are not a
+	// route that refuses everyone.
+	var listed []adminDirectoryUser
+	login(t, ts.URL, "admin@example.com", "admin-password").mustDo("GET", "/api/admin/users", nil, &listed, http.StatusOK)
 	got, err := s.store.UserByEmail("user@example.com")
 	if err != nil {
 		t.Fatalf("the account is gone: %v", err)

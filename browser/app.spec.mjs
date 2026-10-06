@@ -128,6 +128,11 @@ test('app: the arrow keys, Home, and End move between tabs, past one that is hid
     await ownerPage.keyboard.press(key);
     await expectTab(ownerPage, name);
   }
+  // A key with a modifier is the browser's (Alt+Left is Back), not the tabs'.
+  for (const key of ['Alt+ArrowRight', 'Control+ArrowRight', 'Meta+ArrowRight', 'Control+Home']) {
+    await ownerPage.keyboard.press(key);
+    await expectTab(ownerPage, 'Admin');
+  }
 
   const context = await browser.newContext();
   try {
@@ -154,7 +159,30 @@ test('app: a message at the foot of a long tab scrolls into view when it appears
     await page.getByRole('button', { name: 'Name successor' }).click();
     const msg = page.locator('#successor-status');
     await expect(msg).not.toHaveText('');
-    await expect(msg).toBeInViewport();
+    // Nearly all of it: WebKit rounds the scroll a fraction of a pixel short.
+    await expect(msg).toBeInViewport({ ratio: 0.9 });
+  } finally {
+    await context.close();
+  }
+});
+
+test('app: an artifact opens from its name, and the row shows when it was updated, to the minute, in local time', async ({ browser, browserName }) => {
+  const s = loadState();
+  const name = `linked-${browserName}`;
+  const { id } = JSON.parse(cli('owner', ['push', `${s.fixturesDir}/marker`, '--artifact', name, '--create', '--json'])).artifact;
+  // Kolkata is UTC+5:30, so a page that shows UTC, or drops the half hour, fails.
+  const context = await browser.newContext({ timezoneId: 'Asia/Kolkata' });
+  try {
+    const page = await context.newPage();
+    await signIn(page, s.users.owner.email, s.users.owner.password);
+    await openTab(page, 'Artifacts');
+    const { updatedAt } = (await (await page.request.get(`${s.appOrigin}/api/artifacts`)).json()).find((a) => a.id === id);
+    const local = new Date(Date.parse(updatedAt) + 330 * 60_000).toISOString();
+    const row = page.locator(`#own tr[data-id="${id}"]`);
+    await expect(row.locator('td.updated')).toHaveText(`${local.slice(0, 10)} ${local.slice(11, 16)}`);
+    await expect(row.getByRole('link', { name: 'Open' })).toHaveCount(0);
+    await row.getByRole('link', { name }).click();
+    await expect(page).toHaveURL(`${s.appOrigin}/shared/${id}`);
   } finally {
     await context.close();
   }
