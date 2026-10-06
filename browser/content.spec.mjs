@@ -1,6 +1,6 @@
 // Milestone 4 browser tests, written before the feature: encrypted content and
 // isolation. See design/e2e-api.md "Encrypted content and serving".
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test } from './test.mjs';
 import { MARKER, PAGE2_MARKER, TEAM_MARKER, cli, cliJson, contentFrame, files, loadState, openShared } from './helpers.mjs';
@@ -84,6 +84,24 @@ async function linkChecks(page, base) {
 test('links: internal links replace the page, external links open a tab, Mermaid renders', async ({ ownerPage }) => {
   await linkChecks(ownerPage, 'shared');
 });
+
+// The markup pandoc and a Markdown renderer emit for a mermaid fence, with
+// and without the artifact loading ./mermaid.js itself.
+for (const [name, body, diagrams] of [
+  ['pandoc', '<pre class="mermaid"><code>graph TD; A--&gt;B</code></pre>', 1],
+  ['combined', '<pre class="mermaid"><code>graph TD; A--&gt;B</code></pre>\n<pre><code class="language-mermaid">graph TD; C--&gt;D</code></pre>\n<script src="./mermaid.js"></script>', 2],
+]) {
+  test(`mermaid: the ${name} markup renders every diagram, with no syntax error`, async ({ ownerPage, browserName }) => {
+    const s = loadState();
+    const dir = path.join(s.tmp, `mermaid-${name}-${browserName}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, 'index.html'), `<!doctype html><html><body>\n<h1>${name}</h1>\n${body}\n</body></html>\n`);
+    const { id } = JSON.parse(cli('owner', ['push', dir, '--artifact', `mermaid-${name}-${browserName}`, '--create', '--json'])).artifact;
+    const frame = await openShared(ownerPage, id);
+    await expect(frame.locator('pre.mermaid svg')).toHaveCount(diagrams);
+    await expect(frame.getByText(/syntax error/i)).toHaveCount(0);
+  });
+}
 
 test('full screen: links and diagrams work at /full/<id>', async ({ ownerPage }) => {
   await linkChecks(ownerPage, 'full');

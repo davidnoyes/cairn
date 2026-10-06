@@ -124,6 +124,12 @@
     module.exports = { normalizeMermaidBlocks: normalizeMermaidBlocks, render: render };
   }
 
+  // The bundle renders every .mermaid block on load by itself, before render
+  // has unwrapped the <code>, which it then shows as a syntax error. Turn
+  // that off on each copy of the bundle, even a second one, so render is the
+  // only one to draw.
+  if (global.mermaid) global.mermaid.startOnLoad = false;
+
   if (typeof document === "undefined" || global.__cairnMermaidBooted) return;
   global.__cairnMermaidBooted = true;
 
