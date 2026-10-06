@@ -169,8 +169,14 @@ test('the name, description, and version names come from the sealed fields, neve
     who: 'viewer',
     build: async ({ world, server }) => {
       Object.assign(server.artifact, { name: 'Server name', description: 'Server description' });
-      Object.assign(server.versions.get(V2).json, { name: 'server-v2', meta: { name: await metaItem({ world }, { version: V2, field: 'name', value: 'Release' }) } });
-      server.versions.get(V1).json.name = 'server-v1';
+      Object.assign(server.versions.get(V2).json, {
+        name: 'server-v2',
+        meta: {
+          name: await metaItem({ world }, { version: V2, field: 'name', value: 'Release' }),
+          changelog: await metaItem({ world }, { version: V2, field: 'changelog', value: 'Fixed the list' }),
+        },
+      });
+      Object.assign(server.versions.get(V1).json, { name: 'server-v1', changelog: 'server-changelog' });
     },
   });
   assert.equal(p.dom.els.name.textContent, 'Guestbook');
@@ -180,7 +186,7 @@ test('the name, description, and version names come from the sealed fields, neve
   await p.post({ cairn: 'ready', version: null, path: null });
   const created = (v) => p.server.versions.get(v).json.createdAt;
   assert.deepEqual(p.posted()[0][0].context.versions, [
-    { id: V2, seq: 2, name: 'Release', changelog: '', createdAt: created(V2) },
+    { id: V2, seq: 2, name: 'Release', changelog: 'Fixed the list', createdAt: created(V2) },
     { id: V1, seq: 1, name: '', changelog: '', createdAt: created(V1) },
   ]);
 });
@@ -513,6 +519,14 @@ test('login goes to sign in and back to this page, carrying a public link but no
   await member.start();
   await member.post({ cairn: 'login' });
   assert.deepEqual(member.assigned, [`/login?next=${encodeURIComponent(`/full/${ARTIFACT}/${V1}`)}`]);
+
+  const pinned = await page({ isPublic: true, members: [], noRun: true });
+  const pinnedHash = `#k=${e2e.b64(pinned.world.aks[1])}&e=1&o=${U.owner.fp}`;
+  pinned.window.location.pathname = `/shared/${ARTIFACT}/${V1}`;
+  pinned.window.location.hash = pinnedHash;
+  await pinned.start();
+  await pinned.post({ cairn: 'login' });
+  assert.deepEqual(pinned.assigned, [`/login?next=${encodeURIComponent(`/shared/${ARTIFACT}/${V1}`)}${pinnedHash}`]);
 });
 
 test('the content token is renewed and posted to the frame', async () => {

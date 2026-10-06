@@ -352,6 +352,14 @@ function fakePage(hash) {
   };
 }
 
+test('afterSignIn goes to next, carrying the fragment a public link brought', () => {
+  assert.equal(account.afterSignIn('/shared/abc', '#k=key'), '/shared/abc#k=key');
+  assert.equal(account.afterSignIn('/shared/abc/def', '#k=key'), '/shared/abc/def#k=key');
+  assert.equal(account.afterSignIn('/app', ''), '/app');
+  assert.equal(account.afterSignIn(undefined, ''), '/');
+  assert.equal(account.afterSignIn('', '#k=key'), '/#k=key');
+});
+
 test('takeToken reads the fragment token and strips the fragment', () => {
   const page = fakePage('#token=abc_DEF-123');
   assert.equal(account.takeToken(page.location, page.history), 'abc_DEF-123');

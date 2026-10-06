@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1378,16 +1379,16 @@ func TestNoticeEmailLinkExpires(t *testing.T) {
 	anon.mustDo("POST", "/api/auth/verify", map[string]string{"token": tok}, nil, http.StatusBadRequest)
 }
 
-// TestThePagesNameTheSuccessionWait checks every wait /app tells the user
-// against store.SuccessionWait, so a change to the wait cannot leave the page
-// promising another.
+// TestThePagesNameTheSuccessionWait checks every wait /app and the README tell
+// the user against store.SuccessionWait, so a change to the wait cannot leave
+// either promising another.
 func TestThePagesNameTheSuccessionWait(t *testing.T) {
 	want := strconv.Itoa(int(store.SuccessionWait/day)) + " days"
 	daysRe := regexp.MustCompile(`\d+ days`)
 	for _, f := range []struct {
 		fsys fs.FS
 		name string
-	}{{web.Templates, "app.html"}, {web.Assets, "app.mjs"}} {
+	}{{web.Templates, "app.html"}, {web.Assets, "app.mjs"}, {os.DirFS("../.."), "README.md"}} {
 		b, err := fs.ReadFile(f.fsys, f.name)
 		if err != nil {
 			t.Fatal(err)

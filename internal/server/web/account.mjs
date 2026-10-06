@@ -199,6 +199,14 @@ async function openBundle(user, bundle, kek) {
   }
 }
 
+// afterSignIn is where the sign-in page sends a person: next, which the
+// server already ran through its safe-next rule, or /. A public link's key
+// arrives in the sign-in page's fragment, which the server never sees, and
+// goes on with them.
+export function afterSignIn(next, hash) {
+  return (next || '/') + hash;
+}
+
 // takeToken reads the token from a "#token=" fragment and removes the
 // fragment from the address bar, so the token is neither visible nor in the
 // history entry once the page has it. It strips first and validates second.

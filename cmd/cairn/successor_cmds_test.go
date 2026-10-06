@@ -186,7 +186,7 @@ func TestSuccessorNominateNeedsTheRightCode(t *testing.T) {
 		t.Errorf("nominate printed %q", out)
 	}
 	if wait := fmt.Sprintf(" %d days after they ask", int(store.SuccessionWait/(24*time.Hour))); !strings.Contains(out, wait) {
-		t.Errorf("nominate printed %q, want the wait%q", out, wait)
+		t.Errorf("nominate printed %q, want the wait %q", out, wait)
 	}
 	st := w.status(t, "ada")
 	if s, _ := st["successor"].(map[string]any); s == nil || s["email"] != "bob@example.com" {

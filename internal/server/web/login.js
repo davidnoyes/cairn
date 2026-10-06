@@ -1,14 +1,12 @@
 // login.js — wires the sign-in page to account.mjs. The server already ran
 // ?next= through its safe-next rule and put the result in data-next.
-import { signIn } from './account.mjs';
+import { afterSignIn, signIn } from './account.mjs';
 import { $, startPage, onSubmit } from './ui.mjs';
 import { signedInCaller } from './viewer.mjs';
 
 const form = $('form');
 const deps = await startPage({ form, errorEl: $('error') });
-// A public link's key arrives in this page's fragment, which the server never
-// sees, and goes on to the page signed in to.
-const next = (document.body.dataset.next || '/') + location.hash;
+const next = afterSignIn(document.body.dataset.next, location.hash);
 
 if (deps) {
   // A session whose keys this browser holds goes straight through. With no

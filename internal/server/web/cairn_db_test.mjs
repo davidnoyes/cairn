@@ -75,7 +75,7 @@ function worker() {
 // load runs cairn.js as a page on the artifact's content origin. Loading a
 // script tag defines initSqlJs, which records where it was told the wasm is.
 // failLoads is how many script loads fail before one succeeds.
-function load(w = worker(), failLoads = 0, window = {}) {
+function load(w = worker(), failLoads = 0, window = {}, location = { protocol: 'http:', hostname: `${A}.localhost`, pathname: `/${V}/index.html` }) {
   const scripts = [];
   const located = [];
   const document = {
@@ -98,7 +98,7 @@ function load(w = worker(), failLoads = 0, window = {}) {
   vm.runInNewContext(source, {
     window,
     document,
-    location: { protocol: 'http:', hostname: `${A}.localhost`, pathname: `/${V}/index.html` },
+    location,
     fetch: w.fetch,
     URL,
     Blob,
@@ -123,6 +123,15 @@ test('login asks the shell to sign in, since the frame cannot reach the sign-in 
   const { cairn } = load(worker(), 0, { parent: { postMessage: (msg, origin) => posted.push([msg, origin]) } });
   cairn.login();
   assert.deepEqual(JSON.parse(JSON.stringify(posted)), [[{ cairn: 'login' }, '*']]);
+});
+
+test('login off a content origin goes to the sign-in page itself, and back to this page', () => {
+  const posted = [];
+  const location = { protocol: 'file:', hostname: '', pathname: '/notes/index.html', search: '?tab=2' };
+  const { cairn } = load(worker(), 0, { parent: { postMessage: (msg) => posted.push(msg) } }, location);
+  cairn.login();
+  assert.equal(location.href, '/login?next=%2Fnotes%2Findex.html%3Ftab%3D2');
+  assert.deepEqual(posted, []);
 });
 
 test('sql.js loads once, from /_cairn/ on the same origin', async () => {
