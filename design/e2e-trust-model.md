@@ -269,8 +269,9 @@ create accounts.
    then uploads only wrapped material.
 3. The client shows the recovery code and suggests saving it in a password
    manager or on paper, because a shared drive or an email is a poor place. It
-   asks the user to retype one group to prove they saved it. The screen
-   states that nobody,
+   offers Copy and Download, then hides the code and asks the user to fill in
+   one blanked-out group from the saved copy, to prove they saved it. The
+   screen states that nobody,
    including an administrator, can recover their work without the password or
    this code.
 4. The server emails a single-use verification link. The account stays

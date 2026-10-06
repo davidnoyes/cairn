@@ -5,7 +5,7 @@
 import { stretch } from './e2e.mjs';
 import { createWorkerArgon2 } from './argon2-client.mjs';
 import { createKeyStore } from './keystore.mjs';
-import { MIN_SCORE, recoveryGroupIndex, recoveryGroupMatches } from './account.mjs';
+import { MIN_SCORE, recoveryCodeMasked, recoveryGroupIndex, recoveryGroupMatches } from './account.mjs';
 
 // NetworkError is a fetch that never got an answer. networkFetch throws it so
 // describeError can tell a lost connection from a bug that happens to throw
@@ -158,51 +158,90 @@ export function watchStrength(deps, passwordInput, line, userInputs) {
   });
 }
 
-// showRecoveryCode fills the recovery-code panel and returns a function that
-// checks the group the user retypes. The caller reveals the panel.
-export function showRecoveryCode({ codeEl, promptEl, input }, display) {
-  codeEl.textContent = display;
-  const index = recoveryGroupIndex(display);
-  promptEl.textContent = `To confirm you saved it, type group ${index + 1} of ${display.split('-').length}.`;
-  input.value = '';
-  return () => recoveryGroupMatches(display, index, input.value);
-}
+// RECOVERY_FILE is the name Download gives the recovery code's text file.
+const RECOVERY_FILE = 'cairn-recovery-code.txt';
 
-// confirmHandlers remembers the listeners confirmRecoveryCode attached to a
-// form, so wiring the same form again replaces them rather than adding more.
-const confirmHandlers = new WeakMap();
+// panelWiring remembers the listeners confirmRecoveryCode attached for a
+// panel, so wiring the same panel again replaces them rather than adding more.
+const panelWiring = new WeakMap();
 
-// confirmRecoveryCode shows the recovery code and its panel, and asks the user
-// to retype one group. Until they do, leaving the page asks for confirmation:
+// confirmRecoveryCode walks the user through saving a new recovery code, in
+// the panel whose parts are marked data-part. Step one ("save") shows the
+// code, with Copy, Download, and Next. Step two ("confirm") hides it and asks
+// for one blanked-out group from the user's saved copy, with a way back
+// ("again"). Until they get it right, leaving the page asks for confirmation:
 // the code is shown once. A right answer clears the code from the page, hides
 // the panel, and calls onConfirmed. win is the window, for a test to replace.
-export function confirmRecoveryCode({ form, panel, codeEl, promptEl, input, errorEl }, display, onConfirmed, win = globalThis) {
-  const confirmed = showRecoveryCode({ codeEl, promptEl, input }, display);
-  const previous = confirmHandlers.get(form);
-  if (previous) {
-    form.removeEventListener('submit', previous.submit);
-    win.removeEventListener('beforeunload', previous.warn);
-  }
-  const warn = (event) => {
-    event.preventDefault();
-    event.returnValue = '';
+export function confirmRecoveryCode(panel, display, onConfirmed, win = globalThis) {
+  const part = (name) => panel.querySelector(`[data-part="${name}"]`);
+  const [save, codeEl, copy, download, copied, next, form, masked, input, errorEl, again] = [
+    'save', 'code', 'copy', 'download', 'copied', 'next', 'confirm', 'masked', 'group', 'error', 'again',
+  ].map(part);
+  panelWiring.get(panel)?.abort();
+  const wiring = new AbortController();
+  panelWiring.set(panel, wiring);
+  const on = (target, type, fn) => target.addEventListener(type, fn, { signal: wiring.signal });
+  const index = recoveryGroupIndex(display);
+
+  const showCode = () => {
+    codeEl.textContent = display;
+    copied.textContent = '';
+    form.hidden = true;
+    save.hidden = false;
   };
-  const submit = (event) => {
+  on(copy, 'click', async () => {
+    try {
+      // No clipboard outside a secure context: a plain-HTTP server.
+      await win.navigator.clipboard.writeText(display);
+      copied.textContent = 'Copied.';
+    } catch {
+      win.getSelection().selectAllChildren(codeEl);
+      copied.textContent = 'This browser blocked the copy. The code is selected: copy it with Ctrl+C, or ⌘C on a Mac.';
+    }
+  });
+  on(download, 'click', () => {
+    const text = `Cairn recovery code for ${win.location.origin}\n\n${display}\n\n`
+      + 'It resets a forgotten password without losing your keys. Keep it somewhere safe and private.\n';
+    const a = win.document.createElement('a');
+    a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(text);
+    a.download = RECOVERY_FILE;
+    win.document.body.append(a);
+    a.click();
+    a.remove();
+    copied.textContent = `Downloading ${RECOVERY_FILE}.`;
+  });
+  on(next, 'click', () => {
+    codeEl.textContent = '';
+    copied.textContent = '';
+    save.hidden = true;
+    masked.textContent = recoveryCodeMasked(display, index);
+    input.value = '';
+    errorEl.hidden = true; // a wrong group's error, from before Show the code again
+    form.hidden = false;
+    input.focus();
+  });
+  on(again, 'click', () => {
+    showCode();
+    next.focus();
+  });
+  on(form, 'submit', (event) => {
     event.preventDefault();
-    if (!confirmed()) {
-      errorEl.textContent = 'That is not the group shown above. Check the code and try again.';
+    if (!recoveryGroupMatches(display, index, input.value)) {
+      errorEl.textContent = 'That does not match the code. Check your saved copy, or show the code again.';
       errorEl.hidden = false;
       return;
     }
     errorEl.hidden = true; // a wrong group's error, from an earlier try
-    codeEl.textContent = '';
+    masked.textContent = '';
     panel.hidden = true;
-    win.removeEventListener('beforeunload', warn);
+    wiring.abort();
     onConfirmed();
-  };
-  confirmHandlers.set(form, { submit, warn });
-  form.addEventListener('submit', submit);
-  win.addEventListener('beforeunload', warn);
+  });
+  on(win, 'beforeunload', (event) => {
+    event.preventDefault();
+    event.returnValue = '';
+  });
+  showCode();
   panel.hidden = false;
-  input.focus();
+  copy.focus();
 }

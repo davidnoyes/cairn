@@ -123,7 +123,25 @@
         <input id="rc-password" type="password" placeholder="your password" aria-label="Your password" autocomplete="current-password">
         <button class="btn primary" type="submit">New recovery code</button>
       </form>
-      <p class="secret mono" id="rc-new"></p>
+      <div class="rc-panel" id="rc-panel" hidden>
+        <div class="rc-save" data-part="save">
+          <p class="secret mono" id="rc-new" data-part="code"></p>
+          <div class="actions start">
+            <button class="btn" type="button" data-part="copy">Copy</button>
+            <button class="btn" type="button" data-part="download">Download</button>
+            <button class="btn primary" type="button" data-part="next">Next</button>
+          </div>
+          <p class="status-line" data-part="copied" role="status"></p>
+        </div>
+        <form class="bar" id="rc-confirm" data-part="confirm" method="dialog" hidden>
+          <p class="secret mono" id="rc-masked" data-part="masked"></p>
+          <label for="rc-group">fill in the missing group from your saved copy</label>
+          <input id="rc-group" type="text" placeholder="missing group" aria-describedby="rc-masked" autocomplete="off" required data-part="group">
+          <button class="btn primary" type="submit">Confirm</button>
+          <button class="btn" type="button" data-part="again">Show the code again</button>
+          <p class="status-line bad" data-part="error" role="alert" hidden></p>
+        </form>
+      </div>
       <p class="status-line" id="account-status" role="status"></p>
     </section>
 

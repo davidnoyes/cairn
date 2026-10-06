@@ -8,7 +8,9 @@
 // - API keys: #key-name, #key-password, a "Create key" button, #key-new for
 //   the key shown once, tr[data-key] rows with a Revoke button, #keys-status.
 // - Account: #pw-current, #pw-new, #pw-confirm and "Change password";
-//   #rc-password, "New recovery code" and #rc-new; #account-status.
+//   #rc-password, "New recovery code"; #rc-panel shows the code once, in
+//   #rc-new, with Copy, Download and Next, then asks for the group blanked out
+//   of #rc-masked in #rc-group, with "Show the code again"; #account-status.
 // - No page ever opens a native alert, confirm or prompt.
 import { readFileSync } from 'node:fs';
 import { expect, test } from './test.mjs';
@@ -198,6 +200,39 @@ test('account pages: the submit button stays disabled until the page listens for
   await prelogin;
 });
 
+test('signup: the page shows the recovery code with Copy, then asks for one blanked-out group before going on', async ({ page, browserName }) => {
+  const s = loadState();
+  const domain = Object.values(s.users)[0].email.split('@')[1];
+  const password = `signup-page-${browserName}-password-Qm47vz`;
+  await page.goto(`${s.appOrigin}/signup`);
+  await page.locator('#email').fill(`signup-page-${browserName}@${domain}`);
+  await page.locator('#name').fill('Signup Page');
+  await page.locator('#password').fill(password);
+  await page.locator('#confirm').fill(password);
+  await page.locator('#submit').click();
+  const panel = page.locator('#recovery');
+  await expect(panel.locator('#code')).not.toHaveText('', { timeout: 60_000 });
+  const code = (await panel.locator('#code').textContent()).trim();
+  if (browserName === 'chromium') {
+    // Playwright's Chromium refuses clipboard writes until the test grants
+    // them, which shows the fallback: the code is selected for the user to copy.
+    await panel.getByRole('button', { name: 'Copy' }).click();
+    await expect(panel.locator('[data-part=copied]')).toHaveText(/code is selected/);
+    expect(await page.evaluate(() => getSelection().toString().trim())).toBe(code);
+    await page.context().grantPermissions(['clipboard-write'], { origin: s.appOrigin });
+  }
+  await panel.getByRole('button', { name: 'Copy' }).click();
+  await expect(panel.locator('[data-part=copied]')).toHaveText('Copied.');
+  await panel.getByRole('button', { name: 'Next' }).click();
+  await expect(panel.locator('#code')).toHaveText('');
+  const masked = (await panel.locator('#masked').textContent()).split('-');
+  const missing = masked.findIndex((g) => /^_+$/.test(g));
+  await panel.getByLabel('fill in the missing group from your saved copy').fill(code.split('-')[missing]);
+  await panel.getByRole('button', { name: 'Confirm' }).click();
+  await expect(panel).toBeHidden();
+  await expect(page.locator('#check')).toBeVisible();
+});
+
 test('refuse: after a reload, the field shown matches the choice the browser restored', async ({ page, browserName }) => {
   const s = loadState();
   const recovery = page.locator('input[name=mode][value=recovery]');
@@ -312,6 +347,35 @@ test('account: a new recovery code is shown once, and resets a forgotten passwor
     await page.getByRole('button', { name: 'New recovery code' }).click();
     await expect(page.locator('#rc-new')).not.toHaveText('', { timeout: 60_000 });
     code = (await page.locator('#rc-new').textContent()).trim();
+    const panel = page.locator('#rc-panel');
+
+    if (browserName === 'chromium') await context.grantPermissions(['clipboard-write'], { origin: s.appOrigin });
+    await panel.getByRole('button', { name: 'Copy' }).click();
+    await expect(panel.locator('[data-part=copied]')).toHaveText('Copied.');
+    const downloading = page.waitForEvent('download');
+    await panel.getByRole('button', { name: 'Download' }).click();
+    const download = await downloading;
+    expect(download.suggestedFilename()).toBe('cairn-recovery-code.txt');
+    expect(readFileSync(await download.path(), 'utf8')).toContain(`\n${code}\n`);
+
+    // Step two hides the code and blanks one group of it.
+    await panel.getByRole('button', { name: 'Next' }).click();
+    await expect(page.locator('#rc-new')).toHaveText('');
+    const masked = (await page.locator('#rc-masked').textContent()).split('-');
+    const missing = masked.findIndex((g) => /^_+$/.test(g));
+    expect(masked.map((g, i) => (i === missing ? code.split('-')[i] : g)).join('-')).toBe(code);
+    await page.locator('#rc-group').fill('ZZZZ');
+    await panel.getByRole('button', { name: 'Confirm' }).click();
+    await expect(panel.locator('[data-part=error]')).toHaveText(/does not match/);
+    await panel.getByRole('button', { name: 'Show the code again' }).click();
+    await expect(page.locator('#rc-new')).toHaveText(code);
+    await panel.getByRole('button', { name: 'Next' }).click();
+    await page.locator('#rc-group').fill(code.split('-')[missing].toLowerCase());
+    await panel.getByRole('button', { name: 'Confirm' }).click();
+    await expect(panel).toBeHidden();
+    await expect(page.locator('#account-status')).toHaveText('New recovery code saved.');
+
+    // Confirmed, so the page lets go without asking, and keeps no copy.
     await page.reload();
     await openTab(page, 'Account');
     await expect(page.locator('#rc-new')).toHaveText('');

@@ -20,13 +20,6 @@ if (deps) {
     form.password.value = '';
     form.confirm.value = '';
     form.hidden = true;
-    confirmRecoveryCode(
-      {
-        form: $('confirmForm'), panel: $('recovery'), codeEl: $('code'), promptEl: $('groupPrompt'),
-        input: $('group'), errorEl: $('confirmError'),
-      },
-      recoveryCode,
-      () => { $('check').hidden = false; },
-    );
+    confirmRecoveryCode($('recovery'), recoveryCode, () => { $('check').hidden = false; });
   });
 }

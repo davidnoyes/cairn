@@ -40,12 +40,23 @@
       <p class="text">Cairn encrypts your artifacts with keys that only your password or this code can open.
       If you forget your password, this code is the only way to keep your keys.
       Nobody, including an administrator, can recover it for you. We show it once.</p>
-      <code class="code" id="code"></code>
-      <form id="confirmForm" method="dialog">
-        <label for="group" id="groupPrompt"></label>
-        <input id="group" name="group" type="text" autocomplete="off" required>
-        <button type="submit">I saved it</button>
-        <p class="error" id="confirmError" role="alert" hidden></p>
+      <div data-part="save">
+        <code class="code" id="code" data-part="code"></code>
+        <div class="pair">
+          <button type="button" class="secondary" data-part="copy">Copy</button>
+          <button type="button" class="secondary" data-part="download">Download</button>
+        </div>
+        <p class="ok-text copied" data-part="copied" role="status"></p>
+        <button type="button" data-part="next">Next</button>
+      </div>
+      <form id="confirmForm" data-part="confirm" method="dialog" hidden>
+        <code class="code" id="masked" data-part="masked"></code>
+        <label for="group">fill in the missing group from your saved copy</label>
+        <input id="group" name="group" type="text" autocomplete="off" aria-describedby="masked" required data-part="group">
+        <button type="submit">Confirm</button>
+        <p class="error" id="confirmError" data-part="error" role="alert" hidden></p>
+        <div class="links"><button type="button" class="link" data-part="again">Show the code again</button></div>
+        <p class="text">Lost it later? While you still know your password, you can make a new one from your account page.</p>
       </form>
     </section>
 

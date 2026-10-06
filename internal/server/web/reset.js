@@ -42,13 +42,6 @@ if (session) {
     }
     const { recoveryCode } = await resetWithoutRecovery(deps, fields);
     form.hidden = true;
-    confirmRecoveryCode(
-      {
-        form: $('confirmForm'), panel: $('recovery'), codeEl: $('newCode'), promptEl: $('groupPrompt'),
-        input: $('group'), errorEl: $('confirmError'),
-      },
-      recoveryCode,
-      () => { $('done').hidden = false; },
-    );
+    confirmRecoveryCode($('recovery'), recoveryCode, () => { $('done').hidden = false; });
   });
 }
