@@ -20,6 +20,9 @@ if (deps) {
     form.password.value = '';
     form.confirm.value = '';
     form.hidden = true;
-    confirmRecoveryCode($('recovery'), recoveryCode, () => { $('check').hidden = false; });
+    confirmRecoveryCode($('recovery'), recoveryCode, () => {
+      $('check').hidden = false;
+      $('check').querySelector('a').focus(); // the Confirm button that had focus is gone
+    });
   });
 }

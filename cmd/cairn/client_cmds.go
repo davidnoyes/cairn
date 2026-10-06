@@ -104,7 +104,7 @@ func confirmRecoveryCode(display string) error {
 	idx := randIndex(len(groups))
 	masked := slices.Clone(groups)
 	masked[idx] = strings.Repeat("_", len(groups[idx]))
-	fmt.Printf("To confirm you saved it, type the missing group: %s\n> ", strings.Join(masked, "-"))
+	fmt.Printf("To confirm you saved it, fill in the missing group from your saved copy: %s\n> ", strings.Join(masked, "-"))
 	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
 	if err != nil {
 		return err
@@ -115,7 +115,8 @@ func confirmRecoveryCode(display string) error {
 	return nil
 }
 
-func randIndex(n int) int {
+// randIndex picks the group to ask for; a variable, so a test can pin it.
+var randIndex = func(n int) int {
 	b := make([]byte, 1)
 	rand.Read(b)
 	return int(b[0]) % n

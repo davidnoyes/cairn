@@ -90,12 +90,13 @@ export default async function globalSetup() {
 
     // Users: sign up, confirm with the link from the log:// mailer, sign in.
     // acct-* change their password, keys and recovery code; drift-* lose their
-    // keys; the owner pins and verifies peer-* keys. One of each per engine, so
-    // a later engine starts from a clean user. succ-*, dead-* and lost-* name
-    // heir-* as their successor; dead-* and lost-* are deactivated and refuse
-    // from /refuse, by password and by recovery code.
+    // keys; wipe-* reset without the recovery code in the browser; the owner
+    // pins and verifies peer-* keys. One of each per engine, so a later engine
+    // starts from a clean user. succ-*, dead-* and lost-* name heir-* as their
+    // successor; dead-* and lost-* are deactivated and refuse from /refuse, by
+    // password and by recovery code.
     const engines = ['chromium', 'firefox', 'webkit'];
-    const perEngine = ['acct', 'drift', 'peer', 'succ', 'heir', 'dead', 'lost'];
+    const perEngine = ['acct', 'drift', 'wipe', 'peer', 'succ', 'heir', 'dead', 'lost'];
     const names = ['owner', 'editor', 'viewer', ...engines.flatMap((e) => perEngine.map((n) => `${n}-${e}`))];
     for (const name of names) {
       const email = `${name}@${DOMAIN}`;

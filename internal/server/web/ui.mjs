@@ -195,7 +195,7 @@ export function confirmRecoveryCode(panel, display, onConfirmed, win = globalThi
       await win.navigator.clipboard.writeText(display);
       copied.textContent = 'Copied.';
     } catch {
-      win.getSelection().selectAllChildren(codeEl);
+      win.getSelection()?.selectAllChildren(codeEl);
       copied.textContent = 'This browser blocked the copy. The code is selected: copy it with Ctrl+C, or ⌘C on a Mac.';
     }
   });
@@ -208,13 +208,15 @@ export function confirmRecoveryCode(panel, display, onConfirmed, win = globalThi
     win.document.body.append(a);
     a.click();
     a.remove();
-    copied.textContent = `Downloading ${RECOVERY_FILE}.`;
+    copied.textContent = `Download started: ${RECOVERY_FILE}.`;
   });
   on(next, 'click', () => {
     codeEl.textContent = '';
     copied.textContent = '';
     save.hidden = true;
     masked.textContent = recoveryCodeMasked(display, index);
+    // Read aloud, the masked code is a run of underscores.
+    masked.setAttribute('aria-label', `Your code, with group ${index + 1} of ${display.split('-').length} left blank`);
     input.value = '';
     errorEl.hidden = true; // a wrong group's error, from before Show the code again
     form.hidden = false;
@@ -224,11 +226,15 @@ export function confirmRecoveryCode(panel, display, onConfirmed, win = globalThi
     showCode();
     next.focus();
   });
+  // An edit hides the error, so a second wrong answer shows it afresh and
+  // role=alert announces it again.
+  on(input, 'input', () => { errorEl.hidden = true; });
   on(form, 'submit', (event) => {
     event.preventDefault();
     if (!recoveryGroupMatches(display, index, input.value)) {
       errorEl.textContent = 'That does not match the code. Check your saved copy, or show the code again.';
       errorEl.hidden = false;
+      input.select();
       return;
     }
     errorEl.hidden = true; // a wrong group's error, from an earlier try

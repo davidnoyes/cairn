@@ -455,15 +455,25 @@ $('rc-form').addEventListener('submit', async (event) => {
   const password = $('rc-password');
   button.disabled = true;
   status('account-status', 'Making a new recovery code…');
+  // While a new code waits to be saved, the form stays off: another would
+  // replace it unseen.
+  let showing = false;
   try {
     const { recoveryCode } = await newRecoveryCode(deps, { password: password.value });
     status('account-status', 'Save the new recovery code now: it is not shown again, and the old one no longer works.');
-    confirmRecoveryCode($('rc-panel'), recoveryCode, () => status('account-status', 'New recovery code saved.'));
+    showing = true;
+    password.disabled = true;
+    confirmRecoveryCode($('rc-panel'), recoveryCode, () => {
+      password.disabled = false;
+      button.disabled = false;
+      password.focus();
+      status('account-status', 'New recovery code saved.');
+    });
   } catch (err) {
     failIn('account-status')(err);
   } finally {
     password.value = '';
-    button.disabled = false;
+    button.disabled = showing;
   }
 });
 
