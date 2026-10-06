@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/aloisdeniel/cairn/internal/client"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 const successorUsage = `usage: cairn successor <subcommand>
@@ -212,7 +214,7 @@ func successorNominate(args []string) error {
 		return explainRefusal(c, err)
 	}
 	fmt.Printf("%s (%s) is your successor (record %d)\nfingerprint %s\n", u.Email, u.ID, seq, showFP(u.FP))
-	fmt.Printf("they can read the artifacts you own 14 days after they ask, unless you refuse first with: cairn successor refuse\n")
+	fmt.Printf("they can read the artifacts you own %d days after they ask, unless you refuse first with: cairn successor refuse\n", int(store.SuccessionWait/(24*time.Hour)))
 	return nil
 }
 

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/aloisdeniel/cairn/internal/client"
 	"github.com/aloisdeniel/cairn/internal/clock"
 	"github.com/aloisdeniel/cairn/internal/e2e"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 const day14 = 14*24*time.Hour + time.Hour
@@ -182,6 +184,9 @@ func TestSuccessorNominateNeedsTheRightCode(t *testing.T) {
 	out := w.mustRun(t, "ada", runSuccessor, "nominate", "bob@example.com", "--code", w.codeOf(t, "bob"), "--password-stdin")
 	if !strings.Contains(out, "bob@example.com") || !strings.Contains(out, "record 1") {
 		t.Errorf("nominate printed %q", out)
+	}
+	if wait := fmt.Sprintf(" %d days after they ask", int(store.SuccessionWait/(24*time.Hour))); !strings.Contains(out, wait) {
+		t.Errorf("nominate printed %q, want the wait%q", out, wait)
 	}
 	st := w.status(t, "ada")
 	if s, _ := st["successor"].(map[string]any); s == nil || s["email"] != "bob@example.com" {

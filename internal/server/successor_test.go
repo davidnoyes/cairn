@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -12,6 +13,8 @@ import (
 	"github.com/aloisdeniel/cairn/internal/clock"
 	"github.com/aloisdeniel/cairn/internal/e2e"
 	"github.com/aloisdeniel/cairn/internal/mail"
+	"github.com/aloisdeniel/cairn/internal/server/web"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 // The successor. See "Successor" in design/e2e-api.md.
@@ -1373,4 +1376,30 @@ func TestNoticeEmailLinkExpires(t *testing.T) {
 	tok := extractFragmentToken(t, mailsTo(w.s, "n@example.com")[0].Body)
 	w.clk.Advance(24*time.Hour + time.Second)
 	anon.mustDo("POST", "/api/auth/verify", map[string]string{"token": tok}, nil, http.StatusBadRequest)
+}
+
+// TestThePagesNameTheSuccessionWait checks every wait /app tells the user
+// against store.SuccessionWait, so a change to the wait cannot leave the page
+// promising another.
+func TestThePagesNameTheSuccessionWait(t *testing.T) {
+	want := strconv.Itoa(int(store.SuccessionWait/day)) + " days"
+	daysRe := regexp.MustCompile(`\d+ days`)
+	for _, f := range []struct {
+		fsys fs.FS
+		name string
+	}{{web.Templates, "app.html"}, {web.Assets, "app.mjs"}} {
+		b, err := fs.ReadFile(f.fsys, f.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := daysRe.FindAllString(string(b), -1)
+		if len(got) == 0 {
+			t.Errorf("%s names no wait", f.name)
+		}
+		for _, g := range got {
+			if g != want {
+				t.Errorf("%s says %q, want %q", f.name, g, want)
+			}
+		}
+	}
 }
