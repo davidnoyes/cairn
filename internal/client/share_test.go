@@ -194,7 +194,7 @@ func TestSharePromotes(t *testing.T) {
 
 func TestShareRefusals(t *testing.T) {
 	s := newSharing(t)
-	if _, err := s.ada.Share(s.artifact, "bob@example.com", "admin", false); err == nil || !strings.Contains(err.Error(), "role must be viewer or editor") {
+	if _, err := s.ada.Share(s.artifact, "bob@example.com", "admin", false); err == nil || !strings.Contains(err.Error(), "role must be viewer, editor, or manager") {
 		t.Errorf("an unknown role: %v", err)
 	}
 	if _, err := s.ada.Share(s.artifact, "nobody@example.com", "viewer", false); !errors.Is(err, ErrUnknownUser) {

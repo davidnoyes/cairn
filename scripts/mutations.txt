@@ -123,7 +123,7 @@ internal/server/sharing.go	if latest.Team != access.TeamNone {	if true {	go test
 internal/server/sharing.go	if ap := approval[u.ID]; state == pendingApproved && ap != nil {	if ap := approval[u.ID]; false && ap != nil {	go test ./internal/server -run 'TestPending|TestApprov'
 internal/e2e/approval.go	if in.Approval == nil {	if false {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
 internal/e2e/approval.go	if listedFP == "" || !linked(signer, listedFP, fp) {	if listedFP == "" && false || !linked(signer, listedFP, fp) && false {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
-internal/e2e/approval.go	if m.User == in.Approval.Signer && m.Role == "editor" {	if m.User == in.Approval.Signer {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
+internal/e2e/approval.go	if m.User == in.Approval.Signer && (m.Role == "editor" || m.Role == "manager") {	if m.User == in.Approval.Signer {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
 internal/e2e/approval.go	case body.Artifact != in.Artifact:	case false:	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
 internal/e2e/approval.go	case body.Epoch != latest.Epoch:	case false:	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
 internal/e2e/approval.go	case body.User != in.User.ID:	case false:	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
@@ -157,7 +157,7 @@ internal/client/approve.go	prior, pin, err := c.checkPin(va.Keyring, u, acceptNe
 internal/client/approve.go	if err := c.storePin(k, u.ID, *pin, basedOn); err != nil {	if err := error(nil); err != nil && pin == nil && basedOn == "" {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/approve.go	basedOn := va.Keyring.Pins[u.ID].FP	basedOn := "unrelated"	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/approve.go	if chain.Latest.Owner == k.UserID {	if false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
-internal/client/approve.go	if want, ok := commits[w.Epoch]; !ok || commit != want {	if want, ok := commits[w.Epoch]; !ok && false || commit != want && false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
+internal/client/manager.go	if want, ok := commits[w.Epoch]; !ok || commit != want {	if want, ok := commits[w.Epoch]; !ok && false || commit != want && false {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/approve.go	if p.State != PendingApproved || skip(p.User.ID) {	if skip(p.User.ID) {	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/approve.go	_, pin, err = c.checkPin(va.Keyring, p.User, false, va.Membership.Rotations)	_, pin, err = c.checkPin(va.Keyring, p.User, true, va.Membership.Rotations)	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
 internal/client/approve.go	return p.State == PendingApproved || (p.State == PendingKeyChanged || p.State == PendingRotated) && !listed(p.User.ID)	return (p.State == PendingKeyChanged || p.State == PendingRotated) && !listed(p.User.ID)	go test ./internal/client -run 'TestApprove|TestTeam|TestPendingAndApprove|TestOwner|TestShareByName'
@@ -172,8 +172,8 @@ internal/client/approve.go	if d, ok := keysOf(p.User.ID); ok && d != approvalUse
 internal/client/approve.go	if p >= 0 && (pending[p].State == PendingKeyChanged || pending[p].State == PendingRotated && !listed) {	if false {	go test ./internal/client -run 'TestApproveRefusals'
 internal/client/approve.go	if u.ID == latest.Owner || listed {	if false {	go test ./internal/client -run 'TestApproveRefusals'
 internal/client/approve.go	return latest.OwnerFP == k.FP	return true	go test ./internal/client -run 'TestApproverOf'
-internal/client/approve.go	return m.User == k.UserID && m.Role == "editor" && m.FP == k.FP	return m.User == k.UserID && m.Role == "editor"	go test ./internal/client -run 'TestApproverOf'
-internal/client/approve.go	return m.User == k.UserID && m.Role == "editor" && m.FP == k.FP	return m.User == k.UserID && m.FP == k.FP	go test ./internal/client -run 'TestApproverOf'
+internal/client/approve.go	return m.User == k.UserID && (m.Role == "editor" || m.Role == "manager") && m.FP == k.FP	return m.User == k.UserID && (m.Role == "editor" || m.Role == "manager")	go test ./internal/client -run 'TestApproverOf'
+internal/client/approve.go	return m.User == k.UserID && (m.Role == "editor" || m.Role == "manager") && m.FP == k.FP	return m.User == k.UserID && m.FP == k.FP	go test ./internal/client -run 'TestApproverOf'
 internal/store/sharing.go	t.id, a.UserID, a.FP, a.Epoch, a.Envelope.Body, a.Envelope.Sig, a.Envelope.Signer, now())	t.id, a.UserID, a.FP, a.Epoch, a.Envelope.Sig, a.Envelope.Sig, a.Envelope.Signer, now())	go test ./internal/store -run TestWrapsEstateAndApprovals
 internal/store/sharing.go	t.id, a.UserID, a.FP, a.Epoch, a.Envelope.Body, a.Envelope.Sig, a.Envelope.Signer, now())	t.id, a.UserID, a.FP, a.Epoch, a.Envelope.Body, a.Envelope.Sig, a.UserID, now())	go test ./internal/store -run TestWrapsEstateAndApprovals
 cmd/cairn/share_cmds.go	"email": d.Email, "fp": d.FP})	"email": "", "fp": d.FP})	go test ./cmd/cairn -run 'TestShareAndTeamJSONListedAndUnlisted'
@@ -210,7 +210,7 @@ internal/server/web/e2e.mjs	parts.length !== 3) throw new FormatError("a link	pa
 internal/server/web/e2e.mjs	l.ak.length !== 32	l.ak.length < 32	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	!isHex64(l.o)	l.o === ''	node --test internal/server/web/e2e_test.mjs
 internal/client/share.go	"linkTokenHash": linkHash,	"linkTokenHash": linkHash[:0],	go test ./internal/client -run 'TestPublic|TestSharingRecords|TestOpenLink'
-internal/client/public.go	if latest.Owner != k.UserID || latest.OwnerFP != k.FP {	if false {	go test ./internal/client -run 'TestPublic|TestSharingRecords|TestOpenLink'
+internal/client/public.go	if err := checkSigner(latest, k); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -run 'TestPublic|TestSharingRecords|TestOpenLink'
 internal/client/public.go	if latest.Public {	if false {	go test ./internal/client -run 'TestPublic|TestSharingRecords|TestOpenLink'
 internal/client/public.go	if !on && writes != nil {	if false {	go test ./internal/client -run 'TestPublic|TestSharingRecords|TestOpenLink'
 internal/client/client.go	req.Header.Set("X-Cairn-Link-Token", c.LinkToken)	_ = c.LinkToken	go test ./internal/client -run 'TestPublic|TestSharingRecords|TestOpenLink'
@@ -306,7 +306,7 @@ internal/store/sharing.go	AND id NOT IN (SELECT version_id FROM version_vouches)
 internal/store/migrations/005_vouches.sql	version_id  TEXT PRIMARY KEY REFERENCES versions(id) ON DELETE CASCADE,	version_id  TEXT PRIMARY KEY REFERENCES versions(id),	go test ./internal/server -run 'TestDeletingAVersionLeavesNoVouch'
 internal/store/sharing.go	INSERT OR REPLACE INTO version_vouches	INSERT OR IGNORE INTO version_vouches	go test ./internal/server -run 'TestVouchIsStored'
 internal/client/review.go	case v.PushedBy != "" && v.PushedBy == latest.Owner:	case false:	go test ./internal/client -run 'TestReviewReports'
-internal/client/review.go	return m.User == v.PushedBy && m.Role == "editor"	return m.User == v.PushedBy && m.Role == "zzz"	go test ./internal/client -run 'TestReviewReports'
+internal/client/review.go	return m.User == v.PushedBy && (m.Role == "editor" || m.Role == "manager")	return m.User == v.PushedBy && m.Role == "zzz"	go test ./internal/client -run 'TestReviewReports'
 internal/client/review.go	if latest := va.Chain.Latest; latest.Owner != k.UserID || latest.OwnerFP != k.FP {	if latest := va.Chain.Latest; false && latest.Owner != k.UserID {	go test ./internal/client -run 'TestVouchRefuses'
 internal/store/artifacts.go	DELETE FROM version_vouches WHERE version_id = ?	SELECT 1 WHERE ? IS NULL	go test ./internal/store -run TestSwapVersionContentDropsTheVouch
 
@@ -330,7 +330,7 @@ internal/client/epoch.go	case p.State == PendingApproved || p.State == PendingRo
 internal/client/epoch.go	if next.Public {	if false {	go test ./internal/client -run 'TestUnshareOnAPublicArtifactReturnsANewLink'
 internal/client/epoch.go	nextEpochRecord{next: next, exclude: u.ID}	nextEpochRecord{next: next}	go test ./internal/client -run 'TestUnshareExcludesAnApprovedUserByName|TestUnshareRemovesAListedTeamMember'
 internal/client/share.go	dropped = append(dropped, x)	kept = append(kept, x)	go test ./internal/client -run 'TestShareByNameReadmitsAnExcludedUser'
-internal/client/share.go	demote = members[i].Role == "editor" && role == "viewer"	demote = false	go test ./internal/client -run 'TestShareDemotionStartsANewEpoch'
+internal/client/share.go	demote = (was == "editor" || was == "manager") && role == "viewer"	demote = false	go test ./internal/client -run 'TestShareDemotionStartsANewEpoch'
 internal/client/public.go	next.Public, next.PublicWrites = false, false	next.PublicWrites = false	go test ./internal/client -run 'TestPublicOffStartsANewEpoch'
 cmd/cairn/share_cmds.go	if ch.Link != "" {	if false {	go test ./cmd/cairn -run 'TestUnsharePrintsTheNewLinkOfAPublicArtifact'
 internal/client/epoch.go	if !held {	if !held && false {	go test ./internal/client -run 'TestShareDemotionAcceptingANewKeyWrapsEveryEpoch'
@@ -527,7 +527,7 @@ internal/client/share.go	Fork: fork, FetchErr: fetchErr}	Fork: func() error { _ 
 internal/client/share.go	case e.Fork != nil:	case false:	go test ./internal/client -run 'TestPinRefusesAForkedRotationChain|TestPinRefusesARollbackOfTheRotationRecords'
 internal/client/share.go	func (e *KeyChangedError) Unwrap() error { return e.Fork }	func (e *KeyChangedError) Unwrap() error { return nil }	go test ./internal/client -run 'TestPinRefusesAForkedRotationChain|TestPinRefusesARollbackOfTheRotationRecords'
 internal/client/share.go	needsWraps = relist && !rotated	needsWraps = relist	go test ./internal/client -run 'TestShareFollowsARotationWithoutAFlag'
-internal/client/share.go	res.Unchanged = !res.Promoted && !demote && !relist	res.Unchanged = !res.Promoted && !demote && !needsWraps	go test ./internal/client -run 'TestShareRelistsARotatedMemberAtTheSameRole'
+internal/client/share.go	res.Unchanged = !res.Promoted && !demote && !res.Lowered && !relist	res.Unchanged = !res.Promoted && !demote && !res.Lowered && !needsWraps	go test ./internal/client -run 'TestShareRelistsARotatedMemberAtTheSameRole'
 internal/client/share.go	needsWraps = !approved && !rotated	needsWraps = !approved	go test ./internal/client -run 'TestShareListsAnUnlistedHolderWhoRotatedWithoutAWrap'
 internal/client/share.go	state, _, fork, fetchErr := c.followPin(va.Keyring, u, va.Membership.Rotations)	state, _, fork, fetchErr := c.followPin(e2e.NewKeyring(), u, nil)	go test ./internal/client -run 'TestMembersShowsARotatedPinAndWritesNothing'
 internal/client/share.go	r.State, r.WasVerified = state, wasVerified(va.Keyring, r.User, state)	r.State, r.WasVerified = state, false	go test ./internal/client -run 'TestMembersShowsARotatedPinAndWritesNothing'
@@ -711,7 +711,7 @@ internal/client/transfer.go	if open.Offer == nil {	if false {	go test ./internal
 internal/client/transfer.go	|| hex.EncodeToString(e2e.Fingerprint(x, ed)) != fp {	|| hex.EncodeToString(e2e.Fingerprint(x, ed)) != fp && false {	go test ./internal/client -run 'TestOwnerKeyNeedsThePair'
 internal/client/transfer.go	return nil, ErrTransferNotOwner	_ = 0	go test ./internal/client -run 'TestOfferRefusals'
 internal/client/transfer.go	return ErrTransferNotOwner	_ = 0	go test ./internal/client -run 'TestWithdrawAndDecline'
-internal/client/transfer.go	if i < 0 || latest.Members[i].Role != "editor" {	if i < 0 {	go test ./internal/client -run 'TestOfferRefusals'
+internal/client/transfer.go	if i < 0 || latest.Members[i].Role != "editor" && latest.Members[i].Role != "manager" {	if i < 0 {	go test ./internal/client -run 'TestOfferRefusals'
 internal/client/transfer.go	if listedFP != u.FP {	if false {	go test ./internal/client -run 'TestOfferChecksTheEditorsKey'
 internal/client/transfer.go	prev = e2e.BodyHash(env.Body)	prev = va.Chain.Head	go test ./internal/client -run 'TestSecondOfferClosesTheFirst'
 internal/client/transfer.go	req["membership"] = env	_ = env	go test ./internal/client -run 'TestSecondOfferClosesTheFirst'
@@ -1438,7 +1438,7 @@ internal/sqlrun/sqlrun.go	if !IsSingleStatement(stmt.SQL) {	if false && !IsSingl
 internal/sqlrun/sqlrun.go	return isBlank(s[i+1:])	return true	go test ./internal/sqlrun -run TestSingleStatementScanner
 internal/client/reseal.go	if v == nil || v.Epoch >= current {	if v == nil {	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
 internal/client/reseal.go	if !editorOf(va.Chain.Latest, signer) {	if false && !editorOf(va.Chain.Latest, signer) {	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
-internal/client/reseal.go	return m.User == user && m.Role == "editor"	return m.User == user	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
+internal/client/reseal.go	return m.User == user && (m.Role == "editor" || m.Role == "manager")	return m.User == user	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
 internal/client/review.go	if e2e.BodyHash(env.Body) != v.ManifestHash {	if false {	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
 internal/client/reseal.go	if err == nil && e2e.BodyHash(blob) != f.SHA256 {	if false {	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
 internal/client/reseal.go	if v == nil || x.Seq > v.Seq {	if v == nil || x.Seq < v.Seq {	go test ./internal/client/ -run 'TestReseal(ReplacesTheLatestVersion|PicksTheHighestSeq|LeavesA(Removed|Demoted)|SkipsA)'
@@ -2408,13 +2408,13 @@ internal/server/handlers_users.go	if req.Role != nil && req.IsAdmin != nil {	if 
 internal/server/handlers_users.go	if req.Role != nil && !validRole(*req.Role) {	if false {	go test ./internal/server -count=1 -run TestAdminSetsRole
 internal/server/handlers_users.go	case req.IsAdmin != nil && !*req.IsAdmin && u.IsAdmin:	case req.IsAdmin != nil && !*req.IsAdmin:	go test ./internal/server -count=1 -run TestAdminSetsRole
 internal/store/migrations/013_roles.sql	UPDATE users SET role = 'admin' WHERE is_admin = 1;	UPDATE users SET role = 'member' WHERE is_admin = 1;	go test ./internal/store -count=1 -run TestMigration013RolesFromAdminFlag
-internal/client/share.go	if u.Role == store.RoleViewer && role == "editor" &&	if u.Role == store.RoleAdmin && role == "editor" &&	go test ./internal/client -count=1 -run TestViewerAccountThroughTheClient
+internal/client/share.go	if u.Role == store.RoleViewer && !viewerAccountMayHold(	if u.Role == store.RoleAdmin && !viewerAccountMayHold(	go test ./internal/client -count=1 -run TestViewerAccountThroughTheClient
 cmd/cairn/client_cmds.go	me.Email, me.Name, me.Role, c.Host)	me.Email, me.Name, "user", c.Host)	go test ./cmd/cairn -count=1 -run TestWhoamiShowsTheServerRole
 cmd/cairn/serve.go	ViewerDomains: []string(viewerDomains),	ViewerDomains: nil,	go test ./cmd/cairn -count=1 -run TestRunServeViewerDomains
 cmd/cairn/serve.go	envOr("CAIRN_VIEWER_DOMAINS", "")	envOr("CAIRN_VIEWER_DOMAINS_X", "")	go test ./cmd/cairn -count=1 -run TestRunServeViewerDomains
 internal/server/sharing.go	if d == access.Forbidden && req.Caller.ReadOnly && access.WritesArtifact(act) {	if false && req.Caller.ReadOnly {	go test ./internal/server -count=1 -run TestViewerAccountReadsAndNeverWrites
 internal/server/transfer.go	return transferRefusal(http.StatusConflict, "%s is a viewer account and cannot own an artifact", u.Email)	return nil	go test ./internal/server -count=1 -run TestNoOwnershipOfferToAViewerAccount
-internal/client/share.go	&& !listedAsEditor(latest.Members, u.ID) {	{	go test ./internal/client -count=1 -run TestShareKeepsADemotedEditorListed
+internal/client/share.go	&& !viewerAccountMayHold(latest.Members, u.ID, role) {	{	go test ./internal/client -count=1 -run TestShareKeepsADemotedEditorListed
 internal/e2e/chain.go	case b.V != 1:	case false:	go test ./internal/e2e -run 'TestVerifyChain$|TestManagerRecordRules|TestVectors'
 internal/e2e/chain.go	case listed == nil:	case false:	go test ./internal/e2e -run 'TestVerifyChain$|TestManagerRecordRules|TestVectors'
 internal/e2e/chain.go	prev.Members[i].User == b.Signer && prev.Members[i].Role == "manager"	prev.Members[i].User == b.Signer	go test ./internal/e2e -run 'TestVerifyChain$|TestManagerRecordRules|TestVectors'
@@ -2459,7 +2459,6 @@ internal/access/access.go	case m.member && r.Member.Role == RoleManager:	case fa
 internal/access/access.go	case WriteData, PushVersion, Rename, ListPending, ApproveMember:	case WriteData, PushVersion, Rename, ListPending, ApproveMember, Estate:	go test ./internal/access -count=1
 internal/access/access.go	ReviewVersions, Transfer, AnswerTransfer, Estate:	ReviewVersions, Transfer, AnswerTransfer:	go test ./internal/access -count=1
 internal/access/access.go	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer, Estate:	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer:	go test ./internal/access -count=1 -run TestReadOnlyCallerNeverWrites
-internal/access/access.go	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer, Estate:	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Estate:	go test ./internal/access -count=1 -run TestReadOnlyCallerNeverWrites
 internal/server/routes.go	s.artifactRoute(access.Estate, s.handlePutEstate)	s.artifactRoute(access.Share, s.handlePutEstate)	go test ./internal/server -count=1 -run 'TestManagerStartsAnEpoch'
 internal/server/estate.go	if e.Epoch == epoch {	if false && e.Epoch == epoch {	go test ./internal/server -count=1 -run 'TestManagerStartsAnEpoch'
 internal/server/estate.go	if epoch > cur.Epoch {	if false && epoch > cur.Epoch {	go test ./internal/server -count=1 -run 'TestManagerStartsAnEpoch'
@@ -2530,3 +2529,48 @@ internal/server/web/sharing.mjs	if (u.id === latest.owner) throw new SharingErro
 internal/server/web/sharing.mjs	if (u.id === latest.owner) throw new SharingError('share-self'	if (u.id === caller.record.userId) throw new SharingError('share-self'	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	const manager = adminRole(caller, va) === 'manager';	const manager = false;	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (!role) throw new SharingError('not-owner'	if (false) throw new SharingError('not-owner'	node --test internal/server/web/sharing_test.mjs
+internal/client/manager.go	if isOwner(latest, k) || isManager(latest, k) {	if isOwner(latest, k) {	go test ./internal/client -count=1 -run 'TestManagerSharesAndChangesRoles'
+internal/client/manager.go	m.User == k.UserID && m.Role == "manager" && m.FP == k.FP	m.User == k.UserID && m.Role == "zzz" && m.FP == k.FP	go test ./internal/client -count=1 -run 'TestManagerSharesAndChangesRoles'
+internal/client/manager.go	if next.Owner != k.UserID {	if false {	go test ./internal/client -count=1 -run 'TestManagerSharesAndChangesRoles'
+internal/client/share.go	if signer == next.Owner {	if false {	go test ./internal/client -count=1 -run 'TestManagerSharesAndChangesRoles'
+internal/client/epoch.go	if err == nil && !signedByCaller(va.Chain.Latest, k) {	if err == nil && !isOwner(va.Chain.Latest, k) {	go test ./internal/client -count=1 -run 'TestManagerSharesAndChangesRoles'
+internal/client/manager.go	return latest.Signer == k.UserID && latest.SignerFP == k.FP	return true	go test ./internal/client -count=1 -run 'TestSignedByCaller'
+internal/client/share.go	if err := checkSigner(latest, k); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -count=1 -run 'TestManagerSharesAndChangesRoles|TestShareRefusals'
+internal/client/epoch.go	if err := checkSigner(latest, k); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -count=1 -run 'TestManagerStartsANewEpochAndTheOwnerCatchesUp|TestUnshareRefusals'
+internal/client/approve.go	if err := checkSigner(latest, k); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -count=1 -run 'TestManagerSetsTeamAndPublic|TestTeamRefusals'
+internal/client/public.go	if err := checkSigner(latest, k); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -count=1 -run 'TestManagerSetsTeamAndPublic|TestPublicIsForTheOwner'
+internal/client/share.go	if role == "manager" && !isOwner(latest, k) {	if false {	go test ./internal/client -count=1 -run 'TestManagerCannotMakeOrChangeManagers'
+internal/client/manager.go	if !isOwner(latest, k) && listedRole(latest, user) == "manager" {	if false {	go test ./internal/client -count=1 -run 'TestManagerCannotMakeOrChangeManagers'
+internal/client/epoch.go	if err := checkManagerEntry(latest, k, u.ID); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -count=1 -run 'TestManagerCannotMakeOrChangeManagers'
+internal/client/share.go	if err := checkManagerEntry(latest, k, u.ID); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -count=1 -run 'TestManagerCannotMakeOrChangeManagers'
+internal/client/share.go	if u.ID == latest.Owner {	if u.ID == k.UserID {	go test ./internal/client -count=1 -run 'TestManagerCannotMakeOrChangeManagers'
+internal/client/epoch.go	if u.ID == latest.Owner {	if u.ID == k.UserID {	go test ./internal/client -count=1 -run 'TestManagerCannotMakeOrChangeManagers'
+internal/client/share.go	if u.Role == store.RoleViewer && !viewerAccountMayHold(latest.Members, u.ID, role) {	if u.Role == store.RoleViewer && role == "editor" && !viewerAccountMayHold(latest.Members, u.ID, role) {	go test ./internal/client -count=1 -run 'TestViewerAccountCannotBeMadeAManager'
+internal/client/share.go	return role == "viewer" || role == was || role == "editor" && was == "manager"	return role == "viewer" || role == was	go test ./internal/client -count=1 -run 'TestViewerAccountCannotBeMadeAManager'
+internal/client/share.go	res.Lowered = was == "manager" && role == "editor"	res.Lowered = false	go test ./internal/client -count=1 -run 'TestManagerCannotMakeOrChangeManagers|TestViewerAccountCannotBeMadeAManager'
+internal/client/share.go	demote = (was == "editor" || was == "manager") && role == "viewer"	demote = was == "editor" && role == "viewer"	go test ./internal/client -count=1 -run 'TestOwnerRemovingAManagerStartsANewEpoch'
+cmd/cairn/client_cmds.go	if a.Access == "manager" {	if false {	go test ./cmd/cairn -count=1 -run 'TestOwnerOnlyActionsAreRefusedForAManager'
+internal/client/transfer.go	return nil, ErrTransferNotOwner	return nil, nil	go test ./internal/client -count=1 -run 'TestManagerCannotMakeOrChangeManagers'
+internal/client/review.go	if latest := va.Chain.Latest; latest.Owner != k.UserID || latest.OwnerFP != k.FP {	if false {	go test ./internal/client -count=1 -run 'TestManagerCannotMakeOrChangeManagers'
+internal/client/epoch.go	wraps = append(wraps, w)	_ = w	go test ./internal/client -count=1 -run 'TestManagerStartsANewEpochAndTheOwnerCatchesUp|TestManagerEpochWrapsToTheOwnerOnly'
+internal/client/epoch.go	if isOwner(latest, k) || r.newOwner == k.UserID {	if true {	go test ./internal/client -count=1 -run 'TestManagerStartsANewEpochAndTheOwnerCatchesUp'
+internal/client/epoch.go	if isOwner(latest, k) || r.newOwner == k.UserID {	if isOwner(latest, k) {	go test ./internal/client -count=1 -run 'TestOwnershipOfferToAManager|TestTransferDroppingThePreviousOwnerResealsTheData'
+internal/client/manager.go	if owner.FP != latest.OwnerFP && !e2e.RotationLinker(va.Membership.Rotations)(owner.ID, latest.OwnerFP, owner.FP) {	if false {	go test ./internal/client -count=1 -run 'TestManagerWrapsToAnOwnerWhoseKeysDoNotFollow'
+internal/client/manager.go	i := slices.IndexFunc(keys.Wraps, func(w KeyWrap) bool { return w.Epoch == epoch })	i := -1	go test ./internal/client -count=1 -run 'TestManagerStartsANewEpochAndTheOwnerCatchesUp|TestFailedCatchUpDoesNotStopTheOwnerReading'
+internal/client/manager.go	aks[epoch] = ak	_ = ak	go test ./internal/client -count=1 -run 'TestManagerStartsANewEpochAndTheOwnerCatchesUp'
+internal/client/manager.go	http.MethodPut,	http.MethodPost,	go test ./internal/client -count=1 -run 'TestManagerStartsANewEpochAndTheOwnerCatchesUp|TestFailedCatchUpDoesNotStopTheOwnerReading'
+internal/client/manager.go	if want, ok := commits[w.Epoch]; !ok || commit != want {	if want, ok := commits[w.Epoch]; !ok || commit != want && false {	go test ./internal/client -count=1 -run 'TestApproveRefusesAWrapThatMissesTheCommit'
+internal/client/share.go	if err := c.catchUpEstate(k, artifactID, chain, keys, aks); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -count=1 -run 'TestManagerStartsANewEpochAndTheOwnerCatchesUp'
+internal/client/share.go	aks, err := c.callerAKs(k, artifactID, va.Chain)	aks, err := c.epochAKs(k, artifactID, va.Chain)	go test ./internal/client -count=1 -run 'TestManagerSharesAndChangesRoles'
+internal/client/public.go	aks, err := c.callerAKs(k, artifactID, chain)	aks, err := c.epochAKs(k, artifactID, chain)	go test ./internal/client -count=1 -run 'TestManagerSetsTeamAndPublic'
+internal/e2e/approval.go	(m.Role == "editor" || m.Role == "manager")	m.Role == "editor"	go test ./internal/e2e -count=1 -run 'TestCheckApproval|TestVectors'
+internal/e2e/link.go	if m.Role != "editor" && m.Role != "manager" {	if m.Role != "editor" {	go test ./internal/e2e -count=1
+internal/client/data.go	listed[mem.User] = mem.FP	if mem.Role == "editor" { listed[mem.User] = mem.FP }	go test ./internal/client -count=1 -run 'TestManagerPushIsAcceptedByOthers'
+internal/client/data.go	add(mem.User, mem.FP)	if mem.Role == "editor" { add(mem.User, mem.FP) }	go test ./internal/client -count=1 -run 'TestRestoreAcceptsARevisionAFormerManagerSigned'
+internal/client/approve.go	(m.Role == "editor" || m.Role == "manager") && m.FP == k.FP	m.Role == "editor" && m.FP == k.FP	go test ./internal/client -count=1 -run 'TestManagerApprovesATeamMember'
+internal/client/review.go	(m.Role == "editor" || m.Role == "manager")	m.Role == "editor"	go test ./internal/client -count=1 -run 'TestReviewTreatsAManagerAsAWriter'
+internal/client/reseal.go	(m.Role == "editor" || m.Role == "manager")	m.Role == "editor"	go test ./internal/client -count=1 -run 'TestManagerPushIsAcceptedByOthers'
+internal/client/transfer.go	latest.Members[i].Role != "editor" && latest.Members[i].Role != "manager"	latest.Members[i].Role != "editor"	go test ./internal/client -count=1 -run 'TestOwnershipOfferToAManager'
+internal/client/transfer.go	(m.Role == "editor" || m.Role == "manager") })	m.Role == "editor" })	go test ./internal/client -count=1 -run 'TestOwnershipOfferToAManager'
+cmd/cairn/share_cmds.go	if latest.V != 2 {	if latest.V != 99 {	go test ./cmd/cairn -count=1 -run 'TestMembersShowsAManagerAndWhoSignedTheRecord'
+internal/client/share.go	if role != "viewer" && role != "editor" && role != "manager" {	if role != "viewer" && role != "editor" {	go test ./cmd/cairn -count=1 -run 'TestMembersShowsAManagerAndWhoSignedTheRecord'

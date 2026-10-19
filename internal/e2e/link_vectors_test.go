@@ -324,6 +324,24 @@ func linkChainCases() []linkChainCase {
 				return newChain(f.t, u.alice, []Member{editor(u.bob), viewer(u.carol)}, nil).
 					add(u.alice, func(b *MembershipBody) { b.Public = true; b.Prev = hex64("wrong") })
 			})},
+		{name: "manager-writer", why: "bob is listed as a manager, and his served keys verify, so he is a trusted writer as an editor is", seq: 2, headEpoch: 1, editors: []string{"u-bob"},
+			build: func(t testing.TB, u chainUsers) (*chainFixture, []byte, string, map[string]KeyPair) {
+				f := newChain(t, u.alice, []Member{manager(u.bob), viewer(u.carol)}, nil).
+					add(u.alice, func(b *MembershipBody) { b.Public = true })
+				return f, ak(1), u.alice.fp, map[string]KeyPair{u.bob.id: u.bob.keys}
+			}},
+		{name: "manager-keys-substituted", why: "the keys served for a manager hash to another fingerprint than the record lists, so that manager is not a trusted writer, and the open still succeeds", seq: 2, headEpoch: 1,
+			build: func(t testing.TB, u chainUsers) (*chainFixture, []byte, string, map[string]KeyPair) {
+				f := newChain(t, u.alice, []Member{manager(u.bob), viewer(u.carol)}, nil).
+					add(u.alice, func(b *MembershipBody) { b.Public = true })
+				return f, ak(1), u.alice.fp, map[string]KeyPair{u.bob.id: u.mallory.keys}
+			}},
+		{name: "manager-made-it-public", why: "bob, a listed manager, signs the version 2 record that makes the artifact public; the owner's keys verify the first record, and bob's served keys the second", seq: 2, headEpoch: 1, editors: []string{"u-bob"},
+			build: func(t testing.TB, u chainUsers) (*chainFixture, []byte, string, map[string]KeyPair) {
+				f := newChain(t, u.alice, []Member{manager(u.bob), viewer(u.carol)}, nil).
+					addByManager(u.bob, func(b *MembershipBody) { b.Public = true })
+				return f, ak(1), u.alice.fp, map[string]KeyPair{u.bob.id: u.bob.keys}
+			}},
 	}
 }
 

@@ -147,7 +147,7 @@ func ParseLink(s string) (*Link, error) {
 
 // LinkChainInput is the answer of GET /api/artifacts/{id}/membership read
 // with a link's token, and the link it was read for. Keys is the link
-// scope's editor keys. Rotations are the rotation records the server serves,
+// scope's editor and manager keys. Rotations are the rotation records the server serves,
 // by user ID. Successors are the successor records it serves, as for
 // ChainInput.
 type LinkChainInput struct {
@@ -203,7 +203,7 @@ func VerifyLinkChain(in LinkChainInput) (*LinkChain, error) {
 	}
 	editors := map[string]KeyPair{}
 	for _, m := range b.Members {
-		if m.Role != "editor" {
+		if m.Role != "editor" && m.Role != "manager" {
 			continue
 		}
 		kp, ok := in.Keys[m.User]

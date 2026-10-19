@@ -8563,6 +8563,295 @@
       ],
       "rotations": {},
       "error": "duplicate"
+    },
+    {
+      "name": "manager-signed",
+      "why": "a listed manager's approval passes: bob is listed as a manager, not an editor",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "manager",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "-sG1fiT1veT93et_2oUMGzlFTytU3l6gKOhfVMTwASEUpE-ndHEv0ufwZ70C7wwh7Pf4KM90yrKsTvAfU9xPCQ",
+        "signer": "u-bob"
+      },
+      "signerKeys": {
+        "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+        "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "rotations": {}
+    },
+    {
+      "name": "manager-signed-after-rotation",
+      "why": "a manager rotated, then signed under the new keys while the record still lists the old fp",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "manager",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "GaAA6DRdqUpmeB_1m1up9sEiuz-NwpDNohey8PhYKQc_INMhHEAezyqunBT0TcMtAOSBgGL0FLvIsjFtF2kjAQ",
+        "signer": "u-bob"
+      },
+      "signerKeys": {
+        "x25519": "RV6LGJwdzpr4q-fZX3Z-J8pP6qDCoQSXWfafhVnzHlQ",
+        "ed25519": "LYaNdtiAtLNBzX1-M48N4EjDt5vwQPe-KQ6D48UNqdM"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "rotations": {
+        "u-bob": [
+          {
+            "body": "eyJ2IjoxLCJ1c2VyIjoidS1ib2IiLCJzZXEiOjEsIm9sZCI6eyJ4MjU1MTkiOiI4Zm03SkpzN0swWnNRRUx1bTQtTG1hTTRCZ1k4SWdMYlBtcmtUb0VRYVFVIiwiZWQyNTUxOSI6IkhVcm4yb1hSbVExOEdHNkMwMnZBd1ktd25XQm40TzVWblJrdXZIaTBPLVEifSwibmV3Ijp7IngyNTUxOSI6IlJWNkxHSndkenByNHEtZlpYM1otSjhwUDZxRENvUVNYV2ZhZmhWbnpIbFEiLCJlZDI1NTE5IjoiTFlhTmR0aUF0TE5CelgxLU00OE40RWpEdDV2d1FQZS1LUTZENDhVTnFkTSJ9fQ",
+            "sig": "vYgkMmbHIOUf0u3CGQGY8MPPtbDNHzo_LPC6J1ktHx3uuZFCkOp9WafeddVcjyHaJTNLpM4l124_Xayze5S6CA",
+            "signer": "u-bob",
+            "newSig": "gHkR33R6imuEpdwmZ1fRhRoRPXXngD_op412C9sIGIpmHl2aMrAg9YEdBkt70fG09qwrGjDnF3pchS_M4fwfDw"
+          }
+        ]
+      }
+    },
+    {
+      "name": "signer-manager-key-not-listed-fp",
+      "why": "a manager's key that does not hash to the listed fp cannot approve",
+      "artifact": "artifact-chain",
+      "latest": {
+        "v": 1,
+        "artifact": "artifact-chain",
+        "epoch": 2,
+        "seq": 3,
+        "owner": "u-alice",
+        "ownerFp": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+        "akCommit": "85d047ac7f231102fdf0442d1bd400b3ee4718938cd268a334b3d89407906b7a",
+        "members": [
+          {
+            "user": "u-bob",
+            "role": "manager",
+            "fp": "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36"
+          },
+          {
+            "user": "u-carol",
+            "role": "viewer",
+            "fp": "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22"
+          }
+        ],
+        "excluded": [],
+        "team": "viewer",
+        "public": false,
+        "publicWrites": false,
+        "prev": "",
+        "transfer": "",
+        "handover": ""
+      },
+      "approval": {
+        "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjIsInVzZXIiOiJ1LWRhdmUiLCJmcCI6IjMyODNlMDE0ODM5ODc3NWQ2MWQxOTg0ZGIxYjJhMTJmZjg3NjU5NDkxYmU0OTMxZTBmZjdiOWQyMWJmM2QxODIifQ",
+        "sig": "7FHlp2fLb8wqW24oPq3vvqCZL6-UNtAbDcXusyBS22VM1KTEGRmtOcx2YwLatuY50lEosEoDldLXrDefMJz-Bg",
+        "signer": "u-bob"
+      },
+      "signerKeys": {
+        "x25519": "Dsvoj5pNNW1LvjhEfOz_bpwNUThuzGAM5wp2E9-owBM",
+        "ed25519": "bF33FV3T7_fF0y4-DKOwS1JDYwPE1VVHI7dYOP8Ti5E"
+      },
+      "user": {
+        "id": "u-dave",
+        "email": "dave@example.com",
+        "keys": {
+          "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+          "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+        }
+      },
+      "directory": [
+        {
+          "id": "u-alice",
+          "email": "alice@example.com",
+          "keys": {
+            "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+            "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+          }
+        },
+        {
+          "id": "u-bob",
+          "email": "bob@example.com",
+          "keys": {
+            "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+            "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+          }
+        },
+        {
+          "id": "u-carol",
+          "email": "carol@example.com",
+          "keys": {
+            "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
+            "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
+          }
+        },
+        {
+          "id": "u-dave",
+          "email": "dave@example.com",
+          "keys": {
+            "x25519": "RxepHIgSqqrQmFrAiWW6In4MZtPJ3TMtyQMS8vBX6mY",
+            "ed25519": "yeL4aBk2yUKkOzqRmUQ2WGpGqUns7nsPMnR78eFHClA"
+          }
+        },
+        {
+          "id": "u-mallory",
+          "email": "mallory@example.com",
+          "keys": {
+            "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+            "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+          }
+        }
+      ],
+      "rotations": {},
+      "error": "signer"
     }
   ],
   "keyring": [
@@ -10485,6 +10774,140 @@
       "rotations": {},
       "successors": {},
       "error": "chain"
+    },
+    {
+      "name": "manager-writer",
+      "why": "bob is listed as a manager, and his served keys verify, so he is a trusted writer as an editor is",
+      "artifact": "artifact-chain",
+      "ak": "af4a73359b502ae55ad49fb6d2b65aee836e3d83ffc08a65585407bfa7bcaf85",
+      "epoch": 1,
+      "o": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoibWFuYWdlciIsImZwIjoiZTU0ODJlZTcyNTM1MmI2MDM4OTU1OWQ0N2NiNjVkNWUxMTEzMGI2ZjM4NTBjZTA0NmM0ZDY1NzQ2MDhjMmYzNiJ9LHsidXNlciI6InUtY2Fyb2wiLCJyb2xlIjoidmlld2VyIiwiZnAiOiI5YjdhMzQ4MzBjMmU4YWZlMGZiZTk0ODVhNDc2MjU1NDE5NDI5YTU1MjZjMmI2YTc3MmQ3YTJjODVmYTE0ZDIyIn1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "pPKF1VTkTk3bkI1uyJ3YBamUZOU1ziik-hmesge6od_OJT_V_So_8VIGFoVt4OsO9T3KKa3KIEVmT06RDYVAAw",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoibWFuYWdlciIsImZwIjoiZTU0ODJlZTcyNTM1MmI2MDM4OTU1OWQ0N2NiNjVkNWUxMTEzMGI2ZjM4NTBjZTA0NmM0ZDY1NzQ2MDhjMmYzNiJ9LHsidXNlciI6InUtY2Fyb2wiLCJyb2xlIjoidmlld2VyIiwiZnAiOiI5YjdhMzQ4MzBjMmU4YWZlMGZiZTk0ODVhNDc2MjU1NDE5NDI5YTU1MjZjMmI2YTc3MmQ3YTJjODVmYTE0ZDIyIn1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjp0cnVlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiYzU4MDk2ZGRlMDNjMDU2MTRiODQ3YmQxMmE1ZjQxMGViMDI4OTMyMWNkY2FmOGYwNjgwN2QzNzk4Y2RmOTUxYiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "l9Z6G3ZcsYaufiScd-UJ8wUnXoj88EKpZHcUPKMZH8Pfzmcs-7mb2-iR49_g8fnsgWwszw7i5mOoT4bnF_xoDA",
+          "signer": "u-alice"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        }
+      },
+      "offers": {},
+      "keys": {
+        "u-bob": {
+          "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+          "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+        }
+      },
+      "rotations": {},
+      "successors": {},
+      "want": {
+        "head": "2c6e803f1c88e3320062fb2c1384baad6d2c690e2e416473de18474c69949401",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": [],
+        "editors": [
+          "u-bob"
+        ]
+      }
+    },
+    {
+      "name": "manager-keys-substituted",
+      "why": "the keys served for a manager hash to another fingerprint than the record lists, so that manager is not a trusted writer, and the open still succeeds",
+      "artifact": "artifact-chain",
+      "ak": "af4a73359b502ae55ad49fb6d2b65aee836e3d83ffc08a65585407bfa7bcaf85",
+      "epoch": 1,
+      "o": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoibWFuYWdlciIsImZwIjoiZTU0ODJlZTcyNTM1MmI2MDM4OTU1OWQ0N2NiNjVkNWUxMTEzMGI2ZjM4NTBjZTA0NmM0ZDY1NzQ2MDhjMmYzNiJ9LHsidXNlciI6InUtY2Fyb2wiLCJyb2xlIjoidmlld2VyIiwiZnAiOiI5YjdhMzQ4MzBjMmU4YWZlMGZiZTk0ODVhNDc2MjU1NDE5NDI5YTU1MjZjMmI2YTc3MmQ3YTJjODVmYTE0ZDIyIn1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "pPKF1VTkTk3bkI1uyJ3YBamUZOU1ziik-hmesge6od_OJT_V_So_8VIGFoVt4OsO9T3KKa3KIEVmT06RDYVAAw",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoibWFuYWdlciIsImZwIjoiZTU0ODJlZTcyNTM1MmI2MDM4OTU1OWQ0N2NiNjVkNWUxMTEzMGI2ZjM4NTBjZTA0NmM0ZDY1NzQ2MDhjMmYzNiJ9LHsidXNlciI6InUtY2Fyb2wiLCJyb2xlIjoidmlld2VyIiwiZnAiOiI5YjdhMzQ4MzBjMmU4YWZlMGZiZTk0ODVhNDc2MjU1NDE5NDI5YTU1MjZjMmI2YTc3MmQ3YTJjODVmYTE0ZDIyIn1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjp0cnVlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiYzU4MDk2ZGRlMDNjMDU2MTRiODQ3YmQxMmE1ZjQxMGViMDI4OTMyMWNkY2FmOGYwNjgwN2QzNzk4Y2RmOTUxYiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "l9Z6G3ZcsYaufiScd-UJ8wUnXoj88EKpZHcUPKMZH8Pfzmcs-7mb2-iR49_g8fnsgWwszw7i5mOoT4bnF_xoDA",
+          "signer": "u-alice"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        }
+      },
+      "offers": {},
+      "keys": {
+        "u-bob": {
+          "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
+          "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
+        }
+      },
+      "rotations": {},
+      "successors": {},
+      "want": {
+        "head": "2c6e803f1c88e3320062fb2c1384baad6d2c690e2e416473de18474c69949401",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": [],
+        "editors": []
+      }
+    },
+    {
+      "name": "manager-made-it-public",
+      "why": "bob, a listed manager, signs the version 2 record that makes the artifact public; the owner's keys verify the first record, and bob's served keys the second",
+      "artifact": "artifact-chain",
+      "ak": "af4a73359b502ae55ad49fb6d2b65aee836e3d83ffc08a65585407bfa7bcaf85",
+      "epoch": 1,
+      "o": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoibWFuYWdlciIsImZwIjoiZTU0ODJlZTcyNTM1MmI2MDM4OTU1OWQ0N2NiNjVkNWUxMTEzMGI2ZjM4NTBjZTA0NmM0ZDY1NzQ2MDhjMmYzNiJ9LHsidXNlciI6InUtY2Fyb2wiLCJyb2xlIjoidmlld2VyIiwiZnAiOiI5YjdhMzQ4MzBjMmU4YWZlMGZiZTk0ODVhNDc2MjU1NDE5NDI5YTU1MjZjMmI2YTc3MmQ3YTJjODVmYTE0ZDIyIn1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "pPKF1VTkTk3bkI1uyJ3YBamUZOU1ziik-hmesge6od_OJT_V_So_8VIGFoVt4OsO9T3KKa3KIEVmT06RDYVAAw",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoyLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoibWFuYWdlciIsImZwIjoiZTU0ODJlZTcyNTM1MmI2MDM4OTU1OWQ0N2NiNjVkNWUxMTEzMGI2ZjM4NTBjZTA0NmM0ZDY1NzQ2MDhjMmYzNiJ9LHsidXNlciI6InUtY2Fyb2wiLCJyb2xlIjoidmlld2VyIiwiZnAiOiI5YjdhMzQ4MzBjMmU4YWZlMGZiZTk0ODVhNDc2MjU1NDE5NDI5YTU1MjZjMmI2YTc3MmQ3YTJjODVmYTE0ZDIyIn1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjp0cnVlLCJwdWJsaWNXcml0ZXMiOmZhbHNlLCJwcmV2IjoiYzU4MDk2ZGRlMDNjMDU2MTRiODQ3YmQxMmE1ZjQxMGViMDI4OTMyMWNkY2FmOGYwNjgwN2QzNzk4Y2RmOTUxYiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIiLCJzaWduZXIiOiJ1LWJvYiIsInNpZ25lckZwIjoiZTU0ODJlZTcyNTM1MmI2MDM4OTU1OWQ0N2NiNjVkNWUxMTEzMGI2ZjM4NTBjZTA0NmM0ZDY1NzQ2MDhjMmYzNiJ9",
+          "sig": "dZI1yzRTppv8F-9J-8NumkW8EJx3VOWxMvzyaZK_VUF7W6Xw4DaqlZGLjCEJMHP3AR8J0NKt37lVWRM1P25RBQ",
+          "signer": "u-bob"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36": {
+          "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+          "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+        }
+      },
+      "offers": {},
+      "keys": {
+        "u-bob": {
+          "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+          "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+        }
+      },
+      "rotations": {},
+      "successors": {},
+      "want": {
+        "head": "3c41957607056e3d4902f1ba2d67a8fb6e15614a69d3c8d5286e9216ba5ad2cd",
+        "seq": 2,
+        "epoch": 1,
+        "handovers": [],
+        "editors": [
+          "u-bob"
+        ]
+      }
     }
   ],
   "rotationChain": [

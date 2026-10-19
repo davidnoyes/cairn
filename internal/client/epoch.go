@@ -120,8 +120,8 @@ func errRotationsUnreadable(p PendingUser) error {
 }
 
 // buildNextEpoch builds a next-epoch record from r, and sends nothing. It
-// makes the new AK, wraps it to every listed member, seals the estate copy,
-// and excludes every user the record removes or drops, and every team member
+// makes the new AK, wraps it to every listed member, seals the estate copy
+// (a manager wraps it to the owner instead), and excludes every user the record removes or drops, and every team member
 // who holds a wrap and cannot be listed. The server refuses a record that
 // leaves any of them out of both lists, and the CLI is not interactive, so a
 // team member whose approval fails a check is excluded: the owner lists them
@@ -338,15 +338,27 @@ func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 			wraps = append(wraps, map[string]any{"user": u.ID, "epoch": e, "wrapped": e2e.B64(w)})
 		}
 	}
-	ekKey, err := e2e.EKSealKey(k.EK)
-	if err != nil {
-		return nil, err
+	// Only the owner seals an estate copy, and so does the member who takes
+	// ownership in this record. A manager wraps the new key to the owner
+	// instead, who adds the copy the next time they open the artifact.
+	var estate []map[string]any
+	if isOwner(latest, k) || r.newOwner == k.UserID {
+		ekKey, err := e2e.EKSealKey(k.EK)
+		if err != nil {
+			return nil, err
+		}
+		sealed, err := e2e.Seal(rand.Reader, ekKey, estateFields(artifactID, epoch), ak)
+		if err != nil {
+			return nil, err
+		}
+		estate = []map[string]any{{"epoch": epoch, "sealed": e2e.B64(sealed)}}
+	} else {
+		w, err := ownerWrap(artifactID, va, dir, epoch, ak)
+		if err != nil {
+			return nil, err
+		}
+		wraps = append(wraps, w)
 	}
-	sealed, err := e2e.Seal(rand.Reader, ekKey, estateFields(artifactID, epoch), ak)
-	if err != nil {
-		return nil, err
-	}
-	estate := []map[string]any{{"epoch": epoch, "sealed": e2e.B64(sealed)}}
 
 	// Build the link first: a host the link format refuses must fail before
 	// any record is written.
@@ -362,11 +374,16 @@ func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 	return &nextEpochBuild{next: next, wraps: wraps, estate: estate, linkHash: linkHash, aks: aks, change: change, lst: lst}, nil
 }
 
-// readBack verifies the artifact after the server accepted a record. A
-// failure still names link, the new public link, when there is one: the old
-// link already stopped working.
+// readBack verifies the artifact after the server accepted a record, and
+// that the latest record is the caller's: the owner's under their current key,
+// or a manager's naming it. A failure still names link, the new public link,
+// when there is one: the old link already stopped working.
 func (c *Client) readBack(k *UnlockedKeys, artifactID, link string) error {
-	if _, err := c.VerifyArtifact(k, artifactID, k.FP); err != nil {
+	va, err := c.VerifyArtifact(k, artifactID, "")
+	if err == nil && !signedByCaller(va.Chain.Latest, k) {
+		err = fmt.Errorf("%w: the latest record is not signed by your key", e2e.ErrChain)
+	}
+	if err != nil {
 		if link != "" {
 			return fmt.Errorf("the server accepted the new membership record, but reading it back failed: %w; the new public link is %s", err, link)
 		}
@@ -388,7 +405,8 @@ type UnshareResult struct {
 // Unshare removes who from an artifact in a next-epoch record: the new epoch's
 // AK is wrapped to every member who stays, and who is excluded is listed in
 // the result. who is a member, or a team member who holds a wrap and is not
-// listed. The caller must be the owner.
+// listed. The caller must be the owner or a manager, and only the owner
+// removes a manager.
 func (c *Client) Unshare(artifactID, who string) (*UnshareResult, error) {
 	k, err := c.Unlock()
 	if err != nil {
@@ -402,8 +420,8 @@ func (c *Client) Unshare(artifactID, who string) (*UnshareResult, error) {
 		return nil, err
 	}
 	latest := va.Chain.Latest
-	if latest.Owner != k.UserID || latest.OwnerFP != k.FP {
-		return nil, ErrNotOwner
+	if err := checkSigner(latest, k); err != nil {
+		return nil, err
 	}
 	dir, err := c.Directory()
 	if err != nil {
@@ -417,8 +435,11 @@ func (c *Client) Unshare(artifactID, who string) (*UnshareResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if u.ID == k.UserID {
+	if u.ID == latest.Owner {
 		return nil, ErrUnshareOwner
+	}
+	if err := checkManagerEntry(latest, k, u.ID); err != nil {
+		return nil, err
 	}
 	pending, err := c.pendingFor(k, artifactID, va)
 	if err != nil {

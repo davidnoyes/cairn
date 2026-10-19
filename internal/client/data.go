@@ -273,13 +273,13 @@ func pairOf(kp e2e.KeyPair) signerKeys {
 	return signerKeys{x, ed}
 }
 
-// writerKeys lists, for body's owner and each editor it lists, the Ed25519 keys
+// writerKeys lists, for body's owner and each editor or manager it lists, the Ed25519 keys
 // a stored revision or file may be signed under: those of a candidate pair
 // whose fingerprint is the one body lists, or one a rotation chain links to it.
 func (c *Client) writerKeys(k *UnlockedKeys, m *Membership, body e2e.MembershipBody) (map[string]map[string]bool, error) {
 	listed := map[string]string{body.Owner: body.OwnerFP}
 	for _, mem := range body.Members {
-		if mem.Role == "editor" {
+		if mem.Role == "editor" || mem.Role == "manager" {
 			listed[mem.User] = mem.FP
 		}
 	}
@@ -301,7 +301,7 @@ func (c *Client) writerKeys(k *UnlockedKeys, m *Membership, body e2e.MembershipB
 }
 
 // everWriterKeys is writerKeys for every user the chain has ever listed as
-// owner or editor, under any fingerprint it ever listed for them. A restore
+// owner, editor, or manager, under any fingerprint it ever listed for them. A restore
 // takes a revision from this set, because an old revision may predate a
 // removal.
 func (c *Client) everWriterKeys(k *UnlockedKeys, m *Membership, chain *e2e.Chain) (map[string]map[string]bool, error) {
@@ -315,7 +315,7 @@ func (c *Client) everWriterKeys(k *UnlockedKeys, m *Membership, chain *e2e.Chain
 	for _, b := range chain.Bodies {
 		add(b.Owner, b.OwnerFP)
 		for _, mem := range b.Members {
-			if mem.Role == "editor" {
+			if mem.Role == "editor" || mem.Role == "manager" {
 				add(mem.User, mem.FP)
 			}
 		}

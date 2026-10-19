@@ -70,9 +70,9 @@ func (c *Client) Review(artifactID string) ([]ReviewVersion, error) {
 		case v.PushedBy != "" && v.PushedBy == latest.Owner:
 			return nil, fmt.Errorf("%w: version %s was pushed by the owner", ErrReviewInconsistent, v.ID)
 		case v.PushedBy != "" && slices.ContainsFunc(latest.Members, func(m e2e.Member) bool {
-			return m.User == v.PushedBy && m.Role == "editor"
+			return m.User == v.PushedBy && (m.Role == "editor" || m.Role == "manager")
 		}):
-			return nil, fmt.Errorf("%w: version %s was pushed by %s, a listed editor", ErrReviewInconsistent, v.ID, v.PushedBy)
+			return nil, fmt.Errorf("%w: version %s was pushed by %s, a listed editor or manager", ErrReviewInconsistent, v.ID, v.PushedBy)
 		}
 		out = append(out, v)
 	}

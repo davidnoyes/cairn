@@ -92,6 +92,14 @@ func (u approvalUsers) baseApproval(t testing.TB, signer chainUser) approvalVec 
 	return v
 }
 
+// managerApproval is baseApproval with bob listed as a manager instead of an
+// editor, and dave approved by signer.
+func (u approvalUsers) managerApproval(t testing.TB, signer chainUser) approvalVec {
+	v := u.baseApproval(t, signer)
+	v.Latest.Members = []Member{manager(u.bob), viewer(u.carol)}
+	return v
+}
+
 func (u approvalUsers) sign(t testing.TB, signer chainUser, b ApprovalBody) *Envelope {
 	body, err := json.Marshal(b)
 	if err != nil {
@@ -247,6 +255,18 @@ func approvalCases() []approvalCase {
 			v := u.baseApproval(t, u.alice)
 			v.Directory = append(v.Directory, ApprovalUser{ID: "u-dave2", Email: "dave2@example.com", Keys: u.dave.keys})
 			return v
+		}},
+		{"manager-signed", "a listed manager's approval passes: bob is listed as a manager, not an editor", nil, func(t testing.TB, u approvalUsers) approvalVec {
+			return u.managerApproval(t, u.bob)
+		}},
+		{"manager-signed-after-rotation", "a manager rotated, then signed under the new keys while the record still lists the old fp", nil, func(t testing.TB, u approvalUsers) approvalVec {
+			bob2 := newChainUser(t, "u-bob", "rot")
+			v := u.managerApproval(t, bob2)
+			v.Rotations = map[string][]Envelope{u.bob.id: {rotationOf(t, 1, u.bob, bob2)}}
+			return v
+		}},
+		{"signer-manager-key-not-listed-fp", "a manager's key that does not hash to the listed fp cannot approve", ErrApprovalSigner, func(t testing.TB, u approvalUsers) approvalVec {
+			return u.managerApproval(t, newChainUser(t, "u-bob", "rotated"))
 		}},
 	}
 }

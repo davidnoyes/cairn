@@ -241,7 +241,7 @@ func TestShareCommandRefusals(t *testing.T) {
 	if _, err := runQuiet(t, runPin); err == nil || !strings.Contains(err.Error(), "usage: cairn pin USER") {
 		t.Errorf("pin with no user: %v", err)
 	}
-	if _, err := runQuiet(t, runShare, artifact, "bob@example.com", "--role", "owner"); err == nil || !strings.Contains(err.Error(), "role must be viewer or editor") {
+	if _, err := runQuiet(t, runShare, artifact, "bob@example.com", "--role", "owner"); err == nil || !strings.Contains(err.Error(), "role must be viewer, editor, or manager") {
 		t.Errorf("share --role owner: %v", err)
 	}
 	if _, err := runQuiet(t, runShare, artifact, "nobody@example.com"); !errors.Is(err, client.ErrUnknownUser) {

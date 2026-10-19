@@ -12,9 +12,9 @@ var (
 	// ErrApprovalMissing means the server served no approval for the user.
 	ErrApprovalMissing = errors.New("e2e: approval missing")
 	// ErrApprovalSigner means the signer is neither the owner nor an editor
-	// the current record lists, or no key pair offered for them hashes to
+	// or manager the current record lists, or no key pair offered for them hashes to
 	// the fingerprint listed or is linked to it by their rotation chain.
-	ErrApprovalSigner = errors.New("e2e: approval signer is not the owner or a listed editor")
+	ErrApprovalSigner = errors.New("e2e: approval signer is not the owner or a listed editor or manager")
 	// ErrApprovalMismatch means the approval names another artifact, epoch,
 	// user, or fingerprint than the ones it must.
 	ErrApprovalMismatch = errors.New("e2e: approval names another artifact, epoch, user, or fingerprint")
@@ -62,7 +62,7 @@ func (k KeyPair) fp() (string, []byte, error) {
 // CheckApproval runs the four checks that let an owner's client list an
 // approved team member, as "Team approval" in design/e2e-api.md lists them:
 //
-//  1. The signer is the owner, or an editor in the current record, and the
+//  1. The signer is the owner, or an editor or manager in the current record, and the
 //     approval verifies under a key pair that hashes to the fingerprint
 //     listed, or that a rotation chain of the signer's links to it, in
 //     either direction. The pairs tried are the keys the server serves for
@@ -86,7 +86,7 @@ func CheckApproval(in ApprovalInput) error {
 		listedFP = latest.OwnerFP
 	} else {
 		for _, m := range latest.Members {
-			if m.User == in.Approval.Signer && m.Role == "editor" {
+			if m.User == in.Approval.Signer && (m.Role == "editor" || m.Role == "manager") {
 				listedFP = m.FP
 			}
 		}

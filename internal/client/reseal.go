@@ -318,10 +318,11 @@ func (c *Client) openBlobs(artifactID string, v *store.Version, ak []byte, manif
 	return files, nil
 }
 
-// editorOf reports whether user is the owner or a listed editor in latest.
+// editorOf reports whether user is the owner or a listed editor or manager in
+// latest.
 func editorOf(latest e2e.MembershipBody, user string) bool {
 	return latest.Owner == user || slices.ContainsFunc(latest.Members, func(m e2e.Member) bool {
-		return m.User == user && m.Role == "editor"
+		return m.User == user && (m.Role == "editor" || m.Role == "manager")
 	})
 }
 

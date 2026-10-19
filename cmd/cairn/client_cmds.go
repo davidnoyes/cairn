@@ -626,6 +626,9 @@ func artifactDelete(args []string) error {
 	if err != nil {
 		return err
 	}
+	if a.Access == "manager" {
+		return client.ErrDeleteNotOwner
+	}
 	if err := c.DeleteArtifact(a.ID); err != nil {
 		return err
 	}

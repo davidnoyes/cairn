@@ -153,6 +153,9 @@ func runMembers(args []string) error {
 			out = append(out, row)
 		}
 		res := map[string]any{"artifact": a.ID, "epoch": va.Chain.Latest.Epoch, "seq": va.Chain.Latest.Seq, "members": out}
+		if by := signedBy(va.Chain.Latest, rows); by != nil {
+			res["signedBy"] = by
+		}
 		if offer != nil {
 			res["transfer"] = map[string]any{"to": offer.to, "email": offer.email, "by": offer.by, "at": offer.at}
 		}
@@ -166,6 +169,9 @@ func runMembers(args []string) error {
 		}
 		fmt.Printf("%-6s  %-32s  %-10s  %s\n", r.Role, who, priorLabel(r.State, r.WasVerified), showFP(r.FP))
 	}
+	if by := signedBy(va.Chain.Latest, rows); by != nil {
+		fmt.Printf("record %d was signed by manager %s\n", va.Chain.Latest.Seq, by["email"])
+	}
 	for _, r := range rows {
 		if r.State == e2e.PinRotated && r.WasVerified {
 			fmt.Printf("re-verify %s: compare the new fingerprint with them, then run: cairn pin %s --verified\n", r.Email, r.Email)
@@ -175,6 +181,22 @@ func runMembers(args []string) error {
 		fmt.Println(offer.text(a.ID))
 	}
 	return nil
+}
+
+// signedBy names who signed the latest record when a manager did, as the
+// user ID and, when the member list shows it, the email, or nil when the
+// owner signed it.
+func signedBy(latest e2e.MembershipBody, rows []client.MemberView) map[string]string {
+	if latest.V != 2 {
+		return nil
+	}
+	by := map[string]string{"user": latest.Signer, "email": latest.Signer}
+	for _, r := range rows {
+		if r.User == latest.Signer && r.Email != "" {
+			by["email"] = r.Email
+		}
+	}
+	return by
 }
 
 // openOffer is an open ownership offer as cairn members shows it.
@@ -223,10 +245,10 @@ func (o *openOffer) text(artifactID string) string {
 }
 
 func runShare(args []string) error {
-	const usage = "cairn share ARTIFACT USER [--role viewer|editor] [--accept-new-key] [--accept-new-owner] [--json]"
+	const usage = "cairn share ARTIFACT USER [--role viewer|editor|manager] [--accept-new-key] [--accept-new-owner] [--json]"
 	fs := flag.NewFlagSet("share", flag.ExitOnError)
 	accept := acceptNewOwnerFlag(fs)
-	role := fs.String("role", "viewer", "viewer or editor")
+	role := fs.String("role", "viewer", "viewer, editor, or manager (only the owner makes a manager)")
 	acceptNewKey := fs.Bool("accept-new-key", false, "share even though the user's fingerprint changed since it was pinned")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	pos, err := parsePositional(fs, args, 2, usage)
@@ -254,7 +276,7 @@ func runShare(args []string) error {
 		}
 		out := map[string]any{
 			"artifact": a.ID, "user": res.User.ID, "email": res.User.Email, "fp": res.User.FP,
-			"prior": res.Prior, "role": res.Role, "promoted": res.Promoted, "demoted": res.Demoted,
+			"prior": res.Prior, "role": res.Role, "promoted": res.Promoted, "demoted": res.Demoted, "lowered": res.Lowered,
 			"unchanged": res.Unchanged, "epoch": res.Epoch, "listed": listed, "unlisted": unlisted, "dropped": dropped,
 		}
 		epochChangeJSON(out, res.EpochChange)
@@ -268,6 +290,8 @@ func runShare(args []string) error {
 		fmt.Printf("promoted to %s of %s\n", res.Role, a.Name)
 	case res.Demoted:
 		fmt.Printf("demoted to %s of %s\n", res.Role, a.Name)
+	case res.Lowered:
+		fmt.Printf("changed to %s of %s\n", res.Role, a.Name)
 	default:
 		fmt.Printf("added as %s of %s\n", res.Role, a.Name)
 	}

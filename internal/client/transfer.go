@@ -22,12 +22,12 @@ var (
 	// ErrTransferNotOwner means only the artifact's owner can offer or
 	// withdraw ownership.
 	ErrTransferNotOwner = errors.New("only the artifact's owner can offer or withdraw ownership")
-	// ErrTransferNotEditor means the user is not listed as an editor, so the
-	// server would refuse the offer.
-	ErrTransferNotEditor = errors.New("ownership can be offered only to a user the latest record lists as an editor")
+	// ErrTransferNotEditor means the user is not listed as an editor or
+	// manager, so the server would refuse the offer.
+	ErrTransferNotEditor = errors.New("ownership can be offered only to a user the latest record lists as an editor or manager")
 	// ErrNotListedEditor means the latest record does not list the caller as an
-	// editor, so they cannot take ownership.
-	ErrNotListedEditor = errors.New("the latest record does not list you as an editor, so you cannot take ownership")
+	// editor or manager, so they cannot take ownership.
+	ErrNotListedEditor = errors.New("the latest record does not list you as an editor or manager, so you cannot take ownership")
 	// ErrNoOffer means no ownership offer is open on the artifact.
 	ErrNoOffer = errors.New("no ownership offer is open on this artifact")
 	// ErrNoOfferToYou means no open ownership offer is to the caller.
@@ -158,8 +158,8 @@ type OfferResult struct {
 }
 
 // OfferTransfer offers the artifact's ownership to who, which only its owner
-// can do, and only to a user the latest record lists as an editor under their
-// current fingerprint. A changed key is a *KeyChangedError unless
+// can do, and only to a user the latest record lists as an editor or manager
+// under their current fingerprint. A changed key is a *KeyChangedError unless
 // acceptNewKey, as for Share. While an offer is open, the request carries a
 // same-epoch record that closes it, and the new offer names that record.
 func (c *Client) OfferTransfer(artifactID, who string, acceptNewKey bool) (*OfferResult, error) {
@@ -187,7 +187,7 @@ func (c *Client) OfferTransfer(artifactID, who string, acceptNewKey bool) (*Offe
 		return nil, err
 	}
 	i := slices.IndexFunc(latest.Members, func(m e2e.Member) bool { return m.User == u.ID })
-	if i < 0 || latest.Members[i].Role != "editor" {
+	if i < 0 || latest.Members[i].Role != "editor" && latest.Members[i].Role != "manager" {
 		return nil, fmt.Errorf("%w: %s", ErrTransferNotEditor, u.Email)
 	}
 	prior, pin, err := c.checkPin(va.Keyring, u, acceptNewKey, va.Membership.Rotations)
@@ -397,7 +397,7 @@ func (c *Client) AcceptTransfer(artifactID string, opts AcceptTransferOptions) (
 		return nil, err
 	}
 	latest := va.Chain.Latest
-	i := slices.IndexFunc(latest.Members, func(m e2e.Member) bool { return m.User == k.UserID && m.Role == "editor" })
+	i := slices.IndexFunc(latest.Members, func(m e2e.Member) bool { return m.User == k.UserID && (m.Role == "editor" || m.Role == "manager") })
 	listedFP := k.FP
 	if i >= 0 {
 		listedFP = latest.Members[i].FP

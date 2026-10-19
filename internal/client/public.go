@@ -60,8 +60,8 @@ func (c *Client) Public(artifactID string, on bool, writes *bool) (*PublicResult
 		return nil, err
 	}
 	latest := va.Chain.Latest
-	if latest.Owner != k.UserID || latest.OwnerFP != k.FP {
-		return nil, ErrNotOwner
+	if err := checkSigner(latest, k); err != nil {
+		return nil, err
 	}
 	if !on {
 		if latest.Public {
@@ -77,7 +77,7 @@ func (c *Client) Public(artifactID string, on bool, writes *bool) (*PublicResult
 	res := &PublicResult{Public: true, PublicWrites: next.PublicWrites, Epoch: latest.Epoch}
 	// Build the link first: a host the link format refuses must fail before
 	// any record is written, or the artifact is public with no link.
-	aks, err := c.epochAKs(k, artifactID, va.Chain)
+	aks, err := c.callerAKs(k, artifactID, va.Chain)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +143,7 @@ func (c *Client) publicOffNextEpoch(k *UnlockedKeys, artifactID string, va *Veri
 // linkTokenHashFor is the hash of the epoch's link token the server stores
 // for a public record, from the owner's estate copy of the epoch's AK.
 func (c *Client) linkTokenHashFor(k *UnlockedKeys, artifactID string, chain *e2e.Chain, epoch int) (string, error) {
-	aks, err := c.epochAKs(k, artifactID, chain)
+	aks, err := c.callerAKs(k, artifactID, chain)
 	if err != nil {
 		return "", err
 	}

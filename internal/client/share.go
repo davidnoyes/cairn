@@ -26,12 +26,13 @@ var (
 	ErrDirectoryDuplicate = errors.New("the directory lists two users with the same email or fingerprint")
 	// ErrExcluded means the user matches an entry the owner excluded.
 	ErrExcluded = errors.New("the user was removed from this artifact and is excluded from it")
-	// ErrNotOwner means only the artifact's owner can make the change.
-	ErrNotOwner = errors.New("only the artifact's owner can change its members")
+	// ErrNotOwner means only the artifact's owner, or a manager it lists,
+	// can make the change.
+	ErrNotOwner = errors.New("only the artifact's owner or a manager can change its members")
 	// ErrShareSelf means the owner tried to share with themselves.
 	ErrShareSelf = errors.New("the owner already has access to the artifact")
 	// ErrViewerAccount follows the address of a viewer account the owner
-	// tried to make an editor: the server refuses to list one as editor.
+	// tried to make an editor or manager: the server refuses to list one.
 	ErrViewerAccount = errors.New("is a viewer account and can only be a viewer")
 	// ErrPinConflict means another device pinned the user at a different
 	// fingerprint than the one this command decided on, between its read of
@@ -349,7 +350,7 @@ type MemberView struct {
 	User        string
 	Name        string
 	Email       string
-	Role        string // owner, editor, or viewer
+	Role        string // owner, manager, editor, or viewer
 	FP          string // hex, as the latest verified record lists it
 	State       string
 	WasVerified bool
@@ -408,8 +409,9 @@ type ShareResult struct {
 	User      DirectoryUser
 	Prior     string // the pin state before
 	Role      string
-	Promoted  bool // an existing viewer became an editor
-	Demoted   bool // an existing editor became a viewer, in a new epoch
+	Promoted  bool // an existing member's role rose, as a viewer to an editor
+	Demoted   bool // an existing editor or manager became a viewer, in a new epoch
+	Lowered   bool // an existing manager became an editor, at the same epoch
 	Unchanged bool // the user already held this role under these keys
 	Epoch     int
 	TeamRole  string // the latest record's team: none, viewer, or editor
@@ -428,7 +430,10 @@ type ShareResult struct {
 }
 
 // Share adds who to an artifact at its current epoch, or promotes a viewer
-// to editor. Demoting an editor starts a new epoch. Sharing by name with a
+// to editor, or an editor to manager. Demoting an editor or a manager to
+// viewer starts a new epoch, and a manager becomes an editor at the same one.
+// The owner or a listed manager may share, and only the owner adds or changes
+// a manager. Sharing by name with a
 // user the owner excluded lists them again, and drops the entries they match.
 // It refuses a directory with duplicate emails or fingerprints, and a user
 // whose keys changed since they were pinned, unless acceptNewKey. A user
@@ -438,8 +443,8 @@ type ShareResult struct {
 // holds those wraps, so they get none. The record also lists each approved
 // team member whose approval passes the four checks.
 func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareResult, error) {
-	if role != "viewer" && role != "editor" {
-		return nil, fmt.Errorf("role must be viewer or editor, not %q", role)
+	if role != "viewer" && role != "editor" && role != "manager" {
+		return nil, fmt.Errorf("role must be viewer, editor, or manager, not %q", role)
 	}
 	k, err := c.Unlock()
 	if err != nil {
@@ -453,8 +458,8 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 		return nil, err
 	}
 	latest := va.Chain.Latest
-	if latest.Owner != k.UserID || latest.OwnerFP != k.FP {
-		return nil, ErrNotOwner
+	if err := checkSigner(latest, k); err != nil {
+		return nil, err
 	}
 	dir, err := c.Directory()
 	if err != nil {
@@ -464,13 +469,20 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	if err != nil {
 		return nil, err
 	}
-	if u.ID == k.UserID {
+	if u.ID == latest.Owner {
 		return nil, ErrShareSelf
 	}
-	// A viewer account can only be a viewer, except that an editor whose
-	// account became a viewer account keeps the entry until changed, as the
-	// server's membership check allows.
-	if u.Role == store.RoleViewer && role == "editor" && !listedAsEditor(latest.Members, u.ID) {
+	// Only the owner makes a manager, or changes the entry of one.
+	if role == "manager" && !isOwner(latest, k) {
+		return nil, ErrManagerOwnerOnly
+	}
+	if err := checkManagerEntry(latest, k, u.ID); err != nil {
+		return nil, err
+	}
+	// A viewer account can only be a viewer, except that an editor or manager
+	// whose account became a viewer account keeps the entry until changed, and
+	// a manager may become an editor, as the server's membership check allows.
+	if u.Role == store.RoleViewer && !viewerAccountMayHold(latest.Members, u.ID, role) {
 		return nil, fmt.Errorf("%s %w", u.Email, ErrViewerAccount)
 	}
 	prior, pin, err := c.checkPin(va.Keyring, u, acceptNewKey, va.Membership.Rotations)
@@ -505,12 +517,14 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 		members = append(members, e2e.Member{User: u.ID, Role: role, FP: u.FP})
 		needsWraps = !approved && !rotated
 	default:
-		demote = members[i].Role == "editor" && role == "viewer"
-		res.Promoted = members[i].Role != role && !demote
+		was := members[i].Role
+		demote = (was == "editor" || was == "manager") && role == "viewer"
+		res.Promoted = roleRank(role) > roleRank(was)
+		res.Lowered = was == "manager" && role == "editor"
 		res.Demoted = demote
 		relist := members[i].FP != u.FP
 		needsWraps = relist && !rotated
-		res.Unchanged = !res.Promoted && !demote && !relist
+		res.Unchanged = !res.Promoted && !demote && !res.Lowered && !relist
 		members[i] = e2e.Member{User: u.ID, Role: role, FP: u.FP}
 	}
 	basedOn := va.Keyring.Pins[u.ID].FP
@@ -553,7 +567,7 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 		if err := e2e.CheckEncryptEpoch(va.Keyring.EpochPin(artifactID), latest.Epoch); err != nil {
 			return nil, err
 		}
-		aks, err := c.epochAKs(k, artifactID, va.Chain)
+		aks, err := c.callerAKs(k, artifactID, va.Chain)
 		if err != nil {
 			return nil, err
 		}
@@ -653,6 +667,10 @@ func signNext(seed []byte, signer string, va *VerifiedArtifact, next e2e.Members
 // the one that accepts ownership does.
 func signChained(seed []byte, signer string, va *VerifiedArtifact, next e2e.MembershipBody) (e2e.MembershipBody, e2e.Envelope, error) {
 	next.Seq, next.Prev = va.Chain.Latest.Seq+1, va.Chain.Head
+	// The owner signs version 1, whoever signed the record this one copies.
+	if signer == next.Owner {
+		next.V, next.Signer, next.SignerFP = 1, "", ""
+	}
 	if next.Excluded == nil {
 		next.Excluded = []e2e.ExcludedEntry{}
 	}
@@ -664,13 +682,14 @@ func signChained(seed []byte, signer string, va *VerifiedArtifact, next e2e.Memb
 	return next, env, err
 }
 
-// putRecord signs next as the record after the verified chain's latest and
-// PUTs it with wraps and, for a next epoch, the estate copy of its AK. A
+// putRecord signs next as the record after the verified chain's latest, as
+// the owner or as a listed manager, and PUTs it with wraps and, for the
+// owner's next epoch, the estate copy of its AK. A
 // public record carries the hash of the epoch's link token, which the server
 // requires of every public record: linkHash for a next epoch, whose estate
 // copy the server does not hold yet, or empty to take it from the epoch's own.
 func (c *Client) putRecord(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, next e2e.MembershipBody, wraps, estate []map[string]any, linkHash string) error {
-	next, env, err := signNext(k.Ed25519Seed, k.UserID, va, next)
+	next, env, err := signNext(k.Ed25519Seed, k.UserID, va, signedBy(next, k))
 	if err != nil {
 		return err
 	}
@@ -702,18 +721,37 @@ func epochCommits(chain *e2e.Chain) map[int]string {
 }
 
 // epochAKs opens the owner's estate copy of each epoch's AK and checks it
-// against the akCommit the verified chain lists for that epoch.
+// against the akCommit the verified chain lists for that epoch. An epoch a
+// manager started has none yet: the owner reads it from their own wrap, and
+// stores the estate copy for it.
 func (c *Client) epochAKs(k *UnlockedKeys, artifactID string, chain *e2e.Chain) (map[int][]byte, error) {
 	keys, err := c.Keys(artifactID)
 	if err != nil {
 		return nil, err
 	}
-	return estateAKs(k.EK, artifactID, chain, keys)
+	aks, err := openEstate(k.EK, artifactID, chain, keys)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.catchUpEstate(k, artifactID, chain, keys, aks); err != nil {
+		return nil, err
+	}
+	return completeAKs(chain, aks)
 }
 
 // estateAKs is epochAKs for the estate copies in keys, which ek seals: the
 // owner's own, or a released successor's.
 func estateAKs(ek []byte, artifactID string, chain *e2e.Chain, keys *ArtifactKeys) (map[int][]byte, error) {
+	aks, err := openEstate(ek, artifactID, chain, keys)
+	if err != nil {
+		return nil, err
+	}
+	return completeAKs(chain, aks)
+}
+
+// openEstate opens each estate copy in keys under ek and checks it against
+// the akCommit the chain lists, without requiring a copy of every epoch.
+func openEstate(ek []byte, artifactID string, chain *e2e.Chain, keys *ArtifactKeys) (map[int][]byte, error) {
 	commits := epochCommits(chain)
 	ekKey, err := e2e.EKSealKey(ek)
 	if err != nil {
@@ -734,6 +772,12 @@ func estateAKs(ek []byte, artifactID string, chain *e2e.Chain, keys *ArtifactKey
 		}
 		aks[e.Epoch] = ak
 	}
+	return aks, nil
+}
+
+// completeAKs returns aks when it holds the AK of every epoch up to the
+// chain's latest.
+func completeAKs(chain *e2e.Chain, aks map[int][]byte) (map[int][]byte, error) {
 	for epoch := 1; epoch <= chain.Latest.Epoch; epoch++ {
 		if aks[epoch] == nil {
 			return nil, fmt.Errorf("the server holds no estate copy of epoch %d", epoch)
@@ -742,12 +786,26 @@ func estateAKs(ek []byte, artifactID string, chain *e2e.Chain, keys *ArtifactKey
 	return aks, nil
 }
 
-// listedAsEditor reports whether members lists user as editor.
-func listedAsEditor(members []e2e.Member, user string) bool {
+// roleRank orders the roles a member may hold.
+func roleRank(role string) int {
+	switch role {
+	case "manager":
+		return 2
+	case "editor":
+		return 1
+	}
+	return 0
+}
+
+// viewerAccountMayHold reports whether a viewer account may be listed as role
+// by a record after members: as a viewer, under the role they already hold,
+// or as an editor when they are a manager.
+func viewerAccountMayHold(members []e2e.Member, user, role string) bool {
+	was := ""
 	for _, m := range members {
-		if m.User == user && m.Role == "editor" {
-			return true
+		if m.User == user {
+			was = m.Role
 		}
 	}
-	return false
+	return role == "viewer" || role == was || role == "editor" && was == "manager"
 }

@@ -24,7 +24,7 @@ Client:
   cairn keys             Manage API keys (list|revoke)
   cairn artifact         Manage artifacts (list|create NAME|show|update|delete)
   cairn members          List an artifact's owner and members, with pin states, from its verified chain
-  cairn share            Add a member, or promote a viewer (ARTIFACT USER --role viewer|editor)
+  cairn share            Add a member, or change a role (ARTIFACT USER --role viewer|editor|manager)
   cairn unshare          Remove a member and start a new epoch (ARTIFACT USER)
   cairn team             Share with the whole team, or stop (ARTIFACT none|viewer|editor)
   cairn approve          List team members waiting, or approve one by name (ARTIFACT [USER])

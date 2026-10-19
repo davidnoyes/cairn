@@ -306,20 +306,20 @@ func (c *Client) Approve(artifactID, who string, acceptNewKey bool) (*ApproveRes
 }
 
 // approverOf reports whether the keys in k may approve under the record:
-// they are the owner's, or the listed editor's.
+// they are the owner's, or the listed editor's or manager's.
 func approverOf(latest e2e.MembershipBody, k *UnlockedKeys) bool {
 	if latest.Owner == k.UserID {
 		return latest.OwnerFP == k.FP
 	}
 	return slices.ContainsFunc(latest.Members, func(m e2e.Member) bool {
-		return m.User == k.UserID && m.Role == "editor" && m.FP == k.FP
+		return m.User == k.UserID && (m.Role == "editor" || m.Role == "manager") && m.FP == k.FP
 	})
 }
 
 // callerAKs returns the AK of every epoch up to the chain's latest, for the
 // owner from the estate copies, for the owner's released successor from the
-// same copies under the owner's EK, for an editor by opening the caller's own
-// wraps. Each is checked against the akCommit the verified chain lists.
+// same copies under the owner's EK, for an editor or manager by opening the
+// caller's own wraps. Each is checked against the akCommit the verified chain lists.
 func (c *Client) callerAKs(k *UnlockedKeys, artifactID string, chain *e2e.Chain) (map[int][]byte, error) {
 	if chain.Latest.Owner == k.UserID {
 		return c.epochAKs(k, artifactID, chain)
@@ -336,18 +336,9 @@ func (c *Client) callerAKs(k *UnlockedKeys, artifactID string, chain *e2e.Chain)
 	}
 	aks := map[int][]byte{}
 	for _, w := range keys.Wraps {
-		ak, err := e2e.Unwrap(k.X25519Priv, e2e.WrapContext{
-			Purpose: "ak", Artifact: artifactID, Epoch: uint64(w.Epoch), RecipientID: k.UserID, RecipientPub: k.X25519Pub,
-		}, w.Wrapped)
-		if err != nil {
-			return nil, fmt.Errorf("opening your wrap of epoch %d: %w", w.Epoch, err)
-		}
-		commit, err := e2e.AKCommit(ak, artifactID, uint64(w.Epoch))
+		ak, err := openWrap(k, artifactID, commits, w)
 		if err != nil {
 			return nil, err
-		}
-		if want, ok := commits[w.Epoch]; !ok || commit != want {
-			return nil, fmt.Errorf("%w: your wrap of epoch %d does not match the chain's akCommit", e2e.ErrChain, w.Epoch)
 		}
 		aks[w.Epoch] = ak
 	}
@@ -521,8 +512,8 @@ func (c *Client) Team(artifactID, team string) (*TeamResult, error) {
 		return nil, err
 	}
 	latest := va.Chain.Latest
-	if latest.Owner != k.UserID || latest.OwnerFP != k.FP {
-		return nil, ErrNotOwner
+	if err := checkSigner(latest, k); err != nil {
+		return nil, err
 	}
 	pending, err := c.pendingFor(k, artifactID, va)
 	if err != nil {
