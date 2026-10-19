@@ -69,6 +69,11 @@ mutations, and Playwright only on `e2e/*` branches and `feat/e2e-trust-model`.
   `shell`, `boot`), `sw.js`, `keystore.mjs`, `cairn.js` (client lib; falls
   back to sql.js-in-browser with user `{id: 0, name: "Debug"}` when not served
   by Cairn), and `vendor/` (sql.js, Mermaid, Argon2 wasm).
+- `internal/server/google.go` (Google sign-in and proofs), `cli_auth.go`
+  (handing a proof to `cairn login`), `passkeys.go` (passkey enrollment and
+  unlock); `internal/webauthn/` checks one WebAuthn assertion, and
+  `webauthntest` is a software authenticator for tests. Design:
+  `design/google-signin.md`.
 - `internal/client/` — Go API client used by the command-line tool (does the encryption,
   signing, and membership checks).
 - `browser/` — Playwright specs. `design/` — e2e design docs. `deploy/gcp/` —
@@ -105,6 +110,11 @@ mutations, and Playwright only on `e2e/*` branches and `feat/e2e-trust-model`.
   password; they only grant roles, deactivate, delete, or offer an ownership
   transfer. Emailed links are built from `--public-url`, never a request
   header.
+- With `--google-client-id`, sign-up, sign-in, forgot, and passkey unlock also
+  need a single-use Google proof for the same address, checked before the
+  passphrase. Google only identifies; the passphrase or a passkey's PRF output
+  still opens `MK`, so never let a proof stand in for either. Refusal
+  (`/api/auth/refuse`) stays free of Google, for people who have left.
 - Browser pages load scripts only from files under the app CSP (`csp.go`), with
   no inline code, and build DOM with `textContent` (Trusted Types).
 - The app origin never runs artifact code. The content domain must not share a
