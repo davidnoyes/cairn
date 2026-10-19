@@ -413,3 +413,34 @@ test('startPage shows a setup failure in the error element instead of dying sile
   assert.match(errorEl.textContent, /could not start.*already exists.*Reload/i);
   assert.equal(errorEl.hidden, false);
 });
+
+// ------------------------------------------------------- Google and passkeys
+
+test('googleStartURL sends the browser through Google and back to the page, carrying next', async () => {
+  const { googleStartURL } = await import('./ui.mjs');
+  assert.equal(googleStartURL('/login', '/app'), '/auth/google?next=' + encodeURIComponent('/login?next=%2Fapp'));
+  assert.equal(googleStartURL('/signup', ''), '/auth/google?next=' + encodeURIComponent('/signup'));
+  assert.equal(googleStartURL('/login', '/'), '/auth/google?next=' + encodeURIComponent('/login'));
+});
+
+test('the fragment a public link brought survives the Google round trip, once', async () => {
+  const { keepFragment, takeFragment } = await import('./ui.mjs');
+  const store = new Map();
+  const storage = { setItem: (k, v) => store.set(k, v), getItem: (k) => store.get(k) ?? null, removeItem: (k) => store.delete(k) };
+  keepFragment(storage, '#key=abc');
+  assert.equal(takeFragment(storage, ''), '#key=abc');
+  assert.equal(takeFragment(storage, ''), '', 'taken once');
+  keepFragment(storage, '');
+  assert.equal(takeFragment(storage, '#now'), '#now', 'a fragment on the page itself wins');
+  keepFragment(storage, '#key=abc');
+  assert.equal(takeFragment(storage, '#now'), '#now');
+  assert.equal(takeFragment(storage, ''), '', 'and the kept one is dropped');
+});
+
+test('describePasskeyError names a closed prompt and a duplicate passkey, and falls back to describeError', async () => {
+  const { describePasskeyError } = await import('./ui.mjs');
+  const named = (name) => Object.assign(new Error('browser words'), { name });
+  assert.match(describePasskeyError(named('NotAllowedError')), /closed or timed out/);
+  assert.match(describePasskeyError(named('InvalidStateError')), /already added/);
+  assert.equal(describePasskeyError(new ApiError('passkey sign-in failed', 401)), describeError(new ApiError('passkey sign-in failed', 401)));
+});

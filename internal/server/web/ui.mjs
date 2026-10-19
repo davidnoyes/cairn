@@ -252,3 +252,36 @@ export function confirmRecoveryCode(panel, display, onConfirmed, win = globalThi
   panel.hidden = false;
   copy.focus();
 }
+
+// googleStartURL is where a signed-out page sends the browser to sign in
+// with Google: through /auth/google and back to page, carrying the page's own
+// next so the person still ends up where they were going.
+export function googleStartURL(page, next) {
+  const back = next && next !== '/' ? `${page}?next=${encodeURIComponent(next)}` : page;
+  return '/auth/google?next=' + encodeURIComponent(back);
+}
+
+const FRAGMENT_KEY = 'cairn-signin-fragment';
+
+// keepFragment saves the page's fragment before the Google round trip, which
+// loses it: a public link's key arrives there, and the server never sees it.
+export function keepFragment(storage, hash) {
+  if (hash) storage.setItem(FRAGMENT_KEY, hash);
+  else storage.removeItem(FRAGMENT_KEY);
+}
+
+// takeFragment returns the fragment to carry on with, once: the page's own
+// if it has one, else the one kept before the round trip.
+export function takeFragment(storage, hash) {
+  const kept = storage.getItem(FRAGMENT_KEY) ?? '';
+  storage.removeItem(FRAGMENT_KEY);
+  return hash || kept;
+}
+
+// describePasskeyError names the two refusals a browser reports in its own
+// words: the person closed the prompt, or the passkey is already enrolled.
+export function describePasskeyError(err) {
+  if (err.name === 'NotAllowedError') return 'The passkey prompt was closed or timed out.';
+  if (err.name === 'InvalidStateError') return 'That passkey is already added.';
+  return describeError(err);
+}

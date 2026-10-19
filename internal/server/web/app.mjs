@@ -8,7 +8,7 @@ import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { describeArtifact } from './meta.mjs';
 import { KeyChangedError, members, pin, publicLinkFor, setPublic, share, unshare } from './sharing.mjs';
 import { bannerView, myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions, who } from './successor.mjs';
-import { confirmRecoveryCode, describeError, pageDeps, watchStrength } from './ui.mjs';
+import { confirmRecoveryCode, describeError, describePasskeyError, pageDeps, watchStrength } from './ui.mjs';
 
 const $ = (id) => document.getElementById(id);
 // viewer.mjs and sharing.mjs also need the keyring anchor's storage and the
@@ -464,14 +464,6 @@ async function loadPasskeys() {
     tr.appendChild(td(actions));
     return tr;
   }));
-}
-
-// describePasskeyError names the two refusals a browser gives in its own
-// words: the user closed the prompt, or the passkey is already enrolled.
-function describePasskeyError(err) {
-  if (err.name === 'NotAllowedError') return 'The passkey prompt was closed or timed out, so nothing was added.';
-  if (err.name === 'InvalidStateError') return 'That passkey is already added.';
-  return describeError(err);
 }
 
 $('passkey-form').addEventListener('submit', async (event) => {

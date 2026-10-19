@@ -63,7 +63,7 @@ input[type=text], input[type=email], input[type=password]{
 }
 input:focus{border-color:var(--accent-dim)}
 input::placeholder{color:var(--faint)}
-button{
+button, a.button{
   width:100%; margin-top:1.5rem; cursor:pointer;
   font-family:var(--mono); font-size:13px;
   background:var(--accent); color:#0B0E13;
@@ -71,6 +71,8 @@ button{
   transition:filter .15s ease;
 }
 button:hover, button:focus-visible{filter:brightness(1.08)}
+a.button{display:block; box-sizing:border-box; text-align:center; text-decoration:none}
+a.button:hover, a.button:focus-visible{filter:brightness(1.08)}
 button:disabled{cursor:progress; filter:grayscale(.6) brightness(.8)}
 p.text{color:var(--muted); font-size:14px; line-height:1.55; margin-top:.8rem}
 a{color:var(--accent)}

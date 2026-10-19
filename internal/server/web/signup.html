@@ -20,6 +20,11 @@
     <h1>cairn</h1>
     <p class="sub">create an account</p>
 
+    <section id="google" hidden>
+      <p class="text">This server uses your Google Account to confirm your address. You choose a password next, which unlocks your keys.</p>
+      <a class="button" id="google-start" href="/auth/google">Continue with Google</a>
+      <div class="links"><a href="/login">Sign in instead</a></div>
+    </section>
     <form id="form" method="dialog" autocomplete="on">
       <label for="email">email</label>
       <input id="email" name="email" type="email" autocomplete="username" required autofocus>

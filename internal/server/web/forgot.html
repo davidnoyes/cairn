@@ -19,6 +19,16 @@
     </div>
     <h1>cairn</h1>
     <p class="sub">reset your password</p>
+    <section id="google" hidden>
+      <p class="text">To reset your password, first sign in with your Google Account.</p>
+      <a class="button" id="google-start" href="/auth/google">Continue with Google</a>
+      <div class="links"><a href="/login">Back to sign in</a></div>
+    </section>
+    <form id="google-form" method="dialog" hidden>
+      <p class="text">Reset the password for <strong id="google-email"></strong>. With your recovery code you keep your keys; without it you start with new ones.</p>
+      <button type="submit" id="google-submit" disabled>Continue</button>
+      <p class="error" id="google-error" role="alert" hidden></p>
+    </form>
     <form id="form" method="dialog" autocomplete="on">
       <p class="text">Enter your email address. If it has an account, we send a link that works for 30 minutes.</p>
       <label for="email">email</label>
