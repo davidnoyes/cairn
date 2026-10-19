@@ -2300,6 +2300,10 @@ all of these hold, on top of every rule for a version 1 record:
   no manager, remove none, change none's role or `fp`, and cannot remove or
   change their own entry.
 - A viewer account is never a new `editor` or `manager`, in any record.
+- Every entry in the previous record's `excluded` is still in this record's.
+  A manager therefore cannot list a user anyone removed again: only the owner
+  re-shares an excluded user, so a manager cannot undo the owner's removal of
+  someone, a manager included.
 
 An owner's record that removes a manager, or demotes one to viewer, starts a
 new epoch, as removing an editor does. Demoting a manager to editor stays in
@@ -2322,6 +2326,19 @@ artifact, from its own wrap:
 
 Until then, a released successor cannot read that epoch, and the owner's
 client reads it through its wrap.
+
+Before sealing the new epoch's `AK` to the owner, a manager's client checks
+the owner's key from the directory against the chain: its fingerprint is the
+latest record's `ownerFp`, or the owner's rotation chain links the two.
+Otherwise it refuses, because a server could serve its own key in the owner's
+place and so learn the new `AK`.
+
+A wrap for the owner that does not open, or whose `AK` does not match the
+epoch's `akCommit`, must not lock the owner out. The owner's client leaves
+that epoch out, names it as unreadable, and carries on with every action that
+does not need it, so the owner can still remove the manager who sent it and
+start a new epoch. The unreadable epoch's content stays unreadable to the
+owner.
 
 ### Who counts as a writer
 
