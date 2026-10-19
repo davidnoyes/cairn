@@ -1328,9 +1328,30 @@ test("a read-back that finds another signer's record as the latest fails, for th
   assert.match(managerErr.message, /not the one this client signed/);
 });
 
+test("a read-back whose latest record names the caller's id under another key fails, though the signer matches", async () => {
+  // The server stores nothing, and serves two records after the chain: the owner relists the manager under new keys, and those keys sign a version 2 record.
+  const s = await managerScene();
+  const next = await makeUser('outsider');
+  const hash = async (b) => e2e.bodyHash(enc.encode(JSON.stringify(b)));
+  s.server.failPut = async () => {
+    const body = JSON.parse(dec.decode(e2e.unb64(s.server.records.at(-1).body)));
+    const relist = { ...body, seq: body.seq + 1, prev: await hash(body), members: body.members.map((m) => (m.user === U.manager.id ? { ...m, fp: next.fp } : m)) };
+    const signed = { ...relist, v: 2, seq: relist.seq + 1, prev: await hash(relist), signer: U.manager.id, signerFp: next.fp };
+    s.server.records.push(
+      await e2e.newEnvelope(U.owner.ed.seed, U.owner.id, 'membership', enc.encode(JSON.stringify(relist))),
+      await e2e.newEnvelope(next.ed.seed, U.manager.id, 'membership', enc.encode(JSON.stringify(signed))),
+    );
+    s.server.owners[next.fp] = { x25519: next.pair.x25519, ed25519: next.pair.ed25519 };
+    return new Response('{}', { status: 200 });
+  };
+  const err = await share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer').catch((e) => e);
+  assert.equal(err.code, 'read-back');
+  assert.match(err.message, /not the one this client signed/);
+});
+
 // A scene whose epoch 2 a manager started, with the owner's wrap of it bad.
-async function badWrapScene(kind) {
-  const s = await managerScene({ who: 'owner', epoch2By: U.manager });
+async function badWrapScene(kind, opts = {}) {
+  const s = await managerScene({ who: 'owner', epoch2By: U.manager, ...opts });
   const ctx = { purpose: 'ak', artifact: ARTIFACT, epoch: 2, recipientId: U.owner.id, recipientPub: U.owner.x.pub };
   const good = await e2e.wrap(ctx, s.world.aks[2]);
   const wrapped = kind === 'garbage' ? crypto.getRandomValues(new Uint8Array(good.length)) : await e2e.wrap(ctx, s.world.aks[1]);
@@ -1360,4 +1381,66 @@ test('a member the record adds needs every epoch, so an unreadable one is refuse
   noPuts(s);
   // A change that adds no member still works.
   assert.equal((await share(s.deps, ARTIFACT, 'viewer@example.com', 'editor')).promoted, true);
+});
+
+test('making a public artifact change without a new member refuses when its latest epoch is unreadable, before sending anything', async () => {
+  // Promoting a viewer lists no new wraps, so the record's link token hash is
+  // the first thing to need the epoch's AK.
+  const s = await badWrapScene('garbage', { isPublic: true });
+  assert.equal(await codeOf(share(s.deps, ARTIFACT, 'viewer@example.com', 'editor')), 'epoch-unreadable');
+  noPuts(s);
+});
+
+test('making an artifact public refuses with the epoch named when its latest epoch is unreadable', async () => {
+  const s = await badWrapScene('garbage');
+  const err = await setPublic(s.deps, ARTIFACT, true).catch((e) => e);
+  assert.equal(err.code, 'epoch-unreadable');
+  assert.match(err.message, /epoch 2 cannot be read, so you cannot make its link/);
+  noPuts(s);
+});
+
+test('a demotion that lists a rotated member anew needs every epoch, so an unreadable one is refused, and nobody else is touched', async () => {
+  // The editor is listed under old keys, so the demotion lists them anew and wraps every epoch to them.
+  const members = [{ user: U.manager, role: 'manager' }, { user: U.editor, role: 'editor', fp: 'f'.repeat(64) }, { user: U.viewer, role: 'viewer' }];
+  const s = await badWrapScene('garbage', { members });
+  const err = await share(s.deps, ARTIFACT, 'editor@example.com', 'viewer', { acceptNewKey: true }).catch((e) => e);
+  assert.equal(err.code, 'epoch-unreadable');
+  assert.match(err.message, /epoch 2 cannot be read, so you cannot share with editor@example.com/);
+  noPuts(s);
+});
+
+// Epochs 2 and 4 are started by managers whose wraps of them to the owner
+// do not open, around an epoch 3 the owner started.
+async function twoBadEpochs() {
+  const s = await managerScene({ who: 'owner', laterEpochs: [{ by: U.manager }, {}, { by: U.other }] });
+  s.server.wraps[U.owner.id] = s.server.wraps[U.owner.id].map((w) => ({ ...w, wrapped: e2e.b64(crypto.getRandomValues(new Uint8Array(e2e.unb64(w.wrapped).length))) }));
+  return s;
+}
+
+test('an owner with two unreadable epochs around a good one reads both reported and the good one', async () => {
+  const s = await twoBadEpochs();
+  assert.deepEqual(s.server.wraps[U.owner.id].map((w) => w.epoch), [2, 4]);
+  const opened = await openAs(s, 'owner');
+  assert.deepEqual(opened.unreadable, [2, 4]);
+  assert.deepEqual([...opened.aks.keys()].sort(), [1, 3]);
+  assert.deepEqual(opened.aks.get(3), s.world.aks[3]);
+  assert.equal(opened.latest.epoch, 4);
+});
+
+test('the owner removes a manager with two unreadable epochs, reads the new epoch, and the content under 2 and 4 is reported skipped', async () => {
+  const s = await twoBadEpochs();
+  await seedVersion(s.server, { id: V1, seq: 1 });
+  await seedVersion(s.server, { id: V2, seq: 2, epoch: 4, signer: U.other });
+  await seedDatabase(s.server, { version: V1, epoch: 2, signer: U.manager });
+  await seedFile(s.server, { version: V1, path: 'readable.txt', epoch: 3 });
+  await seedFile(s.server, { version: V1, path: 'sealed.txt', epoch: 4, signer: U.other });
+  const res = await unshare(s.deps, ARTIFACT, 'manager@example.com');
+  assert.equal(res.epoch, 5);
+  assert.equal(res.reseal.error, undefined);
+  assert.deepEqual(res.reseal.skipped.map((k) => k.what).sort(), [`a stored file of version ${V1}`, `the database of version ${V1}, revision 1`, `version ${V2}`].sort());
+  assert.deepEqual(res.reseal.resealed, [`a stored file of version ${V1}: readable.txt`]);
+  const opened = await openAs(s, 'owner');
+  assert.deepEqual(opened.aks.get(5), await estateAK(lastPut(s), 5));
+  assert.deepEqual(opened.unreadable, [2, 4]);
+  assert.deepEqual(opened.aks.get(3), s.world.aks[3]);
 });

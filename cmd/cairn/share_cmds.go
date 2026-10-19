@@ -308,16 +308,17 @@ func runShare(args []string) error {
 
 // epochChangeJSON adds to out what a command that may have started a new
 // epoch reports: whether it did, who it excluded and why, and the new public
-// link, empty when the artifact is private.
+// link, empty when the artifact is private. unreadableEpochs is always there,
+// an empty array when none, as rotate-keys has it.
 func epochChangeJSON(out map[string]any, ch client.EpochChange) {
 	excluded := []map[string]string{}
 	for _, x := range ch.Excluded {
 		excluded = append(excluded, map[string]string{"user": x.User.ID, "name": x.User.Name, "email": x.User.Email, "fp": x.User.FP, "reason": x.Reason})
 	}
 	out["newEpoch"], out["excluded"], out["link"] = ch.NewEpoch, excluded, ch.Link
+	out["unreadableEpochs"] = append([]int{}, ch.Unreadable...)
 	if ch.NewEpoch {
 		out["resealed"] = resealJSON(ch.Resealed, ch.ResealErr)
-		out["unreadableEpochs"] = append([]int{}, ch.Unreadable...)
 	}
 }
 

@@ -473,17 +473,25 @@ func (c *Client) AcceptTransfer(artifactID string, opts AcceptTransferOptions) (
 		next.Members = append(members, e2e.Member{User: latest.Owner, Role: "editor", FP: latest.OwnerFP})
 		slices.SortFunc(next.Members, func(a, b e2e.Member) int { return strings.Compare(a.User, b.User) })
 		for epoch := 1; epoch <= latest.Epoch; epoch++ {
+			ak, err := epochKey(aks, epoch)
+			if err != nil {
+				return nil, err
+			}
 			w, err := e2e.Wrap(rand.Reader, e2e.WrapContext{
 				Purpose: "ak", Artifact: artifactID, Epoch: uint64(epoch),
 				RecipientID: latest.Owner, RecipientPub: dir[prev].X25519Pub,
-			}, aks[epoch])
+			}, ak)
 			if err != nil {
 				return nil, err
 			}
 			wraps = append(wraps, map[string]any{"user": latest.Owner, "epoch": epoch, "wrapped": e2e.B64(w)})
 		}
 		if next.Public {
-			if linkHash, err = linkTokenHash(aks[latest.Epoch], artifactID, latest.Epoch); err != nil {
+			ak, err := epochKey(aks, latest.Epoch)
+			if err != nil {
+				return nil, err
+			}
+			if linkHash, err = linkTokenHash(ak, artifactID, latest.Epoch); err != nil {
 				return nil, err
 			}
 		}
@@ -495,7 +503,11 @@ func (c *Client) AcceptTransfer(artifactID string, opts AcceptTransferOptions) (
 		return nil, err
 	}
 	for epoch := 1; epoch <= next.Epoch; epoch++ {
-		sealed, err := e2e.Seal(rand.Reader, ekKey, estateFields(artifactID, epoch), aks[epoch])
+		ak, err := epochKey(aks, epoch)
+		if err != nil {
+			return nil, err
+		}
+		sealed, err := e2e.Seal(rand.Reader, ekKey, estateFields(artifactID, epoch), ak)
 		if err != nil {
 			return nil, err
 		}

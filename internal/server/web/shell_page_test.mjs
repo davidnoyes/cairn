@@ -140,6 +140,14 @@ async function page({ who = null, mode = 'shared', version = '', path = '/', isP
     await settle();
   };
   p.posted = () => p.frame().contentWindow.posted;
+  // waitPosted waits until n messages have gone to the frame: settle is a
+  // fixed wait, which a busy machine outlasts, so a test that reads a message
+  // waits for it, not for the clock.
+  p.waitPosted = async (n = 1) => {
+    for (let i = 0; i < 2000 && p.posted().length < n; i++) await new Promise((r) => setTimeout(r, 5));
+    return p.posted();
+  };
+  p.firstPosted = async () => (await p.waitPosted())[0];
   return p;
 }
 
@@ -186,7 +194,7 @@ test('the name, description, and version names come from the sealed fields, neve
   assert.equal(p.frame().attrs.title, 'Guestbook');
   await p.post({ cairn: 'ready', version: null, path: null });
   const created = (v) => p.server.versions.get(v).json.createdAt;
-  assert.deepEqual(p.posted()[0][0].context.versions, [
+  assert.deepEqual((await p.firstPosted())[0].context.versions, [
     { id: V2, seq: 2, name: 'Release', changelog: 'Fixed the list', createdAt: created(V2) },
     { id: V1, seq: 1, name: '', changelog: '', createdAt: created(V1) },
   ]);
@@ -215,7 +223,7 @@ test('the page version is the one framed and shown, and the fullscreen link name
   assert.equal(p.dom.els.fullscreen.href, `/full/${ARTIFACT}/${V1}`);
   assert.deepEqual(p.dom.els.version.children.map((o) => o.selected), [false, true]);
   await p.post({ cairn: 'ready', version: null, path: null });
-  assert.equal(p.posted()[0][0].version, V1);
+  assert.equal((await p.firstPosted())[0].version, V1);
 });
 
 test('changing the picker goes to that version', async () => {
@@ -228,8 +236,9 @@ test('changing the picker goes to that version', async () => {
 test('ready with no version answers with the page version and path, to the content origin only', async () => {
   const p = await page({ who: 'editor', path: '/app/x%20y', version: V1 });
   await p.post({ cairn: 'ready', version: null, path: null });
+  await p.waitPosted();
   assert.equal(p.posted().length, 1);
-  const [msg, origin] = p.posted()[0];
+  const [msg, origin] = await p.firstPosted();
   assert.equal(origin, CONTENT);
   checkKeysMessage(msg);
   assert.equal(msg.version, V1);
@@ -245,7 +254,7 @@ test('ready for a version verifies it and uses the message path', async () => {
   const p = await page({ who: 'viewer', version: V1 });
   p.server.calls.length = 0;
   await p.post({ cairn: 'ready', version: V2, path: '/deep/page.html' });
-  const [msg] = p.posted()[0];
+  const [msg] = await p.firstPosted();
   assert.equal(msg.version, V2);
   assert.equal(msg.path, '/deep/page.html');
   assert.ok(p.server.calls.some((c) => c.path === `/api/artifacts/${ARTIFACT}/versions/${V2}/manifest`), 'verified first');
@@ -254,7 +263,7 @@ test('ready for a version verifies it and uses the message path', async () => {
 test('need-keys answers for the named version with path /', async () => {
   const p = await page({ who: 'viewer', path: '/x' });
   await p.post({ cairn: 'need-keys', version: V1 });
-  const [msg] = p.posted()[0];
+  const [msg] = await p.firstPosted();
   assert.equal(msg.version, V1);
   assert.equal(msg.path, '/');
 });
@@ -265,7 +274,7 @@ test('no message is ever posted to a wildcard origin', async () => {
   await p.post({ cairn: 'need-keys', version: V1 });
   p.timers[0].fn();
   await settle();
-  assert.ok(p.posted().length >= 3);
+  assert.ok((await p.waitPosted(3)).length >= 3);
   for (const [, origin] of p.posted()) assert.equal(origin, CONTENT);
 });
 
@@ -332,7 +341,28 @@ test('an owner whose wrap of a manager\'s epoch is bad still sees the artifact, 
   });
   assert.equal(p.dom.els.name.textContent, 'Guestbook');
   assert.equal(p.status().hidden, false);
-  assert.match(p.status().textContent, /epoch 2 could not be read/);
+  assert.equal(p.status().textContent, 'Your key for epoch 2 could not be read, so what was sealed under it will not open. Remove the manager who started it to start a new epoch.');
+});
+
+// A page for an owner whose wraps of the epochs a manager started, bad, do not
+// open: epochs lists the epochs from 2 on, and bad those with a bad wrap.
+async function badWrapsPage(epochs, bad) {
+  return page({
+    who: 'owner',
+    members: [{ user: U.editor, role: 'manager' }, { user: U.viewer, role: 'viewer' }],
+    worldOpts: { laterEpochs: epochs.map((by) => (by ? { by: U.editor } : {})) },
+    build: async ({ world }) => {
+      world.wraps[U.owner.id] = world.wraps[U.owner.id].map((w) => (bad.includes(w.epoch) ? { ...w, wrapped: e2e.b64(crypto.getRandomValues(new Uint8Array(w.wrapped.length))) } : w));
+    },
+  });
+}
+
+test('an owner told of two or three unreadable epochs gets them all in one sentence, and still opens the good one', async () => {
+  const two = await badWrapsPage([true, false, true], [2, 4]);
+  assert.equal(two.dom.els.name.textContent, 'Guestbook');
+  assert.equal(two.status().textContent, 'Your keys for epochs 2 and 4 could not be read, so what was sealed under them will not open. Remove the managers who started them to start a new epoch.');
+  const three = await badWrapsPage([true, false, true, false, true], [2, 4, 6]);
+  assert.equal(three.status().textContent, 'Your keys for epochs 2, 4, and 6 could not be read, so what was sealed under them will not open. Remove the managers who started them to start a new epoch.');
 });
 
 test('a version the frame names that is not this artifact\'s gets no keys, and shows nothing', async () => {
@@ -384,7 +414,7 @@ test('the same version is framed once the owner has vouched for it', async () =>
   });
   assert.equal(p.status().hidden, true);
   await p.post({ cairn: 'ready', version: null, path: null });
-  assert.equal(p.posted()[0][0].signer, null);
+  assert.equal((await p.firstPosted())[0].signer, null);
 });
 
 test('nothing is framed after a failure, and each failure is shown', async () => {
@@ -450,7 +480,7 @@ test('a visitor with a public link opens it, and the link leaves the address bar
   assert.deepEqual(p.replaced, [[null, '', `/shared/${ARTIFACT}`]]);
   assert.equal(p.status().hidden, true, p.status().textContent);
   await p.post({ cairn: 'ready', version: null, path: null });
-  const [msg] = p.posted()[0];
+  const [msg] = await p.firstPosted();
   checkKeysMessage(msg);
   assert.equal(msg.token, null);
   assert.deepEqual(msg.context.users, []);
@@ -550,14 +580,15 @@ test('the content token is renewed and posted to the frame', async () => {
   assert.equal(p.timers.length, 1);
   p.timers[0].fn();
   await settle();
-  const [msg, origin] = p.posted().at(-1);
+  const [msg, origin] = (await p.waitPosted()).at(-1);
   assert.equal(origin, CONTENT);
   assert.equal(msg.cairn, 'token');
   assert.match(msg.token, /^tok-/);
   assert.equal(msg.tokenExpires, 2000000000);
   // Later keys carry the newest token.
+  const before = p.posted().length;
   await p.post({ cairn: 'need-keys', version: V1 });
-  assert.equal(p.posted().at(-1)[0].token, msg.token);
+  assert.equal((await p.waitPosted(before + 1)).at(-1)[0].token, msg.token);
 });
 
 test('a failed renewal is shown', async () => {
@@ -603,7 +634,7 @@ const signReq = (p, over = {}) => ({
 test('keys carry the writers: the owner and each editor under their listed key', async () => {
   const p = await page({ who: 'viewer', version: V1 });
   await p.post({ cairn: 'ready', version: null, path: null });
-  const [msg] = p.posted()[0];
+  const [msg] = await p.firstPosted();
   checkKeysMessage(msg);
   assert.deepEqual(msg.writers, { [U.owner.id]: [e2e.b64(U.owner.ed.pub)], [U.editor.id]: [e2e.b64(U.editor.ed.pub)] });
   assert.equal(msg.publicWrites, false);

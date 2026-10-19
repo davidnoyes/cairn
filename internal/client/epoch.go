@@ -51,7 +51,8 @@ type EpochChange struct {
 	ResealErr error
 	// Unreadable are the epochs the owner could not read when they made the
 	// change, because the wrap a manager made for them did not open: their
-	// content stays unreadable.
+	// content stays unreadable. It is empty when a manager made the change,
+	// whose keys are always complete.
 	Unreadable []int
 }
 
@@ -335,9 +336,13 @@ func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 			}
 		}
 		for _, e := range epochs {
+			ak, err := epochKey(aks, e)
+			if err != nil {
+				return nil, err
+			}
 			w, err := e2e.Wrap(rand.Reader, e2e.WrapContext{
 				Purpose: "ak", Artifact: artifactID, Epoch: uint64(e), RecipientID: u.ID, RecipientPub: u.X25519Pub,
-			}, aks[e])
+			}, ak)
 			if err != nil {
 				return nil, err
 			}

@@ -503,7 +503,7 @@ internal/client/rotate.go	its owner can run cairn unshare	its owner can run cair
 internal/client/rotate.go	for epoch := 1; epoch <= next.Epoch; epoch++ {	for epoch := 1; epoch < next.Epoch; epoch++ {	go test ./internal/client -run 'TestRotateKeysMovesOrKeepsEpochs'
 internal/client/rotate.go	newKR.Pins[user] = d.pin	newKR.Pins[user] = e2e.Pin{}	go test ./internal/client -run 'TestRotateKeysKeepsWhatTheKeyringHolds|TestRotateKeysPinsAnApprovedTeamMember'
 internal/client/rotate.go	Ack: kr.Epochs[a.ID].Ack	Ack: 0	go test ./internal/client -run 'TestRotateKeysKeepsWhatTheKeyringHolds'
-internal/client/rotate.go	linkTokenHash(aks[next.Epoch], a.ID, next.Epoch)	linkTokenHash(aks[next.Epoch], a.ID, next.Epoch+1)	go test ./internal/client -run 'TestRotateKeysPublicLink'
+internal/client/rotate.go	linkTokenHash(ak, a.ID, next.Epoch)	linkTokenHash(ak, a.ID, next.Epoch+1)	go test ./internal/client -run 'TestRotateKeysPublicLink'
 cmd/cairn/rotate_cmds.go	if res == nil {	if err != nil {	go test ./cmd/cairn -run 'TestRotateKeysCommand|TestPrintRotation'
 cmd/cairn/rotate_cmds.go	os.Getenv("CAIRN_API_KEY") != "" ||	false ||	go test ./cmd/cairn -run 'TestRotateKeysCommand|TestPrintRotation'
 cmd/cairn/rotate_cmds.go	|| os.Getenv("CAIRN_HOST") != ""	|| false	go test ./cmd/cairn -run 'TestRotateKeysCommand|TestPrintRotation'
@@ -733,7 +733,7 @@ internal/client/transfer.go	if res.Handover {	if false {	go test ./internal/clie
 internal/client/transfer.go	Handover: open.By == "admin"}	Handover: false}	go test ./internal/client -run 'TestAdministratorHandover'
 internal/client/epoch.go	if inMembers(m.User) || m.User == r.newOwner {	if inMembers(m.User) {	go test ./internal/client -run 'TestTransferDroppingThePreviousOwner'
 internal/client/epoch.go	if r.prevOwner != "" {	if false {	go test ./internal/client -run 'TestTransferDroppingThePreviousOwner'
-internal/client/epoch.go	aks, err := c.callerAKs(k, artifactID, va.Chain)	aks, err := c.epochAKs(k, artifactID, va.Chain)	go test ./internal/client -run 'TestTransferDroppingThePreviousOwner'
+internal/client/epoch.go	aks, err := c.callerAKs(k, artifactID, va.Chain)	aks, err := c.epochAKs(k, artifactID, va.Chain)	go test ./internal/client -count=1 -run 'TestTransferDroppingThePreviousOwner|TestTransferRefusesAnEditorsWrapThatDoesNotOpen'
 internal/client/transfer.go	if h == nil || h.Acked {	if h == nil {	go test ./internal/client -run 'TestEveryWriteRefusesAnUnacknowledgedHandover'
 internal/client/transfer.go	if !c.AcceptNewOwner {	if false {	go test ./internal/client -run 'TestEveryWriteRefusesAnUnacknowledgedHandover'
 internal/client/transfer.go	ok && e.Ack < seq {	ok && false {	go test ./internal/client -run 'TestEveryWriteRefusesAnUnacknowledgedHandover'
@@ -2620,3 +2620,20 @@ internal/client/rotate.go	if aks[epoch] == nil {	if false {	go test ./internal/c
 internal/client/rotate.go	res.Unreadable[a.ID] = append(res.Unreadable[a.ID], epoch)	_ = epoch	go test ./internal/client -count=1 -run TestRotateKeysNamesAnUnreadableEpoch
 cmd/cairn/rotate_cmds.go	printUnreadable(res.Unreadable[id])	_ = id	go test ./cmd/cairn -count=1 -run TestRotationReportsAnUnreadableEpoch
 cmd/cairn/rotate_cmds.go	"unreadableEpochs": res.Unreadable, 	"renamed": res.Unreadable, 	go test ./cmd/cairn -count=1 -run TestRotateKeysCommand$
+internal/client/epoch.go	ak, err := epochKey(aks, e)	ak, err := aks[e], error(nil)	go test ./internal/client -count=1 -run TestOwnerRelistingAMemberInANewEpochNeedsEveryEpoch
+internal/client/public.go	ak, err := epochKey(aks, epoch)	ak, err := aks[epoch], error(nil)	go test ./internal/client -count=1 -run TestOwnerChangeOfAPublicArtifactNeedsTheLinkToken
+internal/client/rotate.go	ak, err := epochKey(aks, next.Epoch)	ak, err := aks[next.Epoch], error(nil)	go test ./internal/client -count=1 -run TestRotateKeepingEpochsOfAPublicArtifactNeedsTheLinkToken
+internal/client/manager.go	if aks[epoch] == nil {	if aks[epoch] == nil && epoch < 3 {	go test ./internal/client -count=1 -run TestOwnerWithSeveralUnreadableEpochs
+internal/client/rotate.go	if aks[epoch] == nil {	if aks[epoch] == nil && epoch < 3 {	go test ./internal/client -count=1 -run TestOwnerWithSeveralUnreadableEpochs
+internal/client/share.go	ExcludedMatch(latest.Excluded, u) != nil	slices.ContainsFunc(latest.Excluded, func(x e2e.ExcludedEntry) bool { return x.FP == u.FP })	go test ./internal/client -count=1 -run TestManagerCannotReShareAnExcludedUserWhoRotatedKeys
+cmd/cairn/share_cmds.go	out["unreadableEpochs"] = append([]int{}, ch.Unreadable...)	if ch.NewEpoch { out["unreadableEpochs"] = append([]int{}, ch.Unreadable...) }	go test ./cmd/cairn -count=1 -run 'TestEpochChangeJSONAlwaysHasUnreadableEpochs|TestPublicCommand'
+cmd/cairn/share_cmds.go	printUnreadable(ch.Unreadable)	_ = printUnreadable	go test ./cmd/cairn -count=1 -run TestUnshareReportsAnEpochTheOwnerCannotRead
+cmd/cairn/share_cmds.go	out["unreadableEpochs"] = append([]int{}, ch.Unreadable...)	out["unreadableEpochs"] = []int{}	go test ./cmd/cairn -count=1 -run TestUnshareReportsAnEpochTheOwnerCannotRead
+internal/server/web/sharing.mjs	e2e.linkToken(needAK(aks, epoch, 'make a public link for it'), va.artifact, epoch)	e2e.linkToken(aks.get(epoch), va.artifact, epoch)	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	wrapTo(u, artifactId, epoch, needAK(aks, epoch, `share with ${u.email}, who needs it`))	wrapTo(u, artifactId, epoch, aks.get(epoch))	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	wrapTo(u, artifact, e, needAK(aks, e, `share with ${u.email}, who needs it`))	wrapTo(u, artifact, e, aks.get(e))	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	needAK(aks, va.latest.epoch, 'make its link');	aks.get(va.latest.epoch);	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	latest.signer === id && latest.signerFp === caller.fp	latest.signer === id	node --test internal/server/web/sharing_test.mjs
+internal/server/web/shell.mjs	if (epochs.length === 1) {	if (epochs.length >= 1) {	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	epochs.length === 2 ? epochs.join(' and ')	epochs.length === 2 ? epochs.join(', ')	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	`${epochs.slice(0, -1).join(', ')}, and ${epochs.at(-1)}`	`${epochs.slice(0, -1).join(', ')} and ${epochs.at(-1)}`	node --test internal/server/web/shell_page_test.mjs

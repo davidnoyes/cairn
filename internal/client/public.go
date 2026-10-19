@@ -153,7 +153,11 @@ func (c *Client) linkTokenHashFor(k *UnlockedKeys, artifactID string, chain *e2e
 	if err != nil {
 		return "", err
 	}
-	return linkTokenHash(aks[epoch], artifactID, epoch)
+	ak, err := epochKey(aks, epoch)
+	if err != nil {
+		return "", err
+	}
+	return linkTokenHash(ak, artifactID, epoch)
 }
 
 // OpenedLink is what OpenLink verified: the link, the chain it opens, and the

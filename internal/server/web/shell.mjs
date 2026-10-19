@@ -29,6 +29,16 @@ function describe(err) {
   return `This artifact could not be verified, so it is not shown. ${err.message}`;
 }
 
+// unreadableMessage names the epochs the owner's wrap did not open, in the
+// singular for one and with a serial comma for three or more.
+function unreadableMessage(epochs) {
+  if (epochs.length === 1) {
+    return `Your key for epoch ${epochs[0]} could not be read, so what was sealed under it will not open. Remove the manager who started it to start a new epoch.`;
+  }
+  const list = epochs.length === 2 ? epochs.join(' and ') : `${epochs.slice(0, -1).join(', ')}, and ${epochs.at(-1)}`;
+  return `Your keys for epochs ${list} could not be read, so what was sealed under them will not open. Remove the managers who started them to start a new epoch.`;
+}
+
 function versionLabel(seq, name) {
   return name ? `#${seq} ${name}` : `#${seq}`;
 }
@@ -93,7 +103,7 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
     const opened = await openArtifact(deps, { artifact, link, linkError });
     // The owner's wrap of an epoch a manager started did not open: what was
     // sealed under it stays unreadable until a new epoch replaces it.
-    if (opened.unreadable?.length) showStatus(`Your key for epoch ${opened.unreadable.join(', ')} could not be read, so what was sealed under it will not open. Remove the manager who started it to start a new epoch.`);
+    if (opened.unreadable?.length) showStatus(unreadableMessage(opened.unreadable));
     const verify = (versionId) => prepareVersion(deps, opened, versionId);
     const info = await apiGet(deps, opened, `/api/artifacts/${artifact}`);
     const versions = (await listVersions(deps, opened)).filter((v) => UUID_RE.test(v.id));

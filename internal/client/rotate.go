@@ -209,7 +209,11 @@ func (c *Client) RotateKeys(password string, keepEpochs bool) (*RotateResult, er
 				return nil, err
 			}
 			if next.Public {
-				if linkHash, err = linkTokenHash(aks[next.Epoch], a.ID, next.Epoch); err != nil {
+				ak, err := epochKey(aks, next.Epoch)
+				if err != nil {
+					return nil, err
+				}
+				if linkHash, err = linkTokenHash(ak, a.ID, next.Epoch); err != nil {
 					return nil, err
 				}
 			}

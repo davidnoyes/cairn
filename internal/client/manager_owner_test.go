@@ -60,6 +60,13 @@ func TestManagerEpochKeepsTheOwnersExclusions(t *testing.T) {
 // hands the owner a bad wrap would.
 func ownerKeysRewritten(t *testing.T, c *Client, artifact string, epoch int, wrap func() []byte) *Client {
 	t.Helper()
+	return ownerKeysRewrittenAt(t, c, artifact, map[int]func() []byte{epoch: wrap})
+}
+
+// ownerKeysRewrittenAt is ownerKeysRewritten for several epochs at once: each
+// epoch in wraps has its wrap replaced by what its function returns.
+func ownerKeysRewrittenAt(t *testing.T, c *Client, artifact string, wraps map[int]func() []byte) *Client {
+	t.Helper()
 	return rewriting(c, "/api/artifacts/"+artifact+"/keys", func(body []byte) []byte {
 		var keys struct {
 			Wraps  []map[string]any `json:"wraps"`
@@ -70,7 +77,7 @@ func ownerKeysRewritten(t *testing.T, c *Client, artifact string, epoch int, wra
 			return body
 		}
 		for _, w := range keys.Wraps {
-			if int(w["epoch"].(float64)) == epoch {
+			if wrap, ok := wraps[int(w["epoch"].(float64))]; ok {
 				w["wrapped"] = e2e.B64(wrap())
 			}
 		}

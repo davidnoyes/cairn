@@ -197,6 +197,22 @@ func TestTransferKeepingThePreviousOwner(t *testing.T) {
 	}
 }
 
+// An editor's wrap that does not open is refused as it is: skipping an
+// unreadable epoch is for the owner's wraps of a manager's epoch, never for
+// the editor taking over.
+func TestTransferRefusesAnEditorsWrapThatDoesNotOpen(t *testing.T) {
+	x := newXfer(t, nil)
+	x.offer(x.ada, "bob")
+	bob := ownerKeysRewritten(t, x.bob, x.artifact, 1, func() []byte { return make([]byte, 81) })
+	_, err := bob.AcceptTransfer(x.artifact, AcceptTransferOptions{DropPreviousOwner: true})
+	if err == nil || errors.Is(err, ErrEpochUnreadable) {
+		t.Fatalf("AcceptTransfer with a wrap that does not open: %v, want the wrap refused", err)
+	}
+	if latest := x.verify(x.dan).Chain.Latest; latest.Epoch != 2 || latest.Owner != x.id(x.ada) {
+		t.Errorf("latest record after the refusal: epoch %d, owner %s", latest.Epoch, latest.Owner)
+	}
+}
+
 func TestTransferDroppingThePreviousOwner(t *testing.T) {
 	x := newXfer(t, nil)
 	x.offer(x.ada, "bob")
