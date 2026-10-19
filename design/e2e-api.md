@@ -2547,8 +2547,11 @@ These keys are served by the server, so a client anchors them as
 - The envelope's signer is the caller, its signature verifies under the
   caller's current key, and `signerFp` is the caller's current fingerprint. A
   viewer account signs no group record: `403`.
-- **First record.** `group` is a random lowercase UUID not already used,
-  `seq` is 1, `prev` is empty, and the caller is listed as `manager`.
+- **First record.** `group` is a random lowercase UUID never used before,
+  by a group that exists or one that was deleted, `seq` is 1, `prev` is
+  empty, and the caller is listed as `manager`. The server keeps the ID of
+  each deleted group for this, so a client that holds a deleted group's head
+  never meets a new chain under the same ID.
 - **Later record.** `seq` is one more than the stored latest, `prev` is the
   hash of its body, and the caller is listed as `manager` in it, under their
   current fingerprint or one their rotation records link to it. A record
