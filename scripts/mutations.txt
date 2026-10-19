@@ -227,9 +227,9 @@ internal/server/web/account.mjs	await deps.keyStore.clear();	void 0;	node --test
 internal/server/web/keystore.mjs	const clear = () => run('readwrite', (store) => store.clear());	const clear = () => run('readwrite', () => ({}));	node --test internal/server/web/keystore_test.mjs
 internal/server/routes.go	handle("GET /login", withAppCSP(s.handleLoginPage))	handle("GET /login", s.handleLoginPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
 internal/server/routes.go	handle("GET /app", withAppCSP(s.handleAppPage))	handle("GET /app", s.handleAppPage)	go test ./internal/server -run TestAccountPagesSendTheAppCSP
-internal/server/routes.go	handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "signup" { handle("GET /"+page, s.handleStaticPage(page+".html")) } else { handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	handle("GET /signup", withAppCSP(s.handleModePage("signup.html")))	handle("GET /signup", s.handleModePage("signup.html"))	go test ./internal/server -run TestAccountPagesSendTheAppCSP
 internal/server/routes.go	handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "verify" { handle("GET /"+page, s.handleStaticPage(page+".html")) } else { handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
-internal/server/routes.go	handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "forgot" { handle("GET /"+page, s.handleStaticPage(page+".html")) } else { handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
+internal/server/routes.go	handle("GET /forgot", withAppCSP(s.handleModePage("forgot.html")))	handle("GET /forgot", s.handleModePage("forgot.html"))	go test ./internal/server -run TestAccountPagesSendTheAppCSP
 internal/server/routes.go	handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))	if page == "reset" { handle("GET /"+page, s.handleStaticPage(page+".html")) } else { handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html"))) }	go test ./internal/server -run TestAccountPagesSendTheAppCSP
 internal/server/serving.go	contentType := "text/javascript; charset=utf-8"	contentType := "text/plain; charset=utf-8"	go test ./internal/server -run TestAccountPageAssetsAreServed
 
@@ -2051,9 +2051,9 @@ internal/store/successor.go	successors SET deactivated_at = ? WHERE user_id = ? 
 internal/store/successor.go		res, err := tx.Exec(`UPDATE users SET disabled = 1,		res, err := tx.Exec(`UPDATE users SET disabled = 0,	go test ./internal/store -run TestRequestAndRefuse
 internal/store/successor.go		if prev.Released(at) {		if false {	go test ./internal/store -run TestAReleasedNominationCannotBeReplacedOrRemoved
 internal/server/handlers_successor.go		case prev.SuccessorID == to.ID:		case false:	go test ./internal/server -run TestRenominatingTheSameSuccessorSaysSo
-internal/server/handlers_successor.go		"POST /api/auth/logout": true,		"POST /api/auth/logout": false,	go test ./internal/server -run TestReleaseAfterFourteenDays
-internal/server/handlers_successor.go		"POST /api/keys":        true,		"POST /api/keys":        false,	go test ./internal/server -run TestReleaseAfterFourteenDays
-internal/server/handlers_successor.go		"DELETE /api/keys/{id}": true,		"DELETE /api/keys/{id}": false,	go test ./internal/server -run TestReleaseAfterFourteenDays
+internal/server/handlers_successor.go	"POST /api/auth/logout":        true,	"POST /api/auth/logout":        false,	go test ./internal/server -run TestReleaseAfterFourteenDays
+internal/server/handlers_successor.go	"POST /api/keys":               true,	"POST /api/keys":               false,	go test ./internal/server -run TestReleaseAfterFourteenDays
+internal/server/handlers_successor.go	"DELETE /api/keys/{id}":        true,	"DELETE /api/keys/{id}":        false,	go test ./internal/server -run TestReleaseAfterFourteenDays
 internal/server/handlers_successor.go			s.recordSignInFailure(email, ip)			_ = ip	go test ./internal/server -run TestRefuseFromThePage
 internal/server/handlers_successor.go			if v.Released {			if true {	go test ./internal/server -run TestRequestSuccession
 internal/server/handlers_users.go				err = s.store.DeactivateUser(id, s.clk.Now())				err = s.store.SetUserDisabled(id, true)	go test ./internal/server -run TestRefuseFromThePage
