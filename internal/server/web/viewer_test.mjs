@@ -1370,12 +1370,34 @@ test('manager: the owner still reads when the estate copy cannot be stored', asy
   assert.equal(s.server.estatePuts.length, 0);
 });
 
-test('manager: a wrap that does not match the chain akCommit is refused for the owner', async () => {
+// A wrap for the owner that a manager sent badly must not lock the owner out:
+// the epoch is left out and named, and every other epoch opens.
+async function badOwnerWrap(kind) {
   const s = await managerScene({ who: 'owner' });
-  const wrong = await e2e.wrap({ purpose: 'ak', artifact: ARTIFACT, epoch: 2, recipientId: U.owner.id, recipientPub: U.owner.x.pub }, s.world.aks[1]);
-  s.world.wraps[U.owner.id] = [{ epoch: 2, wrapped: e2e.b64(wrong), fp: U.owner.fp }];
+  const ctx = { purpose: 'ak', artifact: ARTIFACT, epoch: 2, recipientId: U.owner.id, recipientPub: U.owner.x.pub };
+  const good = await e2e.wrap(ctx, s.world.aks[2]);
+  const wrapped = kind === 'garbage' ? crypto.getRandomValues(new Uint8Array(good.length)) : await e2e.wrap(ctx, s.world.aks[1]);
+  s.world.wraps[U.owner.id] = [{ epoch: 2, wrapped: e2e.b64(wrapped), fp: U.owner.fp }];
+  return s;
+}
+
+for (const kind of ['garbage', 'wrong-ak']) {
+  test(`manager: a ${kind} wrap for the owner leaves its epoch out, names it, and stores no estate copy`, async () => {
+    const s = await badOwnerWrap(kind);
+    const opened = await open(s);
+    assert.deepEqual(opened.unreadable, [2]);
+    assert.deepEqual([...opened.aks.keys()], [1]);
+    assert.deepEqual(opened.aks.get(1), s.world.aks[1]);
+    assert.equal(opened.latest.epoch, 2);
+    assert.equal(s.server.estatePuts.length, 0);
+  });
+}
+
+test('manager: a bad wrap is refused for a member who is not the owner', async () => {
+  const s = await managerScene({ who: 'editor' });
+  const wrong = await e2e.wrap({ purpose: 'ak', artifact: ARTIFACT, epoch: 2, recipientId: U.editor.id, recipientPub: U.editor.x.pub }, s.world.aks[1]);
+  s.world.wraps[U.editor.id] = [...s.world.wraps[U.editor.id].filter((w) => w.epoch !== 2), { epoch: 2, wrapped: e2e.b64(wrong), fp: U.editor.fp }];
   await assert.rejects(() => open(s), (err) => err instanceof e2e.ChainError && /your wrap of epoch 2/.test(err.message));
-  assert.equal(s.server.estatePuts.length, 0);
 });
 
 test('manager: an owner with neither an estate copy nor a wrap for an epoch is refused, and stores nothing', async () => {

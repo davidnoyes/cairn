@@ -346,11 +346,28 @@ function membershipBody(va, next, manager) {
   return body;
 }
 
+// akSet is the AKs the caller can read, with the epochs a wrap of the owner's
+// could not give them, which callerAKs leaves out rather than refuse.
+async function akSet(deps, caller, va) {
+  const unreadable = [];
+  const aks = await callerAKs(deps, caller, va.artifact, va.chain, unreadable);
+  return { aks, unreadable };
+}
+
+// needAK is aks.get(epoch), refusing when the epoch is one the caller cannot
+// read, with what the caller was about to do.
+function needAK(aks, epoch, what) {
+  if (!aks.has(epoch)) {
+    throw new SharingError('epoch-unreadable', `Your key for epoch ${epoch} cannot be read, so you cannot ${what}. A manager sent you a bad key for it: remove that manager to start a new epoch you can read.`);
+  }
+  return aks.get(epoch);
+}
+
 // linkTokenHashFor is the hash of the epoch's link token the server stores for
 // a public record, from the owner's estate copy of the epoch's AK.
 async function linkTokenHashFor(deps, caller, va, epoch) {
-  const aks = await callerAKs(deps, caller, va.artifact, va.chain);
-  return e2e.linkTokenHash(await e2e.linkToken(aks.get(epoch), va.artifact, epoch));
+  const { aks } = await akSet(deps, caller, va);
+  return e2e.linkTokenHash(await e2e.linkToken(needAK(aks, epoch, 'make a public link for it'), va.artifact, epoch));
 }
 
 // putRecord signs next as the record after the verified chain's latest and
@@ -369,12 +386,16 @@ async function putRecord(deps, caller, va, next, wraps, estate, linkHash) {
 }
 
 // readBack verifies the artifact after the server accepted a record, which
-// must still name the owner's key va lists. A failure still names link, the
-// new public link, when there is one: the old link already stopped working.
-// Mirrors readBack.
+// must still name the owner's key va lists, and whose latest record must be
+// the caller's own: the owner's version 1 record, or a version 2 record the
+// caller signed as a manager. A failure still names link, the new public link,
+// when there is one: the old link already stopped working. Mirrors readBack.
 async function readBack(deps, caller, va, link) {
   try {
-    await verifyArtifact(deps, caller, va.artifact, va.latest.ownerFp);
+    const { latest } = await verifyArtifact(deps, caller, va.artifact, va.latest.ownerFp);
+    const id = caller.record.userId;
+    const own = latest.v === 2 ? latest.signer === id && latest.signerFp === caller.fp : latest.owner === id && latest.ownerFp === caller.fp;
+    if (!own) throw new Error('the latest record is not the one this client signed');
   } catch (err) {
     const msg = `The server accepted the new membership record, but reading it back failed: ${err.message}${link ? `; the new public link is ${link}` : ''}`;
     throw new SharingError('read-back', msg, { cause: err });
@@ -460,7 +481,8 @@ export async function members(deps, artifactId) {
 
 // share adds who, an email or a user ID, to an artifact at its current epoch
 // with role viewer, editor, or manager, or changes their role: promoting is a
-// same-epoch record, and demoting to viewer starts a new epoch. A manager can
+// same-epoch record, and so is lowering a manager to editor, but demoting to
+// viewer starts a new epoch. A manager can
 // make every change below manager; making someone a manager, or changing a
 // manager's entry, is the owner's alone and is refused with owner-only. Sharing by
 // name with a user the owner excluded lists them again and drops the entries
@@ -471,7 +493,8 @@ export async function members(deps, artifactId) {
 // AK, opened from the owner's estate copies and checked against the chain's
 // akCommit. Returns {epoch, reseal}, with reseal the result of re-sealing
 // when a new epoch started, else null, and more besides: user, prior, role,
-// promoted, demoted, unchanged, dropped, wasVerified, and for a new epoch
+// promoted, lowered (manager to editor), demoted (to viewer, in a new epoch),
+// unchanged, dropped, wasVerified, and for a new epoch
 // excluded and link. Mirrors Share.
 export async function share(deps, artifactId, who, role, { acceptNewKey = false } = {}) {
   if (!ROLE_RANK.has(role)) throw new SharingError('bad-role', `The role must be viewer, editor, or manager, not ${JSON.stringify(role)}.`);
@@ -483,7 +506,7 @@ export async function share(deps, artifactId, who, role, { acceptNewKey = false 
   const { prior, pin: decided } = await checkPin(deps, va.keyring, u, acceptNewKey, va.membership.rotations);
   const res = {
     user: u, prior, wasVerified: wasVerified(va.keyring, u.id, prior), role, epoch: latest.epoch, reseal: null,
-    promoted: false, demoted: false, unchanged: false, dropped: [], excluded: [], link: '',
+    promoted: false, lowered: false, demoted: false, unchanged: false, dropped: [], excluded: [], link: '',
   };
 
   const list = latest.members.map((m) => ({ ...m }));
@@ -506,10 +529,11 @@ export async function share(deps, artifactId, who, role, { acceptNewKey = false 
     const to = ROLE_RANK.get(role);
     demote = from > 0 && to === 0;
     res.promoted = to > from;
-    res.demoted = to < from;
+    res.demoted = demote;
+    res.lowered = to < from && !demote;
     const relist = list[i].fp !== u.fp;
     needsWraps = relist;
-    res.unchanged = !res.promoted && !res.demoted && !relist;
+    res.unchanged = !res.promoted && !res.demoted && !res.lowered && !relist;
     list[i] = { user: u.id, role, fp: u.fp };
   }
   const basedOn = pinOf(va.keyring, u.id)?.fp ?? '';
@@ -525,10 +549,12 @@ export async function share(deps, artifactId, who, role, { acceptNewKey = false 
     // Defense in depth behind verifyChain's epoch pin, which already refuses a
     // stale epoch.
     e2e.checkEncryptEpoch(epochPinOf(va.keyring, artifactId), latest.epoch);
-    const aks = await callerAKs(deps, caller, artifactId, va.chain);
-    for (let epoch = 1; epoch <= latest.epoch; epoch++) wraps.push(await wrapTo(u, artifactId, epoch, aks.get(epoch)));
+    const { aks } = await akSet(deps, caller, va);
+    for (let epoch = 1; epoch <= latest.epoch; epoch++) wraps.push(await wrapTo(u, artifactId, epoch, needAK(aks, epoch, `share with ${u.email}, who needs it`)));
   }
   const { kept, dropped } = dropExcluded(latest.excluded, list, dir);
+  // Only the owner lists someone anyone removed again.
+  if (dropped.length > 0) checkOwnerOnly(manager, 'share again with someone removed from the artifact');
   res.dropped = dropped;
   await putRecord(deps, caller, va, { ...latest, members: list, excluded: kept }, wraps, [], '');
   if (decided) {
@@ -618,7 +644,7 @@ async function buildNextEpoch(deps, caller, va, dir, nextIn, r) {
   next.excluded = [...excludes.values()].sort(byUser);
 
   // The new epoch's key, which no earlier epoch used.
-  const aks = await callerAKs(deps, caller, artifact, va.chain);
+  const { aks } = await akSet(deps, caller, va);
   const ak = await (deps.newAK ?? (async () => crypto.getRandomValues(new Uint8Array(32))))();
   e2e.checkNewAk(ak, [...aks.values()]);
   next.epoch = epoch;
@@ -632,7 +658,7 @@ async function buildNextEpoch(deps, caller, va, dir, nextIn, r) {
     const u = byId.get(m.user);
     const held = latest.members.some((l) => l.user === m.user && l.fp === m.fp);
     const epochs = held ? [epoch] : Array.from({ length: epoch }, (_, k) => k + 1);
-    for (const e of epochs) wraps.push(await wrapTo(u, artifact, e, aks.get(e)));
+    for (const e of epochs) wraps.push(await wrapTo(u, artifact, e, needAK(aks, e, `share with ${u.email}, who needs it`)));
   }
   // The owner holds no wraps and reads each epoch through the estate copy,
   // which only the owner can seal. A manager sends none, and wraps the new
@@ -641,6 +667,12 @@ async function buildNextEpoch(deps, caller, va, dir, nextIn, r) {
   if (r.manager) {
     const owner = byId.get(latest.owner);
     if (!owner) throw new SharingError('owner-missing', "The owner's account is not in the directory, so no key can be wrapped to them.");
+    // A server could serve its own key in the owner's place and so learn the
+    // new AK: the directory's key must be the chain's, or follow from it.
+    const linked = e2e.rotationLinker(va.membership.rotations);
+    if (!(await linked(latest.owner, latest.ownerFp, owner.fp))) {
+      throw new SharingError('owner-key-changed', "The owner's key in the directory is not the one the artifact's records name, so the new key cannot be sealed to them.");
+    }
     wraps.push(await wrapTo(owner, artifact, epoch, ak));
   } else {
     const ekKey = await e2e.ekSealCryptoKey(caller.record.ek);
@@ -734,7 +766,8 @@ export async function setPublic(deps, artifactId, on, { writes } = {}) {
 // linkOf is the public link of the latest epoch, built from the AK the caller
 // holds.
 async function linkOf(deps, caller, va) {
-  const aks = await callerAKs(deps, caller, va.artifact, va.chain);
+  const { aks } = await akSet(deps, caller, va);
+  needAK(aks, va.latest.epoch, 'make its link');
   try {
     return e2e.publicLink(deps.origin, va.artifact, aks.get(va.latest.epoch), va.latest.epoch, va.chain.bodies[0].ownerFp);
   } catch (err) {
@@ -951,7 +984,7 @@ async function putFile(deps, caller, va, aks, v, path, plain, modifiedAt) {
 // highest seq, with the same files sealed under the current epoch and signed
 // by the caller, under the same version ID. It does so only when the version's
 // manifest and every blob verify under its own epoch and its signer is still
-// the owner or an editor in the latest record; otherwise the version is left
+// the owner, an editor, or a manager in the latest record; otherwise the version is left
 // as it is and noted in skipped, for the owner's review. Mirrors resealVersion.
 async function resealVersion(deps, caller, va, aks, opened, v, res) {
   const current = va.latest.epoch;
@@ -1062,7 +1095,7 @@ async function resealMeta(deps, va, aks, opened, old, v, res) {
 async function runReseal(deps, caller, va, res) {
   const before = bodyBefore(va.chain);
   if (!before) return;
-  const aks = await callerAKs(deps, caller, va.artifact, va.chain);
+  const { aks } = await akSet(deps, caller, va);
   const opened = { ...va, aks };
   const old = { writers: await writerKeys(deps, { ...opened, latest: before }) };
   const versions = await call(deps, null, 'GET', `/api/artifacts/${va.artifact}/versions`);
@@ -1096,7 +1129,7 @@ async function resealInto(deps, caller, artifact) {
 }
 
 // reseal seals the artifact's data and metadata under its current epoch again,
-// signed by the caller, who must be the owner or an editor. It is safe to run
+// signed by the caller, who must be the owner, an editor, or a manager. It is safe to run
 // at any time: what is already under the current epoch is left as it is.
 // Returns {resealed: [string], skipped: [{what, reason}]}; on an error the
 // error carries the same as its result. Mirrors Reseal.
@@ -1109,7 +1142,7 @@ export async function reseal(deps, artifactId) {
   const approver = latest.owner === id
     ? latest.ownerFp === caller.fp
     : latest.members.some((m) => m.user === id && (m.role === 'editor' || m.role === 'manager') && m.fp === caller.fp);
-  if (!approver) throw new SharingError('cannot-reseal', "Only the artifact's owner or an editor can re-seal its data.");
+  if (!approver) throw new SharingError('cannot-reseal', "Only the artifact's owner, an editor, or a manager can re-seal its data.");
   e2e.checkEncryptEpoch(epochPinOf(va.keyring, artifactId), latest.epoch);
   const res = { resealed: [], skipped: [] };
   try {

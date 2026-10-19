@@ -2004,3 +2004,53 @@ test('verifyChain: a manager record that changes a manager entry\'s fp is refuse
   const other = await makeUser('outsider');
   await assert.rejects(async () => e2e.verifyChain(await chainWith(entry(other, 'manager', manager.fp))), e2e.ChainError);
 });
+
+// A manager's record keeps every entry of the previous record's excluded,
+// matched by user: only the owner lists a removed user again.
+test('verifyChain: a manager record that drops an excluded user is refused, and one that keeps them is accepted', async () => {
+  const owner = await makeUser('owner');
+  const manager = await makeUser('manager');
+  const gone = await makeUser('outsider');
+  const ak = crypto.getRandomValues(new Uint8Array(32));
+  const akCommit = await e2e.akCommit(ak, ARTIFACT, 1);
+  const out = (user, fp = gone.fp) => ({ user, fp, email: 'gone@example.com' });
+  const chainWith = async (managerExcluded, ownerExcluded = [out(gone.id)]) => {
+    const managerEntry = [{ user: manager.id, role: 'manager', fp: manager.fp }];
+    const specs = [
+      { by: owner, members: [], excluded: [] },
+      { by: owner, members: managerEntry, excluded: ownerExcluded },
+      { by: manager, members: managerEntry, excluded: managerExcluded },
+    ];
+    const records = [];
+    let prev = '';
+    for (const [i, spec] of specs.entries()) {
+      const body = new TextEncoder().encode(JSON.stringify({
+        v: spec.by === owner ? 1 : 2,
+        artifact: ARTIFACT,
+        epoch: 1,
+        seq: i + 1,
+        owner: owner.id,
+        ownerFp: owner.fp,
+        akCommit,
+        members: spec.members,
+        excluded: spec.excluded,
+        team: 'none',
+        public: false,
+        publicWrites: false,
+        prev,
+        transfer: '',
+        handover: '',
+        ...(spec.by === owner ? {} : { signer: manager.id, signerFp: manager.fp }),
+      }));
+      records.push(await e2e.newEnvelope(spec.by.ed.seed, spec.by.id, 'membership', body));
+      prev = await e2e.bodyHash(body);
+    }
+    return { artifact: ARTIFACT, records, owners: { [owner.fp]: owner.pair, [manager.fp]: manager.pair }, offers: {}, successors: {}, anchor: owner.fp };
+  };
+  assert.equal((await e2e.verifyChain(await chainWith([out(gone.id)]))).latest.seq, 3, 'the entry kept');
+  assert.equal((await e2e.verifyChain(await chainWith([out(gone.id, 'f'.repeat(64))]))).latest.seq, 3, 'matched by user, not by fp');
+  await assert.rejects(async () => e2e.verifyChain(await chainWith([])), e2e.ChainError);
+  await assert.rejects(async () => e2e.verifyChain(await chainWith([out(manager.id)])), e2e.ChainError, 'another user in its place');
+  // The owner's own record may drop the entry; the rule is for a manager's.
+  assert.equal((await e2e.verifyChain(await chainWith([], []))).latest.seq, 3, 'nothing to keep');
+});

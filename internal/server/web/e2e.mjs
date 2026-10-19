@@ -1999,8 +1999,9 @@ function decodeValue(value, f) {
 
 // decodeObject builds a plain object with exactly schema's fields, each
 // looked up case-insensitively in obj (preferring an exact match) or given
-// its zero value when absent. A field marked omitEmpty (used only by
-// ENVELOPE_SCHEMA's newSig, matching Go's envelopeJSON) is left out of the
+// its zero value when absent. A field marked omitEmpty (newSig of
+// ENVELOPE_SCHEMA, matching Go's envelopeJSON, and signer and signerFp of the
+// membership body, which a version 1 record does not carry) is left out of the
 // result entirely when its decoded value is the zero value, mirroring Go's
 // `json:",omitempty"`, which drops a zero value on marshal. An absent field
 // therefore round-trips; one present with the zero value explicitly (such
@@ -2325,7 +2326,8 @@ async function checkNextRecord(input, owners, linked, prev, prevHash, b, handove
 // key b.signerFp names. The manager's key is reached from the fp prev lists
 // for them; the owner is unchanged, and no transfer or handover is set.
 // Every entry with role manager is the same in both records, so a manager
-// adds, removes, and changes none. Mirrors checkManagerRecord in
+// adds, removes, and changes none, and every user prev excludes stays
+// excluded, so a manager cannot undo a removal. Mirrors checkManagerRecord in
 // internal/e2e/chain.go.
 async function checkManagerRecord(prev, b, linked) {
   const listed = prev.members.find((m) => m.user === b.signer && m.role === 'manager');
@@ -2340,6 +2342,9 @@ async function checkManagerRecord(prev, b, linked) {
   if (b.handover !== '' || b.transfer !== '') throw new ChainError("a manager's record sets transfer or handover");
   if (!sameManagers(prev.members, b.members)) {
     throw new ChainError("a manager's record adds, removes, or changes a manager");
+  }
+  for (const x of prev.excluded) {
+    if (!b.excluded.some((y) => y.user === x.user)) throw new ChainError(`a manager's record drops ${x.user} from excluded`);
   }
 }
 

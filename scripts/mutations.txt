@@ -1135,7 +1135,7 @@ internal/server/web/viewer.mjs	ack: cur ? cur.ack : 0 }	ack: 0 }	node --test int
 internal/server/web/viewer.mjs	if (pin && !Object.hasOwn(k.pins, creator)) k.pins[creator] = pin;	if (false) k.pins[creator] = pin;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (chain.latest.owner === caller.record.userId) {	if (false) {	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (!commits.has(epoch) || (await e2e.akCommit(ak, artifact, epoch)) !== commits.get(epoch)) {	if (false) {	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	if (!aks.has(epoch)) throw	if (false) throw	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!aks.has(epoch) && !unreadable.includes(epoch)) throw	if (false) throw	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	!(record.ed25519Pub instanceof Uint8Array)	false	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (me.id !== record.userId) return { locked: true };	if (false) return { locked: true };	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (err instanceof ApiError && err.status === 401) return null;	if (false) return null;	node --test internal/server/web/viewer_test.mjs
@@ -2499,7 +2499,7 @@ internal/server/web/viewer.mjs	x.user === env.signer && (x.role === 'editor' || 
 internal/server/web/viewer.mjs	if (m.role === 'editor' || m.role === 'manager') listedFps.push	if (m.role === 'editor') listedFps.push	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	m.user === id && (m.role === 'editor' || m.role === 'manager'))) return true	m.user === id && m.role === 'editor')) return true	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	await catchUpEstate(deps, caller, artifact, missing);	void missing;	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	await openWraps(caller, artifact, keys.wraps, commits, aks, held);	void held;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	await openWraps(caller, artifact, keys.wraps, commits, aks, held, unreadable);	void held;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	.filter(([epoch]) => !held.has(epoch)));	.filter(() => true));	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	['estate', artifact, String(epoch)], ak));	['estat', artifact, String(epoch)], ak));	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	/estate/${epoch}`, { body: { sealed } });	/estates/${epoch}`, { body: { sealed } });	node --test internal/server/web/viewer_test.mjs
@@ -2519,7 +2519,7 @@ internal/server/web/sharing.mjs	if (r.manager) {	if (false) {	node --test intern
 internal/server/web/sharing.mjs	if (ROLE_RANK.get(role) > 0 && u.role === 'viewer'	if (role === 'editor' && u.role === 'viewer'	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	ROLE_RANK.get(list[i].role) >= ROLE_RANK.get(role)))	list[i].role === 'editor'))	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	demote = from > 0 && to === 0;	demote = from === 1 && to === 0;	node --test internal/server/web/sharing_test.mjs
-internal/server/web/sharing.mjs	res.unchanged = !res.promoted && !res.demoted && !relist;	res.unchanged = !res.promoted && !demote && !relist;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	res.unchanged = !res.promoted && !res.demoted && !res.lowered && !relist;	res.unchanged = !res.promoted && !res.demoted && !relist;	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	await verifyArtifact(deps, caller, va.artifact, va.latest.ownerFp);	await verifyArtifact(deps, caller, va.artifact, caller.fp);	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	callerRole: callerRoleOf(caller, va),	callerRole: 'owner',	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	(m.role === 'manager' && callerRole !== 'owner')) return	(m.role === 'manager' && false)) return	node --test internal/server/web/sharing_test.mjs
@@ -2595,3 +2595,15 @@ internal/client/review.go	fmt.Errorf("%w: no key for epoch %d: %w", ErrVouchMani
 internal/client/public.go	Resealed: change.Resealed, ResealErr: change.ResealErr, Unreadable: change.Unreadable}, nil	Resealed: change.Resealed, ResealErr: change.ResealErr}, nil	go test ./internal/client -count=1 -run TestOwnerMakingPrivateReportsAnUnreadableEpoch
 cmd/cairn/share_cmds.go	printUnreadable(ch.Unreadable)	_ = printUnreadable	go test ./cmd/cairn -count=1 -run TestEpochChangeReportsAnUnreadableEpoch
 cmd/cairn/share_cmds.go	out["unreadableEpochs"] = append([]int{}, ch.Unreadable...)	out["unreadableEpochs"] = []int{}	go test ./cmd/cairn -count=1 -run TestEpochChangeReportsAnUnreadableEpoch
+internal/server/web/sharing.mjs	if (!(await linked(latest.owner, latest.ownerFp, owner.fp))) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/e2e.mjs	if (!b.excluded.some((y) => y.user === x.user)) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (!b.excluded.some((y) => y.user === x.user)) throw	if (!b.excluded.some((y) => y.fp === x.fp)) throw	node --test internal/server/web/e2e_test.mjs
+internal/server/web/sharing.mjs	if (dropped.length > 0) checkOwnerOnly(manager,	if (false) checkOwnerOnly(manager,	node --test internal/server/web/sharing_test.mjs
+internal/server/web/viewer.mjs	if (!unreadable || !commits.has(w.epoch)) throw err;	throw err;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	requireEpochs(aks, chain, unreadable);	requireEpochs(aks, chain);	node --test internal/server/web/viewer_test.mjs
+internal/server/web/sharing.mjs	if (!aks.has(epoch)) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (!own) throw new Error(	if (false) throw new Error(	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	latest.v === 2 ? latest.signer === id	latest.v === 2 ? latest.signer !== id	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	res.lowered = to < from && !demote;	res.lowered = false;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	res.demoted = demote;	res.demoted = to < from;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/shell.mjs	if (opened.unreadable?.length) showStatus(	if (false) showStatus(	node --test internal/server/web/shell_page_test.mjs

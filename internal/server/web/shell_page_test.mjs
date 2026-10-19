@@ -77,11 +77,12 @@ function fakeDom(dataset) {
 }
 
 // page builds a shell page for who (or nobody) and runs it.
-async function page({ who = null, mode = 'shared', version = '', path = '/', isPublic = false, hash = '', members, build, noRun, record } = {}) {
+async function page({ who = null, mode = 'shared', version = '', path = '/', isPublic = false, hash = '', members, build, noRun, record, worldOpts = {} } = {}) {
   const world = await buildWorld({
     owner: U.owner,
     members: members ?? [{ user: U.editor, role: 'editor' }, { user: U.viewer, role: 'viewer' }],
     isPublic,
+    ...worldOpts,
   });
   const server = makeServer(world, { who: who && U[who], linkTokenB64: '*' });
   for (const [vid, seq, signer] of [[V1, 1, U.owner], [V2, 2, U.owner]]) {
@@ -317,6 +318,21 @@ test('a page path that leaves the version gets no keys', async () => {
   const p = await page({ who: 'viewer', version: V1, path: `/%2e%2e/api/artifacts/${ARTIFACT}/versions/${V1}/files/x.html` });
   await p.post({ cairn: 'ready', version: null, path: null });
   assert.deepEqual(p.posted(), []);
+});
+
+test('an owner whose wrap of a manager\'s epoch is bad still sees the artifact, and is told that epoch is unreadable', async () => {
+  const p = await page({
+    who: 'owner',
+    members: [{ user: U.editor, role: 'manager' }, { user: U.viewer, role: 'viewer' }],
+    worldOpts: { epoch2By: U.editor },
+    build: async ({ world }) => {
+      const good = await e2e.wrap({ purpose: 'ak', artifact: ARTIFACT, epoch: 2, recipientId: U.owner.id, recipientPub: U.owner.x.pub }, world.aks[2]);
+      world.wraps[U.owner.id] = [{ epoch: 2, wrapped: e2e.b64(new Uint8Array(good.length)), fp: U.owner.fp }];
+    },
+  });
+  assert.equal(p.dom.els.name.textContent, 'Guestbook');
+  assert.equal(p.status().hidden, false);
+  assert.match(p.status().textContent, /epoch 2 could not be read/);
 });
 
 test('a version the frame names that is not this artifact\'s gets no keys, and shows nothing', async () => {

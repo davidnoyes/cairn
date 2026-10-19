@@ -281,9 +281,9 @@ async function openEstate(ekKey, artifact, estate, commits) {
   return aks;
 }
 
-function requireEpochs(aks, chain) {
+function requireEpochs(aks, chain, unreadable = []) {
   for (let epoch = 1; epoch <= chain.latest.epoch; epoch++) {
-    if (!aks.has(epoch)) throw new e2e.ChainError(`the server holds no key for you for epoch ${epoch}`);
+    if (!aks.has(epoch) && !unreadable.includes(epoch)) throw new e2e.ChainError(`the server holds no key for you for epoch ${epoch}`);
   }
   return aks;
 }
@@ -291,16 +291,22 @@ function requireEpochs(aks, chain) {
 // openWraps opens the caller's own wraps, each checked against the akCommit
 // the verified chain lists, and adds them to aks. A wrap of an epoch in skip
 // is left alone.
-async function openWraps(caller, artifact, wraps, commits, aks, skip = new Map()) {
+async function openWraps(caller, artifact, wraps, commits, aks, skip = new Map(), unreadable = null) {
   for (const w of wraps) {
     if (skip.has(w.epoch)) continue;
-    const ak = await e2e.unwrap(
-      caller.record.x25519,
-      { purpose: 'ak', artifact, epoch: w.epoch, recipientId: caller.record.userId, recipientPub: caller.record.x25519.publicKey },
-      e2e.unb64(w.wrapped),
-    );
-    await checkCommit(ak, artifact, w.epoch, commits, 'your wrap');
-    aks.set(w.epoch, ak);
+    try {
+      const ak = await e2e.unwrap(
+        caller.record.x25519,
+        { purpose: 'ak', artifact, epoch: w.epoch, recipientId: caller.record.userId, recipientPub: caller.record.x25519.publicKey },
+        e2e.unb64(w.wrapped),
+      );
+      await checkCommit(ak, artifact, w.epoch, commits, 'your wrap');
+      aks.set(w.epoch, ak);
+    } catch (err) {
+      // A wrap of an epoch the chain lists is left out and named, when asked.
+      if (!unreadable || !commits.has(w.epoch)) throw err;
+      unreadable.push(w.epoch);
+    }
   }
   return aks;
 }
@@ -325,17 +331,20 @@ async function catchUpEstate(deps, caller, artifact, epochs) {
 // owner from the estate copies, for anyone else by opening their own wraps.
 // An epoch a manager started has no estate copy, so the owner reads it
 // through their own wrap and then stores the missing copy. Each is checked
-// against the akCommit the verified chain lists. Mirrors callerAKs in
-// approve.go and epochAKs in share.go.
-export async function callerAKs(deps, caller, artifact, chain) {
+// against the akCommit the verified chain lists. A wrap for the owner that
+// does not open or does not match, in an epoch with no estate copy, would lock
+// the owner out of everything, so it is skipped and its epoch added to
+// unreadable, which the caller reports. Mirrors callerAKs in approve.go and
+// epochAKs in share.go.
+export async function callerAKs(deps, caller, artifact, chain, unreadable = []) {
   const commits = epochCommits(chain);
   const keys = await call(deps, null, 'GET', `/api/artifacts/${artifact}/keys`);
   if (chain.latest.owner === caller.record.userId) {
     const aks = await openEstate(await e2e.ekSealCryptoKey(caller.record.ek), artifact, keys.estate, commits);
     const held = new Map(aks);
-    await openWraps(caller, artifact, keys.wraps, commits, aks, held);
+    await openWraps(caller, artifact, keys.wraps, commits, aks, held, unreadable);
     const missing = new Map([...aks].filter(([epoch]) => !held.has(epoch)));
-    requireEpochs(aks, chain);
+    requireEpochs(aks, chain, unreadable);
     await catchUpEstate(deps, caller, artifact, missing);
     return aks;
   }
@@ -437,15 +446,16 @@ async function openAsMember(deps, caller, artifact) {
   }
   const { chain, creator, newPin } = await checkArtifact(deps, caller, kr, artifact, membership);
   let aks;
+  const unreadable = [];
   if (listed(chain.latest, caller.record.userId)) {
     await recordChain(deps, caller, kr, artifact, chain, creator, newPin);
-    aks = await callerAKs(deps, caller, artifact, chain);
+    aks = await callerAKs(deps, caller, artifact, chain, unreadable);
   } else {
     aks = await successorAKs(deps, caller, artifact, chain);
     if (!aks) return null;
     await recordChain(deps, caller, kr, artifact, chain, creator, newPin);
   }
-  return { mode: 'member', artifact, chain, latest: chain.latest, aks, membership, caller: caller.me, record: caller.record, linkToken: null, link: null };
+  return { mode: 'member', artifact, chain, latest: chain.latest, aks, unreadable, membership, caller: caller.me, record: caller.record, linkToken: null, link: null };
 }
 
 // openAsLink reads the membership with the link's token and verifies it as
@@ -494,8 +504,9 @@ async function openAsLink(deps, caller, artifact, link) {
 // Otherwise it throws linkError, the LinkError takeLink threw, if any, and
 // else NoAccessError. link is takeLink's result, or null. Returns what the
 // later steps need: the mode, the chain and its latest record, the AKs by
-// epoch, the membership answer, the caller (or null), the link token (or
-// null), and the link.
+// epoch, the epochs the owner's own wrap could not give them (unreadable), the
+// membership answer, the caller (or null), the link token (or null), and the
+// link.
 export async function openArtifact(deps, { artifact, link, linkError = null }) {
   const found = await signedInCaller(deps);
   const caller = found?.record ? found : null;
@@ -597,7 +608,7 @@ async function vouched(deps, opened, version) {
 
 // trustVersion fetches the version's manifest, opens it under that epoch's
 // AK, and decides whether the version is trusted: signed by the latest
-// record's owner or an editor, or vouched for by the owner. It then runs
+// record's owner, an editor, or a manager, or vouched for by the owner. It then runs
 // openManifest with the chosen signer, so a version the shell trusts is one
 // the worker accepts. Returns {signer}, which is null when trust is the vouch,
 // or throws UntrustedVersionError. version is what GET
@@ -727,7 +738,7 @@ export async function writerKeys(deps, opened) {
 }
 
 // canWrite says whether the caller may change the artifact's data: signed in
-// with keys, and the latest record's owner or an editor, or holding a link
+// with keys, and the latest record's owner, an editor, or a manager, or holding a link
 // while public writes are on. Mirrors the write rule of access.go; the server
 // enforces it either way.
 export function canWrite(opened) {
