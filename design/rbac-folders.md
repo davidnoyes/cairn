@@ -225,7 +225,9 @@ folder lists.
 - **Applied later where they cannot.** For an item owned by someone else,
   which Drive-style contents allow, the server queues an **inheritance
   update**. The next time that item's owner or a manager of it opens Cairn,
-  their client applies the update: new member list, keys sealed. Until then,
+  their client offers to apply it, and applies it when they agree, or when
+  they run `cairn apply`: new member list, keys sealed. It never writes
+  without that click or command. Until then,
   the new members see the item listed but cannot open it, and the page says
   who has yet to apply the share.
 - **Taking access away is immediate on the server.** Unsharing a folder, or
