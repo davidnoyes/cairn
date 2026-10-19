@@ -416,6 +416,9 @@ surrogate.
 - Either membership version may also carry `"groups":[{"group","role"}]`
   after `team`. The key is left out while the list is empty, so every record
   made before groups keeps its bytes.
+- A member entry and a `groups` entry may end with `"via"`, the ID of the
+  folder the entry comes from, a lowercase UUID. The key is left out for a
+  direct grant.
 - In a membership record, `role` is `viewer`, `editor`, or `manager`, `team`
   is `none`, `viewer`, or `editor`, each `groups` entry names a group ID (a
   lowercase UUID) with `role` `viewer` or `editor`, sorted by group ID, unique,

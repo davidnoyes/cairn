@@ -2712,3 +2712,91 @@ until then refuses to change a member list that uses either.
   the command-line tool build the same records from the same state.
 - A group that no longer exists is dropped from the next record the browser
   writes, and the dialog says so.
+
+## Shared folders
+
+Milestone F2 of the [roles, groups, and folders plan](rbac-folders.md):
+sharing a folder shares everything inside it, the way a shared folder in
+Google Drive does. Every item in a folder still belongs to the folder's
+owner in F2; items other people own arrive with F3.
+
+### What a folder may list
+
+A folder's member list may now list users, as `viewer`, `editor`, or
+`manager`, and groups, as `viewer` or `editor`. It still keeps the team share
+at `none` and stays private, because neither carries a mark of where it came
+from. A folder's editors rename it; its owner and managers share it.
+
+### Inherited entries
+
+A member entry, and a `groups` entry, may carry `via`: the ID of the folder
+it comes from. An entry without `via` is a direct grant. See
+[Signatures](e2e-wire-formats.md#signatures).
+
+- **More, never fewer.** A new membership record for an item inside a folder
+  lists every user and group its parent folder lists, with at least the
+  parent's role. A folder's own record already holds its ancestors' entries,
+  so checking the parent covers every level. A record that drops an inherited
+  entry, or lowers it below the parent's role, is refused while the item sits
+  in that folder.
+- **Marking.** An entry that exists only because of a folder carries `via`,
+  naming the nearest folder that lists that user or group. An entry with a
+  direct grant carries no `via`, and its role is the higher of the direct
+  role and every inherited one.
+- **A mark must be true.** An entry with `via` names a folder that contains
+  the item, and that folder's latest record lists that user or group.
+- **Reading.** An entry with `via` counts only while that folder still
+  contains the item and still lists the user or group. The server checks
+  this on every request, so unsharing a folder, or moving an item out of it,
+  stops access at once. Until the item's next epoch, such a user shows as
+  still holding the key, like a user who left a group.
+
+### Fan-out
+
+Sharing or unsharing a folder is one change to the folder, followed by one
+change to each item inside it.
+
+- **Sharing.** The client writes the folder's record, then, for each item in
+  the folder's subtree, a same-epoch record that adds the new entries with
+  `via` and seals every epoch's key to the new members.
+- **Unsharing.** The client writes the folder's record, then, for each item,
+  a next-epoch record that excludes users who held the item only through the
+  folder, and re-seals its latest version, database, and files, as any
+  removal does.
+- **Moving.** Moving an item into a folder is followed by a record that adds
+  the folder's entries. Moving it out is followed by a next-epoch record
+  that excludes users who had it only through the folders it left.
+- **Pending.** An item whose record lacks entries its parent requires is
+  pending. The artifact view carries `inherit`: `ok`, or `pending` while the
+  item's record is missing entries its parent lists or holds entries whose
+  `via` no longer holds. A client finishes a fan-out by working through the
+  pending items, so running the same command again resumes an interrupted
+  one, and the page offers to finish it.
+- **Progress.** The page and the command-line tool show how many items are
+  done, because each item lands on its own.
+
+### Server checks for shared folders
+
+- A folder's record may list users and groups, under the rules for any
+  member list; the team share and public stay refused with `409`.
+- A new record for an item in a folder passes the more-never-fewer rule
+  against its parent's latest record, and every `via` it carries is true.
+  Otherwise the answer is `409`, and it names the entry at fault.
+- Access ignores an entry whose `via` folder no longer contains the item or
+  no longer lists that user or group.
+- The artifact view carries `inherit`.
+
+### Commands for shared folders
+
+- `cairn share FOLDER USER|GROUP --role ...` and `cairn unshare FOLDER
+  USER|GROUP` share and unshare a folder, then fan out with progress.
+- `cairn move` fans out after a move.
+- `cairn members ITEM` marks inherited entries with the folder they come
+  from.
+
+### The share dialog for a folder
+
+The share dialog opens for a folder as for an artifact. It shows inherited
+entries grayed, with the folder they come from, and does not offer to remove
+or lower them. Sharing or unsharing shows progress over the items inside,
+and a folder or item that is pending offers **Finish sharing**.
