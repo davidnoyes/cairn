@@ -134,8 +134,9 @@ first.
 cairn share <id> bob@example.com --role viewer   # or editor, or manager
 cairn members <id>                               # roles, fingerprints, pins
 cairn unshare <id> bob@example.com
-cairn team <id> none|viewer|editor               # the whole team
-cairn approve <id> [carol@example.com]           # list, or approve one
+cairn share <id> everyone --role viewer          # every user; unshare to stop
+cairn share <id> <group> --role viewer           # a group, by ID or exact name
+cairn approve <id> [carol@example.com]           # list newcomers, or approve one
 cairn public <id> on|off [--writes on|off]       # prints the public link
 ```
 

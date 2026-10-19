@@ -398,8 +398,9 @@ cairn share my-app bob@example.com --role viewer   # or demote: a new epoch
 cairn share my-app bob@example.com --role manager  # the owner only: bob shares too
 cairn unshare my-app bob@example.com               # remove: a new epoch
 cairn members my-app                               # roles, fingerprints, pin states
-cairn team my-app viewer                           # share with the whole team
-cairn approve my-app                               # team members waiting
+cairn share my-app everyone                        # share with everyone (the team share)
+cairn share my-app Design --role editor            # share with a group
+cairn approve my-app                               # newcomers waiting
 cairn approve my-app carol@example.com             # approve one, by name
 cairn pin bob@example.com --verified               # after comparing fingerprints
 cairn public my-app on                             # print a public link
@@ -433,8 +434,10 @@ the reason, for example a version waiting for the owner's review. If it stops
 part way, say on a network error, the new epoch still stands: run
 `cairn reseal ARTIFACT` to finish. It is safe to run again.
 
-`cairn team` shares an artifact with the whole team as `viewer` or `editor`,
-or stops with `none`. A new member gets nothing until the owner or an editor
+`cairn share ARTIFACT everyone` shares an artifact with every user, as
+`viewer` or `editor`, and `cairn unshare ARTIFACT everyone` stops;
+`cairn team` still works. A group share works the same way for the group's
+members. A new member gets nothing until the owner or an editor
 approves them by name. `cairn approve ARTIFACT` lists who is waiting, with
 their fingerprints. Compare a fingerprint with the person first. Running
 `cairn approve ARTIFACT USER` is itself your confirmation. An approved member
@@ -542,8 +545,13 @@ folder, and a folder row has **Rename** and **Delete**.
 A group is a named set of people, kept as a chain of records that its
 managers sign. Anyone who is not a viewer account can create one and becomes
 its manager. Every signed-in user can see a group's name and members, and
-each client checks the chain before it shows them. Sharing an artifact with
-a group comes in the next release.
+each client checks the chain before it shows them.
+
+Sharing an artifact with a group works like sharing with everyone. Each
+member is approved by name, with their fingerprint checked against the
+group's signed records, and someone who leaves the group loses access at
+once and is excluded at the next epoch. The browser shares with groups from
+the next release; until then, use the command-line tool.
 
 ```sh
 cairn group create Design --member bob@example.com
