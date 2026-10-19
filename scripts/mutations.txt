@@ -2637,3 +2637,185 @@ internal/server/web/sharing.mjs	latest.signer === id && latest.signerFp === call
 internal/server/web/shell.mjs	if (epochs.length === 1) {	if (epochs.length >= 1) {	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	epochs.length === 2 ? epochs.join(' and ')	epochs.length === 2 ? epochs.join(', ')	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	`${epochs.slice(0, -1).join(', ')}, and ${epochs.at(-1)}`	`${epochs.slice(0, -1).join(', ')} and ${epochs.at(-1)}`	node --test internal/server/web/shell_page_test.mjs
+internal/e2e/group.go	if len(in.Records) == 0 {	if len(in.Records) < 0 {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	return fromFP == toFP }	return true }	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	if i == 0 {	if i < 0 {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	if p.Seq < 1 {	if p.Seq < 0 {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	if len(in.Records) < p.Seq {	if len(in.Records) <= p.Seq {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	if BodyHash(in.Records[p.Seq-1].Body) != p.Head {	if BodyHash(in.Records[p.Seq-1].Body) == p.Head {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	c.Head = BodyHash(in.Records[len(in.Records)-1].Body)	c.Head = BodyHash(in.Records[0].Body)	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	case env.Signer != b.Signer:	case env.Signer == "":	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	case !isUUID(b.Group):	case b.Group == "":	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	case b.Group != group:	case len(b.Group) > 99:	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	if err := checkGroupName(b.Name); err != nil {	if err := checkGroupName("x"); err != nil {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	return checkGroupMembers(b.Members)	return nil	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	utf8.RuneCountInString(name); n < 1 ||	utf8.RuneCountInString(name); n < 0 ||	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	|| n > maxGroupNameLen {	|| n > maxGroupNameLen+1 {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	n := utf8.RuneCountInString(name)	n := max(len(name), utf8.RuneCountInString(name))	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	if unicode.IsControl(r) {	if r < 0x20 && unicode.IsControl(r) {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	if unicode.IsControl(r) {	if r > 0x20 && unicode.IsControl(r) {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	len(members) < 1 || len(members) > maxGroupMembers	len(members) < 0 || len(members) > maxGroupMembers	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	len(members) < 1 || len(members) > maxGroupMembers	len(members) < 1 || len(members) > maxGroupMembers+1	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	members[i-1].User >= m.User	members[i-1].User > m.User	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	members[i-1].User >= m.User	members[i-1].User == m.User	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	case m.Role != groupRoleManager && m.Role != groupRoleMember:	case m.Role == "":	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	case !isHex64(m.FP):	case m.FP == "":	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	if managers == 0 {	if managers < 0 {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	managers++	managers += 0	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	if m.User == user && m.Role == groupRoleManager {	if m.User == user {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	if b.Seq != 1 {	if b.Seq != 1 && b.Seq != 2 {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	if b.Prev != "" {	if b.Prev == "x" {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	!ok || m.FP != b.SignerFP {	!ok || m.FP == "" {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	if b.Seq != prev.Seq+1 {	if b.Seq <= prev.Seq {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	if b.Prev != prevHash {	if b.Prev == "x" {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	listed, ok := groupManager(prev.Members, b.Signer)	listed, ok := groupManager(b.Members, b.Signer)	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/group.go	if !linked(b.Signer, listed.FP, b.SignerFP) {	if listed.FP == "" {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/keyring.go	json:"groups,omitempty"	json:"groups"	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/keyring.go	c.Groups = maps.Clone(k.Groups)	c.Groups = k.Groups	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/keyring.go	if k.Groups == nil {	if k.Groups != nil {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/keyring.go	k.Groups[group] = GroupPin{Seq: c.Latest.Seq, Head: c.Head}	k.Groups[group] = GroupPin{Seq: c.Latest.Seq, Head: c.Latest.Prev}	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/keyring.go	if g.Seq < 1 || !isHex64(g.Head) {	if g.Seq < 0 || !isHex64(g.Head) {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/e2e/keyring.go	if g.Seq < 1 || !isHex64(g.Head) {	if g.Seq < 1 || g.Head == "" {	go test ./internal/e2e -run 'TestVectors/group|TestGroup|TestVerifyGroup|TestKeyringGroups'
+internal/store/groups.go	if seq != last+1 {	if seq < last+1 {	go test ./internal/store -run 'Group|KeyedUser'
+internal/store/groups.go	if seq == 1 {	if seq == 2 {	go test ./internal/store -run 'Group|KeyedUser'
+internal/store/groups.go	DELETE FROM group_members WHERE group_id = ?	DELETE FROM group_members WHERE group_id = ? AND 1 = 0	go test ./internal/store -run 'Group|KeyedUser'
+internal/store/groups.go	if len(out) == 0 {	if len(out) < 0 {	go test ./internal/store -run 'Group|KeyedUser'
+internal/store/groups.go	} else if n == 0 {	} else if n < 0 {	go test ./internal/store -run 'Group|KeyedUser'
+internal/store/groups.go	WHERE group_id = ? ORDER BY seq`	WHERE group_id = ? ORDER BY seq DESC`	go test ./internal/store -run 'Group|KeyedUser'
+internal/server/handlers_groups.go	if caller.Role == store.RoleViewer {	if caller.Role == "x" {	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	if m.User == caller {	if m.User != caller {	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	if env.Signer != caller.ID {	if env.Signer == "" {	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	e2e.OpenEnvelope(env, caller.Ed25519Pub, "group", &body)	e2e.DecodeStrict(env.Body, &body)	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	case body.Signer != caller.ID:	case body.Signer == "":	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	case body.SignerFP != caller.FP:	case body.SignerFP == "":	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	if err := e2e.CheckGroupBody(body); err != nil {	if err := error(nil); err != nil {	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	err != nil || u.String() != body.Group {	err != nil || u.String() == "" {	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	case body.Seq != 1:	case body.Seq < 0:	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	case body.Prev != "":	case body.Prev == "x":	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	if m, ok := managerEntry(body.Members, caller.ID); !ok || m.FP != caller.FP {	if m, ok := managerEntry(body.Members, caller.ID); false && (!ok || m.FP != caller.FP) {	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	!ok || m.FP != caller.FP {	!ok || m.FP == "" {	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	groupRefuse(http.StatusConflict, "group %s already exists", body.Group)	groupRefuse(http.StatusBadRequest, "group %s already exists", body.Group)	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	listed, ok := managerEntry(cur.Body.Members, caller.ID)	listed, ok := e2e.GroupMember{FP: caller.FP}, true	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	if listed.FP != caller.FP {	if listed.FP == "" {	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	if !rotationLinked(rows, listed.FP, caller.FP) {	if len(rows) > 99 {	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	case body.Group != id:	case body.Group == "":	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	case body.Seq != cur.Body.Seq+1:	case body.Seq < cur.Body.Seq:	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	case body.Prev != cur.Hash:	case body.Prev == "x":	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	ok && w == m {	ok && w.User == m.User {	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	ok && w == m {	ok && w == m && false {	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	case !u.Verified:	case false:	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	case u.Disabled:	case false:	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	case m.FP != u.FP:	case false:	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	u.Role == store.RoleViewer && was[m.User].Role != "manager"	u.Role == store.RoleViewer	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	u.Role == store.RoleViewer && was[m.User].Role != "manager"	false	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	!ok && !caller.IsAdmin {	!ok {	go test ./internal/server -run 'Group'
+internal/server/handlers_groups.go	!ok && !caller.IsAdmin {	!ok && false {	go test ./internal/server -run 'Group'
+internal/server/routes.go	handle("GET /api/groups", s.requireAuth(s.handleListGroups))	handle("GET /api/groups", s.handleListGroups)	go test ./internal/server -run 'Group'
+internal/server/routes.go	handle("GET /api/groups/{id}", s.requireAuth(s.handleGetGroup))	handle("GET /api/groups/{id}", s.handleGetGroup)	go test ./internal/server -run 'Group'
+internal/client/groups.go	Pin: kr.GroupPin(groupID),	Pin: nil,	go test ./internal/client -run 'Group'
+internal/client/groups.go	cur.Seq == want.Seq && cur.Head != want.Head {	cur.Seq == want.Seq && cur.Head == want.Head {	go test ./internal/client -run 'Group'
+internal/client/groups.go	if cur == nil || cur.Seq < want.Seq {	if cur == nil || cur.Seq > want.Seq {	go test ./internal/client -run 'Group'
+internal/client/groups.go	return m.User == k.UserID && m.Role == "manager"	return m.User == k.UserID	go test ./internal/client -run 'Group'
+internal/client/groups.go	if role == "manager" && u.Role == store.RoleViewer {	if role == "x" && u.Role == store.RoleViewer {	go test ./internal/client -run 'Group'
+internal/client/groups.go	} else if next.Members[i] == entry {	} else if next.Members[i] == (e2e.GroupMember{}) {	go test ./internal/client -run 'Group'
+internal/client/groups.go	if len(next.Members) == len(vg.Chain.Latest.Members) {	if len(next.Members) < 0 {	go test ./internal/client -run 'Group'
+internal/client/groups.go	return m.Role == "manager" }) {	return m.Role == "x" }) {	go test ./internal/client -run 'Group'
+internal/client/groups.go	if all[i].ID == ref {	if all[i].ID == "x" {	go test ./internal/client -run 'Group'
+internal/client/groups.go	if g.Name == ref {	if g.Name == "x" {	go test ./internal/client -run 'Group'
+internal/client/groups.go	_, pin, err := c.checkPin(kr, u, false, nil)	_, pin, err := c.checkPin(kr, u, true, nil)	go test ./internal/client -run 'Group'
+internal/client/groups.go	c.checkPin(vg.Keyring, u, acceptNewKey, vg.Rotations)	c.checkPin(vg.Keyring, u, true, vg.Rotations)	go test ./internal/client -run 'Group'
+internal/client/groups.go	if slices.ContainsFunc(entries, func(m e2e.GroupMember) bool { return m.User == u.ID }) {	if false {	go test ./internal/client -run 'Group'
+cmd/cairn/group_cmds.go	c.AddGroupMember(g.ID, pos[1], *manager, *acceptNewKey)	c.AddGroupMember(g.ID, pos[1], *manager && false, *acceptNewKey)	go test ./cmd/cairn -run 'Group'
+cmd/cairn/group_cmds.go	c.AddGroupMember(g.ID, pos[1], *manager, *acceptNewKey)	c.AddGroupMember(g.ID, pos[1], *manager, *acceptNewKey && false)	go test ./cmd/cairn -run 'Group'
+cmd/cairn/group_cmds.go	c.CreateGroup(pos[0], members)	c.CreateGroup(pos[0], nil)	go test ./cmd/cairn -run 'Group'
+
+# Group records (R3a): the verifier, the keyring map, groups.mjs, and the Groups tab.
+internal/server/web/e2e.mjs	if (b.seq !== 1) throw new ChainError(`the first group record has seq ${b.seq}`);	if (false) throw new ChainError(`the first group record has seq ${b.seq}`);	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (b.prev !== '') throw new ChainError('the first group record has a prev');	if (false) throw new ChainError('the first group record has a prev');	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	m.user === b.signer && m.role === 'manager' && m.fp === b.signerFp)	m.user === b.signer && m.role === 'manager')	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	m.user === b.signer && m.role === 'manager' && m.fp === b.signerFp)	m.user === b.signer && m.fp === b.signerFp)	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	m.user === b.signer && m.role === 'manager' && m.fp === b.signerFp)	m.role === 'manager' && m.fp === b.signerFp)	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (b.seq !== before.seq + 1) throw	if (b.seq === 0) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (b.prev !== prevHash) throw new ChainError("prev is not the previous group record's hash");	if (false) throw new ChainError("prev is not the previous group record's hash");	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	const manager = before.members.find((m) => m.role === 'manager' && m.user === b.signer);	const manager = before.members.find((m) => m.user === b.signer);	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (!(await linked(b.signer, manager.fp, b.signerFp))) {	if (false) {	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (b.group !== group) throw	if (false) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (b.members === null) throw new ChainError('members must be an array');	if (false) throw new ChainError('members must be an array');	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (b.members.length < 1 || b.members.length > GROUP_MEMBERS_MAX) {	if (b.members.length > GROUP_MEMBERS_MAX) {	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (b.members.length < 1 || b.members.length > GROUP_MEMBERS_MAX) {	if (b.members.length < 1 || b.members.length > GROUP_MEMBERS_MAX + 1) {	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	const GROUP_MEMBERS_MAX = 1000;	const GROUP_MEMBERS_MAX = 999;	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	const GROUP_NAME_MAX = 100;	const GROUP_NAME_MAX = 101;	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (points.length < 1 || points.length > GROUP_NAME_MAX) {	if (points.length > GROUP_NAME_MAX) {	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	const points = [...name];	const points = name;	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (m.role !== 'member' && m.role !== 'manager') throw	if (false) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (m.role !== 'member' && m.role !== 'manager') throw	if (m.role !== 'member') throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (!b.members.some((m) => m.role === 'manager')) throw	if (false) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (c <= 0x1f || (c >= 0x7f && c <= 0x9f)) throw	if (c <= 0x1e || (c >= 0x7f && c <= 0x9f)) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (c <= 0x1f || (c >= 0x7f && c <= 0x9f)) throw	if (c <= 0x1f || (c >= 0x80 && c <= 0x9f)) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (c <= 0x1f || (c >= 0x7f && c <= 0x9f)) throw	if (c <= 0x1f || (c >= 0x7f && c <= 0x9e)) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (c <= 0x1f || (c >= 0x7f && c <= 0x9f)) throw	if (c <= 0x1f || (c >= 0x7f && c <= 0xa0)) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (c <= 0x1f || (c >= 0x7f && c <= 0x9f)) throw	if (c <= 0x20 || (c >= 0x7f && c <= 0x9f)) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (c <= 0x1f || (c >= 0x7f && c <= 0x9f)) throw	if (c <= 0x1f || (c >= 0x7e && c <= 0x9f)) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (c <= 0x1f || (c >= 0x7f && c <= 0x9f)) throw	if (c <= 0x1f) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (env.signer !== b.signer) throw	if (false) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (!keys.has(pre.signerFp)) throw	if (false) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	keys.get(pre.signerFp), 'group')	keys.get(pre.signerFp), 'membership')	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (records.length < pin.seq) throw new RollbackError(`${records.length} group records, pinned seq ${pin.seq}`);	if (records.length <= pin.seq) throw new RollbackError(`${records.length} group records, pinned seq ${pin.seq}`);	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (records.length < pin.seq) throw new RollbackError(`${records.length} group records, pinned seq ${pin.seq}`);	if (false) throw new RollbackError(`${records.length} group records, pinned seq ${pin.seq}`);	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	!== pin.head) throw new ForkError(`group record ${pin.seq}`);	=== pin.head) throw new ForkError(`group record ${pin.seq}`);	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (!Number.isInteger(pin.seq) || pin.seq < 1) throw new FormatError(`pinned group seq ${pin.seq}`);	if (pin.seq < 1) throw new FormatError(`pinned group seq ${pin.seq}`);	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (!Number.isInteger(pin.seq) || pin.seq < 1) throw new FormatError(`pinned group seq ${pin.seq}`);	if (!Number.isInteger(pin.seq)) throw new FormatError(`pinned group seq ${pin.seq}`);	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (typeof pin.head !== 'string') throw new FormatError('pinned group head is not a string');	if (false) throw new FormatError('pinned group head is not a string');	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (records.length === 0) throw new ChainError('no group records');	if (false) throw new ChainError('no group records');	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	return { bodies, latest, seq: latest.seq, head: prevHash };	return { bodies, latest, seq: latest.seq, head: '' };	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (k.groups !== undefined && !isPlainMap(k.groups)) throw new FormatError('keyring groups must be an object');	if (false) throw new FormatError('keyring groups must be an object');	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (!Number.isInteger(g.seq) || g.seq < 1 || !isHex64(g.head)) throw	if (!Number.isInteger(g.seq) || !isHex64(g.head)) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (!Number.isInteger(g.seq) || g.seq < 1 || !isHex64(g.head)) throw	if (g.seq < 1 || !isHex64(g.head)) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	if (!Number.isInteger(g.seq) || g.seq < 1 || !isHex64(g.head)) throw	if (!Number.isInteger(g.seq) || g.seq < 1) throw	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	JSON.stringify(groups && Object.keys(groups).length > 0 ? k : rest)	JSON.stringify(groups ? k : rest)	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	(f.type === 'map' && Object.keys(value).length === 0)	false	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/e2e.mjs	groups: field('map', { value: field('object', { fields: KEYRING_GROUP_SCHEMA }), omitEmpty: true }),	groups: field('map', { value: field('object', { fields: KEYRING_GROUP_SCHEMA }) }),	node --test internal/server/web/group_chain_test.mjs
+internal/server/web/groups.mjs	linked: e2e.rotationLinker(rotations) }	linked: undefined }	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	if (!pin || pin.seq < chain.seq) {	if (false) {	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	const pin = Object.hasOwn(kr.groups ?? {}, id) ? kr.groups[id] : null;	const pin = null;	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	if (callerRole(caller, opened.chain.latest) !== 'manager') throw	if (false) throw	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	if (caller.me.role === 'viewer') throw	if (false) throw	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	if (role === 'manager' && u.role === 'viewer') throw	if (false) throw	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	checkPin(deps, keyring, u, acceptNewKey, null)	checkPin(deps, keyring, u, true, null)	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	members[i].role === role && members[i].fp === u.fp	members[i].role === role	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	members[i].role === role && members[i].fp === u.fp	members[i].fp === u.fp	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	!members.some((m, j) => j !== i && m.role === 'manager')	false	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	members[i].role === 'manager' && role !== 'manager' &&	members[i].role === 'manager' && true &&	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	if (!rest.some((m) => m.role === 'manager')) throw	if (false) throw	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	if (!gone) throw	if (false) throw	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	members: [...members].sort(byUser).map(	members: [...members].map(	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	prev: chain.head, name,	prev: '', name,	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	seq: chain.seq + 1, prev	seq: chain.seq, prev	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	if (chain.seq !== seq || chain.latest.signer	if (chain.latest.signer	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	chain.latest.signer !== caller.record.userId || chain.latest.signerFp !== caller.fp	false	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	if (err instanceof ApiError && err.status === 409) {	if (false) {	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	e2e.checkGroupName(name);	void name;	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	notMine(a) - notMine(b) ||	0 ||	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	compare(a.name, b.name) ||	0 ||	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	if (!resp.ok) {	if (false) {	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	for (const pair of [b.old, b.new]) keys[await fpOf(pair)] = pair;	for (const pair of [b.new]) keys[await fpOf(pair)] = pair;	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	if (u) keys[u.fp] = {	if (false) keys[u.fp] = {	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	if (m.user === caller.record.userId) {	if (false) {	node --test internal/server/web/groups_test.mjs
+internal/server/web/groups.mjs	account: u?.role ?? '',	account: '',	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	role === 'manager' || Boolean(me?.isAdmin);	role === 'manager';	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	role === 'manager' || Boolean(me?.isAdmin);	Boolean(me?.isAdmin);	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	$('group-new-form').hidden = me.role === 'viewer';	$('group-new-form').hidden = false;	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	$('group-rename-form').hidden = !manager;	$('group-rename-form').hidden = false;	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	$('group-add-form').hidden = !manager;	$('group-add-form').hidden = false;	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	$('group-actions').hidden = !canDelete(s.callerRole);	$('group-actions').hidden = false;	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	if (s.callerRole === 'manager') {	if (true) {	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	m.account === 'viewer' && m.role === 'member' ? ['member'] : ['member', 'manager']	['member', 'manager']	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	if (failed instanceof KeyChangedError && retry) {	if (false) {	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	}, acceptNewKey ? undefined : () => send(true));	}, undefined);	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	if (s !== open) {	if (false) {	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	s.callerRole = '';	s.callerRole = s.callerRole;	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	b.textContent = label; }, 4000);	b.textContent = again; }, 4000);	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	if (!b.classList.contains('armed')) {	if (false) {	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	if (groups.length === 0) {	if (false) {	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	if (open?.id === g.id) closeGroup();	void g;	node --test internal/server/web/groups-tab_test.mjs
+internal/server/web/groups-tab.mjs	if (s === open) closeGroup();	void s;	node --test internal/server/web/groups-tab_test.mjs

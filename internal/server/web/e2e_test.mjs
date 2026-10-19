@@ -1206,6 +1206,42 @@ describe('chain', () => {
   }
 });
 
+// group mirrors the Go group vector check: verifyGroupChain must accept each
+// valid chain with the same seq, head, name, and members, and refuse each
+// other one, with the class for its error kind when the kind is one of the
+// chain kinds. Each case carries the keys and rotation records the client
+// reads from the directory and /api/users/{id}/rotations.
+describe('group', () => {
+  test('the group section exists, with valid and refused cases', () => {
+    assert.ok(Array.isArray(vf.group) && vf.group.length > 0, 'vectors.json has no group section');
+    assert.ok(vf.group.some((v) => v.error), 'no refused group case');
+    assert.ok(vf.group.some((v) => !v.error), 'no valid group case');
+  });
+
+  for (const v of vf.group ?? []) {
+    test(v.name, async () => {
+      const input = {
+        group: v.group,
+        records: v.records,
+        keys: v.keys,
+        pin: v.pin,
+        linked: v.rotations ? e2e.rotationLinker(v.rotations) : undefined,
+      };
+      if (v.error) {
+        await assert.rejects(() => e2e.verifyGroupChain(input), chainErrors[v.error] ?? Error, `${v.name}: ${v.why}`);
+        return;
+      }
+      const got = await e2e.verifyGroupChain(input);
+      assert.deepEqual(
+        { seq: got.seq, head: got.head, name: got.latest.name, members: got.latest.members },
+        v.want,
+        `${v.name}: ${v.why}`,
+      );
+      assert.equal(got.bodies.length, v.records.length, v.name);
+    });
+  }
+});
+
 // A pin that is not {epoch >= 1, seq >= 1, head string} is refused as a
 // format error before it is compared with anything; null or undefined is no
 // pin at all.
@@ -1709,7 +1745,7 @@ test('vectors.json has no section this file does not check', () => {
     'blob', 'wrap', 'signature', 'rotation', 'ed25519Strict', 'x25519Strict',
     'fingerprint', 'linkToken', 'fileAddress', 'blindIndex', 'strictJSON',
     'base64url', 'envelope', 'chain', 'approval', 'keyring', 'link', 'linkChain',
-    'rotationChain', 'rotationLink', 'followPin',
+    'rotationChain', 'rotationLink', 'followPin', 'group',
   ];
   const unhandled = Object.keys(vf).filter((k) => !handled.includes(k));
   assert.deepEqual(unhandled, []);

@@ -38,6 +38,9 @@ type Keyring struct {
 	Rev    int                     `json:"rev"`
 	Pins   map[string]Pin          `json:"pins"`
 	Epochs map[string]KeyringEpoch `json:"epochs"`
+	// Groups is left out of the JSON while it is empty, so a keyring that
+	// has never seen a group is the one it was before groups.
+	Groups map[string]GroupPin `json:"groups,omitempty"`
 }
 
 // Pin is the fingerprint the user accepted for another user. RotSeq and
@@ -77,6 +80,7 @@ func (k *Keyring) Clone() *Keyring {
 	c := *k
 	c.Pins = maps.Clone(k.Pins)
 	c.Epochs = maps.Clone(k.Epochs)
+	c.Groups = maps.Clone(k.Groups)
 	return &c
 }
 
@@ -94,6 +98,24 @@ func (k *Keyring) EpochPin(artifact string) *EpochPin {
 // acknowledged handover.
 func (k *Keyring) SetEpoch(artifact string, c *Chain) {
 	k.Epochs[artifact] = KeyringEpoch{Epoch: c.Latest.Epoch, Seq: c.Latest.Seq, Head: c.Head, Ack: k.Epochs[artifact].Ack}
+}
+
+// GroupPin is the keyring's pin for group, for VerifyGroupChain, or nil on
+// first sight.
+func (k *Keyring) GroupPin(group string) *GroupPin {
+	p, ok := k.Groups[group]
+	if !ok {
+		return nil
+	}
+	return &p
+}
+
+// SetGroup records a verified chain as group's groups entry.
+func (k *Keyring) SetGroup(group string, c *GroupChain) {
+	if k.Groups == nil {
+		k.Groups = map[string]GroupPin{}
+	}
+	k.Groups[group] = GroupPin{Seq: c.Latest.Seq, Head: c.Head}
 }
 
 // Check refuses a keyring that breaks the wire format's rules for its
@@ -122,6 +144,11 @@ func (k *Keyring) Check() error {
 	for artifact, e := range k.Epochs {
 		if e.Epoch < 1 || e.Seq < 1 || e.Ack < 0 || !isHex64(e.Head) {
 			return fmt.Errorf("%w: epochs entry for %s: %+v", ErrFormat, artifact, e)
+		}
+	}
+	for group, g := range k.Groups {
+		if g.Seq < 1 || !isHex64(g.Head) {
+			return fmt.Errorf("%w: groups entry for %s: %+v", ErrFormat, group, g)
 		}
 	}
 	return nil

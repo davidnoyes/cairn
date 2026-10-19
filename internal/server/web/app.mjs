@@ -5,6 +5,7 @@
 // dialog: a destructive action asks again in its own button.
 import { changePassword, createApiKey, enrollPasskey, listPasskeys, newRecoveryCode, passkeysAvailable, removePasskey, signOut } from './account.mjs';
 import { UnauthenticatedError, startApp } from './app-init.mjs';
+import { createGroupsTab } from './groups-tab.mjs';
 import { describeArtifact } from './meta.mjs';
 import { KeyChangedError, memberControls, members, pin, publicLinkFor, setPublic, share, unshare } from './sharing.mjs';
 import { bannerView, myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions, who } from './successor.mjs';
@@ -740,9 +741,13 @@ async function loadUsers() {
   }));
 }
 
+// ---------------------------------------------------------------- groups
+const groupsTab = createGroupsTab({ doc: document, deps });
+
 // ------------------------------------------------------------------ init
 const lists = [
   { name: 'artifacts', status: 'artifacts-status', load: loadArtifacts },
+  { name: 'groups', status: 'groups-status', load: (ctx) => groupsTab.load(ctx) },
   { name: 'API keys', status: 'keys-status', load: loadKeys },
   { name: 'passkeys', status: 'passkeys-status', load: loadPasskeys },
   { name: 'successor', status: 'successor-status', load: loadSuccessor },

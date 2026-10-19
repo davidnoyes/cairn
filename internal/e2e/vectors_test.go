@@ -272,6 +272,7 @@ type vectorFile struct {
 	RotationChain []rotationChainVec `json:"rotationChain"`
 	RotationLink  []rotationLinkVec  `json:"rotationLink"`
 	FollowPin     []followPinVec     `json:"followPin"`
+	Group         []groupVec         `json:"group"`
 }
 
 type encVec struct {
@@ -1163,6 +1164,7 @@ func generateVectors(t testing.TB) vectorFile {
 	vf.RotationChain = rotationChainVectors(t)
 	vf.RotationLink = rotationLinkVectors(t)
 	vf.FollowPin = followPinVectors(t)
+	vf.Group = groupVectors(t)
 
 	return vf
 }
@@ -1555,6 +1557,7 @@ func checkVectors(t *testing.T, vf vectorFile) {
 	t.Run("rotationChain", func(t *testing.T) { checkRotationChainVectors(t, vf.RotationChain) })
 	t.Run("rotationLink", func(t *testing.T) { checkRotationLinkVectors(t, vf.RotationLink) })
 	t.Run("followPin", func(t *testing.T) { checkFollowPinVectors(t, vf.FollowPin) })
+	t.Run("group", func(t *testing.T) { checkGroupVectors(t, vf.Group) })
 
 	t.Run("strictJSON", func(t *testing.T) {
 		for _, v := range vf.StrictJSON {

@@ -128,7 +128,7 @@ export function findUser(dir, who) {
 // fatalFetch says whether err, from a fetch of rotation records, ends the
 // command rather than degrading it: the caller cancelled it, or the server
 // refused its credentials.
-function fatalFetch(err) {
+export function fatalFetch(err) {
   return err !== null && (err?.name === 'AbortError' || (err instanceof ApiError && err.status === 401));
 }
 
@@ -151,7 +151,7 @@ async function rotationsOf(deps, userId, known) {
 // plain change, which only acceptNewKey stores, never a fork. fetchErr is why
 // the records could not be read, set for a pin on other keys, and for any
 // failure fatalFetch says to stop on. Mirrors followPin in share.go.
-async function followPinFor(deps, kr, u, known) {
+export async function followPinFor(deps, kr, u, known) {
   const pinned = pinOf(kr, u.id);
   let records = [];
   if (!pinned || pinned.fp !== u.fp) {
@@ -176,7 +176,7 @@ async function followPinFor(deps, kr, u, known) {
 // not a change: the state is rotated, and the pin to store is unverified. It
 // returns {prior, pin}: the state before any change, and the pin to store, or
 // null when the stored one stands. Mirrors checkPin.
-async function checkPin(deps, kr, u, acceptNewKey, known) {
+export async function checkPin(deps, kr, u, acceptNewKey, known) {
   const { state, next, fork, fetchErr } = await followPinFor(deps, kr, u, known);
   if (fatalFetch(fetchErr)) throw fetchErr;
   switch (state) {
@@ -195,7 +195,7 @@ async function checkPin(deps, kr, u, acceptNewKey, known) {
 
 // wasVerified says whether prior is a rotation that dropped a verified pin to
 // unverified, so the person is told to compare the keys again.
-function wasVerified(kr, user, prior) {
+export function wasVerified(kr, user, prior) {
   return prior === e2e.PIN_ROTATED && pinOf(kr, user)?.state === e2e.PIN_VERIFIED;
 }
 
@@ -204,7 +204,7 @@ function wasVerified(kr, user, prior) {
 // Against the keyring as it is when written, which another device may have
 // changed since: a pin at the same fingerprint is never downgraded from
 // verified, and a pin at a fingerprint other than basedOn is a pin-conflict.
-async function storePin(deps, caller, user, pin, basedOn) {
+export async function storePin(deps, caller, user, pin, basedOn) {
   await updateKeyring(deps, caller, (kr) => {
     const cur = pinOf(kr, user);
     if (cur) {

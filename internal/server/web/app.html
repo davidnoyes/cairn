@@ -19,6 +19,7 @@
     <h1 class="word">cairn</h1>
     <nav role="tablist" aria-label="Sections">
       <button role="tab" id="tab-artifacts" aria-controls="artifacts" aria-selected="true">Artifacts</button>
+      <button role="tab" id="tab-groups" aria-controls="groups" aria-selected="false">Groups</button>
       <button role="tab" id="tab-account" aria-controls="account" aria-selected="false">Account</button>
       <button role="tab" id="tab-admin" aria-controls="admin" aria-selected="false" hidden>Admin</button>
     </nav>
@@ -152,6 +153,55 @@
         </table>
       </div>
       <p class="status-line" id="successor-status" role="status"></p>
+    </section>
+
+    <section id="groups" role="tabpanel" aria-labelledby="tab-groups">
+      <h2>Groups</h2>
+      <p class="hint">A group is a named set of people, kept as signed records. Your own groups come first.</p>
+      <div class="list">
+        <table>
+          <thead><tr><th>name</th><th>members</th><th>your role</th><th></th></tr></thead>
+          <tbody id="groups-body"></tbody>
+        </table>
+      </div>
+      <form class="bar" id="group-new-form" method="dialog">
+        <input id="group-new-name" placeholder="group name" aria-label="New group name" autocomplete="off" maxlength="100">
+        <button class="btn primary" type="submit">New group</button>
+      </form>
+      <p class="status-line" id="groups-status" role="status"></p>
+      <div id="group-detail" hidden>
+        <div class="dialog-head">
+          <h2 id="group-title" class="name clamp"></h2>
+          <button class="btn" type="button" id="group-close">Close</button>
+        </div>
+        <div class="list">
+          <table>
+            <thead><tr><th>name</th><th>email</th><th>role</th><th>fingerprint</th><th>key</th><th></th></tr></thead>
+            <tbody id="group-members"></tbody>
+          </table>
+        </div>
+        <div class="warning" id="group-accept" role="alert" hidden>
+          <p id="group-accept-text"></p>
+          <div class="actions">
+            <button class="btn danger" type="button" id="group-accept-confirm">Accept</button>
+            <button class="btn" type="button" id="group-accept-cancel">Cancel</button>
+          </div>
+        </div>
+        <form class="bar" id="group-add-form" method="dialog" hidden>
+          <input id="group-add-email" type="email" placeholder="email" aria-label="Email of the person to add" autocomplete="off">
+          <select id="group-add-role" aria-label="Role">
+            <option value="member">member</option>
+            <option value="manager">manager</option>
+          </select>
+          <button class="btn primary" type="submit">Add member</button>
+        </form>
+        <form class="bar" id="group-rename-form" method="dialog" hidden>
+          <input id="group-rename" placeholder="group name" aria-label="Group name" autocomplete="off" maxlength="100">
+          <button class="btn" type="submit">Rename</button>
+        </form>
+        <div class="actions start" id="group-actions" hidden></div>
+        <p class="status-line" id="group-status" role="status"></p>
+      </div>
     </section>
 
     <section id="admin" role="tabpanel" aria-labelledby="tab-admin">

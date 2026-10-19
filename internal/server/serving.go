@@ -271,6 +271,8 @@ var appAssets = map[string]string{
 	"/data.mjs":          "data.mjs",
 	"/meta.mjs":          "meta.mjs",
 	"/sharing.mjs":       "sharing.mjs",
+	"/groups.mjs":        "groups.mjs",
+	"/groups-tab.mjs":    "groups-tab.mjs",
 	"/successor.mjs":     "successor.mjs",
 	"/argon2-worker.js":  "argon2-worker.js",
 	"/zxcvbn.js":         "vendor/zxcvbn.js",

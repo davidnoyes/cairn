@@ -31,6 +31,7 @@ Client:
   cairn review           List versions pushed by someone no longer an editor, which need a vouch (ARTIFACT)
   cairn vouch            Vouch for a version after reviewing it (ARTIFACT VERSION)
   cairn public           Turn the public link on or off (ARTIFACT on|off [--writes on|off])
+  cairn group            Manage groups of users (create|list|show|add|remove|rename|delete)
   cairn pin              Pin a user's fingerprint in your keyring (--verified once compared)
   cairn transfer         Offer ownership to an editor (ARTIFACT USER), or answer an offer (accept|decline|withdraw ARTIFACT)
   cairn successor        Name a successor, or ask for access as one (code|status|nominate|remove|refuse|request|notice-email)
@@ -90,6 +91,8 @@ func main() {
 		err = runVouch(args)
 	case "public":
 		err = runPublic(args)
+	case "group":
+		err = runGroup(args)
 	case "pin":
 		err = runPin(args)
 	case "transfer":

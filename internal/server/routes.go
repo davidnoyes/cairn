@@ -123,6 +123,13 @@ func (s *Server) routes() {
 	handle("PUT /api/artifacts/{id}/versions/{vid}/files/{address}", s.artifactRoute(access.WriteData, s.handleFilePut))
 	handle("DELETE /api/artifacts/{id}/versions/{vid}/files/{address}", s.artifactRoute(access.WriteData, s.handleFileDelete))
 
+	// Groups: any signed-in user reads them; a manager changes one.
+	handle("GET /api/groups", s.requireAuth(s.handleListGroups))
+	handle("POST /api/groups", s.requireAuth(s.handleCreateGroup))
+	handle("GET /api/groups/{id}", s.requireAuth(s.handleGetGroup))
+	handle("PUT /api/groups/{id}", s.requireAuth(s.handlePutGroup))
+	handle("DELETE /api/groups/{id}", s.requireAuth(s.handleDeleteGroup))
+
 	// Pages. Account pages send the app CSP: scripts load only from files.
 	handle("GET /", s.handleRoot)
 	handle("GET /login", withAppCSP(s.handleLoginPage))
