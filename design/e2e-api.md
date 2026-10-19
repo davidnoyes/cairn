@@ -2532,9 +2532,15 @@ browser in `e2e.mjs` check the same vectors, in a `group` section of
 A group's name and members are visible to every signed-in user, like the
 directory, so any caller reads every group. `POST` and `PUT` take
 `{"record": envelope}` and answer with the group. The group view is
-`{"id", "name", "seq", "members", "role", "records"}`: `members` is the
-count, `role` is the caller's role or empty, and `records` is present only
-in `GET /api/groups/{id}` and the answers to `POST` and `PUT`.
+`{"id", "name", "seq", "members", "role", "records", "signers"}`: `members`
+is the count, `role` is the caller's role or empty, and `records` and
+`signers` are present only in `GET /api/groups/{id}` and the answers to
+`POST` and `PUT`. `signers` maps the user ID of everyone who signed a record
+to `{"x25519", "ed25519", "rotations"}`: their current public keys and their
+rotation records, oldest first. It includes a deactivated account, which the
+directory leaves out, so a group stays readable after a manager leaves.
+These keys are served by the server, so a client anchors them as
+[Group records](#group-records) describes before it uses them.
 
 ### Server checks for groups
 
