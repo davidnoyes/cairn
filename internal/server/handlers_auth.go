@@ -42,23 +42,30 @@ func mustHashPassword(s string) string {
 	return h
 }
 
-// domainAllowed reports whether email may sign up: its domain is one of
-// cfg.SignupDomains, or it is exactly cfg.AdminEmail.
-func (s *Server) domainAllowed(email string) bool {
+// signupRole returns the server role a new account at email gets, and false
+// when the address may not sign up. It is exactly cfg.AdminEmail for an
+// administrator, in cfg.SignupDomains for a member, or in cfg.ViewerDomains
+// for a viewer account; a domain in both lists is a member.
+func (s *Server) signupRole(email string) (string, bool) {
 	if email == s.cfg.AdminEmail {
-		return true
+		return store.RoleAdmin, true
 	}
 	i := strings.LastIndex(email, "@")
 	if i < 0 {
-		return false
+		return "", false
 	}
 	domain := email[i+1:]
 	for _, d := range s.cfg.SignupDomains {
 		if domain == d {
-			return true
+			return store.RoleMember, true
 		}
 	}
-	return false
+	for _, d := range s.cfg.ViewerDomains {
+		if domain == d {
+			return store.RoleViewer, true
+		}
+	}
+	return "", false
 }
 
 // newLinkToken generates a 32-byte random token for a verification or reset
@@ -183,12 +190,13 @@ type meView struct {
 	Email     string `json:"email"`
 	Name      string `json:"name"`
 	IsAdmin   bool   `json:"isAdmin"`
+	Role      string `json:"role"`
 	CreatedAt string `json:"createdAt"`
 	ResetAt   string `json:"resetAt,omitempty"`
 }
 
 func toMeView(u *store.User) meView {
-	return meView{ID: u.ID, Email: u.Email, Name: u.Name, IsAdmin: u.IsAdmin, CreatedAt: u.CreatedAt, ResetAt: u.ResetAt}
+	return meView{ID: u.ID, Email: u.Email, Name: u.Name, IsAdmin: u.IsAdmin, Role: u.Role, CreatedAt: u.CreatedAt, ResetAt: u.ResetAt}
 }
 
 // Sign-up and verification
@@ -204,8 +212,8 @@ type signupRequest struct {
 // showed the caller owns the address, and sends no mail. An address that
 // already has a verified account is a 409, which reveals nothing the caller
 // has not proved.
-func (s *Server) signupWithGoogle(w http.ResponseWriter, email, name, authHash string, bundle store.Bundle) {
-	u, err := s.store.CreateAccount(email, name, authHash, bundle, email == s.cfg.AdminEmail)
+func (s *Server) signupWithGoogle(w http.ResponseWriter, email, name, authHash, role string, bundle store.Bundle) {
+	u, err := s.store.CreateAccount(email, name, authHash, bundle, role)
 	if errors.Is(err, store.ErrExists) {
 		writeError(w, http.StatusConflict, "an account for this address already exists")
 		return
@@ -239,7 +247,8 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	if s.googleEnabled() && !s.requireProof(w, s.proofCookieToken(r), email) {
 		return
 	}
-	if !s.domainAllowed(email) {
+	role, ok := s.signupRole(email)
+	if !ok {
 		writeError(w, http.StatusForbidden, "this email domain may not sign up")
 		return
 	}
@@ -260,13 +269,13 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.googleEnabled() {
-		s.signupWithGoogle(w, email, req.Name, authHash, bundle)
+		s.signupWithGoogle(w, email, req.Name, authHash, role, bundle)
 		return
 	}
 
 	// CreateAccount decides new, unverified, or verified in one transaction,
 	// so a verification landing mid-request can't change the answer.
-	u, err := s.store.CreateAccount(email, req.Name, authHash, bundle, email == s.cfg.AdminEmail)
+	u, err := s.store.CreateAccount(email, req.Name, authHash, bundle, role)
 	switch {
 	case errors.Is(err, store.ErrExists):
 		s.sendMail(email, "Someone tried to sign up with your email",

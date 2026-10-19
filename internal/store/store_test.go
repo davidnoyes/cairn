@@ -107,7 +107,7 @@ func testBundle(tag string) Bundle {
 // hang other rows off.
 func testAccount(t *testing.T, s *Store, email string) *User {
 	t.Helper()
-	u, err := s.CreateAccount(email, "Alice", "authhash", testBundle("a"), false)
+	u, err := s.CreateAccount(email, "Alice", "authhash", testBundle("a"), "member")
 	if err != nil {
 		t.Fatal(err)
 	}

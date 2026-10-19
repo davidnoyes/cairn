@@ -695,7 +695,7 @@ func TestGoogleForgotRefusals(t *testing.T) {
 		w := newGoogleWorld(t)
 		b := w.browser()
 		b.mustSignIn("ada@example.com")
-		if _, err := w.s.store.CreateAccount("ada@example.com", "Ada", "x", mustBundle(t), false); err != nil {
+		if _, err := w.s.store.CreateAccount("ada@example.com", "Ada", "x", mustBundle(t), "member"); err != nil {
 			t.Fatal(err)
 		}
 		wantError(t, b.do("POST", "/api/auth/forgot", struct{}{}), http.StatusNotFound, "no account for this address")

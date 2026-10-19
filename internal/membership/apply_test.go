@@ -21,7 +21,7 @@ func account(t *testing.T, s *store.Store, email string) *tUser {
 	u, err := s.CreateAccount(email, "N", "h", store.Bundle{
 		KDF: []byte(`{}`), MKPassword: []byte("p"), MKRecovery: []byte("r"),
 		X25519Pub: xpub, X25519Priv: []byte("x"), Ed25519Pub: epub, Ed25519Priv: []byte("e"), EK: []byte("k"),
-	}, false)
+	}, "member")
 	if err != nil {
 		t.Fatal(err)
 	}

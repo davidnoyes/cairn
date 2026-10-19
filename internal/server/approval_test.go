@@ -201,7 +201,7 @@ func TestPendingStates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.s.store.CreateAccount("unverified@example.com", "Unverified", hash, bundleFor(t, unverified), false); err != nil {
+	if _, err := w.s.store.CreateAccount("unverified@example.com", "Unverified", hash, bundleFor(t, unverified), "member"); err != nil {
 		t.Fatal(err)
 	}
 	disabled := seedKeyedAccount(t, w.s, w.base, "disabled@example.com")

@@ -914,7 +914,7 @@ func TestRecordWriteForAVersionOnAnotherArtifactIsErrNotFound(t *testing.T) {
 // tag, so two accounts with the same tag share a fingerprint.
 func keyedAccount(t *testing.T, s *Store, email, tag string) *User {
 	t.Helper()
-	u, err := s.CreateAccount(email, "N", "h", testBundle(tag), false)
+	u, err := s.CreateAccount(email, "N", "h", testBundle(tag), "member")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -931,7 +931,7 @@ func TestUserByIDInsideTheTransaction(t *testing.T) {
 	if err := s.SetUserDisabled(m.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	pending, err := s.CreateAccount("p@x.y", "P", "h", testBundle("p"), false)
+	pending, err := s.CreateAccount("p@x.y", "P", "h", testBundle("p"), "member")
 	if err != nil {
 		t.Fatal(err)
 	}

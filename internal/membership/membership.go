@@ -34,6 +34,7 @@ const (
 	RuleAKCommit      Rule = "akCommit"       // format, and changes exactly with the epoch
 	RuleEpoch         Rule = "epoch"          // the current epoch or the next
 	RuleNewMember     Rule = "new member"     // a new or changed member is the user's current, unique key
+	RuleViewerAccount Rule = "viewer-account" // a viewer account is not a new editor
 	RuleExcludedMatch Rule = "excluded match" // no entry matches the owner or a member
 	RuleSameEpoch     Rule = "same epoch"     // what a same-epoch record cannot do
 	RuleNextEpoch     Rule = "next epoch"     // everyone removed or dropped is excluded
@@ -72,6 +73,7 @@ type User struct {
 	FP         string
 	Verified   bool
 	Active     bool
+	Role       string // the server role: admin, member, or viewer
 }
 
 // Directory looks users up.
@@ -328,6 +330,15 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 		}
 		if len(ids) != 1 || ids[0] != u.ID {
 			return nil, refuse(RuleNewMember, "member %s shares a fingerprint or email with another user", m.User)
+		}
+	}
+
+	// A viewer account is never a new editor. One the previous record already
+	// lists as editor stays, until an owner changes the entry: demoting an
+	// account does not rewrite the member lists that name it.
+	for _, m := range body.Members {
+		if u := users[m.User]; u != nil && u.Role == store.RoleViewer && m.Role == access.RoleEditor && prevMembers[m.User].Role != access.RoleEditor {
+			return nil, refuse(RuleViewerAccount, "member %s is a viewer account and can only be a viewer", m.User)
 		}
 	}
 
@@ -775,7 +786,7 @@ func (d txDirectory) User(id string) (*User, error) {
 		return nil, err
 	}
 	return &User{ID: k.ID, Email: k.Email, X25519Pub: k.X25519Pub, Ed25519Pub: k.Ed25519Pub,
-		FP: k.FP, Verified: k.Verified, Active: !k.Disabled}, nil
+		FP: k.FP, Verified: k.Verified, Active: !k.Disabled, Role: k.Role}, nil
 }
 
 func (d txDirectory) Sharing(fp, email string) ([]string, error) { return d.tx.UsersSharing(fp, email) }

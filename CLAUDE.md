@@ -110,6 +110,11 @@ mutations, and Playwright only on `e2e/*` branches and `feat/e2e-trust-model`.
   password; they only grant roles, deactivate, delete, or offer an ownership
   transfer. Emailed links are built from `--public-url`, never a request
   header.
+- An account's `role` is `admin`, `member`, or `viewer`. A viewer account
+  (`--viewer-domain` sign-ups) reads and never writes: `access.Check` forbids
+  every write to a `ReadOnly` caller, content-origin tokens included, whatever
+  the member list says, and the membership checks refuse to make one an
+  editor. Roles are server checks only; they never grant reading.
 - With `--google-client-id`, sign-up, sign-in, forgot, and passkey unlock also
   need a single-use Google proof for the same address, checked before the
   passphrase. Google only identifies; the passphrase or a passkey's PRF output

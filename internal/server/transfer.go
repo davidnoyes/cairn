@@ -252,6 +252,10 @@ func (s *Server) handleCloseTransfer(w http.ResponseWriter, r *http.Request) {
 // the offered user.
 func (s *Server) handleAcceptTransfer(w http.ResponseWriter, r *http.Request) {
 	a, caller := requestArtifact(r), requestUser(r)
+	if caller.Role == store.RoleViewer {
+		writeError(w, http.StatusForbidden, errViewerAccount)
+		return
+	}
 	var req membershipRequest
 	if !readJSON(w, r, &req) {
 		return

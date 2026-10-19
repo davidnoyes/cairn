@@ -153,6 +153,24 @@ add them again afterwards.
 
 Passkeys need `--public-url`, and they work only at that address.
 
+### Viewer accounts
+
+An account is an administrator, a member, or a viewer account. A viewer
+account can open whatever is shared with it, in the browser or with
+`cairn login` and API keys, and change nothing. It creates no artifacts. The
+server refuses every write it tries, and that holds for database and file
+writes from inside an artifact too.
+
+- Start the server with `--viewer-domain` (or `CAIRN_VIEWER_DOMAINS`) to make
+  sign-ups from those email domains viewer accounts, for readers from outside
+  the team. Sign-ups from a `--signup-domain` are members.
+- An administrator changes an account's role on the **Admin** tab, with
+  **Account**. Making a member a viewer account stops their writes at once;
+  they keep what they own.
+- A viewer account can only be shared with as a viewer. Someone listed as
+  editor before their account changed stays listed until the owner changes the
+  entry, but cannot write.
+
 ### Push your first artifact
 
 ```sh

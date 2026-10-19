@@ -275,11 +275,7 @@ func runWhoami(args []string) error {
 	if *jsonOut {
 		return printJSON(map[string]any{"user": me, "fingerprint": fp})
 	}
-	role := "user"
-	if me.IsAdmin {
-		role = "admin"
-	}
-	fmt.Printf("%s (%s) — %s on %s\n", me.Email, me.Name, role, c.Host)
+	fmt.Printf("%s (%s) — %s on %s\n", me.Email, me.Name, me.Role, c.Host)
 	fmt.Printf("fingerprint: %s\n", fp)
 	return nil
 }

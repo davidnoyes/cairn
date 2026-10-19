@@ -3,19 +3,32 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
 	"github.com/google/uuid"
 )
 
+// Server roles. A viewer account reads what is shared with it and writes
+// nothing.
+const (
+	RoleAdmin  = "admin"
+	RoleMember = "member"
+	RoleViewer = "viewer"
+)
+
 // User is an account on the server. AuthHash is bcrypt of the client-derived
 // authKey; the store never sees a plaintext password.
 type User struct {
-	ID           string `json:"id"`
-	Email        string `json:"email"`
-	Name         string `json:"name"`
-	AuthHash     string `json:"-"`
+	ID       string `json:"id"`
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	AuthHash string `json:"-"`
+	// Role is the server role: RoleAdmin, RoleMember, or RoleViewer.
+	Role string `json:"role"`
+	// IsAdmin is Role == RoleAdmin, set on every scan for readers that ask
+	// only that. Nothing writes it.
 	IsAdmin      bool   `json:"isAdmin"`
 	TokenVersion int    `json:"-"`
 	Disabled     bool   `json:"disabled"`
@@ -27,13 +40,14 @@ type User struct {
 	NoticeEmail string `json:"-"`
 }
 
-const userCols = `id, email, name, auth_hash, is_admin, token_version, disabled, COALESCE(verified_at, ''), COALESCE(reset_at, ''), created_at, COALESCE(notice_email, '')`
+const userCols = `id, email, name, auth_hash, role, token_version, disabled, COALESCE(verified_at, ''), COALESCE(reset_at, ''), created_at, COALESCE(notice_email, '')`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
-	if err := row.Scan(&u.ID, &u.Email, &u.Name, &u.AuthHash, &u.IsAdmin, &u.TokenVersion, &u.Disabled, &u.VerifiedAt, &u.ResetAt, &u.CreatedAt, &u.NoticeEmail); err != nil {
+	if err := row.Scan(&u.ID, &u.Email, &u.Name, &u.AuthHash, &u.Role, &u.TokenVersion, &u.Disabled, &u.VerifiedAt, &u.ResetAt, &u.CreatedAt, &u.NoticeEmail); err != nil {
 		return nil, err
 	}
+	u.IsAdmin = u.Role == RoleAdmin
 	return &u, nil
 }
 
@@ -45,10 +59,11 @@ func normalizeEmail(email string) string {
 }
 
 // CreateAccount creates a new unverified account and its key bundle in one
-// transaction. A VERIFIED account already at this email is ErrExists and
-// nothing changes; an unverified one is replaced (its bundle and API keys
-// cascade away with it).
-func (s *Store) CreateAccount(email, name, authHash string, b Bundle, isAdmin bool) (*User, error) {
+// transaction, with the given server role (the table refuses an unknown
+// one). A VERIFIED account already at this email is ErrExists and nothing
+// changes; an unverified one is replaced (its bundle and API keys cascade
+// away with it).
+func (s *Store) CreateAccount(email, name, authHash string, b Bundle, role string) (*User, error) {
 	email = normalizeEmail(email)
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -73,9 +88,9 @@ func (s *Store) CreateAccount(email, name, authHash string, b Bundle, isAdmin bo
 		return nil, err
 	}
 
-	u := &User{ID: uuid.NewString(), Email: email, Name: name, AuthHash: authHash, IsAdmin: isAdmin, TokenVersion: 1, CreatedAt: now()}
-	if _, err := tx.Exec(`INSERT INTO users (id, email, name, auth_hash, is_admin, token_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		u.ID, u.Email, u.Name, u.AuthHash, u.IsAdmin, u.TokenVersion, u.CreatedAt); err != nil {
+	u := &User{ID: uuid.NewString(), Email: email, Name: name, AuthHash: authHash, Role: role, IsAdmin: role == RoleAdmin, TokenVersion: 1, CreatedAt: now()}
+	if _, err := tx.Exec(`INSERT INTO users (id, email, name, auth_hash, role, token_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		u.ID, u.Email, u.Name, u.AuthHash, u.Role, u.TokenVersion, u.CreatedAt); err != nil {
 		return nil, err
 	}
 	if err := insertBundle(tx, u.ID, b); err != nil {
@@ -129,8 +144,15 @@ func (s *Store) MarkVerified(userID string, at time.Time) error {
 	return s.exec1(`UPDATE users SET verified_at = ? WHERE id = ?`, formatTime(at), userID)
 }
 
-func (s *Store) SetUserAdmin(userID string, isAdmin bool) error {
-	return s.exec1(`UPDATE users SET is_admin = ? WHERE id = ?`, isAdmin, userID)
+// SetUserRole changes an account's server role. An unknown role is refused
+// and changes nothing.
+func (s *Store) SetUserRole(userID, role string) error {
+	switch role {
+	case RoleAdmin, RoleMember, RoleViewer:
+	default:
+		return fmt.Errorf("unknown role %q", role)
+	}
+	return s.exec1(`UPDATE users SET role = ? WHERE id = ?`, role, userID)
 }
 
 // SetUserDisabled toggles an account; disabling bumps token_version so every

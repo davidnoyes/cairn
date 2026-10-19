@@ -427,13 +427,14 @@ type KeyedUser struct {
 	FP         string
 	Verified   bool
 	Disabled   bool
+	Role       string // the server role: RoleAdmin, RoleMember, or RoleViewer
 }
 
-const keyedUserCols = `u.id, u.name, u.email, b.x25519_pub, b.ed25519_pub, u.verified_at IS NOT NULL, u.disabled`
+const keyedUserCols = `u.id, u.name, u.email, b.x25519_pub, b.ed25519_pub, u.verified_at IS NOT NULL, u.disabled, u.role`
 
 func scanKeyedUser(row interface{ Scan(...any) error }) (*KeyedUser, error) {
 	var u KeyedUser
-	if err := row.Scan(&u.ID, &u.Name, &u.Email, &u.X25519Pub, &u.Ed25519Pub, &u.Verified, &u.Disabled); err != nil {
+	if err := row.Scan(&u.ID, &u.Name, &u.Email, &u.X25519Pub, &u.Ed25519Pub, &u.Verified, &u.Disabled, &u.Role); err != nil {
 		return nil, err
 	}
 	u.FP = hex.EncodeToString(e2e.Fingerprint(u.X25519Pub, u.Ed25519Pub))

@@ -29,6 +29,9 @@ var (
 	ErrNotOwner = errors.New("only the artifact's owner can change its members")
 	// ErrShareSelf means the owner tried to share with themselves.
 	ErrShareSelf = errors.New("the owner already has access to the artifact")
+	// ErrViewerAccount follows the address of a viewer account the owner
+	// tried to make an editor: the server refuses to list one as editor.
+	ErrViewerAccount = errors.New("is a viewer account and can only be a viewer")
 	// ErrPinConflict means another device pinned the user at a different
 	// fingerprint than the one this command decided on, between its read of
 	// the keyring and its write.
@@ -95,6 +98,7 @@ type DirectoryUser struct {
 	X25519Pub  []byte
 	Ed25519Pub []byte
 	ResetAt    string
+	Role       string // the server role: admin, member, or viewer
 	FP         string // hex
 }
 
@@ -105,6 +109,7 @@ type directoryWire struct {
 	X25519Pub  string `json:"x25519Pub"`
 	Ed25519Pub string `json:"ed25519Pub"`
 	ResetAt    string `json:"resetAt"`
+	Role       string `json:"role"`
 }
 
 func (w directoryWire) user() (DirectoryUser, error) {
@@ -117,7 +122,7 @@ func (w directoryWire) user() (DirectoryUser, error) {
 		return DirectoryUser{}, fmt.Errorf("the directory's Ed25519 key for %s is not 32 bytes of base64", w.ID)
 	}
 	_, fp := e2e.PinState(nil, x, ed)
-	return DirectoryUser{ID: w.ID, Name: w.Name, Email: w.Email, X25519Pub: x, Ed25519Pub: ed, ResetAt: w.ResetAt, FP: fp}, nil
+	return DirectoryUser{ID: w.ID, Name: w.Name, Email: w.Email, X25519Pub: x, Ed25519Pub: ed, ResetAt: w.ResetAt, Role: w.Role, FP: fp}, nil
 }
 
 // Directory lists every user the server's directory holds.
@@ -460,6 +465,9 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	}
 	if u.ID == k.UserID {
 		return nil, ErrShareSelf
+	}
+	if u.Role == "viewer" && role == "editor" {
+		return nil, fmt.Errorf("%s %w", u.Email, ErrViewerAccount)
 	}
 	prior, pin, err := c.checkPin(va.Keyring, u, acceptNewKey, va.Membership.Rotations)
 	if err != nil {

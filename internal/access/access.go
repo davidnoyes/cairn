@@ -124,6 +124,10 @@ type Caller struct {
 	// LinkOnly limits a ContentToken to what the public link gives: the
 	// caller's ownership, listing, and team wraps match nothing.
 	LinkOnly bool
+	// ReadOnly is set for a viewer account: whatever level matches, it never
+	// writes. Content-origin callers carry it too, so artifact code running
+	// as a viewer account is refused the same way.
+	ReadOnly bool
 }
 
 // Wrap is a wrap the caller holds. Only its epoch matters here.
@@ -249,6 +253,9 @@ func Check(r Request, act Action) Decision {
 	if r.Caller.Kind == ContentToken && !contentTokenAllows(act) {
 		return NotFound
 	}
+	if r.Caller.ReadOnly && writesArtifact(act) {
+		return Forbidden
+	}
 	if !allowed(m, r.Artifact, act) {
 		return Forbidden
 	}
@@ -257,6 +264,21 @@ func Check(r Request, act Action) Decision {
 		return Conflict
 	}
 	return Allow
+}
+
+// WritesArtifact reports whether act is one a viewer account is refused at
+// every level, so the server can say why it refused.
+func WritesArtifact(act Action) bool { return writesArtifact(act) }
+
+// writesArtifact reports whether act changes the artifact or its members, so a
+// viewer account is refused it at every level. Reads, and answering an
+// ownership offer, are left to the table (accepting is refused by the handler).
+func writesArtifact(act Action) bool {
+	switch act {
+	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer:
+		return true
+	}
+	return false
 }
 
 func allowed(m matches, a Artifact, act Action) bool {

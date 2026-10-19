@@ -250,7 +250,7 @@ func TestResetRecoveryRejectsBadProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u, err := s.store.CreateAccount("ada@example.com", "Ada", hash, bundle, false)
+	u, err := s.store.CreateAccount("ada@example.com", "Ada", hash, bundle, "member")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +344,7 @@ func TestResetRecoveryKeepsKeyring(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u, err := s.store.CreateAccount("ada@example.com", "Ada", hash, bundle, false)
+	u, err := s.store.CreateAccount("ada@example.com", "Ada", hash, bundle, "member")
 	if err != nil {
 		t.Fatal(err)
 	}

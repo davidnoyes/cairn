@@ -30,6 +30,7 @@ type Config struct {
 	ContentDomain string // domain each artifact is served under, as <artifact ID>.<ContentDomain>; defaults to localhost for a loopback PublicURL
 	TokenTTL      time.Duration
 	SignupDomains []string    // email domains allowed to self-signup, besides AdminEmail
+	ViewerDomains []string    // email domains whose sign-ups become viewer accounts; a domain also in SignupDomains is a member
 	AdminEmail    string      // may always sign up, and becomes an administrator when it does
 	Mail          mail.Mailer // required: sign-up and reset cannot work without it
 	MaxUploadMB   int64       // size cap per pushed version or stored file, encrypted bytes
@@ -68,6 +69,9 @@ func (c *Config) applyDefaults() {
 	c.AdminEmail = normalizeEmail(c.AdminEmail)
 	for i, d := range c.SignupDomains {
 		c.SignupDomains[i] = e2e.NormalizeEmail(d)
+	}
+	for i, d := range c.ViewerDomains {
+		c.ViewerDomains[i] = e2e.NormalizeEmail(d)
 	}
 }
 

@@ -90,7 +90,7 @@ func TestRotateKeysMissingUser(t *testing.T) {
 func TestRotateKeysRollsBackWhenFnFails(t *testing.T) {
 	s := testStore(t)
 	u := testAccount(t, s, "a@b.c")
-	member, err := s.CreateAccount("m@b.c", "Mia", "authhash", testBundle("m"), false)
+	member, err := s.CreateAccount("m@b.c", "Mia", "authhash", testBundle("m"), "member")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestRotateKeysHoldsTheArtifactLock(t *testing.T) {
 func TestRotateTxReadsAndWrites(t *testing.T) {
 	s := testStore(t)
 	u := testAccount(t, s, "a@b.c")
-	member, err := s.CreateAccount("m@b.c", "Mia", "authhash", testBundle("m"), false)
+	member, err := s.CreateAccount("m@b.c", "Mia", "authhash", testBundle("m"), "member")
 	if err != nil {
 		t.Fatal(err)
 	}

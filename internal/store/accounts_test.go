@@ -10,7 +10,7 @@ import (
 
 func TestCreateAccount(t *testing.T) {
 	s := testStore(t)
-	u, err := s.CreateAccount(" Ada@Example.com ", "Ada", "authhash", testBundle("a"), true)
+	u, err := s.CreateAccount(" Ada@Example.com ", "Ada", "authhash", testBundle("a"), "admin")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,11 +30,11 @@ func TestCreateAccount(t *testing.T) {
 
 func TestCreateAccountReplacesUnverified(t *testing.T) {
 	s := testStore(t)
-	first, err := s.CreateAccount("a@b.c", "First", "hash1", testBundle("1"), false)
+	first, err := s.CreateAccount("a@b.c", "First", "hash1", testBundle("1"), "member")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := s.CreateAccount("A@B.C", "Second", "hash2", testBundle("2"), false)
+	second, err := s.CreateAccount("A@B.C", "Second", "hash2", testBundle("2"), "member")
 	if err != nil {
 		t.Fatalf("replacing unverified account: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestCreateAccountReplacesUnverified(t *testing.T) {
 func TestCreateAccountFoldsASCIIOnly(t *testing.T) {
 	s := testStore(t)
 	want := e2e.NormalizeEmail("ÉLAN@Example.com") // "Élan@example.com"
-	u, err := s.CreateAccount("ÉLAN@Example.com", "Upper", "hash", testBundle("u"), false)
+	u, err := s.CreateAccount("ÉLAN@Example.com", "Upper", "hash", testBundle("u"), "member")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestCreateAccountFoldsASCIIOnly(t *testing.T) {
 		t.Fatalf("UserByEmail(ÉLAN@EXAMPLE.COM) = %v %+v, want %s as %q", err, got, u.ID, want)
 	}
 
-	other, err := s.CreateAccount("élan@example.com", "Lower", "hash", testBundle("l"), false)
+	other, err := s.CreateAccount("élan@example.com", "Lower", "hash", testBundle("l"), "member")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestCreateAccountFoldsASCIIOnly(t *testing.T) {
 func TestCreateAccountVerifiedConflict(t *testing.T) {
 	s := testStore(t)
 	u := testAccount(t, s, "a@b.c")
-	if _, err := s.CreateAccount("A@B.C", "Dup", "hash", testBundle("x"), false); !errors.Is(err, ErrExists) {
+	if _, err := s.CreateAccount("A@B.C", "Dup", "hash", testBundle("x"), "member"); !errors.Is(err, ErrExists) {
 		t.Fatalf("expected ErrExists, got %v", err)
 	}
 	// nothing changed
@@ -96,7 +96,7 @@ func TestCreateAccountVerifiedConflict(t *testing.T) {
 func TestListUsersAndCount(t *testing.T) {
 	s := testStore(t)
 	testAccount(t, s, "verified@b.c")
-	if _, err := s.CreateAccount("unverified@b.c", "Bob", "hash", testBundle("u"), false); err != nil {
+	if _, err := s.CreateAccount("unverified@b.c", "Bob", "hash", testBundle("u"), "member"); err != nil {
 		t.Fatal(err)
 	}
 	n, err := s.CountUsers()
@@ -113,15 +113,15 @@ func TestListUsersAndCount(t *testing.T) {
 	}
 }
 
-func TestSetUserAdminDisabledDelete(t *testing.T) {
+func TestSetUserRoleDisabledDelete(t *testing.T) {
 	s := testStore(t)
 	u := testAccount(t, s, "a@b.c")
-	if err := s.SetUserAdmin(u.ID, true); err != nil {
+	if err := s.SetUserRole(u.ID, "admin"); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := s.UserByID(u.ID)
 	if !got.IsAdmin {
-		t.Error("SetUserAdmin did not take effect")
+		t.Error("SetUserRole did not take effect")
 	}
 	if err := s.SetUserDisabled(u.ID, true); err != nil {
 		t.Fatal(err)
@@ -155,7 +155,7 @@ func TestSetUserAdminDisabledDelete(t *testing.T) {
 
 func TestMarkVerified(t *testing.T) {
 	s := testStore(t)
-	u, err := s.CreateAccount("a@b.c", "Alice", "hash", testBundle("a"), false)
+	u, err := s.CreateAccount("a@b.c", "Alice", "hash", testBundle("a"), "member")
 	if err != nil {
 		t.Fatal(err)
 	}

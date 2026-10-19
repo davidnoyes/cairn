@@ -77,7 +77,7 @@ export default async function globalSetup() {
     const logFd = openSync(logPath, 'a');
     const server = spawn(bin, [
       'serve', '--addr', `127.0.0.1:${port}`, '--public-url', appOrigin, '--data-dir', dataDir,
-      '--smtp-url', 'log://', '--signup-domain', DOMAIN, '--admin-email', `owner@${DOMAIN}`,
+      '--smtp-url', 'log://', '--signup-domain', DOMAIN, '--viewer-domain', `viewer.${DOMAIN}`, '--admin-email', `owner@${DOMAIN}`,
       // A small cap, so a spec can go over it.
       '--max-db-mb', '1',
     ], { env, stdio: ['ignore', logFd, logFd] });

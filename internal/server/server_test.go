@@ -64,7 +64,11 @@ func seedAccountWith(t *testing.T, s *Server, email, password string, isAdmin bo
 	if err != nil {
 		t.Fatal(err)
 	}
-	u, err := s.store.CreateAccount(email, "Test User", hash, bundle, isAdmin)
+	role := store.RoleMember
+	if isAdmin {
+		role = store.RoleAdmin
+	}
+	u, err := s.store.CreateAccount(email, "Test User", hash, bundle, role)
 	if err != nil {
 		t.Fatal(err)
 	}

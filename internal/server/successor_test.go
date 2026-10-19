@@ -283,7 +283,7 @@ func TestNominate(t *testing.T) {
 		unknown["successor"] = "00000000-0000-4000-8000-000000000000"
 		put(unknown, http.StatusBadRequest)
 		keys := newUserKeys(t)
-		unverified, err := w.s.store.CreateAccount("pending@example.com", "P", "hash", bundleFor(t, keys), false)
+		unverified, err := w.s.store.CreateAccount("pending@example.com", "P", "hash", bundleFor(t, keys), "member")
 		if err != nil {
 			t.Fatal(err)
 		}

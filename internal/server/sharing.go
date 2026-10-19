@@ -24,6 +24,10 @@ import (
 // errBadCredentials marks credentials that are present but invalid.
 var errBadCredentials = errors.New("invalid credentials")
 
+// errViewerAccount is the 403 answer to a viewer account that tries to create
+// an artifact or accept ownership of one.
+const errViewerAccount = "a viewer account cannot change anything"
+
 // requestAccess returns the access.Request attached by artifactRoute.
 func requestAccess(r *http.Request) access.Request {
 	req, _ := r.Context().Value(accessCtxKey).(access.Request)
@@ -37,7 +41,7 @@ func (s *Server) callerFor(u *store.User, key *store.APIKey, scope tokenScope) (
 	if u == nil {
 		return access.Caller{Kind: access.Anonymous}, nil
 	}
-	c := access.Caller{UserID: u.ID, Kind: access.Session, IsAdmin: u.IsAdmin}
+	c := access.Caller{UserID: u.ID, Kind: access.Session, IsAdmin: u.IsAdmin, ReadOnly: u.Role == store.RoleViewer}
 	if key != nil {
 		c.Kind = access.APIKey
 	}
@@ -200,7 +204,13 @@ func (s *Server) artifactRoute(act access.Action, next http.HandlerFunc) http.Ha
 			return
 		}
 		if d := access.Check(req, act); d != access.Allow {
-			writeError(w, d.Status(), decisionMessage(d))
+			msg := decisionMessage(d)
+			// A viewer account is told why, rather than that its access is
+			// too low, since no member list could give it more.
+			if d == access.Forbidden && req.Caller.ReadOnly && access.WritesArtifact(act) {
+				msg = errViewerAccount
+			}
+			writeError(w, d.Status(), msg)
 			return
 		}
 		ctx := context.WithValue(r.Context(), artifactCtxKey, a)
@@ -355,6 +365,10 @@ func isRandomUUID(id string) bool {
 }
 
 func (s *Server) handleCreateArtifact(w http.ResponseWriter, r *http.Request) {
+	if requestUser(r).Role == store.RoleViewer {
+		writeError(w, http.StatusForbidden, errViewerAccount)
+		return
+	}
 	var req createArtifactRequest
 	if !readJSON(w, r, &req) {
 		return

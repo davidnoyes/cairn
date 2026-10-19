@@ -14,6 +14,7 @@ type directoryUser struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	Email      string `json:"email"`
+	Role       string `json:"role"`
 	X25519Pub  string `json:"x25519Pub"`
 	Ed25519Pub string `json:"ed25519Pub"`
 	ResetAt    string `json:"resetAt,omitempty"`
@@ -25,7 +26,7 @@ func (s *Server) toDirectoryUser(u *store.User) (directoryUser, error) {
 		return directoryUser{}, err
 	}
 	return directoryUser{
-		ID: u.ID, Name: u.Name, Email: u.Email,
+		ID: u.ID, Name: u.Name, Email: u.Email, Role: u.Role,
 		X25519Pub: e2e.B64(b.X25519Pub), Ed25519Pub: e2e.B64(b.Ed25519Pub),
 		ResetAt: u.ResetAt,
 	}, nil
@@ -118,13 +119,35 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 type adminUpdateUserRequest struct {
+	Role *string `json:"role"`
+	// IsAdmin is the legacy form of Role: true is admin, false is member.
 	IsAdmin  *bool `json:"isAdmin"`
 	Disabled *bool `json:"disabled"`
 }
 
-// handleAdminUpdateUser grants or removes the admin role, or deactivates an
-// account. It never sets a password or creates anything: there is no other
-// administrator endpoint for users or keys.
+// validRole reports whether role is one of the three server roles.
+func validRole(role string) bool {
+	return role == store.RoleAdmin || role == store.RoleMember || role == store.RoleViewer
+}
+
+// newRole is the role the request asks for, or "" when it asks for none. A
+// legacy isAdmin that already holds changes nothing, so isAdmin:false never
+// turns a viewer account into a member.
+func (req adminUpdateUserRequest) newRole(u *store.User) string {
+	switch {
+	case req.Role != nil:
+		return *req.Role
+	case req.IsAdmin != nil && *req.IsAdmin && !u.IsAdmin:
+		return store.RoleAdmin
+	case req.IsAdmin != nil && !*req.IsAdmin && u.IsAdmin:
+		return store.RoleMember
+	}
+	return ""
+}
+
+// handleAdminUpdateUser sets an account's role, or deactivates it. It never
+// sets a password or creates anything: there is no other administrator
+// endpoint for users or keys.
 func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	u, err := s.store.UserByID(id)
@@ -136,8 +159,21 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if req.IsAdmin != nil && *req.IsAdmin != u.IsAdmin {
-		if err := s.store.SetUserAdmin(id, *req.IsAdmin); err != nil {
+	if req.Role != nil && req.IsAdmin != nil {
+		writeError(w, http.StatusBadRequest, "send role or isAdmin, not both")
+		return
+	}
+	if req.Role != nil && !validRole(*req.Role) {
+		writeError(w, http.StatusBadRequest, "role must be admin, member, or viewer")
+		return
+	}
+	if role := req.newRole(u); role != "" && role != u.Role {
+		// An administrator who lost their own role could leave none.
+		if u.IsAdmin && role != store.RoleAdmin && id == requestUser(r).ID {
+			writeError(w, http.StatusBadRequest, "cannot remove your own administrator role")
+			return
+		}
+		if err := s.store.SetUserRole(id, role); err != nil {
 			s.writeStoreError(w, err, "user")
 			return
 		}

@@ -706,6 +706,12 @@ async function loadUsers() {
       o.selected = value === accountRole;
       role.appendChild(o);
     }
+    // The server refuses an administrator removing their own role, so the
+    // page does not offer it.
+    if (u.id === me?.id) {
+      role.disabled = true;
+      role.title = 'You cannot change your own account role.';
+    }
     role.addEventListener('change', () => send('PATCH', '/api/admin/users/' + u.id, { role: role.value }).then(reload, (err) => {
       role.value = accountRole;
       failIn('users-status')(err);

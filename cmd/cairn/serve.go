@@ -17,7 +17,7 @@ import (
 	"github.com/aloisdeniel/cairn/internal/server"
 )
 
-// stringList accumulates repeated occurrences of a flag, for --signup-domain.
+// stringList accumulates repeated occurrences of a flag, for --signup-domain and --viewer-domain.
 type stringList []string
 
 func (l *stringList) String() string { return strings.Join(*l, ",") }
@@ -43,6 +43,13 @@ func runServe(args []string) error {
 		}
 	}
 	fs.Var(&signupDomains, "signup-domain", "an email domain that may sign up (repeatable)")
+	var viewerDomains stringList
+	for _, d := range strings.Split(envOr("CAIRN_VIEWER_DOMAINS", ""), ",") {
+		if d = strings.TrimSpace(d); d != "" {
+			viewerDomains = append(viewerDomains, d)
+		}
+	}
+	fs.Var(&viewerDomains, "viewer-domain", "an email domain whose sign-ups become viewer accounts, which read what is shared with them and write nothing (repeatable)")
 	maxUploadMB := fs.Int64("max-upload-mb", envInt64Or("CAIRN_MAX_UPLOAD_MB", 256), "max pushed version or stored file size (MiB)")
 	maxDBMB := fs.Int64("max-db-mb", envInt64Or("CAIRN_MAX_DB_MB", 50), "max database revision size (MiB)")
 	googleClientID := fs.String("google-client-id", envOr("CAIRN_GOOGLE_CLIENT_ID", ""), "Google OAuth 2.0 client ID; setting it turns on Google sign-in, which needs --google-client-secret and --public-url (register <public-url>/auth/google/callback as the redirect URI)")
@@ -83,6 +90,7 @@ func runServe(args []string) error {
 		ContentDomain: *contentDomain,
 		TokenTTL:      *tokenTTL,
 		SignupDomains: []string(signupDomains),
+		ViewerDomains: []string(viewerDomains),
 		AdminEmail:    *adminEmail,
 		Mail:          sender,
 		MaxUploadMB:   *maxUploadMB,

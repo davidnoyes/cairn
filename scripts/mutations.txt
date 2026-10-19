@@ -2386,3 +2386,30 @@ internal/server/handlers_successor.go	"DELETE /api/me/passkeys/{id}": true,	"DEL
 internal/server/google.go	http.Redirect(w, r, safeNext(st.Next), http.StatusFound)	http.Redirect(w, r, st.Next, http.StatusFound)	go test ./internal/server -count=1 -run TestGoogleCallbackSanitizesAPlantedNext
 internal/client/client.go	errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound	errors.As(err, &apiErr) && apiErr.Status == -1	go test ./internal/client -count=1 -run TestGoogleSignInTreatsAMissingConfigAsOff
 internal/client/account.go	googleProof != "" && errors.As(err, &apiErr) && apiErr.Status == http.StatusForbidden	googleProof != "" && errors.As(err, &apiErr) && apiErr.Status == http.StatusTeapot	go test ./internal/client -count=1 -run TestLoginWithGoogleExplainsARefusedProof
+internal/access/access.go	if r.Caller.ReadOnly && writesArtifact(act) {	if false && writesArtifact(act) {	go test ./internal/access -count=1 -run TestReadOnlyCallerNeverWrites
+internal/access/access.go	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer:	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions:	go test ./internal/access -count=1 -run TestReadOnlyCallerNeverWrites
+internal/access/access.go	if r.Caller.ReadOnly && writesArtifact(act) {	if writesArtifact(act) && r.Caller.ReadOnly && act != Transfer {	go test ./internal/access -count=1 -run TestReadOnlyCallerNeverWrites
+internal/server/sharing.go	ReadOnly: u.Role == store.RoleViewer}	ReadOnly: false}	go test ./internal/server -count=1 -run 'TestViewerAccountReadsAndNeverWrites/session'
+internal/server/sharing.go	c.Kind = access.APIKey	c.Kind = access.APIKey; c.ReadOnly = false	go test ./internal/server -count=1 -run 'TestViewerAccountReadsAndNeverWrites/API_key'
+internal/server/sharing.go	c.Kind, c.TokenArtifactID, c.LinkOnly = access.ContentToken, scope.Artifact, scope.LinkOnly	c.Kind, c.TokenArtifactID, c.LinkOnly = access.ContentToken, scope.Artifact, scope.LinkOnly; c.ReadOnly = false	go test ./internal/server -count=1 -run 'TestViewerAccountReadsAndNeverWrites/content_token'
+internal/server/sharing.go	if requestUser(r).Role == store.RoleViewer {	if false {	go test ./internal/server -count=1 -run TestViewerAccountCannotCreateArtifacts
+internal/server/transfer.go	if caller.Role == store.RoleViewer {	if false {	go test ./internal/server -count=1 -run TestViewerAccountCannotAcceptOwnership
+internal/membership/membership.go	u != nil && u.Role == store.RoleViewer && m.Role == access.RoleEditor && prevMembers[m.User].Role != access.RoleEditor	u != nil && u.Role == "never" && m.Role == access.RoleEditor && prevMembers[m.User].Role != access.RoleEditor	go test ./internal/membership -count=1 -run 'TestViewerAccount|TestDemotedEditor'
+internal/membership/membership.go	 && prevMembers[m.User].Role != access.RoleEditor	 && true	go test ./internal/membership -count=1 -run 'TestViewerAccount|TestDemotedEditor'
+internal/membership/membership.go	u.Role == store.RoleViewer && m.Role == access.RoleEditor	u.Role == store.RoleViewer && m.Role != ""	go test ./internal/membership -count=1 -run 'TestViewerAccount|TestDemotedEditor'
+internal/membership/membership.go	Active: !k.Disabled, Role: k.Role}	Active: !k.Disabled}	go test ./internal/membership -count=1 -run TestDirectoryFillsRole
+internal/server/handlers_auth.go	return store.RoleViewer, true	return store.RoleMember, true	go test ./internal/server -count=1 -run 'TestSignupRoles|TestGoogleSignupRoles'
+internal/server/handlers_auth.go	return store.RoleMember, true	return store.RoleViewer, true	go test ./internal/server -count=1 -run 'TestSignupRoles|TestGoogleSignupRoles'
+internal/server/handlers_auth.go	return store.RoleAdmin, true	return store.RoleMember, true	go test ./internal/server -count=1 -run 'TestSignupRoles|TestGoogleSignupRoles'
+internal/server/server.go	c.ViewerDomains[i] = e2e.NormalizeEmail(d)	c.ViewerDomains[i] = d	go test ./internal/server -count=1 -run TestSignupRoles
+internal/server/handlers_auth.go	IsAdmin: u.IsAdmin, Role: u.Role, CreatedAt: u.CreatedAt	IsAdmin: u.IsAdmin, CreatedAt: u.CreatedAt	go test ./internal/server -count=1 -run TestRoleInViews
+internal/server/handlers_users.go	u.IsAdmin && role != store.RoleAdmin && id == requestUser(r).ID	false && role != store.RoleAdmin && id == requestUser(r).ID	go test ./internal/server -count=1 -run TestAdminSetsRole
+internal/server/handlers_users.go	if req.Role != nil && req.IsAdmin != nil {	if false {	go test ./internal/server -count=1 -run TestAdminSetsRole
+internal/server/handlers_users.go	if req.Role != nil && !validRole(*req.Role) {	if false {	go test ./internal/server -count=1 -run TestAdminSetsRole
+internal/server/handlers_users.go	case req.IsAdmin != nil && !*req.IsAdmin && u.IsAdmin:	case req.IsAdmin != nil && !*req.IsAdmin:	go test ./internal/server -count=1 -run TestAdminSetsRole
+internal/store/migrations/013_roles.sql	UPDATE users SET role = 'admin' WHERE is_admin = 1;	UPDATE users SET role = 'member' WHERE is_admin = 1;	go test ./internal/store -count=1 -run TestMigration013RolesFromAdminFlag
+internal/client/share.go	if u.Role == "viewer" && role == "editor" {	if false {	go test ./internal/client -count=1 -run TestViewerAccountThroughTheClient
+cmd/cairn/client_cmds.go	me.Email, me.Name, me.Role, c.Host)	me.Email, me.Name, "user", c.Host)	go test ./cmd/cairn -count=1 -run TestWhoamiShowsTheServerRole
+cmd/cairn/serve.go	ViewerDomains: []string(viewerDomains),	ViewerDomains: nil,	go test ./cmd/cairn -count=1 -run TestRunServeViewerDomains
+cmd/cairn/serve.go	envOr("CAIRN_VIEWER_DOMAINS", "")	envOr("CAIRN_VIEWER_DOMAINS_X", "")	go test ./cmd/cairn -count=1 -run TestRunServeViewerDomains
+internal/server/sharing.go	if d == access.Forbidden && req.Caller.ReadOnly && access.WritesArtifact(act) {	if false && req.Caller.ReadOnly {	go test ./internal/server -count=1 -run TestViewerAccountReadsAndNeverWrites
