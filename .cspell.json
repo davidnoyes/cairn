@@ -10,6 +10,7 @@
     "CRNB",
     "cytoscape",
     "eclock",
+    "egoogle",
     "FUZZTIME",
     "GOARCH",
     "GOROOT",
@@ -25,6 +26,7 @@
     "trimpath",
     "Unmarshal",
     "usercontent",
-    "versiondb"
+    "versiondb",
+    "webauthn"
   ]
 }
