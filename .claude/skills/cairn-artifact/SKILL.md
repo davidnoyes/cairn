@@ -28,6 +28,10 @@ cairn whoami --json
 - A new account needs `cairn signup --host <url> --email <email> --name
   <name> --password-stdin`. It prints a recovery code. Show it to the user
   and tell them to save it. Never store it yourself.
+- On a server with Google sign-in, `cairn login` opens a browser for the
+  Google step, so only the user can run it, and `cairn signup` refuses and
+  names the `/signup` page. Ask the user to sign up in the browser and run
+  `cairn login` themselves, or to create an API key on the Account tab.
 - Ask the user for a host and credentials if none of these work. Do not guess.
 
 ## Workflow
