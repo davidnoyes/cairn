@@ -1,7 +1,7 @@
 # Roles, groups, and folders
 
 Status: **plan, decisions agreed; R1 (viewer accounts) and R2 (managers) are
-built**, and the rest is not yet. It extends the
+built**; R3 and F1 are in progress, and the rest is not yet. It extends the
 [trust model](e2e-trust-model.md) and builds on
 [Google sign-in and passkey unlock](google-signin.md).
 
@@ -292,14 +292,18 @@ review gate. Tests are written at design time, before the code they cover.
 | --- | --- | --- |
 | R1 | Server roles: `users.role`, viewer accounts, `--viewer-domain`, the role table on every endpoint, the **Admin** tab, and commands | Integration tests for every cell of the role table; a viewer account reads what is shared with it and uses an API key, and every write it tries is refused, even where a member list still names it editor |
 | R2 | Manager role: acceptance rules, both chain checks, test vectors, the estate-copy catch-up, the share dialog, and commands | Go and JavaScript check the same vectors; a manager's record is accepted, and one that changes the managers, drops the owner, or comes from a removed manager is refused; the owner's client adds the estate copy after a manager's epoch |
-| R3 | Groups: signed group records with their three checks and test vectors, management, sharing with a group, approval of newcomers, immediate server cut-off when someone leaves; **Everyone** replaces the team share | Go and JavaScript check the same group-record vectors; a record from a non-manager or a rolled-back chain is refused; a newcomer cannot read until approved; someone who leaves gets 404 at once and a new epoch follows; a browser walkthrough of creating a group and sharing with it |
+| R3a | Group records: the signed chain with its three checks and test vectors, creating and managing groups, the newest record each client has seen, the **Groups** tab, and `cairn group` | Go and JavaScript check the same group-record vectors; a record from a non-manager, a skipped sequence number, or a rolled-back chain is refused; a browser walkthrough of creating a group and changing its members |
+| R3b | Sharing with groups in the server and the command-line tool: groups in member lists, approval of newcomers, immediate server cut-off when someone leaves, the new epoch that follows; **Everyone** names the team share | A newcomer cannot read until approved; someone who leaves gets 404 at once, shows as still holding the key, and the next epoch excludes them |
+| R3c | Sharing with groups and Everyone in the browser: the share dialog lists groups, approves newcomers, and starts the epoch after someone leaves | A browser walkthrough of sharing with a group, approving a newcomer, and removing a member from the group |
 | F1 | Folders as content-less artifacts: create, rename, nest, move, list, delete with the folder owner's items, encrypted names, the tree on the **Artifacts** tab, and `cairn folder` | Names are ciphertext on disk; moves respect the folder table; depth over 16 is refused; a browser walkthrough of the tree |
 | F2 | Inherited access for items the actor can sign: fan-out on share, new epochs on unshare and on moving out, inherited entries in member lists | Sharing a folder lets a member open every item inside it; unsharing ends their access at once and moves each item to a new epoch; a record that drops an inherited entry is refused |
 | F3 | Drive-style contents: editors add their own items, inheritance updates queued for other owners, deleting a folder that holds other people's items, `cairn apply`, the "yet to apply" notices | An item another user owns becomes readable only after its owner applies the update; removal is immediate either way; deleting the folder moves that item to its owner and deletes the rest; a browser walkthrough with two owners |
 
 R1 is independent and small. R2 comes before F2, because inherited access
 needs managers to sign member lists. R3 and F1 can proceed in parallel after
-R2.
+R2. R3 is split in three because the browser has no team sharing yet, so R3c
+brings team and group sharing to the browser together. In F1 a folder is
+private to its owner; sharing one arrives with F2.
 
 ## Out of scope
 

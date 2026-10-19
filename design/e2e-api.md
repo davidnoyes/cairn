@@ -2373,3 +2373,110 @@ go to a listed editor or manager.
 When an owner removes a manager, the plan has the client list the member-list
 changes that manager signed, for review. R2 records each record's signer, so
 the list can be built later; it does not show it yet.
+
+## Folders
+
+Milestone F1 of the [roles, groups, and folders plan](rbac-folders.md). A
+folder is an artifact with no content: it has an owner, a signed member list,
+epochs, its own key, and encrypted metadata, and it has no versions,
+database, or files. In F1 a folder is private to its owner. Sharing a folder,
+and what its sharing means for the items inside, arrive with F2.
+
+### Folder data
+
+- `artifacts.kind` is `artifact` or `folder`, `artifact` by default.
+- `artifacts.parent_id` names the folder an item sits in, or is null at the
+  top level. It references `artifacts(id)` with `ON DELETE SET NULL`, so an
+  item whose folder disappears lands at the top level rather than being lost.
+- The artifact view gains `kind` and `parent`. `parent` is the folder's ID
+  only when the caller can read that folder, and null otherwise, so a reader
+  of a shared item does not learn where its owner keeps it.
+- A folder's name and description are the artifact `name` and `description`
+  metadata fields, sealed under the folder's own key like any artifact's.
+
+### Endpoints for folders
+
+| Method and path | Access | Purpose |
+| --- | --- | --- |
+| `POST /api/artifacts` | Any, not a viewer account | Create an artifact or a folder, optionally inside a folder |
+| `PUT /api/artifacts/{id}/parent` | Owner of the item | Move the item into a folder, or to the top level |
+| `DELETE /api/artifacts/{id}` | Owner | Delete an artifact, or an empty folder |
+
+`POST /api/artifacts` takes two more optional fields: `kind`, `artifact` or
+`folder`, and `parent`, a folder ID. `PUT .../parent` takes
+`{"parent": "<folder ID>"}`, or `{"parent": null}` for the top level, and
+answers with the item's view.
+
+### Server checks for folders
+
+- **Placing an item.** On create and on move, `parent`, when set, must be a
+  folder (`kind` is `folder`) that the caller owns, and the caller must own
+  the item. Otherwise the answer is `404` for a folder the caller cannot read,
+  and `403` for one they can read but do not own.
+- **Depth.** A folder chain is at most 16 deep: from the top level down to an
+  item's parent, at most 16 folders. A move counts the deepest folder in the
+  moved subtree. A create or move that would exceed it is refused with `409`.
+- **Cycles.** A folder cannot move into itself or into a folder inside it:
+  `409`.
+- **No content.** A folder refuses every version, push, database, file,
+  manifest, blob, review, and content-token route with `409` and
+  `a folder holds no content`.
+- **Private in F1.** A membership record for a folder must list no members,
+  keep `team` at `none`, and keep `public` and `publicWrites` off. Otherwise
+  it is refused with `409` and `folders cannot be shared yet`. An ownership
+  offer for a folder is refused the same way.
+- **Deleting.** A folder that still holds items is refused with `409` and
+  `the folder is not empty`. The client deletes the contents first.
+- **Transfers.** When someone accepts ownership of an item that sits in the
+  previous owner's folder, the server moves the item to the top level in the
+  same transaction, because the new owner cannot read that folder.
+
+The tree's shape is visible to the server, and it is not signed: the server
+sees which items sit together, and a hostile server could show an item in
+the wrong folder. Names stay sealed, so it never learns what anything is
+called.
+
+### Clients for folders
+
+- **Listing.** `GET /api/artifacts` returns folders with everything else. A
+  client builds the tree from `kind` and `parent`.
+- **Deleting a folder.** The client lists the folder's subtree, deletes every
+  artifact in it, then each folder from the deepest up, and the folder last.
+  It reports progress, and running it again finishes an interrupted delete.
+  Before it starts, the page and the command-line tool show how many folders
+  and artifacts the delete removes.
+- **Opening a folder's address.** `/shared/{id}` for a folder shows that the
+  item is a folder, and links back to it on the **Artifacts** tab.
+
+### Commands for folders
+
+All take `--json`. A `FOLDER` or `ITEM` is an ID or an exact name, as
+elsewhere.
+
+- `cairn folder create NAME [--in FOLDER]` creates a folder.
+- `cairn folder list [FOLDER]` prints the tree under a folder, or the whole
+  tree of the caller's own items.
+- `cairn folder delete FOLDER [--yes]` deletes a folder and everything in it,
+  after printing what the delete removes and asking, unless `--yes` is
+  given.
+- `cairn move ITEM --to FOLDER` or `cairn move ITEM --top` moves an item.
+- `cairn push DIR --artifact NAME --create --in FOLDER` creates the artifact
+  inside a folder.
+- `cairn artifact create NAME --in FOLDER` does the same without a push.
+- `cairn artifact list` prints each item's folder path, and `--json` adds
+  `kind` and `parent`.
+- `cairn artifact update FOLDER --name NAME` renames a folder, as it renames
+  an artifact.
+
+### The tree on the Artifacts tab
+
+- **Your artifacts** becomes a tree of the caller's own items: folders first,
+  then artifacts, each sorted by name. A breadcrumb over it shows the folder
+  in view, and clicking a folder opens it.
+- **New folder** creates a folder in the one in view.
+- Each own item has **Move to…**, which offers the top level and every own
+  folder it can move into, and it can be dragged onto a folder row or a
+  breadcrumb.
+- A folder row has **Rename** and **Delete**. Delete states how many folders
+  and artifacts it removes, and shows progress.
+- **Shared with you** stays a flat list in F1.
