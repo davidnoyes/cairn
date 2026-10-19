@@ -122,10 +122,12 @@ inside the shell.
 
 ### 5. Share
 
-Only the owner shares. Ask the user for the person's email first.
+The owner shares, and so does a member the owner makes a manager. Only the
+owner adds, removes, or changes a manager. Ask the user for the person's email
+first.
 
 ```sh
-cairn share <id> bob@example.com --role viewer   # or editor
+cairn share <id> bob@example.com --role viewer   # or editor, or manager
 cairn members <id>                               # roles, fingerprints, pins
 cairn unshare <id> bob@example.com
 cairn team <id> none|viewer|editor               # the whole team

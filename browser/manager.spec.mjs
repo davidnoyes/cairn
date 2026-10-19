@@ -1,12 +1,13 @@
 // Managers in a real browser. The owner makes a member manager of a fresh
 // artifact. The manager opens the share dialog from their Shared with you
 // list, shares with a reader, then removes them, which starts an epoch the
-// manager signs and wraps to the owner. The owner's page then reads that epoch
-// through its own wrap and adds the estate copy.
+// manager signs and wraps to the owner. The reader loses access, the manager
+// reads the new epoch, and the owner's page reads it through its own wrap and
+// adds the estate copy.
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { test, expect } from './test.mjs';
-import { MARKER, cli, contentFrame, loadState, logSize, mailedLink, runCli, signIn } from './helpers.mjs';
+import { MARKER, cli, cliJson, contentFrame, loadState, logSize, mailedLink, runCli, signIn } from './helpers.mjs';
 
 // freshUser signs up, verifies, and signs in with the command-line tool.
 async function freshUser(local, domain) {
@@ -53,7 +54,10 @@ test('manager: shares and unshares from the dialog, and the owner reads the epoc
   let dialog = await openDialog(mpage, '#shared', id);
   await expect(dialog.locator('#share-role option[value=manager]')).toBeHidden();
   await expect(dialog.locator('#share-role option[value=manager]')).toBeDisabled();
+  // Wait for each row first, or a list still loading has no select either.
+  await expect(row(dialog, s.users.owner.email)).toHaveCount(1);
   await expect(row(dialog, s.users.owner.email).locator('select')).toHaveCount(0);
+  await expect(row(dialog, manager.email)).toHaveCount(1);
   await expect(row(dialog, manager.email).locator('select')).toHaveCount(0);
   await dialog.locator('#share-email').fill(reader.email);
   await dialog.locator('#share-role').selectOption('viewer');
@@ -65,11 +69,22 @@ test('manager: shares and unshares from the dialog, and the owner reads the epoc
   await signIn(rpage, reader.email, reader.password);
   await rpage.goto(`${s.appOrigin}/shared/${id}`);
   await expect((await contentFrame(rpage)).locator('#marker')).toHaveText(MARKER);
-  await rctx.close();
 
   // Removing the reader starts a new epoch, signed by the manager.
+  const epoch = cliJson('owner', ['members', id]).epoch;
   await row(dialog, reader.email).getByRole('button', { name: 'Remove' }).click();
   await expect(row(dialog, reader.email)).toHaveCount(0, { timeout: 90_000 });
+  await expect(dialog.locator('#share-status')).toHaveText(/removed/i, { timeout: 60_000 });
+
+  // The removed reader no longer opens it.
+  await rpage.goto(`${s.appOrigin}/shared/${id}`);
+  await expect(rpage.locator('#status')).toBeVisible();
+  expect(rpage.frames().filter((f) => f.url().includes('.localhost')), 'artifact frames').toEqual([]);
+  await rctx.close();
+
+  // The manager reads the content, re-sealed under the new epoch.
+  await mpage.goto(`${s.appOrigin}/shared/${id}`);
+  await expect((await contentFrame(mpage)).locator('#marker')).toHaveText(MARKER);
   await mctx.close();
 
   // The owner reads the new epoch through its own wrap, and the page adds
@@ -80,6 +95,10 @@ test('manager: shares and unshares from the dialog, and the owner reads the epoc
     const keys = await (await fetch(`/api/artifacts/${aid}/keys`)).json();
     return keys.estate.map((e) => e.epoch).sort();
   }, id), { timeout: 30_000 }).toEqual([1, 2]);
+  const m = cliJson('owner', ['members', id]);
+  expect(m.epoch).toBe(epoch + 1);
+  expect(m.members.map((x) => x.email)).not.toContain(reader.email);
+  expect(cliJson('owner', ['artifact', 'show', id]).versions[0].epoch).toBe(m.epoch);
 
   // The owner's dialog lists the manager, and offers the manager role.
   dialog = await openDialog(ownerPage, '#own', id);
