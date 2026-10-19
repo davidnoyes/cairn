@@ -1,14 +1,14 @@
 # Cairn
 
-Cairn is a self-hosted server for uploading, managing and hosting collections
+Cairn is a self-hosted server for uploading, managing, and hosting collections
 of **artifacts** — single-page web apps with optional shared SQLite data — an
 open alternative to Claude Artifacts for small trusted teams and AI-agent
 workflows.
 
-One Go binary contains the server, a web app, and a client CLI designed to
-be driven by AI agents.
+One Go binary contains the server, a web app, and a command-line tool designed
+to be driven by AI agents.
 
-```
+```text
 ┌───────────────┐   cairn push    ┌──────────────────────────────┐
 │  agent / dev  │ ──────────────▶ │  cairn serve                 │
 └───────────────┘                 │  ├─ /full/{id}/{vid}         │  full screen
@@ -22,14 +22,14 @@ be driven by AI agents.
 ## Concepts
 
 - **Artifact** — uuid, name, description, public/private flag, associated
-  *resources* (e.g. a Claude session id), and a sequence of versions. The
+  *resources* (for example, a Claude session ID), and a sequence of versions. The
   server holds the name and description encrypted, and each resource as a
   blind index.
 - **Version** — uuid, encrypted name and changelog, and a directory with at
   least an `index.html`. Each version also owns a lazily-created SQLite
   database shared by everyone who uses that version, and a **file storage**
   where clients upload and download arbitrary files. The server stores both
-  encrypted: the browser, or the `cairn` command, decrypts them and runs SQL
+  encrypted. The browser or the `cairn` command decrypts them, then runs SQL
   on its own copy.
   Versions can be re-uploaded in place (work-in-progress iteration) — the
   shared database and file storage survive re-uploads.
@@ -41,12 +41,23 @@ be driven by AI agents.
 
 ### Trust model (read this)
 
-Cairn trusts its users, deliberately: every authenticated user can manage
-artifacts and run **raw SQL** against artifact databases, and artifacts are
-served same-origin with the APIs. This keeps everything simple and is fine for
-a small circle of invited people. Do **not** point untrusted crowds at a Cairn
-instance. Guardrails exist (per-query timeout, row caps, read-only access for
-anonymous visitors of public artifacts) but they are guardrails, not a sandbox.
+The server stores only ciphertext. Your browser, or the `cairn` command,
+encrypts every artifact, its name, its database, and its files before they
+leave your device. An administrator, a server operator, or anyone holding a
+backup cannot read them. An artifact is private to its owner until the owner
+shares it with named people, with the whole team, or through a public link
+that carries its key.
+
+Two limits come with encryption in a web app:
+
+- The server sends the JavaScript that does the encryption. An operator who
+  changes it can capture keys the next time you sign in. `cairn verify` makes
+  such a change visible, not impossible.
+- The server still sees metadata: email addresses, who shares with whom, and
+  when.
+
+[`design/e2e-trust-model.md`](design/e2e-trust-model.md) lists every guarantee
+and limit.
 
 ## Quick start
 
@@ -88,9 +99,8 @@ Your browser stretches the password and creates your keys on your device, so
 the server never sees the password. The page keeps your unwrapped keys in
 IndexedDB as non-extractable keys, and clears them when you sign out.
 
-Until Cairn serves artifacts from separate content origins, an artifact you
-open runs on the same origin as your keys and can use them. Open only artifacts
-you trust.
+Each artifact runs on a content origin of its own, separate from the app, so
+an artifact you open cannot reach your keys, the app, or another artifact.
 
 ### Google sign-in
 
@@ -167,7 +177,7 @@ image yourself instead: `docker build -t cairn .`
 ## URLs
 
 | URL | Meaning |
-|---|---|
+| --- | --- |
 | `/shared/{id}` / `/shared/{id}/{versionId}` | version embedded in a shell frame with metadata and a version picker |
 | `/full/{id}` / `/full/{id}/{versionId}` | the same frame full screen, with no header |
 | `/artifacts/{id}…` | redirects to the same path under `/shared/`, for old links |
@@ -280,8 +290,13 @@ session id, so only `cairn`, which computes the blind index, accepts one. If
 the reference matches more than one artifact, the request fails with
 `409 Conflict`; use the artifact id then.
 
-```
-POST   /api/auth/login                      {email, password[, confirm]}
+```text
+POST   /api/auth/prelogin                   {email}: the Argon2id parameters and salt
+POST   /api/auth/login                      {email, authKey[, googleProof]}: the user and the sealed key bundle
+GET    /api/auth/config                     {google, passkeys[, rpId]}
+POST   /api/auth/passkey/begin|finish       passkey sign-in; finish also returns the passkey's sealed MK
+GET|POST /api/me/passkeys                   your passkeys; POST enrolls one with a fresh authKey
+DELETE /api/me/passkeys/{id}
 GET    /api/me
 GET|PUT /api/me/keyring                    your sealed keyring: {rev, keyring}; PUT needs rev+1, else 409 {error, rev}
 GET    /api/users                           directory: id, name, email (any authed user)
@@ -301,7 +316,7 @@ GET    /api/artifacts/{id}/versions/{vid}/db/revisions        the 10 kept, newes
 GET    /api/artifacts/{id}/versions/{vid}/db/revisions/{rev}  one kept revision
 GET    /api/artifacts/{id}/versions/{vid}/files              encrypted file metadata
 GET|PUT|DELETE /api/artifacts/{id}/versions/{vid}/files/{address}   one encrypted file
-GET    /api/admin/users|keys ...            admin management
+GET|PATCH|DELETE /api/admin/users[/{id}]   administrators: roles, deactivation, deletion
 ```
 
 The server never runs SQL and cannot read a database or a stored file. Each
@@ -310,9 +325,9 @@ it, and readers check the signature before they use it. Use `cairn.js` or
 the `cairn` command, which do this for you; the wire formats are in
 [`design/e2e-api.md`](design/e2e-api.md#client-side-database-and-files).
 
-## CLI for agents
+## Command-line tool for agents
 
-Set two environment variables and every command works headlessly:
+Set two environment variables and every command runs without a prompt:
 
 ```sh
 export CAIRN_HOST=https://cairn.example.com
@@ -550,17 +565,21 @@ snapshot and wipe the old server.
 ## Operations
 
 - **Data layout** — everything lives under `--data-dir`: `cairn.db`
-  (metadata), `secret.key` (JWT signing), `content/` (extracted version
-  uploads), `dbs/` (encrypted database revisions), `files/` (encrypted
-  stored files).
+  (metadata), `secret.key` (session signing), `prelogin.key` (the salts
+  prelogin answers for unknown addresses), `content/` (encrypted version
+  content), `dbs/` (encrypted database revisions), `files/` (encrypted stored
+  files), and `tmp/`.
 - **Backup** — `cairn backup --data-dir data --out backup/` snapshots live
   SQLite databases with `VACUUM INTO` and copies the rest. Safe while the
   server runs.
 - **Config** — flags > `CAIRN_*` env (`CAIRN_ADDR`, `CAIRN_DATA_DIR`,
-  `CAIRN_BASE_URL`, `CAIRN_TOKEN_TTL`, `CAIRN_MAX_UPLOAD_MB`, …). Set
-  `--base-url https://…` behind TLS so cookies are marked Secure.
-- **Password reset** — an admin resets the account; the user picks a new
-  password at next sign-in. Tokens are invalidated instantly on reset/disable.
+  `CAIRN_PUBLIC_URL`, `CAIRN_TOKEN_TTL`, `CAIRN_MAX_UPLOAD_MB`, …). Set
+  `--public-url https://…` behind TLS so cookies are marked Secure.
+- **Password reset** — people reset their own password from `/forgot`, by
+  emailed link, or through Google on a Google server. Their recovery code
+  decides whether they keep their keys. No administrator can set or reset a
+  password. Deactivating an account from the **Admin** tab ends its sessions
+  at once.
 
 ### Content domain and public URL
 
@@ -573,7 +592,7 @@ domain>`, so that an artifact cannot reach the app or another artifact.
   use, such as `cairn-content.net`. With a localhost public URL it defaults to
   `localhost`. Otherwise you must set it.
 
-The two must be separate sites: Cairn refuses a content domain that is the
+The two must be separate sites. Cairn refuses a content domain that is the
 public URL's host, a parent or child of it, or shares a registrable domain
 with it. `cairn.example.com` and `content.example.com` fail that test, so
 register a second domain.
@@ -583,17 +602,17 @@ the server, and a wildcard TLS certificate for `*.cairn-content.net`. Your
 reverse proxy must send both the public URL's host and every host under the
 content domain to Cairn.
 
-## Cairn vs. Claude Artifacts
+## Cairn and Claude Artifacts compared
 
 | | Claude Artifacts | Cairn |
-|---|---|---|
-| Hosting | claude.ai, Anthropic accounts | self-hosted, your domain, your disk |
+| --- | --- | --- |
+| Hosting | `claude.ai`, Anthropic accounts | self-hosted, your domain, your disk |
 | Content | single-page, strict CSP | full multi-file SPA dirs, no CSP wall |
 | Shared data | capability-gated runtime | first-class SQLite (raw SQL, transactions, cross-version migration, downloadable file) + per-version file storage |
 | Versioning | product history | explicit versions + changelogs, stable URLs, re-upload |
-| Automation | Claude's Artifact tool | any agent via CLI/API keys — model-agnostic |
+| Automation | Claude's Artifact tool | any agent through the command-line tool and API keys — model-agnostic |
 | AI runtime | `window.claude` in page | none built in |
-| Security | sandboxed for untrusted viewers | trust-based, invited users only |
+| Security | sandboxed for untrusted viewers | end-to-end encrypted; each artifact on its own origin; the server cannot read your artifacts |
 
 ## Development
 
