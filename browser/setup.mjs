@@ -59,8 +59,10 @@ export default async function globalSetup() {
   process.env.CAIRN_E2E_STATE = statePath;
   try {
     // The e2eclock build runs the server's clock ahead by the duration in
-    // clockFile, so a spec can pass the successor's waiting period.
-    execFileSync('go', ['build', '-tags', 'e2eclock', '-o', bin, './cmd/cairn'], { cwd: ROOT, stdio: 'inherit' });
+    // clockFile, so a spec can pass the successor's waiting period. The
+    // e2egoogle build lets google.spec.mjs point a second server at its fake
+    // Google.
+    execFileSync('go', ['build', '-tags', 'e2eclock,e2egoogle', '-o', bin, './cmd/cairn'], { cwd: ROOT, stdio: 'inherit' });
     const clockFile = path.join(tmp, 'clock-offset');
 
     const port = await freePort();
@@ -69,6 +71,9 @@ export default async function globalSetup() {
     delete env.CAIRN_HOST;
     delete env.CAIRN_API_KEY;
     env.CAIRN_TEST_CLOCK_FILE = clockFile;
+    // Google sign-in is off on this server, but the e2egoogle build wants an
+    // address all the same; nothing ever calls it.
+    env.CAIRN_TEST_GOOGLE_URL = 'http://127.0.0.1:9';
     const logFd = openSync(logPath, 'a');
     const server = spawn(bin, [
       'serve', '--addr', `127.0.0.1:${port}`, '--public-url', appOrigin, '--data-dir', dataDir,
