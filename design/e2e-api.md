@@ -2562,6 +2562,9 @@ These keys are served by the server, so a client anchors them as
   members, the size limits, the name, and at least one manager.
 - Deleting a group removes its records. An artifact shared with it loses
   that share at once, from R3b on.
+- An account that signed a record of a group that still exists cannot be
+  deleted: `409`, as for an account that owns artifacts. An administrator
+  deactivates it instead, and the group view keeps serving its keys.
 
 ### Clients for groups
 
@@ -2570,6 +2573,16 @@ These keys are served by the server, so a client anchors them as
   person at the client accepts it.
 - A command or page shows a group's members only from a chain it accepted,
   with each member's fingerprint and pin state.
+- A signer still listed in the directory must have the same current key
+  there as in `signers`; a difference is refused. This stops a server from
+  planting a pin of its own key for a real user when it first serves a group.
+- A client stores a group's new head in the keyring only if the keyring still
+  holds the head it checked against. If another device stored a newer head in
+  the meantime, the client reads the group again rather than show the older
+  chain.
+- Deleting a group removes its entry from the caller's keyring. Nothing else
+  removes an entry, so a server that claims a group is gone cannot clear the
+  record of its newest head.
 - A `GROUP` argument is a group ID or an exact name. Names need not be
   unique, so a name two groups share is refused as ambiguous.
 
