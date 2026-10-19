@@ -8,7 +8,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -214,6 +216,10 @@ func apiKeyBearer(keyID, authSecret string) string {
 	return "cairn_" + keyID + "_" + authSecret
 }
 
+// ErrGoogleSignInExpired is a login whose Google proof the server refused:
+// the proof cairn login received lasts two minutes and works once.
+var ErrGoogleSignInExpired = errors.New("the Google sign-in expired or was already used; run cairn login again")
+
 // LoginResult is what a successful Login returns for the caller to save.
 type LoginResult struct {
 	APIKey  string // the full four-part key: cairn_<keyid>_<authSecret>_<keySecret>
@@ -273,6 +279,10 @@ func (c *Client) signIn(email, password, googleProof string) (*passwordSession, 
 		login["googleProof"] = googleProof
 	}
 	if err := c.doJSON("POST", "/api/auth/login", login, &loginOut); err != nil {
+		var apiErr *APIError
+		if googleProof != "" && errors.As(err, &apiErr) && apiErr.Status == http.StatusForbidden && apiErr.Message == "sign in with Google first" {
+			return nil, ErrGoogleSignInExpired
+		}
 		return nil, err
 	}
 

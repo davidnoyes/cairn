@@ -872,3 +872,24 @@ func TestGoogleCallbackSanitizesAPlantedNext(t *testing.T) {
 		t.Fatalf("status %d, Location %q, want 302 to /", rec.Code, rec.Header().Get("Location"))
 	}
 }
+
+// Wherever next points when sign-in starts, the browser lands on this
+// server after Google: an outside address, a scheme, or a path a browser
+// reads as another host all become /.
+func TestGoogleSignInNeverLeavesTheServer(t *testing.T) {
+	for _, next := range []string{"https://evil.example/x", "//evil.example/x", `/\evil.example`, "javascript:alert(1)", "app", ""} {
+		w := newGoogleWorld(t)
+		b := w.browser()
+		w.setClaims("ada@example.com")
+		rec := b.callback(b.start(next))
+		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/" {
+			t.Errorf("next %q: status %d, Location %q, want 302 to /", next, rec.Code, rec.Header().Get("Location"))
+		}
+	}
+	w := newGoogleWorld(t)
+	b := w.browser()
+	w.setClaims("ada@example.com")
+	if loc := b.callback(b.start("/shared/x?y=1")).Header().Get("Location"); loc != "/shared/x?y=1" {
+		t.Errorf("a local next became %q", loc)
+	}
+}

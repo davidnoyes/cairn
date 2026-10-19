@@ -78,7 +78,7 @@ test('passkey: enroll on the Account tab, sign out, unlock with the passkey, and
   await page.goto(`${s.appOrigin}/logout`);
   await page.goto(`${s.appOrigin}/login`);
   await page.locator('#passkey').click();
-  await expect(page.locator('#error')).toHaveText(/passkey sign-in failed|unknown passkey/i, { timeout: 30_000 });
+  await expect(page.locator('#error')).toHaveText(/passkey sign-in failed/, { timeout: 30_000 });
   await expect(page).toHaveURL(/\/login/);
 });
 

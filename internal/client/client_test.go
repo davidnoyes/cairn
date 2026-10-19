@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/aloisdeniel/cairn/internal/e2e"
 )
 
 // authedClient signs up, verifies, and logs in a fresh account, returning a
@@ -148,5 +151,27 @@ func TestGoogleSignInTreatsAMissingConfigAsOff(t *testing.T) {
 		if tc.wantErr && !errors.As(err, &apiErr) {
 			t.Errorf("status %d: err %v is not an APIError", tc.status, err)
 		}
+	}
+}
+
+// The proof cairn login receives lasts two minutes. When the server refuses
+// it, the error says to run cairn login again, not to "sign in with Google
+// first", which the person just did.
+func TestLoginWithGoogleExplainsARefusedProof(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/auth/prelogin":
+			json.NewEncoder(w).Encode(e2e.Params{Alg: "argon2id", Memory: 65536, Time: 3, Threads: 1, Salt: make([]byte, 16)})
+		case "/api/auth/login":
+			w.WriteHeader(http.StatusForbidden)
+			io.WriteString(w, `{"error":"sign in with Google first"}`)
+		default:
+			t.Errorf("unexpected request %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+	_, err := New(srv.URL, "").LoginWithGoogle("ada@example.com", "correct horse battery staple", "proof")
+	if !errors.Is(err, ErrGoogleSignInExpired) {
+		t.Fatalf("err = %v, want ErrGoogleSignInExpired", err)
 	}
 }

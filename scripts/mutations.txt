@@ -2372,7 +2372,8 @@ internal/server/passkeys.go	Origin: s.appOrigin,	Origin: func() string { var o s
 internal/server/passkeys.go	RPID: s.appHost,	RPID: "",	go test ./internal/server -count=1 -run 'TestPasskeySignIn|TestPasskeyFinishRefusals'
 internal/server/passkeys.go	len(userHandle) > 0 &&	false &&	go test ./internal/server -count=1 -run TestPasskeyFinishRefusals
 internal/server/passkeys.go	if u.Disabled {	if false && u.Disabled {	go test ./internal/server -count=1 -run TestPasskeyFinishRefusals
-internal/server/passkeys.go	if s.googleEnabled() && !s.requireProof	if false && !s.requireProof	go test ./internal/server -count=1 -run TestPasskeySignInOnAGoogleServer
+internal/server/passkeys.go	if proof == nil {	if proof == nil { proof = &store.GoogleProof{Email: u.Email} }; if false {	go test ./internal/server -count=1 -run TestPasskeySignInOnAGoogleServer
+internal/server/passkeys.go	if proof.Email != u.Email {	if false {	go test ./internal/server -count=1 -run 'TestPasskeySignInOnAGoogleServer|TestPasskeyForAnotherGoogleAccountSaysSo'
 internal/server/passkeys.go	if !s.requireFreshAuthKey(w, r, req.AuthKey) {	if false && !s.requireFreshAuthKey(w, r, req.AuthKey) {	go test ./internal/server -count=1 -run TestPasskeyEnrollRefusals
 internal/server/passkeys.go	|| webauthn.CheckPublicKey(spki, req.Alg) != nil	|| false	go test ./internal/server -count=1 -run TestPasskeyEnrollRefusals
 internal/server/rotate.go	if err := rt.DeletePasskeys(); err != nil {	if err := error(nil); err != nil {	go test ./internal/server -count=1 -run TestPasskeyIsRemovedByKeyRotation
@@ -2384,3 +2385,4 @@ internal/server/passkeys.go	c.perIP[ip]++	_ = ip	go test ./internal/server -coun
 internal/server/handlers_successor.go	"DELETE /api/me/passkeys/{id}": true,	"DELETE /api/me/passkeys/{id}": true, "POST /api/me/passkeys": true,	go test ./internal/server -count=1 -run TestReleaseAfterFourteenDays
 internal/server/google.go	http.Redirect(w, r, safeNext(st.Next), http.StatusFound)	http.Redirect(w, r, st.Next, http.StatusFound)	go test ./internal/server -count=1 -run TestGoogleCallbackSanitizesAPlantedNext
 internal/client/client.go	errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound	errors.As(err, &apiErr) && apiErr.Status == -1	go test ./internal/client -count=1 -run TestGoogleSignInTreatsAMissingConfigAsOff
+internal/client/account.go	googleProof != "" && errors.As(err, &apiErr) && apiErr.Status == http.StatusForbidden	googleProof != "" && errors.As(err, &apiErr) && apiErr.Status == http.StatusTeapot	go test ./internal/client -count=1 -run TestLoginWithGoogleExplainsARefusedProof

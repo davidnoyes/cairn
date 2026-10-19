@@ -36,6 +36,9 @@ const (
 
 	defaultPasskeyName = "passkey"
 	errPasskeyFailed   = "passkey sign-in failed"
+	// errPasskeyOtherAccount answers a passkey whose owner is not the address
+	// the browser's Google proof names.
+	errPasskeyOtherAccount = "this passkey belongs to another account than the Google Account you signed in with"
 )
 
 // challenges holds the challenges passkey/begin issued, each until it is
@@ -351,9 +354,20 @@ func (s *Server) handlePasskeyFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	proofToken := s.proofCookieToken(r)
-	if s.googleEnabled() && !s.requireProof(w, proofToken, u.Email) {
-		s.signIn.ip.record(ip)
-		return
+	if s.googleEnabled() {
+		proof, err := s.peekProof(proofToken)
+		if err != nil {
+			s.writeStoreError(w, err, "google proof")
+			return
+		}
+		if proof == nil {
+			refuse(http.StatusForbidden, errNeedGoogle)
+			return
+		}
+		if proof.Email != u.Email {
+			refuse(http.StatusForbidden, errPasskeyOtherAccount)
+			return
+		}
 	}
 
 	signCount, err := webauthn.Verify(

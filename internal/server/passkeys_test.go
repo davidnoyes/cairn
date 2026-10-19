@@ -581,7 +581,7 @@ func TestPasskeySignInOnAGoogleServer(t *testing.T) {
 	t.Run("another address's proof", func(t *testing.T) {
 		b := w.browser()
 		b.mustSignIn("grace@example.com")
-		wantError(t, p.signInWith(b, a, credID(1), p.ada.ID), http.StatusForbidden, needGoogle)
+		wantError(t, p.signInWith(b, a, credID(1), p.ada.ID), http.StatusForbidden, errPasskeyOtherAccount)
 		if b.cookie("__Host-cairn_session") != "" {
 			t.Error("a session was issued with another address's proof")
 		}
@@ -726,5 +726,57 @@ func TestPasskeyAndResetWithTheRecoveryCode(t *testing.T) {
 	}
 	if archives, _ := s.store.Archives(u.ID); len(archives) != 0 {
 		t.Errorf("a recovery reset made %d archives", len(archives))
+	}
+}
+
+// A password change and a new recovery code leave MK as it is, so a passkey
+// enrolled before either keeps its sealed copy and still signs in.
+func TestPasskeySurvivesANewRecoveryCodeAndAPasswordChange(t *testing.T) {
+	p := newPasskeyWorld(t)
+	a := webauthntest.New(webauthn.AlgES256)
+	p.enroll(a, credID(1))
+
+	wire := testBundleWire()
+	if rec := p.b.do("PUT", "/api/me/recovery", map[string]any{"authKey": e2e.B64(testAuthKey("pw")), "mkRecovery": wire.MKRecovery}); rec.Code != http.StatusOK {
+		t.Fatalf("new recovery code: %d %s", rec.Code, rec.Body)
+	}
+	if rec := p.b.do("PUT", "/api/me/password", map[string]any{
+		"authKey": e2e.B64(testAuthKey("pw")), "newAuthKey": e2e.B64(testAuthKey("pw2")),
+		"kdf": wire.KDF, "mkPassword": wire.MKPassword,
+	}); rec.Code != http.StatusOK {
+		t.Fatalf("password change: %d %s", rec.Code, rec.Body)
+	}
+	if list, _ := p.s.store.ListPasskeys(p.ada.ID); len(list) != 1 {
+		t.Fatalf("%d passkeys after the changes, want 1", len(list))
+	}
+	rec := p.signInWith(p.browser(), a, credID(1), p.ada.ID)
+	var out passkeyLoginResponse
+	decodeBody(t, rec, &out)
+	if rec.Code != http.StatusOK || out.PasskeyMK != e2e.B64(passkeyMK) {
+		t.Fatalf("passkey sign-in after the changes: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// On a Google server, a passkey that belongs to another account than the one
+// the person signed in to Google with says so, rather than asking them to
+// sign in with Google again.
+func TestPasskeyForAnotherGoogleAccountSaysSo(t *testing.T) {
+	w := newSessionWorld(t)
+	p := &passkeyWorld{googleWorld: w}
+	p.ada = seedAccount(t, w.s, "ada@example.com", "pw", false)
+	p.grace = seedAccount(t, w.s, "grace@example.com", "pw", false)
+	a := webauthntest.New(webauthn.AlgES256)
+	p.b = w.browser()
+	p.b.mustSignIn("ada@example.com")
+	if rec := p.b.do("POST", "/api/auth/login", w.loginBody("ada@example.com", "pw", nil)); rec.Code != http.StatusOK {
+		t.Fatalf("login: %d %s", rec.Code, rec.Body)
+	}
+	p.enroll(a, credID(1))
+
+	b := w.browser()
+	b.mustSignIn("grace@example.com")
+	wantError(t, p.signInWith(b, a, credID(1), p.ada.ID), http.StatusForbidden, errPasskeyOtherAccount)
+	if b.cookie(proofCookieName) == "" {
+		t.Error("the refusal dropped grace's proof")
 	}
 }

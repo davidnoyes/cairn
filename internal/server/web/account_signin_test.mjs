@@ -55,6 +55,10 @@ function fakeServer({ google = null, signupStatus = 202, passkeys = true } = {})
         return json(200, { id: a.id, email: server.current, name: a.name, isAdmin: false });
       case '/api/me/bundle':
         return json(200, a.bundle);
+      case '/api/me/password':
+        if (body.authKey !== a.authKey) return json(401, { error: 'wrong password' });
+        server.accounts.set(server.current, { ...a, authKey: body.newAuthKey, bundle: { ...a.bundle, kdf: body.kdf, mkPassword: body.mkPassword } });
+        return json(200, { ok: true });
       case '/api/me/passkeys':
         if (options.method === 'POST') {
           if (body.authKey !== a.authKey) return json(401, { error: 'wrong password' });
@@ -352,4 +356,20 @@ test('forgotWithGoogle posts no address and returns the reset token', async () =
   assert.equal(req.path, '/api/auth/forgot');
   assert.deepEqual(req.body, {});
   await assert.rejects(account.forgotWithGoogle(makeDeps(fakeServer())), /sign in with Google first/);
+});
+
+test('a passkey enrolled before a password change still opens the same keys', async () => {
+  const { server, deps } = await signedUp();
+  await account.enrollPasskey(deps, { name: 'laptop', password: STRONG });
+  const next = 'a different long passphrase 42';
+  await account.changePassword(deps, { current: STRONG, next, confirm: next });
+
+  const byPasskey = makeDeps(server, deps.credentials);
+  await account.signInWithPasskey(byPasskey);
+  const byPassword = makeDeps(server);
+  await account.signIn(byPassword, { email: 'ada@example.com', password: next });
+  const probe = enc.encode('probe');
+  const [a] = byPasskey.keyStore.saved;
+  const [b] = byPassword.keyStore.saved;
+  assert.deepEqual(await e2e.open(b.mkSeal, ['probe'], await e2e.seal(a.mkSeal, ['probe'], probe)), probe);
 });
