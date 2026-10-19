@@ -2203,13 +2203,17 @@ origin only:
 ```json
 {"manifest": <the signed envelope, or null>,
  "appOrigin": "https://cairn.example.com",
- "contentOrigin": "https://*.example-usercontent.com"}
+ "contentOrigin": "https://*.example-usercontent.com",
+ "google": false, "passkeys": true}
 ```
 
 Only `manifest` is signed. `appOrigin` must be the origin `cairn verify` was
 pointed at, compared in lowercase with any default port dropped.
 `contentOrigin` must have the same scheme and port as `appOrigin`, and a `*`
-label, which the check replaces with a random artifact ID.
+label, which the check replaces with a random artifact ID. `google` and
+`passkeys` are the sign-in mode the account pages render for, so the check
+renders them the same way. They only choose a branch of a signed template, so
+a server that misstates them changes a data attribute, never code.
 
 ### Commands for deploy integrity
 

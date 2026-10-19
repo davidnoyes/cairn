@@ -721,18 +721,45 @@ func mustBundle(t *testing.T) store.Bundle {
 
 func TestAuthConfig(t *testing.T) {
 	w := newGoogleWorld(t)
-	var out map[string]bool
+	var out map[string]any
 	decodeBody(t, w.browser().do("GET", "/api/auth/config", nil), &out)
-	if len(out) != 1 || !out["google"] {
-		t.Errorf("with Google: %v", out)
+	host := strings.TrimPrefix(testPublicURL, "https://")
+	if len(out) != 3 || out["google"] != true || out["passkeys"] != true || out["rpId"] != host {
+		t.Errorf("with Google: %v, want google, passkeys, and rpId %q", out, host)
 	}
 
 	_, ts := testServer(t)
 	c := &testClient{t: t, base: ts.URL}
 	out = nil
 	c.mustDo("GET", "/api/auth/config", nil, &out, http.StatusOK)
-	if v, ok := out["google"]; len(out) != 1 || !ok || v {
+	if v, ok := out["google"]; !ok || v != false {
 		t.Errorf("without Google: %v", out)
+	}
+}
+
+// Without a public URL there is no relying party ID, so passkeys are off:
+// config says so, names no rpId, and enrollment answers 404 rather than
+// storing a passkey that could never sign in.
+func TestAuthConfigWithoutAPublicURL(t *testing.T) {
+	w := newGoogleWorld(t, func(c *Config) { c.GoogleClientID, c.GoogleClientSecret, c.PublicURL = "", "", "" })
+	serve := func(method, path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		w.s.mux.ServeHTTP(rec, req)
+		return rec
+	}
+	var out map[string]any
+	if err := json.Unmarshal(serve("GET", "/api/auth/config").Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if _, named := out["rpId"]; out["passkeys"] != false || named {
+		t.Errorf("config without a public URL: %v", out)
+	}
+	rec := httptest.NewRecorder()
+	w.s.handleCreatePasskey(rec, httptest.NewRequest("POST", "/api/me/passkeys", strings.NewReader("{}")))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("enroll without a public URL: %d %s, want 404", rec.Code, rec.Body)
 	}
 }
 
@@ -819,5 +846,29 @@ func TestGooglePagesCarryTheMode(t *testing.T) {
 		if resp.StatusCode != http.StatusOK || !strings.Contains(page, `data-google=""`) {
 			t.Errorf("%s without Google: %d, want data-google=\"\"", p, resp.StatusCode)
 		}
+	}
+}
+
+// The callback runs next through the safe-next rule again: the oauth cookie
+// is unsigned and scoped to a path, so a sibling host could plant one.
+func TestGoogleCallbackSanitizesAPlantedNext(t *testing.T) {
+	w := newGoogleWorld(t)
+	b := w.browser()
+	state := b.start("/app")
+	c := b.cookies[secureOAuthCookie]
+	raw, err := e2e.UnB64(c.Value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st oauthState
+	if err := json.Unmarshal(raw, &st); err != nil {
+		t.Fatal(err)
+	}
+	st.Next = "//evil.example/steal"
+	raw, _ = json.Marshal(st)
+	c.Value = e2e.B64(raw)
+	rec := b.callback(state)
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/" {
+		t.Fatalf("status %d, Location %q, want 302 to /", rec.Code, rec.Header().Get("Location"))
 	}
 }

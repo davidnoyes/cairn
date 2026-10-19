@@ -159,12 +159,17 @@ func (c *Client) doJSON(method, path string, in, out any) error {
 // Auth. Signup, Login, Logout, password reset, and API key management live
 // in account.go.
 
-// GoogleSignIn reports whether the server asks for Google sign-in.
+// GoogleSignIn reports whether the server asks for Google sign-in. A server
+// from before Google sign-in has no /api/auth/config, and its 404 means no.
 func (c *Client) GoogleSignIn() (bool, error) {
 	var out struct {
 		Google bool `json:"google"`
 	}
 	err := c.doJSON("GET", "/api/auth/config", nil, &out)
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+		return false, nil
+	}
 	return out.Google, err
 }
 

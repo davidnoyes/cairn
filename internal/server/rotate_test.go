@@ -204,9 +204,14 @@ type rotWorld struct {
 	apiBearer string
 }
 
-func newRotWorld(t *testing.T) *rotWorld {
+func newRotWorld(t *testing.T, edit ...func(*Config)) *rotWorld {
 	t.Helper()
-	s, ts := testServer(t)
+	s, ts := newTestServer(t, func(c *Config) {
+		for _, e := range edit {
+			e(c)
+		}
+	})
+	seedAccount(t, s, "admin@example.com", "admin-password", true)
 	w := &rotWorld{s: s, base: ts.URL}
 	w.rot = seedKeyedAccount(t, s, ts.URL, "rot@example.com")
 	w.mem = seedKeyedAccount(t, s, ts.URL, "mem@example.com")

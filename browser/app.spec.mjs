@@ -78,12 +78,12 @@ test('app: the owner lists their artifacts by name, and a viewer finds the share
   }
 });
 
-test('app: Account holds API keys and the successor, and only an admin has the Admin tab, with Users in it', async ({ ownerPage, browser }) => {
+test('app: Account holds API keys, passkeys, and the successor, and only an admin has the Admin tab, with Users in it', async ({ ownerPage, browser }) => {
   const s = loadState();
   await openTab(ownerPage, 'Account');
   await expect(ownerPage.getByRole('tab')).toHaveText(['Artifacts', 'Account', 'Admin']);
   const account = ownerPage.getByRole('tabpanel', { name: 'Account' });
-  await expect(account.getByRole('heading')).toHaveText(['Password', 'Recovery code', 'API keys', 'Your successor', 'Your code', 'Notice address', 'Users who named you']);
+  await expect(account.getByRole('heading')).toHaveText(['Password', 'Recovery code', 'API keys', 'Passkeys', 'Your successor', 'Your code', 'Notice address', 'Users who named you']);
 
   await openTab(ownerPage, 'Admin');
   const admin = ownerPage.getByRole('tabpanel', { name: 'Admin' });

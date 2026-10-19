@@ -39,9 +39,10 @@ type ArchivedKey struct {
 
 // ResetAccount is the "reset without the recovery code" path: it archives
 // the current bundle and every live API key's and passkey's wrapped MK,
-// revokes those keys, deletes the passkeys, archives the nomination of a successor with its wrapped copy and ends
-// any request on it, replaces the bundle and auth hash, deletes the keyring,
-// and bumps token_version — all in one transaction.
+// revokes those keys, deletes the passkeys, archives the nomination of a
+// successor with its wrapped copy and ends any request on it, replaces the
+// bundle and auth hash, deletes the keyring, and bumps token_version — all in
+// one transaction.
 func (s *Store) ResetAccount(userID, authHash string, b Bundle, at time.Time) error {
 	t := formatTime(at)
 	tx, err := s.db.Begin()

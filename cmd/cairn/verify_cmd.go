@@ -87,7 +87,7 @@ func runVerify(args []string) error {
 		return fmt.Errorf("the server serves release %s, wanted %s", m.Version, *version)
 	}
 
-	t := release.Target{AppOrigin: doc.AppOrigin, ContentOrigin: doc.ContentOrigin, Client: client}
+	t := release.Target{AppOrigin: doc.AppOrigin, ContentOrigin: doc.ContentOrigin, Google: doc.Google, Passkeys: doc.Passkeys, Client: client}
 	// The login's key goes only to the server it was made for.
 	if sameOrigin(loginHost, doc.AppOrigin) && fullKey != "" {
 		if k, err := e2e.ParseAPIKey(fullKey); err == nil {

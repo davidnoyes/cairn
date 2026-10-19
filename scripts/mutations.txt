@@ -2366,8 +2366,8 @@ internal/server/cli_auth.go	cliProofTTL = 2 * time.Minute	cliProofTTL = 10 * tim
 cmd/cairn/google_login.go	subtle.ConstantTimeCompare([]byte(q.Get("state")), []byte(state)) != 1	subtle.ConstantTimeCompare([]byte(state), []byte(state)) != 1	go test ./cmd/cairn -count=1 -run LoginWithGoogle
 cmd/cairn/client_cmds.go	e2e.NormalizeEmail(*email) != e2e.NormalizeEmail(h.Email)	false	go test ./cmd/cairn -count=1 -run LoginWithGoogle
 internal/server/web/cli.mjs	redirect.startsWith(`http://127.0.0.1:${port}/callback?`)	redirect.startsWith('http://')	node --test internal/server/web/cli_test.mjs
-internal/server/passkeys.go	delete(c.m, token)	_ = token	go test ./internal/server -count=1 -run 'TestPasskeyFinishRefusals|TestPasskeyFinishSpendsTheChallengeOnRefusal'
-internal/server/passkeys.go	return ok && c.clk.Now().Before(exp)	return ok && !exp.IsZero()	go test ./internal/server -count=1 -run 'TestPasskeyFinishRefusals|TestPasskeyChallengeLimits'
+internal/server/passkeys.go	c.remove(token, ch) // spent	_ = ch // spent	go test ./internal/server -count=1 -run 'TestPasskeyFinishRefusals|TestPasskeyFinishSpendsTheChallengeOnRefusal'
+internal/server/passkeys.go	return ok && c.clk.Now().Before(ch.exp)	return ok && !ch.exp.IsZero()	go test ./internal/server -count=1 -run 'TestPasskeyFinishRefusals|TestPasskeyChallengeLimits'
 internal/server/passkeys.go	Origin: s.appOrigin,	Origin: func() string { var o struct{ Origin string }; json.Unmarshal(clientData, &o); return o.Origin }(),	go test ./internal/server -count=1 -run TestPasskeyFinishRefusals
 internal/server/passkeys.go	RPID: s.appHost,	RPID: "",	go test ./internal/server -count=1 -run 'TestPasskeySignIn|TestPasskeyFinishRefusals'
 internal/server/passkeys.go	len(userHandle) > 0 &&	false &&	go test ./internal/server -count=1 -run TestPasskeyFinishRefusals
@@ -2379,3 +2379,8 @@ internal/server/rotate.go	if err := rt.DeletePasskeys(); err != nil {	if err := 
 internal/store/rotation.go	DELETE FROM passkeys WHERE user_id = ?	DELETE FROM passkeys WHERE user_id = ? AND 1 = 0	go test ./internal/server -count=1 -run TestPasskeyIsRemovedByKeyRotation
 internal/store/archives.go	SELECT id, mk FROM passkeys WHERE user_id = ?	SELECT id, mk FROM passkeys WHERE user_id = ? AND 1 = 0	go test ./internal/store -count=1 -run TestResetAccountArchivesPasskeys
 internal/store/archives.go	DELETE FROM passkeys WHERE user_id = ?	DELETE FROM passkeys WHERE user_id = ? AND 1 = 0	go test ./internal/store -count=1 -run TestResetAccountArchivesPasskeys
+internal/server/passkeys.go	if c.perIP[ip] >= maxChallengesPerIP {	if false {	go test ./internal/server -count=1 -run TestPasskeyBeginLimitsEachAddress
+internal/server/passkeys.go	c.perIP[ip]++	_ = ip	go test ./internal/server -count=1 -run TestPasskeyBeginLimitsEachAddress
+internal/server/handlers_successor.go	"DELETE /api/me/passkeys/{id}": true,	"DELETE /api/me/passkeys/{id}": true, "POST /api/me/passkeys": true,	go test ./internal/server -count=1 -run TestReleaseAfterFourteenDays
+internal/server/google.go	http.Redirect(w, r, safeNext(st.Next), http.StatusFound)	http.Redirect(w, r, st.Next, http.StatusFound)	go test ./internal/server -count=1 -run TestGoogleCallbackSanitizesAPlantedNext
+internal/client/client.go	errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound	errors.As(err, &apiErr) && apiErr.Status == -1	go test ./internal/client -count=1 -run TestGoogleSignInTreatsAMissingConfigAsOff

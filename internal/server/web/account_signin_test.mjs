@@ -31,7 +31,7 @@ const json = (status, body) => ({ ok: status >= 200 && status < 300, status, jso
 // fakeServer keeps one account table and the passkeys enrolled for it. The
 // passkey endpoints answer as the handlers do once the assertion checks out:
 // the server's own signature checks are Go's to test, not this file's.
-function fakeServer({ google = null, signupStatus = 202 } = {}) {
+function fakeServer({ google = null, signupStatus = 202, passkeys = true } = {}) {
   const server = { log: [], accounts: new Map(), passkeys: new Map(), google };
   server.fetch = async (path, options = {}) => {
     const body = options.body ? JSON.parse(options.body) : null;
@@ -75,6 +75,8 @@ function fakeServer({ google = null, signupStatus = 202 } = {}) {
           passkeyMk: server.tamperPasskeyMk ? acct.bundle.mkRecovery : p.mk,
         });
       }
+      case '/api/auth/config':
+        return json(200, passkeys ? { google: !!server.google, passkeys: true, rpId: 'cairn.test' } : { google: !!server.google, passkeys: false });
       case '/api/auth/google':
         return server.google ? json(200, server.google) : json(401, { error: 'sign in with Google first' });
       case '/api/auth/forgot':
@@ -165,6 +167,23 @@ test('enrollPasskey asks the authenticator for a discoverable, verified credenti
   assert.equal(new TextDecoder().decode(create.user.id), server.accounts.get('ada@example.com').id);
   assert.equal(create.user.name, 'ada@example.com');
   assert.deepEqual(create.pubKeyCredParams.map((p) => p.alg), [-8, -7, -257]);
+  // The relying party is the one the server signs in under, not whatever
+  // host the page happens to be on.
+  assert.deepEqual(create.rp, { id: 'cairn.test', name: 'Cairn' });
+});
+
+test('enrollPasskey refuses on a server where passkeys cannot sign in, before the authenticator', async () => {
+  const server = fakeServer({ passkeys: false });
+  const deps = makeDeps(server);
+  await account.signUp(deps, { email: 'ada@example.com', name: 'Ada', password: STRONG, confirm: STRONG });
+  await assert.rejects(account.enrollPasskey(deps, { name: 'key', password: STRONG }), /not set up for passkeys/);
+  assert.equal(deps.credentials.calls.length, 0);
+  assert.equal(server.passkeys.size, 0);
+});
+
+test('passkeysAvailable reads the server config', async () => {
+  assert.equal(await account.passkeysAvailable(makeDeps(fakeServer())), true);
+  assert.equal(await account.passkeysAvailable(makeDeps(fakeServer({ passkeys: false }))), false);
 });
 
 test('enrollPasskey seals the same MK the password opens, under passkeyKek, and sends a fresh authKey', async () => {

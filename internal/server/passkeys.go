@@ -25,6 +25,9 @@ const (
 	// maxChallenges bounds the challenges held in memory, since begin is
 	// open to anyone.
 	maxChallenges = 10000
+	// maxChallengesPerIP bounds one address's share of them, so a single
+	// client cannot fill the store and lock every other sign-in out.
+	maxChallengesPerIP = 10
 
 	// A credential ID is 16 to 1023 bytes: the WebAuthn ceiling, with a floor
 	// that keeps an ID from being guessed.
@@ -38,18 +41,31 @@ const (
 // challenges holds the challenges passkey/begin issued, each until it is
 // spent or expires. It lives in memory: a restart only makes a page ask again.
 type challenges struct {
-	clk clock.Clock
-	mu  sync.Mutex
-	m   map[string]time.Time // challenge, base64url, to its expiry
+	clk   clock.Clock
+	mu    sync.Mutex
+	m     map[string]challenge // keyed by the challenge, base64url
+	perIP map[string]int       // outstanding challenges for each address
+}
+
+// challenge is one issued challenge: when it expires, and the address that
+// asked for it.
+type challenge struct {
+	exp time.Time
+	ip  string
 }
 
 func newChallenges(clk clock.Clock) *challenges {
-	return &challenges{clk: clk, m: make(map[string]time.Time)}
+	return &challenges{clk: clk, m: make(map[string]challenge), perIP: make(map[string]int)}
 }
 
-// issue returns a new challenge, base64url, or false when maxChallenges are
-// outstanding even after the expired ones are dropped.
-func (c *challenges) issue() (string, bool, error) {
+// errTooManyFromIP is issue's refusal of an address that already holds
+// maxChallengesPerIP challenges.
+var errTooManyFromIP = errors.New("too many passkey sign-ins in progress from this address")
+
+// issue returns a new challenge for ip, base64url. It refuses with
+// errTooManyFromIP when ip holds maxChallengesPerIP, and with false when
+// maxChallenges are outstanding, in each case after expired ones are dropped.
+func (c *challenges) issue(ip string) (string, bool, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return "", false, err
@@ -58,18 +74,36 @@ func (c *challenges) issue() (string, bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := c.clk.Now()
+	if len(c.m) >= maxChallenges || c.perIP[ip] >= maxChallengesPerIP {
+		c.sweep(now)
+	}
+	if c.perIP[ip] >= maxChallengesPerIP {
+		return "", false, errTooManyFromIP
+	}
 	if len(c.m) >= maxChallenges {
-		for k, exp := range c.m {
-			if !now.Before(exp) {
-				delete(c.m, k)
-			}
-		}
-		if len(c.m) >= maxChallenges {
-			return "", false, nil
+		return "", false, nil
+	}
+	c.m[token] = challenge{exp: now.Add(challengeTTL), ip: ip}
+	c.perIP[ip]++
+	return token, true, nil
+}
+
+// sweep drops expired challenges. The caller holds c.mu.
+func (c *challenges) sweep(now time.Time) {
+	for k, ch := range c.m {
+		if !now.Before(ch.exp) {
+			c.remove(k, ch)
 		}
 	}
-	c.m[token] = now.Add(challengeTTL)
-	return token, true, nil
+}
+
+// remove forgets one challenge and frees its address's slot. The caller
+// holds c.mu.
+func (c *challenges) remove(token string, ch challenge) {
+	delete(c.m, token)
+	if c.perIP[ch.ip]--; c.perIP[ch.ip] <= 0 {
+		delete(c.perIP, ch.ip)
+	}
 }
 
 // consume spends a challenge, whether or not it has expired, and reports
@@ -77,9 +111,11 @@ func (c *challenges) issue() (string, bool, error) {
 func (c *challenges) consume(token string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	exp, ok := c.m[token]
-	delete(c.m, token)
-	return ok && c.clk.Now().Before(exp)
+	ch, ok := c.m[token]
+	if ok {
+		c.remove(token, ch) // spent, whatever the outcome
+	}
+	return ok && c.clk.Now().Before(ch.exp)
 }
 
 // passkeysEnabled reports whether passkeys can work: the relying party ID and
@@ -109,6 +145,10 @@ type createPasskeyResponse struct {
 // are the proof. The public key must fit its algorithm, so a passkey that
 // could never sign in is refused here.
 func (s *Server) handleCreatePasskey(w http.ResponseWriter, r *http.Request) {
+	if !s.passkeysEnabled() {
+		http.NotFound(w, r)
+		return
+	}
 	u := requestUser(r)
 	var req createPasskeyRequest
 	if !readJSON(w, r, &req) {
@@ -203,7 +243,11 @@ func (s *Server) handlePasskeyBegin(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	challenge, ok, err := s.passkeyChallenges.issue()
+	challenge, ok, err := s.passkeyChallenges.issue(clientIP(r))
+	if errors.Is(err, errTooManyFromIP) {
+		writeRateLimited(w, challengeTTL)
+		return
+	}
 	if err != nil {
 		s.writeStoreError(w, err, "challenge")
 		return

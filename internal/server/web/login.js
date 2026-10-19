@@ -61,7 +61,9 @@ if (deps) {
       location.href = next;
     });
     const passkey = $('passkey');
-    if (deps.credentials && globalThis.PublicKeyCredential) {
+    if (data.passkeys === '1' && deps.credentials && globalThis.PublicKeyCredential) {
+      // After Google, the passkey only unlocks the keys: Google said who.
+      if (data.google === '1') passkey.textContent = 'Unlock with a passkey';
       passkey.hidden = false;
       passkey.addEventListener('click', async () => {
         errorEl.hidden = true;

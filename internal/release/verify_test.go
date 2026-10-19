@@ -36,21 +36,25 @@ type tamper struct {
 
 // startServer runs a real server on a loopback port with a localhost content
 // domain, optionally changing one response on the way out.
-func startServer(t *testing.T, change *tamper) string {
+func startServer(t *testing.T, change *tamper, edit ...func(*server.Config)) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	origin := "http://127.0.0.1:" + strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
-	s, err := server.New(server.Config{
+	cfg := server.Config{
 		DataDir:    t.TempDir(),
 		PublicURL:  origin,
 		AdminEmail: "admin@example.com",
 		TokenTTL:   time.Hour,
 		Mail:       &mail.Capture{},
 		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-	})
+	}
+	for _, e := range edit {
+		e(&cfg)
+	}
+	s, err := server.New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +118,7 @@ func target(t *testing.T, origin string) release.Target {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return release.Target{AppOrigin: doc.AppOrigin, ContentOrigin: doc.ContentOrigin, Client: client}
+	return release.Target{AppOrigin: doc.AppOrigin, ContentOrigin: doc.ContentOrigin, Google: doc.Google, Passkeys: doc.Passkeys, Client: client}
 }
 
 // byStatus groups the results' URLs by status.
@@ -144,6 +148,24 @@ func TestCheckPassesAgainstAnUnchangedServer(t *testing.T) {
 	}
 	if skipped := got[release.StatusSkipped]; len(skipped) != 1 || !strings.HasSuffix(skipped[0], "/app") {
 		t.Errorf("skipped = %v, want only /app with no API key", skipped)
+	}
+}
+
+// A server with Google sign-in renders its account pages for that mode, and
+// says so in its release document, so they still match the manifest.
+func TestCheckPassesAgainstAGoogleServer(t *testing.T) {
+	origin := startServer(t, nil, func(c *server.Config) {
+		c.GoogleClientID, c.GoogleClientSecret = "client", "secret"
+	})
+	tg := target(t, origin)
+	if !tg.Google || !tg.Passkeys {
+		t.Fatalf("target = %+v, want Google and passkeys on", tg)
+	}
+	m, _, _ := signedManifest(t)
+	for _, r := range release.Check(context.Background(), tg, m) {
+		if r.Status == release.StatusChanged || r.Status == release.StatusFailed {
+			t.Errorf("%s %s: %s", r.Status, r.URL, r.Detail)
+		}
 	}
 }
 

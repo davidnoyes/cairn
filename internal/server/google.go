@@ -192,7 +192,9 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.setProofCookie(w, token)
-	http.Redirect(w, r, st.Next, http.StatusFound)
+	// The oauth cookie is unsigned, so next goes through the safe-next rule
+	// again rather than being trusted as handleGoogleStart wrote it.
+	http.Redirect(w, r, safeNext(st.Next), http.StatusFound)
 }
 
 // googleClaims are the ID token claims the server checks.
@@ -388,9 +390,15 @@ func (s *Server) useProof(w http.ResponseWriter, token string) bool {
 }
 
 // handleAuthConfig tells clients, the command-line tool among them, whether
-// the server asks for Google sign-in.
+// the server asks for Google sign-in, and whether passkeys work here and
+// under which relying party ID, so a page never enrolls a passkey that could
+// not sign in.
 func (s *Server) handleAuthConfig(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]bool{"google": s.googleEnabled()})
+	out := map[string]any{"google": s.googleEnabled(), "passkeys": s.passkeysEnabled()}
+	if s.passkeysEnabled() {
+		out["rpId"] = s.appHost
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // handleGoogleProof tells a page whose address and name the proof cookie

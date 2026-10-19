@@ -41,6 +41,11 @@ type Document struct {
 	Manifest      json.RawMessage `json:"manifest"`
 	AppOrigin     string          `json:"appOrigin"`
 	ContentOrigin string          `json:"contentOrigin"`
+	// Google and Passkeys are the sign-in mode the account pages render for.
+	// They only pick which branch of a signed template to compare, so a
+	// server that misstates them can change a data attribute, never code.
+	Google   bool `json:"google"`
+	Passkeys bool `json:"passkeys"`
 }
 
 // Target is the server a check runs against.
@@ -51,6 +56,8 @@ type Target struct {
 	Client        *http.Client
 	// Bearer, when set, is sent for the signed-in home page alone.
 	Bearer string
+	// Google and Passkeys are the server's sign-in mode, from its Document.
+	Google, Passkeys bool
 }
 
 // Result is the outcome of checking one URL.
@@ -210,10 +217,10 @@ func Check(ctx context.Context, t Target, m *Manifest) []Result {
 		return map[string]any{"ID": id, "Version": "", "Path": "/", "Mode": mode, "ContentOrigin": contentOrigin, "User": nil}
 	}
 	pages := []page{
-		{OriginApp, "/login", "login.html", map[string]any{"Next": "/"}, false},
-		{OriginApp, "/signup", "signup.html", nil, false},
+		{OriginApp, "/login", "login.html", map[string]any{"Next": "/", "Google": t.Google, "Passkeys": t.Passkeys, "Error": ""}, false},
+		{OriginApp, "/signup", "signup.html", map[string]any{"Google": t.Google}, false},
 		{OriginApp, "/verify", "verify.html", nil, false},
-		{OriginApp, "/forgot", "forgot.html", nil, false},
+		{OriginApp, "/forgot", "forgot.html", map[string]any{"Google": t.Google}, false},
 		{OriginApp, "/reset", "reset.html", nil, false},
 		{OriginApp, "/refuse", "refuse.html", nil, false},
 		{OriginApp, "/app", "app.html", nil, true},

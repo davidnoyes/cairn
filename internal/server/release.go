@@ -76,5 +76,7 @@ func (s *Server) handleWellKnownRelease(w http.ResponseWriter, r *http.Request) 
 		"manifest":      manifest,
 		"appOrigin":     s.appOrigin,
 		"contentOrigin": s.contentOrigin("*"),
+		"google":        s.googleEnabled(),
+		"passkeys":      s.passkeysEnabled(),
 	})
 }

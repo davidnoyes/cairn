@@ -3,7 +3,7 @@
 // element with createElement and textContent: the app CSP's Trusted Types
 // rule refuses a string assigned to innerHTML. It never opens a native
 // dialog: a destructive action asks again in its own button.
-import { changePassword, createApiKey, enrollPasskey, listPasskeys, newRecoveryCode, removePasskey, signOut } from './account.mjs';
+import { changePassword, createApiKey, enrollPasskey, listPasskeys, newRecoveryCode, passkeysAvailable, removePasskey, signOut } from './account.mjs';
 import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { describeArtifact } from './meta.mjs';
 import { KeyChangedError, members, pin, publicLinkFor, setPublic, share, unshare } from './sharing.mjs';
@@ -451,7 +451,11 @@ $('key-form').addEventListener('submit', async (event) => {
 });
 
 // -------------------------------------------------------------- passkeys
+// loadPasskeys shows the section only on a server where a passkey can sign
+// in: one with a public URL.
 async function loadPasskeys() {
+  if (!(await passkeysAvailable(deps))) return;
+  $('passkey-section').hidden = false;
   const passkeys = await listPasskeys(deps);
   $('passkeys').replaceChildren(...passkeys.map((p) => {
     const tr = el('tr');

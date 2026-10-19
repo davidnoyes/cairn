@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -451,30 +452,30 @@ func TestPasskeyFinishFailuresBlockTheAddress(t *testing.T) {
 func TestPasskeyChallengeLimits(t *testing.T) {
 	clk := newGoogleWorld(t).clk
 	c := newChallenges(clk)
-	first, ok, err := c.issue()
+	first, ok, err := c.issue("ip-0")
 	if !ok || err != nil {
 		t.Fatal("first issue refused")
 	}
 	for i := 1; i < maxChallenges; i++ {
-		if _, ok, _ := c.issue(); !ok {
+		if _, ok, _ := c.issue(fmt.Sprint("ip-", i)); !ok {
 			t.Fatalf("issue %d refused, want up to %d", i, maxChallenges)
 		}
 	}
-	if _, ok, _ := c.issue(); ok {
+	if _, ok, _ := c.issue("one more"); ok {
 		t.Fatal("issued past the limit")
 	}
 	if !c.consume(first) {
 		t.Fatal("a spent slot did not free")
 	}
-	if _, ok, _ := c.issue(); !ok {
+	if _, ok, _ := c.issue("another"); !ok {
 		t.Fatal("no room after a challenge was spent")
 	}
-	if _, ok, _ := c.issue(); ok {
+	if _, ok, _ := c.issue("and another"); ok {
 		t.Fatal("issued past the limit again")
 	}
 	// Expired challenges are dropped to make room.
 	clk.Advance(challengeTTL + time.Second)
-	if _, ok, _ := c.issue(); !ok {
+	if _, ok, _ := c.issue("late"); !ok {
 		t.Fatal("expired challenges did not make room")
 	}
 	if len(c.m) != 1 {
@@ -482,10 +483,47 @@ func TestPasskeyChallengeLimits(t *testing.T) {
 	}
 }
 
+// One address may hold only maxChallengesPerIP challenges at once, so a
+// single client cannot fill the store and lock everyone else out. Spending
+// one, or letting it expire, frees its slot.
+func TestPasskeyBeginLimitsEachAddress(t *testing.T) {
+	p := newPasskeyWorld(t)
+	var spent string
+	for i := 0; i < maxChallengesPerIP; i++ {
+		rec := p.b.do("POST", "/api/auth/passkey/begin", map[string]string{})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("begin %d: %d %s", i, rec.Code, rec.Body)
+		}
+		var out struct{ Challenge string }
+		json.Unmarshal(rec.Body.Bytes(), &out)
+		spent = out.Challenge
+	}
+	rec := p.b.do("POST", "/api/auth/passkey/begin", map[string]string{})
+	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("begin past the cap: %d %s, want 429 with Retry-After", rec.Code, rec.Body)
+	}
+	// Another address is unaffected.
+	if _, ok, _ := p.s.passkeyChallenges.issue("198.51.100.9"); !ok {
+		t.Fatal("another address was refused")
+	}
+	if !p.s.passkeyChallenges.consume(spent) {
+		t.Fatal("could not spend a challenge")
+	}
+	if rec := p.b.do("POST", "/api/auth/passkey/begin", map[string]string{}); rec.Code != http.StatusOK {
+		t.Fatalf("after spending one: %d, want 200", rec.Code)
+	}
+	p.clk.Advance(challengeTTL + time.Second)
+	for i := 0; i < maxChallengesPerIP; i++ {
+		if rec := p.b.do("POST", "/api/auth/passkey/begin", map[string]string{}); rec.Code != http.StatusOK {
+			t.Fatalf("after expiry, begin %d: %d, want 200", i, rec.Code)
+		}
+	}
+}
+
 func TestPasskeyBeginFullAnswers503(t *testing.T) {
 	p := newPasskeyWorld(t)
 	for i := 0; i < maxChallenges; i++ {
-		if _, ok, _ := p.s.passkeyChallenges.issue(); !ok {
+		if _, ok, _ := p.s.passkeyChallenges.issue(fmt.Sprint("ip-", i)); !ok {
 			t.Fatal("could not fill")
 		}
 	}
@@ -582,8 +620,19 @@ func TestPasskeySignInOnAGoogleServer(t *testing.T) {
 	})
 }
 
+// passkeyServer is testServer with a public URL, which passkeys need for
+// their relying party ID.
+func passkeyServer(t *testing.T) (*Server, *httptest.Server) {
+	t.Helper()
+	s, ts := newTestServer(t, withPasskeyURL)
+	seedAccount(t, s, "admin@example.com", "admin-password", true)
+	return s, ts
+}
+
+func withPasskeyURL(c *Config) { c.PublicURL = "http://localhost:1" }
+
 func TestPasskeyIsRemovedByKeyRotation(t *testing.T) {
-	w := newRotWorld(t)
+	w := newRotWorld(t, withPasskeyURL)
 	a := webauthntest.New(webauthn.AlgES256)
 	w.rot.mustDo("POST", "/api/me/passkeys", enrollBody(a, credID(1), w.rot.email+"-password"), nil, http.StatusCreated)
 	if list, _ := w.s.store.ListPasskeys(w.rot.id); len(list) != 1 {
@@ -597,7 +646,7 @@ func TestPasskeyIsRemovedByKeyRotation(t *testing.T) {
 }
 
 func TestPasskeyAndAccountDeletion(t *testing.T) {
-	s, ts := testServer(t)
+	s, ts := passkeyServer(t)
 	u := seedAccount(t, s, "ada@example.com", "pw", false)
 	c := &testClient{t: t, base: ts.URL}
 	loginAgain(t, c, "ada@example.com", "pw")
@@ -610,7 +659,7 @@ func TestPasskeyAndAccountDeletion(t *testing.T) {
 }
 
 func TestPasskeyAndResetWithoutTheRecoveryCode(t *testing.T) {
-	s, ts := testServer(t)
+	s, ts := passkeyServer(t)
 	seedAccount(t, s, "ada@example.com", "old-pw", false)
 	c := &testClient{t: t, base: ts.URL}
 	loginAgain(t, c, "ada@example.com", "old-pw")
@@ -641,7 +690,7 @@ func TestPasskeyAndResetWithoutTheRecoveryCode(t *testing.T) {
 }
 
 func TestPasskeyAndResetWithTheRecoveryCode(t *testing.T) {
-	s, ts := testServer(t)
+	s, ts := passkeyServer(t)
 	w, seed, _ := signedBundleWire(t)
 	bundle, err := decodeBundle(w)
 	if err != nil {

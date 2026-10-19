@@ -683,6 +683,8 @@ func TestReleaseAfterFourteenDays(t *testing.T) {
 		{"DELETE", "/api/me/successor", removeBody(t, w.u, w.sc, 2)},
 		{"PUT", "/api/me/successor", nominateBody(t, w.u, w.other, 2)},
 		{"DELETE", "/api/me/successor/request", nil},
+		// A passkey enrolled now would seal the MK that rotation replaces.
+		{"POST", "/api/me/passkeys", map[string]any{"authKey": authKeyOf(w.u)}},
 	} {
 		code, out := jsonOf(w.u.testClient, req.method, req.path, req.body)
 		msg, _ := out["error"].(string)

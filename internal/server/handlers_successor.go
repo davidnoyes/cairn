@@ -33,14 +33,14 @@ const (
 
 // mustRotateExempt are the writes a user whose successor was released may
 // still make, as registered patterns: rotating keys, signing out, creating
-// and revoking API keys, enrolling and removing passkeys, and asking for a
-// content token.
+// and revoking API keys, removing passkeys, and asking for a content token.
+// Enrolling a passkey is not among them: it would seal the MK that rotation
+// is about to replace.
 var mustRotateExempt = map[string]bool{
 	"POST /api/me/rotate":          true,
 	"POST /api/auth/logout":        true,
 	"POST /api/keys":               true,
 	"DELETE /api/keys/{id}":        true,
-	"POST /api/me/passkeys":        true,
 	"DELETE /api/me/passkeys/{id}": true,
 	// A content token is a POST that only reads.
 	"POST /api/artifacts/{id}/content-token": true,

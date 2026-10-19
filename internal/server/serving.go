@@ -152,9 +152,10 @@ func (s *Server) renderLogin(w http.ResponseWriter, status int, next, msg string
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
 	if err := s.templates().ExecuteTemplate(w, "login.html", map[string]any{
-		"Next":   safeNext(next),
-		"Google": s.googleEnabled(),
-		"Error":  msg,
+		"Next":     safeNext(next),
+		"Google":   s.googleEnabled(),
+		"Passkeys": s.passkeysEnabled(),
+		"Error":    msg,
 	}); err != nil {
 		s.log.Error("render login", "err", err)
 	}

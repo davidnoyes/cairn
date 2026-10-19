@@ -2,6 +2,9 @@ package client
 
 import (
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -111,5 +114,39 @@ func TestResolveArtifactNotFound(t *testing.T) {
 	c := authedClient(t)
 	if _, err := c.ResolveArtifact("nope"); !errors.Is(err, ErrNoArtifact) {
 		t.Fatalf("ResolveArtifact(nope) = %v, want ErrNoArtifact", err)
+	}
+}
+
+// A server from before Google sign-in has no /api/auth/config. Its 404 means
+// no Google, so login against it still asks for the password as before; any
+// other failure is still an error.
+func TestGoogleSignInTreatsAMissingConfigAsOff(t *testing.T) {
+	for _, tc := range []struct {
+		status  int
+		body    string
+		want    bool
+		wantErr bool
+	}{
+		{http.StatusNotFound, `404 page not found`, false, false},
+		{http.StatusOK, `{"google":true}`, true, false},
+		{http.StatusOK, `{"google":false}`, false, false},
+		{http.StatusInternalServerError, `{"error":"boom"}`, false, true},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/auth/config" {
+				t.Errorf("unexpected request %s", r.URL.Path)
+			}
+			w.WriteHeader(tc.status)
+			io.WriteString(w, tc.body)
+		}))
+		got, err := New(srv.URL, "").GoogleSignIn()
+		srv.Close()
+		if got != tc.want || (err != nil) != tc.wantErr {
+			t.Errorf("status %d: got %v, err %v; want %v, error %v", tc.status, got, err, tc.want, tc.wantErr)
+		}
+		var apiErr *APIError
+		if tc.wantErr && !errors.As(err, &apiErr) {
+			t.Errorf("status %d: err %v is not an APIError", tc.status, err)
+		}
 	}
 }

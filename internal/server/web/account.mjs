@@ -286,6 +286,19 @@ export async function signInWithPasskey(deps) {
   }
 }
 
+// passkeyConfig asks the server whether passkeys can sign in here, and under
+// which relying party ID. Without a public URL they cannot.
+async function passkeyConfig(deps) {
+  const config = await send(deps, 'GET', '/api/auth/config');
+  return { available: config.passkeys === true, rpId: config.rpId };
+}
+
+// passkeysAvailable reports whether the server can sign anyone in with a
+// passkey, so a page shows passkey controls only where they work.
+export async function passkeysAvailable(deps) {
+  return (await passkeyConfig(deps)).available;
+}
+
 // enrollPasskey adds a passkey that can unlock the account. It needs MK, so
 // it asks for the password first, before touching the authenticator. The
 // credential must support PRF; one that does not is refused and nothing is
@@ -293,13 +306,15 @@ export async function signInWithPasskey(deps) {
 // output then comes from one assertion with the new credential.
 export async function enrollPasskey(deps, { name, password }) {
   name = (name ?? '').trim() || 'passkey';
+  const { available, rpId } = await passkeyConfig(deps);
+  if (!available) throw new Error('This server is not set up for passkeys: it needs a public URL.');
   const { me, authKey, mk } = await unlock(deps, password);
   let prf;
   try {
     const existing = await send(deps, 'GET', '/api/me/passkeys');
     const cred = await deps.credentials.create({
       publicKey: {
-        rp: { name: 'Cairn' },
+        rp: { id: rpId, name: 'Cairn' },
         user: { id: enc.encode(me.id), name: me.email, displayName: me.name || me.email },
         challenge: randomBytes(32),
         pubKeyCredParams: PASSKEY_ALGS.map((alg) => ({ type: 'public-key', alg })),
