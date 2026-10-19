@@ -198,11 +198,22 @@ async function openGroup(deps, caller, id, acceptNewKey) {
 // verifyGroup reads a group and accepts its chain, as a member list's client
 // does before it relies on the group: it returns {chain, keyring}, and throws
 // what acceptGroup does for a chain that does not verify. A group the server no
-// longer holds is an ApiError with status 404. Mirrors VerifyGroup.
-export async function verifyGroup(deps, id, { acceptNewKey = false } = {}) {
+// longer holds is an ApiError with status 404. A signer whose key changed is a
+// KeyChangedError unless acceptSignerKey, which accepts nothing else. Mirrors
+// VerifyGroup.
+export async function verifyGroup(deps, id, { acceptSignerKey = false } = {}) {
   const caller = await unlock(deps);
-  const { chain, keyring } = await openGroup(deps, caller, id, acceptNewKey);
+  const { chain, keyring } = await openGroup(deps, caller, id, acceptSignerKey);
   return { chain, keyring };
+}
+
+// verifiedGroup is what a share form shows of a group it is about to share
+// with: {name, members} from the chain verifyGroup accepted, not from the list
+// the server serves, whose names and counts are its own word. It throws what
+// verifyGroup does.
+export async function verifiedGroup(deps, id) {
+  const { chain } = await verifyGroup(deps, id);
+  return { name: chain.latest.name, members: chain.latest.members.length };
 }
 
 // callerRole is the role the latest record lists the caller under, or ''.

@@ -3239,7 +3239,7 @@ internal/server/web/sharing.mjs	if (role !== 'viewer' && role !== 'editor') thro
 internal/server/web/sharing.mjs	if (at >= 0) next.groups[at].role = role;	if (false) next.groups[at].role = role;	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/sharing.mjs	.sort(byGroup);	;	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/sharing.mjs	JSON.stringify(latest.groups ?? []) === JSON.stringify(next.groups)	true	node --test internal/server/web/sharing_groups_test.mjs
-internal/server/web/sharing.mjs	await approveGroupMembers(deps, artifactId, vg.chain, acceptNewKey, res);	void 0;	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing.mjs	await approveGroupMembers(deps, artifactId, vg.chain, res);	void 0;	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/sharing.mjs	e.state === PENDING_NEW);	true);	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/sharing.mjs	if (u.fp !== m.fp) {	if (false) {	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/sharing.mjs	if (fatalFetch(refused)) throw refused;	if (false) throw refused;	node --test internal/server/web/sharing_groups_test.mjs
@@ -3275,8 +3275,30 @@ internal/server/web/sharing.mjs	const res = { canApprove: mayApprove(caller, lat
 internal/server/web/sharing.mjs	if (gs.length === 0) return [];	if (false) return [];	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/sharing.mjs	if (!res.canApprove) return res;	if (false) return res;	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/sharing.mjs	everyone: latest.team !== 'none' }	everyone: true }	node --test internal/server/web/sharing_groups_test.mjs
-internal/server/web/sharing.mjs	if (p.state === PENDING_LEFT) res.left.push(row(p));	if (false) res.left.push(row(p));	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing.mjs	if (p.state === PENDING_LEFT && sees) res.left.push(row(p));	if (false) res.left.push(row(p));	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/sharing.mjs	return list.filter((p) => p.state === PENDING_NEW).length;	return list.length;	node --test internal/server/web/sharing_groups_test.mjs
-internal/server/web/groups.mjs	const { chain, keyring } = await openGroup(deps, caller, id, acceptNewKey);	const { chain, keyring } = await openGroup(deps, caller, id, true);	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/groups.mjs	const { chain, keyring } = await openGroup(deps, caller, id, acceptSignerKey);	const { chain, keyring } = await openGroup(deps, caller, id, true);	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/viewer.mjs	 ?? await holderAKs(deps, caller, artifact, chain);	 ?? null;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	    return requireEpochs(await openWraps(caller, artifact, keys.wraps, epochCommits(chain), new Map()), chain);	    return await openWraps(caller, artifact, keys.wraps, epochCommits(chain), new Map());	node --test internal/server/web/viewer_test.mjs
+internal/server/web/sharing.mjs	verifyGroup(deps, groupId, { acceptSignerKey });	verifyGroup(deps, groupId, { acceptSignerKey: true });	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing.mjs	verifyGroup(deps, groupId, { acceptSignerKey });	verifyGroup(deps, groupId, {});	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing.mjs	await approve(deps, artifactId, u.id);	await approve(deps, artifactId, u.id, { acceptNewKey: true });	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing.mjs	latest.owner === caller.record.userId || latest.members.some((m) => m.user === caller.record.userId && m.role === 'manager');	latest.members.some((m) => m.user === caller.record.userId && m.role === 'manager');	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing.mjs	m.user === caller.record.userId && m.role === 'manager');	m.user === caller.record.userId && m.role !== 'viewer');	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing.mjs	if (p.state === PENDING_LEFT && sees) res.left.push(row(p));	if (p.state === PENDING_LEFT) res.left.push(row(p));	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing.mjs	kind !== 'group' || (chosenId	false || (chosenId	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing.mjs	(chosenId !== '' && verifiedId === chosenId)	(verifiedId === chosenId)	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing.mjs	(chosenId !== '' && verifiedId === chosenId)	(chosenId !== '')	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/groups.mjs	members: chain.latest.members.length };	members: 0 };	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/groups.mjs	return { name: chain.latest.name, members	return { name: 'Group', members	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/viewer.mjs	if (err instanceof e2e.ChainError || err instanceof e2e.FormatError || err instanceof e2e.DecryptError) return null;	return null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (err instanceof e2e.ChainError ||	if (false ||	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	|| err instanceof e2e.FormatError ||	|| false ||	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	|| err instanceof e2e.DecryptError) return null;	|| false) return null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/sharing_fixture.mjs	if (approver && approver.fp !==	if (false && approver.fp !==	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing_fixture.mjs	if (!w || w.verified === false || w.active === false)	if (!w || w.active === false)	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing_fixture.mjs	if (!w || w.verified === false || w.active === false)	if (!w || w.verified === false)	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing_fixture.mjs	(await fpOfWire(o) === fp ||	(false ||	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing_fixture.mjs	|| e2e.normalizeEmail(o.email) === e2e.normalizeEmail(w.email)))	|| false))	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing_fixture.mjs	e2e.unb64(x.wrapped).length !== 81	e2e.unb64(x.wrapped).length < 0	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/sharing_fixture.mjs	if (JSON.stringify(epochs) !==	if (false && JSON.stringify(epochs) !==	node --test internal/server/web/sharing_groups_test.mjs

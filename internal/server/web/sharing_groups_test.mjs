@@ -12,7 +12,8 @@ import * as e2e from './e2e.mjs';
 import { ApiError } from './account.mjs';
 import { buildWorld, makeUser, readServerKeyring, rotationRecord, seedKeyring } from './viewer_fixture.mjs';
 import { ARTIFACT, changeGroup, depsFor, extraUser, keyStoreRecord, makeShareServer, seedGroup } from './sharing_fixture.mjs';
-import { GroupKeyChangedError, KeyChangedError, approvableCount, approve, members, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
+import { listGroups, verifiedGroup } from './groups.mjs';
+import { GroupKeyChangedError, KeyChangedError, approvableCount, approve, canShare, members, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
 
 const U = {};
 for (const name of ['owner', 'editor', 'viewer', 'outsider']) U[name] = await makeUser(name);
@@ -263,6 +264,114 @@ test('approve leaves the pin unwritten when the server refuses', async () => {
   assert.equal((await readServerKeyring(s.server, U.owner)).pins[U.other.id], undefined);
 });
 
+test('the group chosen in the share form shows its verified name and member count, not the server\'s', async () => {
+  const s = await scene({ groups: [{ id: G1, name: 'Design', members: [{ user: U.outsider }, { user: U.other }] }] });
+  // The server lists the group under another name and count than its chain gives.
+  const base = s.deps.fetch;
+  s.deps.fetch = async (path, init) => {
+    const resp = await base(path, init);
+    if (path !== '/api/groups') return resp;
+    return new Response(JSON.stringify((await resp.json()).map((g) => ({ ...g, name: 'Payroll', members: 1 }))), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  assert.equal((await listGroups(s.deps))[0].name, 'Payroll');
+  assert.deepEqual(await verifiedGroup(s.deps, G1), { name: 'Design', members: 3 });
+});
+
+test('a group whose chain does not verify, or that is gone, has no verified name to show', async () => {
+  const s = await scene({ groups: [{ id: G1, members: [{ user: U.outsider }] }] });
+  const [rec] = s.server.groups.get(G1);
+  rec.body = e2e.b64(enc.encode(JSON.stringify({ ...bodyOf(rec), name: 'Forged' })));
+  await assert.rejects(verifiedGroup(s.deps, G1));
+  await assert.rejects(verifiedGroup(s.deps, G2), (err) => err instanceof ApiError && err.status === 404);
+});
+
+test('Share stays off for a group until the chosen group is the one that verified', () => {
+  assert.equal(canShare('user', null, ''), true);
+  assert.equal(canShare('everyone', null, ''), true);
+  assert.equal(canShare('group', null, G1), false, 'nothing verified yet');
+  assert.equal(canShare('group', G2, G1), false, 'another group verified');
+  assert.equal(canShare('group', G1, ''), false, 'no group chosen');
+  assert.equal(canShare('group', '', ''), false, 'no group chosen, none verified');
+  assert.equal(canShare('group', G1, G1), true);
+});
+
+// ---- the fixture refuses what the real server refuses ----
+
+// The approval request the client sends for who (the outsider by default) is
+// built by hand here, so a test can spoil one field. The fixture must answer
+// each spoiled request as membership.CheckApproval does (approval.go), or a
+// client that stopped sending the right one would go unnoticed.
+async function approveRequest(s, { who = 'owner', user = U.outsider, wraps } = {}) {
+  const dir = asUser(s, who);
+  const caller = records[who];
+  const latest = bodyOf(s.server.records.at(-1));
+  const approval = await e2e.signApproval(caller.ed25519, caller.userId, { artifact: ARTIFACT, epoch: latest.epoch, user: user.id, fp: user.fp });
+  const ws = wraps ?? await Promise.all(Array.from({ length: latest.epoch }, async (_, k) => ({
+    epoch: k + 1,
+    wrapped: e2e.b64(await e2e.wrap({ purpose: 'ak', artifact: ARTIFACT, epoch: k + 1, recipientId: user.id, recipientPub: user.x.pub }, s.world.aks[k + 1])),
+  })));
+  const resp = await dir.fetch(`/api/artifacts/${ARTIFACT}/keys`, { method: 'POST', body: JSON.stringify({ user: user.id, fp: user.fp, approval, wraps: ws }) });
+  return resp.status;
+}
+
+const teamScene = async (opts) => {
+  const s = await scene(opts);
+  await setTeam(s.deps, ARTIFACT, 'viewer');
+  return s;
+};
+
+test('the fixture accepts a hand-built approval, so each refusal below is about the field spoiled', async () => {
+  const s = await teamScene();
+  assert.equal(await approveRequest(s), 200);
+  assert.equal(s.server.approves.length, 1);
+});
+
+test('the fixture refuses an approval from a listed editor whose keys differ from the directory\'s: 403', async () => {
+  const s = await teamScene({ members: [{ user: U.editor, role: 'editor', fp: 'e'.repeat(64) }] });
+  assert.equal(await approveRequest(s, { who: 'editor' }), 403);
+  assert.equal(s.server.approves.length, 0);
+});
+
+test('the fixture refuses an approval of a user who is not verified, or not active: 404', async () => {
+  for (const flag of ['verified', 'active']) {
+    const s = await teamScene();
+    s.server.directory.get(U.outsider.id)[flag] = false;
+    assert.equal(await approveRequest(s), 404, flag);
+    assert.equal(s.server.approves.length, 0);
+  }
+});
+
+test('the fixture refuses an approval of a user who shares a fingerprint or an email with another: 409', async () => {
+  const sameFp = await teamScene();
+  sameFp.server.directory.get(U.other.id).x25519Pub = sameFp.server.directory.get(U.outsider.id).x25519Pub;
+  sameFp.server.directory.get(U.other.id).ed25519Pub = sameFp.server.directory.get(U.outsider.id).ed25519Pub;
+  assert.equal(await approveRequest(sameFp), 409);
+  const sameEmail = await teamScene();
+  sameEmail.server.directory.get(U.other.id).email = 'OUTSIDER@example.com';
+  assert.equal(await approveRequest(sameEmail), 409);
+  assert.equal(sameFp.server.approves.length + sameEmail.server.approves.length, 0);
+});
+
+test('the fixture refuses a wrap of the wrong size, a duplicate epoch, a missing epoch, and an epoch out of range: 400', async () => {
+  const s = await teamScene();
+  const wrapped = e2e.b64(await e2e.wrap({ purpose: 'ak', artifact: ARTIFACT, epoch: 1, recipientId: U.outsider.id, recipientPub: U.outsider.x.pub }, s.world.aks[1]));
+  const good = { epoch: 1, wrapped };
+  assert.equal(await approveRequest(s, { wraps: [{ epoch: 1, wrapped: e2e.b64(new Uint8Array(80)) }] }), 400, 'size');
+  assert.equal(await approveRequest(s, { wraps: [good, good] }), 400, 'duplicate');
+  assert.equal(await approveRequest(s, { wraps: [] }), 400, 'missing');
+  assert.equal(await approveRequest(s, { wraps: [good, { ...good, epoch: 2 }] }), 400, 'out of range');
+  assert.equal(s.server.approves.length, 0);
+});
+
+test('sharing with a group leaves a member the group lists under another fingerprint waiting, even while Everyone is on', async () => {
+  const s = await scene({ groups: [{ id: G1, members: [{ user: U.outsider, fp: 'f'.repeat(64) }] }] });
+  await setTeam(s.deps, ARTIFACT, 'viewer');
+  const res = await shareGroup(s.deps, ARTIFACT, G1, 'viewer');
+  assert.deepEqual(ids(res.approved), []);
+  assert.ok(res.pending[0].error instanceof GroupKeyChangedError);
+  assert.equal(s.server.approves.length, 0);
+});
+
 // ---- editors approve ----
 
 test('an editor sees the newcomers and approves them, and nothing else', async () => {
@@ -439,6 +548,23 @@ test('a user who left every group shows as left, and the next epoch excludes the
   assert.ok(!put.wraps.some((x) => x.user === U.outsider.id), 'no key of the new epoch goes to them');
 });
 
+test('only the owner and a manager see who left: an editor sees newcomers only', async () => {
+  const s = await leftScene();
+  const left = [[U.outsider.id, 'outsider@example.com', U.outsider.fp]];
+  assert.deepEqual((await waiting(s.deps, ARTIFACT)).left.map((l) => [l.user, l.email, l.fp]), left);
+  const editor = asUser(s, 'editor');
+  assert.deepEqual((await waiting(editor, ARTIFACT)).left, []);
+  // The server does not tell an editor, and the browser would not show it if it did.
+  lyingPending({ server: s.server, deps: editor }, [wire(U.outsider, 'left')]);
+  const told = await waiting(editor, ARTIFACT);
+  assert.equal(told.canApprove, true);
+  assert.deepEqual(told.left, []);
+  const m = await scene({ who: 'manager', members: [{ user: U.manager, role: 'manager' }, { user: U.viewer, role: 'viewer' }], groups: [{ id: G1, members: [{ user: U.outsider }, { user: U.other }] }] });
+  await shareGroup(asUser(m, 'owner'), ARTIFACT, G1, 'viewer');
+  await changeGroup(m.server, G1, { drop: [U.outsider] });
+  assert.deepEqual((await waiting(asUser(m, 'manager'), ARTIFACT)).left.map((l) => [l.user, l.email, l.fp]), left);
+});
+
 test('removing a user who left starts a new epoch that excludes them, named by email', async () => {
   const s = await leftScene();
   const res = await unshare(s.deps, ARTIFACT, 'outsider@example.com');
@@ -575,8 +701,8 @@ test('making a public artifact private lists the approved users and excludes the
 //             user ID (6666, dddd), emails normalized
 //   groups    G1 editor, G2 viewer: unchanged, as both still exist
 //   team      none
-//   epoch     2, with the new key wrapped to the editor, the outsider and other
-//             only: the two approved hold the earlier epoch's wraps already
+//   epoch     2, with the new key wrapped to the editor, the outsider and other:
+//             the three members the record lists, approved earlier or not
 test('the next epoch the browser starts is the record the Go client builds from the same state', async () => {
   const s = await scene({ groups: [{ id: G1, members: [] }, { id: G2, members: [] }] });
   await shareGroup(s.deps, ARTIFACT, G1, 'editor');
@@ -794,15 +920,26 @@ test('sharing with a group leaves a member waiting when the server refuses their
   await assert.rejects(shareGroup(t.deps, ARTIFACT, G1, 'viewer'), { status: 401 });
 });
 
-test('sharing with a group with the key accepted approves a member whose pin changed, and still leaves a group fingerprint mismatch waiting', async () => {
-  const s = await scene({ groups: [{ id: G1, members: [{ user: U.outsider }, { user: U.other, fp: 'f'.repeat(64) }] }] });
+test("accepting a group signer's changed key accepts that and nothing else: a member whose own pinned key changed stays waiting, with a reason", async () => {
+  const s = await scene({ users: [U.outsider, U.other, U.manager], groups: [{ id: G1, manager: U.manager, members: [{ user: U.outsider }, { user: U.other, fp: 'f'.repeat(64) }] }] });
   const k = e2e.newKeyring();
+  k.pins[U.manager.id] = { fp: 'a'.repeat(64), state: 'verified', rotSeq: 0, rotHead: '' };
   k.pins[U.outsider.id] = { fp: 'd'.repeat(64), state: 'verified', rotSeq: 0, rotHead: '' };
   await seedKeyring(s.server, U.owner, k);
-  const res = await shareGroup(s.deps, ARTIFACT, G1, 'viewer', { acceptNewKey: true });
-  assert.deepEqual(ids(res.approved), [U.outsider.id]);
-  assert.deepEqual(res.pending.map((p) => p.user.id), [U.other.id]);
-  assert.ok(res.pending[0].error instanceof GroupKeyChangedError);
+  await assert.rejects(shareGroup(s.deps, ARTIFACT, G1, 'viewer'), (err) => err instanceof KeyChangedError && err.user === U.manager.id);
+  noRecords(s);
+  const res = await shareGroup(s.deps, ARTIFACT, G1, 'viewer', { acceptSignerKey: true });
+  assert.deepEqual(ids(res.approved), [U.manager.id], 'the signer is a member too, and their pin is the one just accepted');
+  assert.deepEqual(res.pending.map((p) => p.user.id).sort(), [U.other.id, U.outsider.id].sort());
+  assert.ok(res.pending.find((p) => p.user.id === U.outsider.id).error instanceof KeyChangedError, 'their own changed pin is a warning of its own');
+  assert.ok(res.pending.find((p) => p.user.id === U.other.id).error instanceof GroupKeyChangedError);
+  assert.deepEqual(s.server.approves.map((a) => a.user), [U.manager.id]);
+  const pins = (await readServerKeyring(s.server, U.owner)).pins;
+  assert.equal(pins[U.manager.id].fp, U.manager.fp, "the signer's change was accepted");
+  assert.equal(pins[U.outsider.id].fp, 'd'.repeat(64), "the member's pin stands");
+  // The member's own Approve, with its own accept, is what approves them.
+  await approve(s.deps, ARTIFACT, 'outsider@example.com', { acceptNewKey: true });
+  assert.equal((await readServerKeyring(s.server, U.owner)).pins[U.outsider.id].fp, U.outsider.fp);
 });
 
 // ---- a manager removing a group ----

@@ -7,9 +7,9 @@ import { changePassword, createApiKey, enrollPasskey, listPasskeys, newRecoveryC
 import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { createGroupsTab } from './groups-tab.mjs';
 import { FolderError, breadcrumb, childrenOf, createFolder, deleteTree, makeDraggable, makeDropTarget, moveItem, moveTargets, renameFolder, subtree } from './folders.mjs';
-import { listGroups } from './groups.mjs';
+import { listGroups, verifiedGroup } from './groups.mjs';
 import { describeArtifact } from './meta.mjs';
-import { GroupKeyChangedError, KeyChangedError, approvableCount, approve, memberControls, members, pin, publicLinkFor, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
+import { GroupKeyChangedError, KeyChangedError, approvableCount, approve, canShare, memberControls, members, pin, publicLinkFor, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
 import { bannerView, myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions, who } from './successor.mjs';
 import { confirmRecoveryCode, describeError, describePasskeyError, pageDeps, watchStrength } from './ui.mjs';
 
@@ -219,7 +219,8 @@ async function showWaiting(row) {
   } catch (err) {
     if (err instanceof UnauthenticatedError) return;
   }
-  row.waitingPill.textContent = `${n} waiting for approval`;
+  // No text while nobody waits, so the row's cells read as they did.
+  row.waitingPill.textContent = n === 0 ? '' : `${n} waiting for approval`;
   row.waitingPill.hidden = n === 0;
   if (row.approveButton) row.approveButton.hidden = n === 0;
 }
@@ -245,7 +246,7 @@ function artifactRow(a, mine) {
   row.reasonText = el('div', 'unreadable', '');
   const nameCell = td(row.nameText, 'name');
   if (folder) nameCell.prepend(pill('folder'), ' ');
-  nameCell.append(row.reasonText, row.waitingPill);
+  nameCell.append(row.reasonText);
   tr.append(
     nameCell,
     td(row.descText, 'desc'),
@@ -265,7 +266,11 @@ function artifactRow(a, mine) {
     row.approveButton.hidden = true;
     row.actions.append(row.approveButton);
   }
-  tr.appendChild(td(row.actions));
+  // The pill sits in the actions cell, not the name cell: fillOwnActions
+  // replaces what is in row.actions, and the name cell is the row's name.
+  const actionsCell = td(row.actions);
+  actionsCell.prepend(row.waitingPill);
+  tr.appendChild(actionsCell);
   row.tr = tr;
   return row;
 }
@@ -452,7 +457,8 @@ let sharing = null;
 // openShare opens the dialog on an artifact. approveOnly is the editor's: the
 // waiting newcomers and Approve, and nothing else.
 async function openShare(id, name, { approveOnly = false } = {}) {
-  sharing = { id, name, link: null, changed: false, approveOnly, callerRole: '', hasGroups: false };
+  sharing = { id, name, link: null, changed: false, approveOnly, callerRole: '', hasGroups: false, verifiedGroup: null };
+  $('share-group-check').textContent = '';
   $('share-title').textContent = name;
   status('share-status', '');
   $('accept-warning').hidden = true;
@@ -512,6 +518,7 @@ async function act(working, change, retry) {
       for (const c of controls) c.disabled = false;
       $('public-writes').disabled = !$('public').checked;
       $('copy-link').disabled = !$('public').checked;
+      syncShareSubmit();
     }
   }
 }
@@ -539,6 +546,43 @@ function syncShareForm() {
   const manager = $('share-role').querySelector('option[value=manager]');
   manager.hidden = manager.disabled = kind !== 'user' || sharing?.callerRole !== 'owner';
   if (manager.disabled && $('share-role').value === 'manager') $('share-role').value = 'viewer';
+  $('share-group-check').hidden = kind !== 'group' || $('share-group-check').textContent === '';
+  syncShareSubmit();
+}
+
+// syncShareSubmit keeps Share off for a group until the group chosen verified.
+function syncShareSubmit() {
+  $('share-submit').disabled = !canShare($('share-kind').value, sharing?.verifiedGroup ?? null, $('share-group').value);
+}
+
+// checkChosenGroup verifies the group chosen in the share form and shows its
+// verified name and member count beside it: the list the server serves names
+// groups by its own word. Share stays off until it verifies; a group that does
+// not says so and stays off.
+async function checkChosenGroup(s) {
+  const id = $('share-group').value;
+  const hint = $('share-group-check');
+  s.verifiedGroup = null;
+  hint.textContent = id ? 'Verifying the group…' : '';
+  hint.hidden = !id;
+  syncShareSubmit();
+  if (!id) return;
+  let text;
+  let ok = false;
+  try {
+    const g = await verifiedGroup(deps, id);
+    text = `Verified: ${g.name}, ${plural(g.members, 'member', 'members')}.`;
+    ok = true;
+  } catch (err) {
+    if (err instanceof UnauthenticatedError) return;
+    text = `This group could not be verified, so it cannot be shared: ${describeError(err)}`;
+    // A signer's changed key is accepted where the group is shown in full.
+    if (err instanceof KeyChangedError) text += ' Open the group on the Groups tab to review the change.';
+  }
+  if (s !== sharing || $('share-group').value !== id) return;
+  if (ok) s.verifiedGroup = id;
+  hint.textContent = text;
+  syncShareSubmit();
 }
 
 async function listMembers(s) {
@@ -623,10 +667,10 @@ function groupRow(s, g) {
   name.append(' ', pill('group'));
   const roleCell = td(g.role, 'role');
   if (!g.deleted) {
-    const setRole = (role, acceptNewKey) => act(() => 'Changing the role…', async () => {
-      const res = await shareGroup(deps, s.id, g.id, role, { acceptNewKey });
+    const setRole = (role, acceptSignerKey) => act(() => 'Changing the role…', async () => {
+      const res = await shareGroup(deps, s.id, g.id, role, { acceptSignerKey });
       return `${g.name} is now shared as ${role}.` + groupNote(res) + epochNote(res);
-    }, acceptNewKey ? undefined : () => setRole(role, true));
+    }, acceptSignerKey ? undefined : () => setRole(role, true));
     roleCell.replaceChildren(roleSelect('Role of group ' + label, g.role, (role) => setRole(role, false)));
   }
   tr.append(name, td(g.deleted ? g.id : '', 'email mono'), roleCell, td('', 'fp mono'), td('', 'pin'));
@@ -773,7 +817,10 @@ async function loadGroupOptions(s) {
     options.push(none);
   }
   $('share-group').replaceChildren(...options);
+  checkChosenGroup(s);
 }
+
+$('share-group').addEventListener('change', () => checkChosenGroup(sharing));
 
 $('share-kind').addEventListener('change', () => {
   syncShareForm();
@@ -796,11 +843,12 @@ $('share-form').addEventListener('submit', (event) => {
   if (kind === 'group') {
     const group = $('share-group').value;
     if (!group) { status('share-status', 'Choose a group.', true); return; }
-    const sendGroup = (acceptNewKey) => act(() => 'Sharing with the group…', async () => {
-      const res = await shareGroup(deps, s.id, group, role, { acceptNewKey });
+    if (!canShare(kind, s.verifiedGroup, group)) { status('share-status', 'The group has not been verified.', true); return; }
+    const sendGroup = (acceptSignerKey) => act(() => 'Sharing with the group…', async () => {
+      const res = await shareGroup(deps, s.id, group, role, { acceptSignerKey });
       const name = res.group.name;
       return (res.unchanged ? `The group ${name} is already shared as ${role}.` : `Shared with the group ${name} as ${role}.`) + groupNote(res) + epochNote(res);
-    }, acceptNewKey ? undefined : () => sendGroup(true));
+    }, acceptSignerKey ? undefined : () => sendGroup(true));
     sendGroup(false);
     return;
   }

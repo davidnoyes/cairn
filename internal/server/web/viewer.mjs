@@ -354,7 +354,8 @@ export async function callerAKs(deps, caller, artifact, chain, unreadable = []) 
 // holderAKs opens the AKs of an approved team or group member: a caller
 // the latest record does not list yet, because the next epoch lists them,
 // who holds a wrap of every epoch. It returns null for anyone else, and for
-// wraps that do not open, since an unlisted caller has no other claim.
+// wraps that do not verify, since an unlisted caller has no other claim; any
+// other failure is thrown.
 // Mirrors callerAKs in approve.go, which reads for any holder.
 async function holderAKs(deps, caller, artifact, chain) {
   let keys;
@@ -368,8 +369,11 @@ async function holderAKs(deps, caller, artifact, chain) {
   if (keys.wraps.length === 0) return null;
   try {
     return requireEpochs(await openWraps(caller, artifact, keys.wraps, epochCommits(chain), new Map()), chain);
-  } catch {
-    return null;
+  } catch (err) {
+    // Only a wrap that does not verify, or is missing, is no access: anything
+    // else is not a fact about this caller's wraps.
+    if (err instanceof e2e.ChainError || err instanceof e2e.FormatError || err instanceof e2e.DecryptError) return null;
+    throw err;
   }
 }
 

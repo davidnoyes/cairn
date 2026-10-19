@@ -258,12 +258,13 @@
       </select>
       <input id="share-email" type="email" placeholder="email" aria-label="Email" autocomplete="off">
       <select id="share-group" aria-label="Group" hidden></select>
+      <span class="hint" id="share-group-check" role="status" hidden></span>
       <select id="share-role" aria-label="Role">
         <option value="viewer">viewer</option>
         <option value="editor">editor</option>
         <option value="manager" hidden disabled>manager</option>
       </select>
-      <button class="btn primary" type="submit">Share</button>
+      <button class="btn primary" type="submit" id="share-submit">Share</button>
     </form>
     <div class="public" id="share-public">
       <label><input type="checkbox" id="public"> Public link</label>

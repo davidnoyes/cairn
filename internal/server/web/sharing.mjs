@@ -1190,13 +1190,16 @@ const byGroup = (a, b) => (a.group < b.group ? -1 : a.group > b.group ? 1 : 0);
 // approval passes the four checks. The caller must be the owner or a manager.
 // Returns {group: {id, name}, role, epoch, unchanged, approved, pending,
 // listed, unlisted, droppedGroups}: approved are users, pending and unlisted
-// are {user, error}. Mirrors ShareGroup.
-export async function shareGroup(deps, artifactId, groupId, role, { acceptNewKey = false } = {}) {
+// are {user, error}. A signer of the group whose key changed is a
+// KeyChangedError unless acceptSignerKey, which accepts that and nothing else:
+// a member whose own pinned key changed stays pending, to be approved by
+// approve with its own acceptNewKey. Mirrors ShareGroup.
+export async function shareGroup(deps, artifactId, groupId, role, { acceptSignerKey = false } = {}) {
   const { caller, va } = await adminAction(deps, artifactId);
   const latest = va.latest;
   if (!(await listGroups(deps)).some((g) => g.id === groupId)) throw new SharingError('unknown-group', `There is no group with the ID ${groupId}.`);
   if (role !== 'viewer' && role !== 'editor') throw new SharingError('bad-role', `A group is shared as viewer or editor, not ${JSON.stringify(role)}.`);
-  const vg = await verifyGroup(deps, groupId, { acceptNewKey });
+  const vg = await verifyGroup(deps, groupId, { acceptSignerKey });
   va.keyring = await readKeyring(deps, caller);
   const res = { group: { id: groupId, name: vg.chain.latest.name }, role, epoch: latest.epoch, unchanged: false, approved: [], pending: [], listed: [], unlisted: [], droppedGroups: [] };
   const pending = await pendingFor(deps, caller, va);
@@ -1216,7 +1219,7 @@ export async function shareGroup(deps, artifactId, groupId, role, { acceptNewKey
     await storePins(deps, caller, lst.pins);
     await readBack(deps, caller, va, '');
   }
-  await approveGroupMembers(deps, artifactId, vg.chain, acceptNewKey, res);
+  await approveGroupMembers(deps, artifactId, vg.chain, res);
   return res;
 }
 
@@ -1227,7 +1230,7 @@ export async function shareGroup(deps, artifactId, groupId, role, { acceptNewKey
 // the command, as fatalFetch says, is an error. The artifact is verified again
 // first: the record that lists the group has landed. Mirrors
 // approveGroupMembers.
-async function approveGroupMembers(deps, artifactId, chain, acceptNewKey, res) {
+async function approveGroupMembers(deps, artifactId, chain, res) {
   const caller = await unlock(deps);
   const va = await verifyArtifact(deps, caller, artifactId);
   const pending = await pendingFor(deps, caller, va);
@@ -1240,7 +1243,7 @@ async function approveGroupMembers(deps, artifactId, chain, acceptNewKey, res) {
       continue;
     }
     try {
-      await approve(deps, artifactId, u.id, { acceptNewKey });
+      await approve(deps, artifactId, u.id);
     } catch (refused) {
       if (fatalFetch(refused)) throw refused;
       res.pending.push({ user: u, error: refused });
@@ -1330,12 +1333,18 @@ export async function waiting(deps, artifactId) {
   const held = pending.filter((p) => p.state === PENDING_NEW && p.groups.length > 0);
   const names = held.length > 0 ? new Map((await listGroups(deps)).map((g) => [g.id, g.name])) : new Map();
   const row = (p) => ({ user: p.user.id, name: p.user.name, email: p.user.email, fp: p.user.fp });
+  // Only the owner and a manager end a hold; the server does not tell an editor.
+  const sees = latest.owner === caller.record.userId || latest.members.some((m) => m.user === caller.record.userId && m.role === 'manager');
   for (const p of pending) {
     if (p.state === PENDING_NEW) res.newcomers.push({ ...row(p), groups: p.groups.map((id) => ({ id, name: names.get(id) ?? '' })), everyone: latest.team !== 'none' });
-    if (p.state === PENDING_LEFT) res.left.push(row(p));
+    if (p.state === PENDING_LEFT && sees) res.left.push(row(p));
   }
   return res;
 }
+
+// canShare says whether the share form may send: a person or Everyone always,
+// a group only once the group chosen is the one that verified.
+export const canShare = (kind, verifiedId, chosenId) => kind !== 'group' || (chosenId !== '' && verifiedId === chosenId);
 
 // approvableCount is how many newcomers the server says wait on an artifact:
 // a hint for the Artifacts tab, a single request that checks nothing. The

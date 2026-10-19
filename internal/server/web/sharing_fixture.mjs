@@ -191,17 +191,26 @@ export function makeShareServer(world, { who, users = [] }) {
       if (failed) return failed;
       const latest = latestBody();
       if (!['owner', 'manager', 'editor'].includes(levelOf(latest))) return jsonResponse(403, { error: 'forbidden' });
+      // A listed editor or manager must hold the fingerprint the record lists.
+      const approver = latest.members.find((m) => m.user === s.who.id);
+      if (approver && approver.fp !== await fpOfWire(s.directory.get(s.who.id))) return jsonResponse(403, { error: 'your keys differ from the listed fingerprint' });
       const body = JSON.parse(init.body);
       const w = s.directory.get(body.user);
-      if (!w) return jsonResponse(404, { error: 'user not found' });
+      if (!w || w.verified === false || w.active === false) return jsonResponse(404, { error: 'user not found' });
       const fp = await fpOfWire(w);
       if (!coveredBy(latest, w.id)) return jsonResponse(409, { error: 'the artifact is not shared with a team or a group that holds them' });
       if (latest.members.some((m) => m.user === w.id) || (s.wraps[w.id] ?? []).some((x) => x.epoch === latest.epoch)) return jsonResponse(409, { error: 'the user holds a wrap or is listed' });
       if (e2e.excludedMatch(latest.excluded, w.id, fp, w.email)) return jsonResponse(409, { error: 'the user is excluded' });
+      for (const o of s.directory.values()) {
+        if (o.id !== w.id && (await fpOfWire(o) === fp || e2e.normalizeEmail(o.email) === e2e.normalizeEmail(w.email))) return jsonResponse(409, { error: 'the user shares a fingerprint or email with another' });
+      }
       if (body.fp !== fp) return jsonResponse(409, { error: 'fp is not the current fingerprint' });
       const signed = JSON.parse(new TextDecoder().decode(e2e.unb64(body.approval.body)));
       if (body.approval.signer !== s.who.id || signed.artifact !== ARTIFACT || signed.epoch !== latest.epoch || signed.user !== w.id || signed.fp !== fp) return jsonResponse(400, { error: 'the approval does not match' });
-      if (JSON.stringify(body.wraps.map((x) => x.epoch).sort()) !== JSON.stringify(Array.from({ length: latest.epoch }, (_, k) => k + 1))) return jsonResponse(400, { error: 'wraps must cover every epoch' });
+      // A wrap is 81 bytes (membership.wrapSize), one per epoch, none twice.
+      const epochs = body.wraps.map((x) => x.epoch).sort((a, b) => a - b);
+      if (body.wraps.some((x) => e2e.unb64(x.wrapped).length !== 81)) return jsonResponse(400, { error: 'a wrap is not 81 bytes' });
+      if (JSON.stringify(epochs) !== JSON.stringify(Array.from({ length: latest.epoch }, (_, k) => k + 1))) return jsonResponse(400, { error: 'wraps must cover every epoch once, and no other' });
       s.approves.push(body);
       s.approvals.set(w.id, { fp, envelope: body.approval });
       for (const x of body.wraps) s.wraps[w.id] = [...(s.wraps[w.id] ?? []).filter((y) => y.epoch !== x.epoch), { epoch: x.epoch, wrapped: x.wrapped, fp }];

@@ -1458,3 +1458,46 @@ test('holder: a wrap missing for one epoch opens nothing', async () => {
   s.server.keysOverride = { wraps: (await holderWraps(s.world, U.outsider)).slice(0, 1), estate: [] };
   await assert.rejects(open(s), NoAccessError);
 });
+
+// A wrap that is not base64 is a FormatError, one of the wrong size or that does
+// not decrypt is a DecryptError, and a missing epoch is a ChainError: each is no access.
+const garbage = (bytes) => () => e2e.b64(bytes());
+for (const [kind, bytes] of [
+  ['not base64', () => '!!not base64!!'],
+  ['short', garbage(() => crypto.getRandomValues(new Uint8Array(80)))],
+  ['undecryptable', garbage(() => Uint8Array.of(1, ...crypto.getRandomValues(new Uint8Array(80))))],
+]) {
+  test(`holder: a ${kind} garbage wrap opens nothing`, async () => {
+    const s = await scene({ who: 'outsider', epoch2: true });
+    s.server.openMembership = true;
+    s.server.openKeys = true;
+    const wraps = (await holderWraps(s.world, U.outsider)).map((w) => ({ ...w, wrapped: bytes() }));
+    s.server.keysOverride = { wraps, estate: [] };
+    await assert.rejects(open(s), NoAccessError);
+  });
+}
+
+test('holder: a network failure reading the keys is an error, not "no access"', async () => {
+  const s = await scene({ who: 'outsider', epoch2: true });
+  s.server.openMembership = true;
+  s.server.openKeys = true;
+  s.server.keysOverride = { wraps: await holderWraps(s.world, U.outsider), estate: [] };
+  // The successor path reads /keys first, and answers; the holder path reads it second.
+  const base = s.deps.fetch;
+  let reads = 0;
+  s.deps.fetch = async (path, init) => {
+    if (path.endsWith('/keys') && ++reads === 2) throw new TypeError('network down');
+    return base(path, init);
+  };
+  await assert.rejects(open(s), (err) => err instanceof TypeError && /network down/.test(err.message));
+  assert.equal(reads, 2);
+});
+
+test('holder: a failure that is not about the wraps is thrown, not read as no access', async () => {
+  const s = await scene({ who: 'outsider', epoch2: true });
+  s.server.openMembership = true;
+  s.server.openKeys = true;
+  // An entry that is not a wrap makes the code throw a TypeError, which says nothing about this caller.
+  s.server.keysOverride = { wraps: [null], estate: [] };
+  await assert.rejects(open(s), TypeError);
+});
