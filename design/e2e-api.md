@@ -1024,6 +1024,12 @@ The server checks:
   client reads the list again and retries.
 - `estate` replaces every estate copy of every artifact the caller owns,
   sealed under the new `EK`, and adds the copy of each new epoch.
+- In an artifact the caller owns, an epoch with no estate copy before the
+  rotation, which a manager started, may be missing from both `wraps` and
+  `estate`. The caller's wrap at that epoch then stays as it is, under the
+  current fingerprint, and the epoch keeps no estate copy. Every other epoch
+  needs both. The owner's client leaves such an epoch out only when its wrap
+  does not open; see [Managers](#managers).
 
 In one transaction, which locks the caller's user row and every artifact row
 it touches, the server stores the new bundle and keyring, replaces the wraps
@@ -2339,6 +2345,12 @@ that epoch out, names it as unreadable, and carries on with every action that
 does not need it, so the owner can still remove the manager who sent it and
 start a new epoch. The unreadable epoch's content stays unreadable to the
 owner.
+
+Key rotation is one of those actions. The owner's client leaves the
+unreadable epoch out of both `wraps` and `estate`, and the server accepts
+that for an epoch that had no estate copy before the rotation. The owner's
+wrap at that epoch stays as it is, under the old fingerprint, as a wrap left
+by a password-only reset does, and the epoch stays without an estate copy.
 
 ### Who counts as a writer
 
