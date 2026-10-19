@@ -10,7 +10,7 @@ import { openArtifact } from './viewer.mjs';
 import { META_FIELDS, MetaError, describeArtifact, readMeta, writeMeta } from './meta.mjs';
 
 const U = {};
-for (const name of ['owner', 'editor', 'viewer', 'outsider']) U[name] = await makeUser(name);
+for (const name of ['owner', 'editor', 'viewer', 'outsider', 'manager']) U[name] = await makeUser(name);
 const records = {};
 for (const name of Object.keys(U)) records[name] = await keyStoreRecord(U[name]);
 const enc = new TextEncoder();
@@ -399,4 +399,17 @@ test('writeMeta passes on the server refusal', async () => {
   const s = await scene();
   s.deps.fetch = async () => new Response('{"error":"epoch moved"}', { status: 409, headers: { 'Content-Type': 'application/json' } });
   await assert.rejects(() => writeMeta(s.deps, s.opened, '', 'name', 'x'), { message: 'epoch moved', status: 409 });
+});
+
+test('a manager writes metadata, and a field a manager signed reads back for the others', async () => {
+  const members = [{ user: U.manager, role: 'manager' }, { user: U.viewer, role: 'viewer' }];
+  const s = await scene({ who: 'manager', members });
+  const puts = withMetaPuts(s);
+  await writeMeta(s.deps, s.opened, '', 'name', 'By a manager');
+  assert.equal(puts.length, 1);
+  assert.equal(e2e.decodeEnvelope(JSON.stringify(puts[0].body.record)).signer, U.manager.id);
+  const v = await scene({ who: 'viewer', members });
+  const { values } = await read(v, { name: await item(v.world, { signer: U.manager, value: 'By a manager' }) });
+  assert.equal(values.name, 'By a manager');
+  await assert.rejects(() => writeMeta(v.deps, v.opened, '', 'name', 'x'), MetaError);
 });

@@ -32,7 +32,7 @@ const encoder = new TextEncoder();
 // unknown-user, directory-duplicate, not-member, member-key-changed,
 // member-deleted, pin-conflict, public-writes-with-off, cannot-reseal,
 // team-unsupported, handover-not-acked, no-write-key, read-back, epoch-moved,
-// viewer-account.
+// viewer-account, owner-only, owner-missing.
 export class SharingError extends Error {
   constructor(code, message, options) {
     super(message, options);
@@ -275,36 +275,58 @@ function checkNoTeam(va) {
   if (va.latest.team !== 'none') throw new SharingError('team-unsupported', 'This artifact is shared with a team, which the browser cannot change yet. Use the cairn tool.');
 }
 
-function checkOwner(caller, va) {
-  if (va.latest.owner !== caller.record.userId || va.latest.ownerFp !== caller.fp) {
-    throw new SharingError('not-owner', "Only the artifact's owner can change its members.");
-  }
+// callerRoleOf is how the caller may change the artifact's members: 'owner'
+// when the latest record names them as owner under their current fingerprint,
+// 'manager' when it lists them as manager under it, else ''.
+function callerRoleOf(caller, va) {
+  const { latest } = va;
+  const id = caller.record.userId;
+  if (latest.owner === id && latest.ownerFp === caller.fp) return 'owner';
+  if (latest.members.some((m) => m.user === id && m.role === 'manager' && m.fp === caller.fp)) return 'manager';
+  return '';
 }
 
-// ownerAction is the start of every owner-side change: the caller, the
-// verified artifact, and the three refusals Share, Unshare and Public make
-// before anything else.
-async function ownerAction(deps, artifactId) {
+// adminRole is callerRoleOf, and refuses anyone else.
+function adminRole(caller, va) {
+  const role = callerRoleOf(caller, va);
+  if (!role) throw new SharingError('not-owner', "Only the artifact's owner or a manager can change its members.");
+  return role;
+}
+
+// checkOwnerOnly refuses a change to a manager's entry, or making someone a
+// manager, when the caller is a manager: only the owner does either.
+function checkOwnerOnly(manager, what) {
+  if (manager) throw new SharingError('owner-only', `Only the artifact's owner can ${what}.`);
+}
+
+// adminAction is the start of every member-list change: the caller, the
+// verified artifact, whether the caller is a manager rather than the owner,
+// and the three refusals Share, Unshare and Public make before anything else.
+async function adminAction(deps, artifactId) {
   const caller = await unlock(deps);
   const va = await verifyArtifact(deps, caller, artifactId);
   checkHandover(va);
-  checkOwner(caller, va);
+  const manager = adminRole(caller, va) === 'manager';
   checkNoTeam(va);
-  return { caller, va };
+  return { caller, va, manager };
 }
 
 const epochPinOf = (kr, artifact) => (Object.hasOwn(kr.epochs, artifact) ? kr.epochs[artifact] : null);
 
 // ---- records ----
 
+// ROLE_RANK orders the roles a member entry can hold.
+const ROLE_RANK = new Map([['viewer', 0], ['editor', 1], ['manager', 2]]);
+
 const byUser = (a, b) => (a.user < b.user ? -1 : a.user > b.user ? 1 : 0);
 
 // membershipBody is next as the record after the verified chain's latest,
 // fields in the order of the schema. transfer and handover are never set by
-// these commands. Mirrors signNext.
-function membershipBody(va, next) {
-  return {
-    v: 1,
+// these commands. A manager's record is version 2 and names the manager and
+// their key's fingerprint last. Mirrors signNext.
+function membershipBody(va, next, manager) {
+  const body = {
+    v: manager ? 2 : 1,
     artifact: va.artifact,
     epoch: next.epoch,
     seq: va.latest.seq + 1,
@@ -320,6 +342,8 @@ function membershipBody(va, next) {
     transfer: '',
     handover: '',
   };
+  if (manager) Object.assign(body, { signer: manager.user, signerFp: manager.fp });
+  return body;
 }
 
 // linkTokenHashFor is the hash of the epoch's link token the server stores for
@@ -336,19 +360,21 @@ async function linkTokenHashFor(deps, caller, va, epoch) {
 // copy the server does not hold yet, or '' to take it from the epoch's own.
 // Mirrors putRecord.
 async function putRecord(deps, caller, va, next, wraps, estate, linkHash) {
-  const body = encoder.encode(JSON.stringify(membershipBody(va, next)));
+  const manager = va.latest.owner === caller.record.userId ? null : { user: caller.record.userId, fp: caller.fp };
+  const body = encoder.encode(JSON.stringify(membershipBody(va, next, manager)));
   const membership = await e2e.newEnvelope(caller.record.ed25519, caller.record.userId, 'membership', body);
   let hash = linkHash;
   if (next.public && hash === '') hash = await linkTokenHashFor(deps, caller, va, next.epoch);
   await call(deps, null, 'PUT', `/api/artifacts/${va.artifact}/membership`, { body: { membership, wraps, estate, linkTokenHash: hash } });
 }
 
-// readBack verifies the artifact after the server accepted a record. A failure
-// still names link, the new public link, when there is one: the old link
-// already stopped working. Mirrors readBack.
-async function readBack(deps, caller, artifact, link) {
+// readBack verifies the artifact after the server accepted a record, which
+// must still name the owner's key va lists. A failure still names link, the
+// new public link, when there is one: the old link already stopped working.
+// Mirrors readBack.
+async function readBack(deps, caller, va, link) {
   try {
-    await verifyArtifact(deps, caller, artifact, caller.fp);
+    await verifyArtifact(deps, caller, va.artifact, va.latest.ownerFp);
   } catch (err) {
     const msg = `The server accepted the new membership record, but reading it back failed: ${err.message}${link ? `; the new public link is ${link}` : ''}`;
     throw new SharingError('read-back', msg, { cause: err });
@@ -376,13 +402,27 @@ function dropExcluded(excluded, members, dir) {
 
 // ---- members, share, unshare ----
 
+// memberControls says what the share dialog offers the caller for the member
+// m of members()'s list: the roles the member's select offers, empty when the
+// entry is read-only, and whether the entry may be removed. callerRole is
+// members()'s. Only the owner offers or changes manager, and a viewer account
+// is offered only viewer unless it keeps the editor or manager entry it had
+// before its account changed.
+export function memberControls(callerRole, m) {
+  if (m.role === 'owner' || (m.role === 'manager' && callerRole !== 'owner')) return { roles: [], removable: false };
+  const offered = callerRole === 'owner' ? ['viewer', 'editor', 'manager'] : ['viewer', 'editor'];
+  const roles = m.account === 'viewer' ? offered.filter((r) => ROLE_RANK.get(r) === 0 || ROLE_RANK.get(r) <= ROLE_RANK.get(m.role)) : offered;
+  return { roles, removable: true };
+}
+
 // members verifies an artifact's chain and lists its owner and members, each
 // with the pin state of their current keys: self for the caller, - for a user
 // the directory no longer lists, a pin state otherwise, and conflict when the
 // rotation records fork or roll back. currentFp is the fingerprint of the
 // keys the directory serves now, which differs from fp once they change, or
 // empty for a user it no longer lists. wasVerified says a rotation dropped a
-// verified pin. Mirrors Members.
+// verified pin. callerRole is owner, manager, or '' for the caller. Mirrors
+// Members.
 export async function members(deps, artifactId) {
   const caller = await unlock(deps);
   const va = await verifyArtifact(deps, caller, artifactId);
@@ -415,12 +455,14 @@ export async function members(deps, artifactId) {
       r.email = u.email;
     }
   }
-  return { artifact: artifactId, epoch: latest.epoch, seq: latest.seq, public: latest.public, publicWrites: latest.publicWrites, members: rows };
+  return { artifact: artifactId, epoch: latest.epoch, seq: latest.seq, public: latest.public, publicWrites: latest.publicWrites, callerRole: callerRoleOf(caller, va), members: rows };
 }
 
 // share adds who, an email or a user ID, to an artifact at its current epoch
-// with role viewer or editor, or changes their role: promoting a viewer is a
-// same-epoch record, and demoting an editor starts a new epoch. Sharing by
+// with role viewer, editor, or manager, or changes their role: promoting is a
+// same-epoch record, and demoting to viewer starts a new epoch. A manager can
+// make every change below manager; making someone a manager, or changing a
+// manager's entry, is the owner's alone and is refused with owner-only. Sharing by
 // name with a user the owner excluded lists them again and drops the entries
 // they match. It refuses a directory with duplicate emails or fingerprints,
 // and a user whose keys changed since they were pinned unless acceptNewKey. A
@@ -432,12 +474,12 @@ export async function members(deps, artifactId) {
 // promoted, demoted, unchanged, dropped, wasVerified, and for a new epoch
 // excluded and link. Mirrors Share.
 export async function share(deps, artifactId, who, role, { acceptNewKey = false } = {}) {
-  if (role !== 'viewer' && role !== 'editor') throw new SharingError('bad-role', `The role must be viewer or editor, not ${JSON.stringify(role)}.`);
-  const { caller, va } = await ownerAction(deps, artifactId);
+  if (!ROLE_RANK.has(role)) throw new SharingError('bad-role', `The role must be viewer, editor, or manager, not ${JSON.stringify(role)}.`);
+  const { caller, va, manager } = await adminAction(deps, artifactId);
   const latest = va.latest;
   const dir = await directory(deps);
   const u = findUser(dir, who);
-  if (u.id === caller.record.userId) throw new SharingError('share-self', 'The owner already has access to the artifact.');
+  if (u.id === latest.owner) throw new SharingError('share-self', 'The owner already has access to the artifact.');
   const { prior, pin: decided } = await checkPin(deps, va.keyring, u, acceptNewKey, va.membership.rotations);
   const res = {
     user: u, prior, wasVerified: wasVerified(va.keyring, u.id, prior), role, epoch: latest.epoch, reseal: null,
@@ -446,10 +488,13 @@ export async function share(deps, artifactId, who, role, { acceptNewKey = false 
 
   const list = latest.members.map((m) => ({ ...m }));
   const i = list.findIndex((m) => m.user === u.id);
-  // A viewer account writes nothing, so it can only be a viewer. An editor
-  // whose account became a viewer account keeps the entry until changed, as
-  // the server's membership check allows.
-  if (role === 'editor' && u.role === 'viewer' && !(i >= 0 && list[i].role === 'editor')) {
+  if (role === 'manager') checkOwnerOnly(manager, 'make someone a manager');
+  if (i >= 0 && list[i].role === 'manager') checkOwnerOnly(manager, "change a manager's entry");
+  // A viewer account writes nothing, so it can only be a viewer. An editor or
+  // manager whose account became a viewer account keeps the entry, or becomes
+  // an editor if it was a manager, until changed, as the server's membership
+  // check allows.
+  if (ROLE_RANK.get(role) > 0 && u.role === 'viewer' && !(i >= 0 && ROLE_RANK.get(list[i].role) >= ROLE_RANK.get(role))) {
     throw new SharingError('viewer-account', `${u.email} is a viewer account and can only be a viewer.`);
   }
   let needsWraps = true;
@@ -457,16 +502,18 @@ export async function share(deps, artifactId, who, role, { acceptNewKey = false 
   if (i < 0) {
     list.push({ user: u.id, role, fp: u.fp });
   } else {
-    demote = list[i].role === 'editor' && role === 'viewer';
-    res.promoted = list[i].role !== role && !demote;
-    res.demoted = demote;
+    const from = ROLE_RANK.get(list[i].role);
+    const to = ROLE_RANK.get(role);
+    demote = from > 0 && to === 0;
+    res.promoted = to > from;
+    res.demoted = to < from;
     const relist = list[i].fp !== u.fp;
     needsWraps = relist;
-    res.unchanged = !res.promoted && !demote && !relist;
+    res.unchanged = !res.promoted && !res.demoted && !relist;
     list[i] = { user: u.id, role, fp: u.fp };
   }
   const basedOn = pinOf(va.keyring, u.id)?.fp ?? '';
-  if (demote) return shareNextEpoch(deps, caller, va, dir, list, u, decided, basedOn, res);
+  if (demote) return shareNextEpoch(deps, caller, va, dir, list, u, decided, basedOn, res, manager);
   if (res.unchanged) {
     if (decided) await storePin(deps, caller, u.id, decided, basedOn);
     return res;
@@ -491,14 +538,14 @@ export async function share(deps, artifactId, who, role, { acceptNewKey = false 
       throw new SharingError(err.code ?? 'pin', `The server accepted the new membership record, but pinning ${u.email} failed: ${err.message}`, { cause: err });
     }
   }
-  await readBack(deps, caller, artifactId, '');
+  await readBack(deps, caller, va, '');
   return res;
 }
 
-// shareNextEpoch is share when the change demotes an editor: the demoted user
-// stays listed as a viewer and the record starts a new epoch.
-async function shareNextEpoch(deps, caller, va, dir, list, u, decided, basedOn, res) {
-  const change = await putNextEpoch(deps, caller, va, dir, { ...va.latest, members: list }, { decided: u.id });
+// shareNextEpoch is share when the change demotes an editor or manager: the
+// demoted user stays listed as a viewer and the record starts a new epoch.
+async function shareNextEpoch(deps, caller, va, dir, list, u, decided, basedOn, res, manager) {
+  const change = await putNextEpoch(deps, caller, va, dir, { ...va.latest, members: list }, { decided: u.id, manager });
   res.epoch = va.latest.epoch + 1;
   if (decided) {
     try {
@@ -507,7 +554,7 @@ async function shareNextEpoch(deps, caller, va, dir, list, u, decided, basedOn, 
       throw new SharingError(err.code ?? 'pin', `The server accepted the new membership record, but pinning ${u.email} failed: ${err.message}`, { cause: err });
     }
   }
-  await readBack(deps, caller, va.artifact, change.link);
+  await readBack(deps, caller, va, change.link);
   Object.assign(res, { excluded: change.excluded, link: change.link, reseal: await resealInto(deps, caller, va.artifact) });
   return res;
 }
@@ -516,7 +563,8 @@ async function shareNextEpoch(deps, caller, va, dir, list, u, decided, basedOn, 
 // with the members and public switches the change wants, and sends nothing. It
 // makes the new AK, wraps it to every listed member, seals the estate copy,
 // and excludes every member the record removes. r.decided is a member whose
-// pin the caller already decided; r.exclude is a user the caller removes.
+// pin the caller already decided; r.exclude is a user the caller removes;
+// r.manager says the caller is a manager, not the owner.
 // Mirrors buildNextEpoch, less teams and approvals.
 async function buildNextEpoch(deps, caller, va, dir, nextIn, r) {
   const { artifact, latest } = va;
@@ -586,8 +634,18 @@ async function buildNextEpoch(deps, caller, va, dir, nextIn, r) {
     const epochs = held ? [epoch] : Array.from({ length: epoch }, (_, k) => k + 1);
     for (const e of epochs) wraps.push(await wrapTo(u, artifact, e, aks.get(e)));
   }
-  const ekKey = await e2e.ekSealCryptoKey(caller.record.ek);
-  const estate = [{ epoch, sealed: e2e.b64(await e2e.seal(ekKey, ['estate', artifact, String(epoch)], ak)) }];
+  // The owner holds no wraps and reads each epoch through the estate copy,
+  // which only the owner can seal. A manager sends none, and wraps the new
+  // epoch to the owner instead; the owner's client adds the copy later.
+  const estate = [];
+  if (r.manager) {
+    const owner = byId.get(latest.owner);
+    if (!owner) throw new SharingError('owner-missing', "The owner's account is not in the directory, so no key can be wrapped to them.");
+    wraps.push(await wrapTo(owner, artifact, epoch, ak));
+  } else {
+    const ekKey = await e2e.ekSealCryptoKey(caller.record.ek);
+    estate.push({ epoch, sealed: e2e.b64(await e2e.seal(ekKey, ['estate', artifact, String(epoch)], ak)) });
+  }
 
   // Build the link first: a host the link format refuses must fail before any
   // record is written.
@@ -621,7 +679,7 @@ async function putNextEpoch(deps, caller, va, dir, next, r) {
 // and who is excluded is listed in the result. The caller must be the owner.
 // Returns {epoch, reseal, user, excluded, link}. Mirrors Unshare.
 export async function unshare(deps, artifactId, who) {
-  const { caller, va } = await ownerAction(deps, artifactId);
+  const { caller, va, manager } = await adminAction(deps, artifactId);
   const latest = va.latest;
   const dir = await directory(deps);
   let u;
@@ -633,11 +691,12 @@ export async function unshare(deps, artifactId, who) {
     // A listed member whose account was deleted, named by user ID.
     u = { id: who, email: '', fp: m.fp };
   }
-  if (u.id === caller.record.userId) throw new SharingError('unshare-owner', 'The owner cannot be removed from the artifact.');
+  if (u.id === latest.owner) throw new SharingError('unshare-owner', 'The owner cannot be removed from the artifact.');
   const kept = latest.members.filter((m) => m.user !== u.id);
   if (kept.length === latest.members.length) throw new SharingError('not-member', `The user is not a member of the artifact: ${u.email || u.id}`);
-  const change = await putNextEpoch(deps, caller, va, dir, { ...latest, members: kept }, { exclude: u.id });
-  await readBack(deps, caller, artifactId, change.link);
+  if (latest.members.some((m) => m.user === u.id && m.role === 'manager')) checkOwnerOnly(manager, 'remove a manager');
+  const change = await putNextEpoch(deps, caller, va, dir, { ...latest, members: kept }, { exclude: u.id, manager });
+  await readBack(deps, caller, va, change.link);
   return { epoch: latest.epoch + 1, user: u, excluded: change.excluded, link: change.link, reseal: await resealInto(deps, caller, artifactId) };
 }
 
@@ -654,12 +713,12 @@ export async function unshare(deps, artifactId, who) {
 // public, publicWrites, unchanged, newEpoch, and excluded. Mirrors Public.
 export async function setPublic(deps, artifactId, on, { writes } = {}) {
   if (!on && writes !== undefined) throw new SharingError('public-writes-with-off', 'Public writes set who can write through a public link, so they go with on, not off.');
-  const { caller, va } = await ownerAction(deps, artifactId);
+  const { caller, va, manager } = await adminAction(deps, artifactId);
   const latest = va.latest;
   const res = { link: null, epoch: latest.epoch, reseal: null, public: false, publicWrites: false, unchanged: false, newEpoch: false, excluded: [] };
   if (!on) {
     if (!latest.public) return { ...res, unchanged: true };
-    return publicOffNextEpoch(deps, caller, va, res);
+    return publicOffNextEpoch(deps, caller, va, res, manager);
   }
   const next = { ...latest, public: true, publicWrites: writes === undefined ? latest.publicWrites : writes };
   Object.assign(res, { public: true, publicWrites: next.publicWrites });
@@ -668,7 +727,7 @@ export async function setPublic(deps, artifactId, on, { writes } = {}) {
   res.link = await linkOf(deps, caller, va);
   if (latest.public && next.publicWrites === latest.publicWrites) return { ...res, unchanged: true };
   await putRecord(deps, caller, va, next, [], [], '');
-  await readBack(deps, caller, artifactId, '');
+  await readBack(deps, caller, va, '');
   return res;
 }
 
@@ -684,10 +743,10 @@ async function linkOf(deps, caller, va) {
 }
 
 // publicOffNextEpoch makes a public artifact private in a next-epoch record.
-async function publicOffNextEpoch(deps, caller, va, res) {
+async function publicOffNextEpoch(deps, caller, va, res, manager) {
   const dir = await directory(deps);
-  const change = await putNextEpoch(deps, caller, va, dir, { ...va.latest, public: false, publicWrites: false }, {});
-  await readBack(deps, caller, va.artifact, '');
+  const change = await putNextEpoch(deps, caller, va, dir, { ...va.latest, public: false, publicWrites: false }, { manager });
+  await readBack(deps, caller, va, '');
   return { ...res, epoch: va.latest.epoch + 1, newEpoch: true, excluded: change.excluded, reseal: await resealInto(deps, caller, va.artifact) };
 }
 
@@ -1049,7 +1108,7 @@ export async function reseal(deps, artifactId) {
   const id = caller.record.userId;
   const approver = latest.owner === id
     ? latest.ownerFp === caller.fp
-    : latest.members.some((m) => m.user === id && m.role === 'editor' && m.fp === caller.fp);
+    : latest.members.some((m) => m.user === id && (m.role === 'editor' || m.role === 'manager') && m.fp === caller.fp);
   if (!approver) throw new SharingError('cannot-reseal', "Only the artifact's owner or an editor can re-seal its data.");
   e2e.checkEncryptEpoch(epochPinOf(va.keyring, artifactId), latest.epoch);
   const res = { resealed: [], skipped: [] };

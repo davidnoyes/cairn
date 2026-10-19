@@ -106,7 +106,7 @@ export async function describeArtifact(deps, view) {
 function mayWriteMeta(opened) {
   if (opened.mode !== 'member' || !opened.record) return false;
   const id = opened.record.userId;
-  return opened.latest.owner === id || opened.latest.members.some((m) => m.user === id && m.role === 'editor');
+  return opened.latest.owner === id || opened.latest.members.some((m) => m.user === id && (m.role === 'editor' || m.role === 'manager'));
 }
 
 // writeMeta seals value under the current epoch's AK, signs the record, and

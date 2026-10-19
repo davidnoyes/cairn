@@ -17,7 +17,7 @@ import {
 } from './viewer.mjs';
 
 const U = {};
-for (const name of ['owner', 'editor', 'viewer', 'outsider']) U[name] = await makeUser(name);
+for (const name of ['owner', 'editor', 'viewer', 'outsider', 'manager']) U[name] = await makeUser(name);
 const records = {};
 for (const name of Object.keys(U)) records[name] = await keyStoreRecord(U[name]);
 
@@ -28,8 +28,8 @@ const STD_MEMBERS = [
 
 // scene is a world, a fake server with `who` signed in (or nobody), and the
 // deps the viewer takes. record overrides the key-store record.
-async function scene({ who = null, members = STD_MEMBERS, isPublic = false, epoch2 = false, publicWrites = false, record, owner = U.owner } = {}) {
-  const world = await buildWorld({ owner, members, isPublic, epoch2, publicWrites });
+async function scene({ who = null, members = STD_MEMBERS, isPublic = false, epoch2 = false, epoch2By = null, publicWrites = false, record, owner = U.owner } = {}) {
+  const world = await buildWorld({ owner, members, isPublic, epoch2, epoch2By, publicWrites });
   const server = makeServer(world, { who: who && U[who], linkTokenB64: '*' });
   const rec = record === undefined ? (who ? records[who] : null) : record;
   const deps = { fetch: server.fetch, keyStore: fakeKeyStore(rec), storage: fakeStorage(), origin: ORIGIN };
@@ -1330,4 +1330,77 @@ test('navigateTarget refuses everything else', () => {
   ]) {
     assert.equal(navigateTarget(href, { origin: ORIGIN, mode: 'shared' }), null, href);
   }
+});
+
+// ---- managers ----
+// A manager's next-epoch record carries a wrap for the owner and no estate
+// copy; the owner's client reads the epoch through that wrap and then stores
+// the copy. A manager counts as a writer wherever an editor does.
+
+const MANAGER_MEMBERS = [
+  { user: U.manager, role: 'manager' },
+  { user: U.editor, role: 'editor' },
+  { user: U.viewer, role: 'viewer' },
+];
+
+const managerScene = (opts = {}) => scene({ members: MANAGER_MEMBERS, epoch2By: U.manager, ...opts });
+
+test('manager: the owner reads an epoch a manager started through their own wrap, and stores the estate copy once', async () => {
+  const s = await managerScene({ who: 'owner' });
+  const opened = await open(s);
+  assert.deepEqual(opened.aks.get(1), s.world.aks[1]);
+  assert.deepEqual(opened.aks.get(2), s.world.aks[2]);
+  assert.equal(opened.latest.epoch, 2);
+  assert.deepEqual(s.server.estatePuts.map((p) => p.epoch), [2]);
+  const sealed = e2e.unb64(s.server.estatePuts[0].sealed);
+  assert.deepEqual(await e2e.open(await e2e.ekSealCryptoKey(U.owner.ek), ['estate', ARTIFACT, '2'], sealed), s.world.aks[2]);
+  assert.deepEqual(Object.keys(s.server.estatePuts[0]).sort(), ['epoch', 'sealed']);
+  // The server holds the copy now, so the next open stores nothing.
+  await open(s);
+  assert.equal(s.server.estatePuts.length, 1);
+  const puts = s.server.calls.filter((c) => c.method === 'PUT' && c.path.includes('/estate/'));
+  assert.deepEqual(puts.map((c) => c.path), [`/api/artifacts/${ARTIFACT}/estate/2`]);
+});
+
+test('manager: the owner still reads when the estate copy cannot be stored', async () => {
+  const s = await managerScene({ who: 'owner' });
+  s.server.failEstate = true;
+  const opened = await open(s);
+  assert.deepEqual(opened.aks.get(2), s.world.aks[2]);
+  assert.equal(s.server.estatePuts.length, 0);
+});
+
+test('manager: a wrap that does not match the chain akCommit is refused for the owner', async () => {
+  const s = await managerScene({ who: 'owner' });
+  const wrong = await e2e.wrap({ purpose: 'ak', artifact: ARTIFACT, epoch: 2, recipientId: U.owner.id, recipientPub: U.owner.x.pub }, s.world.aks[1]);
+  s.world.wraps[U.owner.id] = [{ epoch: 2, wrapped: e2e.b64(wrong), fp: U.owner.fp }];
+  await assert.rejects(() => open(s), (err) => err instanceof e2e.ChainError && /your wrap of epoch 2/.test(err.message));
+  assert.equal(s.server.estatePuts.length, 0);
+});
+
+test('manager: an owner with neither an estate copy nor a wrap for an epoch is refused, and stores nothing', async () => {
+  const s = await managerScene({ who: 'owner' });
+  delete s.world.wraps[U.owner.id];
+  await assert.rejects(() => open(s), (err) => err instanceof e2e.ChainError && /no key for you for epoch 2/.test(err.message));
+  assert.equal(s.server.estatePuts.length, 0);
+});
+
+test('manager: the manager and every other member open a chain the manager signed', async () => {
+  for (const who of ['manager', 'editor', 'viewer']) {
+    const s = await managerScene({ who });
+    const opened = await open(s);
+    assert.equal(opened.latest.seq, 3, who);
+    assert.deepEqual(opened.aks.get(2), s.world.aks[2], who);
+    assert.equal(s.server.estatePuts.length, 0, `${who} stores no estate copy`);
+  }
+});
+
+test('manager: a manifest signed by a listed manager is trusted, and a manager can write', async () => {
+  const s = await trustScene({ members: MANAGER_MEMBERS });
+  const { run } = await trust(s, { signer: signerOf(U.manager) });
+  assert.deepEqual(await run(), { signer: { user: U.manager.id, ed25519: e2e.b64(U.manager.ed.pub) } });
+  const w = await writerKeys(s.deps, s.opened);
+  assert.deepEqual(Object.keys(w).sort(), [U.owner.id, U.manager.id, U.editor.id].sort());
+  assert.deepEqual(w[U.manager.id], [e2e.b64(U.manager.ed.pub)]);
+  assert.equal(canWrite((await trustScene({ who: 'manager', members: MANAGER_MEMBERS })).opened), true);
 });

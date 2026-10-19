@@ -37,7 +37,7 @@ export function makeShareServer(world, { who, users = [] }) {
     calls: [],
     directory: new Map(),
     rotations: {},
-    owners: { [world.owner.fp]: world.owner.pair },
+    owners: { ...world.owners },
     keyring: { rev: 0, keyring: '' },
     onKeyringGet: null,
     failPut: null,
@@ -50,7 +50,7 @@ export function makeShareServer(world, { who, users = [] }) {
     files: new Map(),
     blobs: new Map(),
     manifests: new Map(),
-    puts: { membership: [], meta: [], db: [], file: [], version: [] },
+    puts: { membership: [], meta: [], db: [], file: [], version: [], estate: [] },
     deleted: [],
   };
   for (const u of [world.owner, ...world.members.map((m) => m.user), ...users]) s.directory.set(u.id, wireUser(u));
@@ -95,6 +95,9 @@ export function makeShareServer(world, { who, users = [] }) {
       const body = JSON.parse(init.body);
       s.puts.membership.push(body);
       s.records.push(body.membership);
+      // The server serves the key of whoever signed, a manager included.
+      const signed = JSON.parse(new TextDecoder().decode(e2e.unb64(body.membership.body)));
+      if (signed.signerFp) s.owners[signed.signerFp] = { x25519: s.directory.get(signed.signer).x25519Pub, ed25519: s.directory.get(signed.signer).ed25519Pub };
       for (const w of body.wraps) {
         const fp = e2e.toHex(await e2e.fingerprint(e2e.unb64(s.directory.get(w.user).x25519Pub), e2e.unb64(s.directory.get(w.user).ed25519Pub)));
         s.wraps[w.user] = [...(s.wraps[w.user] ?? []).filter((x) => x.epoch !== w.epoch), { epoch: w.epoch, wrapped: w.wrapped, fp }];
@@ -103,8 +106,17 @@ export function makeShareServer(world, { who, users = [] }) {
       return jsonResponse(200, {});
     }
     if (rest === 'keys') {
-      if (s.who.id === world.owner.id) return jsonResponse(200, { wraps: [], estate: s.estate });
+      if (s.who.id === world.owner.id) return jsonResponse(200, { wraps: s.wraps[s.who.id] ?? [], estate: s.estate });
       return jsonResponse(200, { wraps: s.wraps[s.who.id] ?? [], estate: [] });
+    }
+    const est = /^estate\/(\d+)$/.exec(rest);
+    if (est && method === 'PUT') {
+      const failed = fail('estate');
+      if (failed) return failed;
+      const put = { epoch: Number(est[1]), ...JSON.parse(init.body) };
+      s.puts.estate.push(put);
+      s.estate.push(put);
+      return jsonResponse(200, { epoch: put.epoch });
     }
     if (rest === '') return jsonResponse(200, { id: ARTIFACT, meta: s.artifactMeta });
     if (rest === 'versions') return jsonResponse(200, [...s.versions.values()].map((v) => ({ ...v.json, meta: v.meta })));

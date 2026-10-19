@@ -136,7 +136,7 @@ internal/e2e/approval.go	if e.User == id || e.FP == fp || NormalizeEmail(e.Email
 internal/e2e/approval.go	if e.User == id || e.FP == fp || NormalizeEmail(e.Email) == email {	if e.User == id || e.FP == fp {	go test ./internal/e2e -run 'TestCheckApproval|TestExcludedMatch|TestVectors'
 internal/server/web/e2e.mjs	if (!approval) throw new ApprovalMissingError('no approval');	if (false) throw new ApprovalMissingError('no approval');	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	if (listedFp === '' || !(await linked(signer, listedFp, k.fp))) continue;	if (false) continue;	node --test internal/server/web/e2e_test.mjs
-internal/server/web/e2e.mjs	if (m.user === approval.signer && m.role === 'editor') listedFp = m.fp;	if (m.user === approval.signer) listedFp = m.fp;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (m.user === approval.signer && (m.role === 'editor' || m.role === 'manager')) listedFp = m.fp;	if (m.user === approval.signer) listedFp = m.fp;	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	if (body.artifact !== input.artifact) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	if (body.epoch !== latest.epoch) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	if (body.user !== user.id) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
@@ -1152,8 +1152,8 @@ internal/server/web/viewer.mjs	pairs.push(b.old, b.new);	pairs.push(b.new);	node
 internal/server/web/viewer.mjs	pairs.push(b.old, b.new);	pairs.push(b.old);	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (env.signer === latest.owner) {	if (false) {	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	listedFp = latest.ownerFp;	listedFp = '';	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	x.user === env.signer && x.role === 'editor'	x.role === 'editor'	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	x.user === env.signer && x.role === 'editor'	x.user === env.signer	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	x.user === env.signer && (x.role === 'editor' || x.role === 'manager')	(x.role === 'editor' || x.role === 'manager')	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	x.user === env.signer && (x.role === 'editor' || x.role === 'manager')	x.user === env.signer	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (!(await linked(env.signer, listedFp, fp))) continue;	if (false) continue;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (!(await linked(env.signer, listedFp, fp))) continue;	if (fp !== listedFp) continue;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (await e2e.verifyEnvelope(ed25519, 'manifest', env))	if (true)	node --test internal/server/web/viewer_test.mjs
@@ -1681,10 +1681,10 @@ internal/server/web/content.mjs	  checkData(msg);	  void msg;	node --test intern
 # line is in trustedSigner; the linked-key tests kill the check that uses it),
 # and re-encoding the directory's Ed25519 key (fingerprintOf refuses a
 # non-canonical one first).
-internal/server/web/viewer.mjs	for (const m of latest.members) if (m.role === 'editor') listedFps.push([m.user, m.fp]);	for (const m of latest.members) listedFps.push([m.user, m.fp]);	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	for (const m of latest.members) if (m.role === 'editor') listedFps.push([m.user, m.fp]);	for (const m of latest.members) if (m.role !== 'editor') listedFps.push([m.user, m.fp]);	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	for (const m of latest.members) if (m.role === 'editor') listedFps.push([m.user, m.fp]);	for (const m of latest.members) if (m.role === 'editor') listedFps.push([m.user, latest.ownerFp]);	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	for (const m of latest.members) if (m.role === 'editor') listedFps.push([m.user, m.fp]);	void latest.members;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	for (const m of latest.members) if (m.role === 'editor' || m.role === 'manager') listedFps.push([m.user, m.fp]);	for (const m of latest.members) listedFps.push([m.user, m.fp]);	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	for (const m of latest.members) if (m.role === 'editor' || m.role === 'manager') listedFps.push([m.user, m.fp]);	for (const m of latest.members) if (!(m.role === 'editor' || m.role === 'manager')) listedFps.push([m.user, m.fp]);	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	for (const m of latest.members) if (m.role === 'editor' || m.role === 'manager') listedFps.push([m.user, m.fp]);	for (const m of latest.members) if (m.role === 'editor' || m.role === 'manager') listedFps.push([m.user, latest.ownerFp]);	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	for (const m of latest.members) if (m.role === 'editor' || m.role === 'manager') listedFps.push([m.user, m.fp]);	void latest.members;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	const listedFps = [[latest.owner, latest.ownerFp]];	const listedFps = [];	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	const listedFps = [[latest.owner, latest.ownerFp]];	const listedFps = [[latest.owner, '']];	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	const keys = (out[user] ??= []);	const keys = [];	node --test internal/server/web/viewer_test.mjs
@@ -1698,11 +1698,11 @@ internal/server/web/viewer.mjs	if (!keys.includes(ed25519)) keys.push(ed25519);	
 internal/server/web/viewer.mjs	if (!opened.caller || !opened.record) return false;	if (!opened.record) return false;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (!opened.caller || !opened.record) return false;	if (!opened.caller) return false;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (!opened.caller || !opened.record) return false;	if (false) return false;	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	if (id === latest.owner || latest.members.some((m) => m.user === id && m.role === 'editor')) return true;	if (true) return true;	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	if (id === latest.owner || latest.members.some((m) => m.user === id && m.role === 'editor')) return true;	if (latest.members.some((m) => m.user === id && m.role === 'editor')) return true;	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	if (id === latest.owner || latest.members.some((m) => m.user === id && m.role === 'editor')) return true;	if (id === latest.owner) return true;	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	latest.members.some((m) => m.user === id && m.role === 'editor')) return true;	latest.members.some((m) => m.role === 'editor')) return true;	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	latest.members.some((m) => m.user === id && m.role === 'editor')) return true;	latest.members.some((m) => m.user === id)) return true;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (id === latest.owner || latest.members.some((m) => m.user === id && (m.role === 'editor' || m.role === 'manager'))) return true;	if (true) return true;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (id === latest.owner || latest.members.some((m) => m.user === id && (m.role === 'editor' || m.role === 'manager'))) return true;	if (latest.members.some((m) => m.user === id && (m.role === 'editor' || m.role === 'manager'))) return true;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (id === latest.owner || latest.members.some((m) => m.user === id && (m.role === 'editor' || m.role === 'manager'))) return true;	if (id === latest.owner) return true;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	latest.members.some((m) => m.user === id && (m.role === 'editor' || m.role === 'manager'))) return true;	latest.members.some((m) => (m.role === 'editor' || m.role === 'manager'))) return true;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	latest.members.some((m) => m.user === id && (m.role === 'editor' || m.role === 'manager'))) return true;	latest.members.some((m) => m.user === id)) return true;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	return opened.mode === 'link' && latest.publicWrites === true;	return opened.mode === 'link';	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	return opened.mode === 'link' && latest.publicWrites === true;	return latest.publicWrites === true;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	return opened.mode === 'link' && latest.publicWrites === true;	return true;	node --test internal/server/web/viewer_test.mjs
@@ -1889,12 +1889,12 @@ internal/server/web/meta.mjs	if (!ak) throw new MetaError	if (false) throw new M
 internal/server/web/meta.mjs	const epoch = opened.latest.epoch;	const epoch = 1;	node --test internal/server/web/meta_test.mjs
 internal/server/web/meta.mjs	epoch, sha256: await e2e.bodyHash(blob) };	epoch, sha256: '0'.repeat(64) };	node --test internal/server/web/meta_test.mjs
 internal/server/web/meta.mjs	${versionId === '' ? '' : `/versions/${versionId}`}	${''}	node --test internal/server/web/meta_test.mjs
-internal/server/web/sharing.mjs	if (va.latest.owner !== caller.record.userId || va.latest.ownerFp !== caller.fp) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	latest.ownerFp === caller.fp) return 'owner';	latest.ownerFp === caller.fp) return 'manager';	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (va.latest.team !== 'none') throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (va.handover && !va.handover.acked) {	if (false) {	node --test internal/server/web/sharing_test.mjs
-internal/server/web/sharing.mjs	if (u.id === caller.record.userId) throw new SharingError('share-self'	if (false) throw new SharingError('share-self'	node --test internal/server/web/sharing_test.mjs
-internal/server/web/sharing.mjs	if (role !== 'viewer' && role !== 'editor') throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
-internal/server/web/sharing.mjs	if (u.id === caller.record.userId) throw new SharingError('unshare-owner'	if (false) throw new SharingError('unshare-owner'	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (u.id === latest.owner) throw new SharingError('share-self'	if (false) throw new SharingError('share-self'	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (!ROLE_RANK.has(role)) throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (u.id === latest.owner) throw new SharingError('unshare-owner'	if (false) throw new SharingError('unshare-owner'	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (kept.length === latest.members.length) throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (!on && writes !== undefined) throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (emails.has(email) && emails.get(email) !== u.id) {	if (false) {	node --test internal/server/web/sharing_test.mjs
@@ -1908,7 +1908,7 @@ internal/server/web/sharing.mjs	if (cur.fp === pin.fp && cur.state === e2e.PIN_V
 internal/server/web/sharing.mjs	if (cur.fp !== pin.fp && cur.fp !== basedOn) throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	r.state = fork ? 'conflict' : state;	r.state = state;	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (r.user === caller.record.userId) {	if (false) {	node --test internal/server/web/sharing_test.mjs
-internal/server/web/sharing.mjs	demote = list[i].role === 'editor' && role === 'viewer';	demote = false;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	demote = from > 0 && to === 0;	demote = false;	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	needsWraps = relist;	needsWraps = false;	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (res.unchanged) {	if (false) {	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (needsWraps) {	if (false) {	node --test internal/server/web/sharing_test.mjs
@@ -1935,7 +1935,7 @@ internal/server/web/sharing.mjs	publicWrites: writes === undefined ? latest.publ
 internal/server/web/sharing.mjs	aks.get(va.latest.epoch), va.latest.epoch,	aks.get(1), va.latest.epoch,	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	return va.latest.public ? linkOf(deps, caller, va) : null;	return linkOf(deps, caller, va);	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (!approver) throw	if (false) throw	node --test internal/server/web/sharing_test.mjs
-internal/server/web/sharing.mjs	m.role === 'editor' && m.fp === caller.fp)	m.role === 'editor')	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	(m.role === 'editor' || m.role === 'manager') && m.fp === caller.fp	(m.role === 'editor' || m.role === 'manager')	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (!before) return;	if (false) return;	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	writerKeys(deps, { ...opened, latest: before })	writerKeys(deps, { ...opened })	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	writers: old.writers, publicWrites: before.publicWrites }	writers: old.writers, publicWrites: false }	node --test internal/server/web/sharing_test.mjs
@@ -2473,3 +2473,60 @@ internal/server/sharing.go	if m.Role != access.RoleEditor && m.Role != access.Ro
 internal/store/sharing.go	AND role IN ('editor', 'manager'))	AND role IN ('zzz', 'manager'))	go test ./internal/server -count=1 -run 'TestReviewListsOnly'
 internal/store/sharing.go	AND role IN ('editor', 'manager'))	AND role IN ('editor', 'zzz'))	go test ./internal/server -count=1 -run 'TestManagerSharesAtTheSameEpoch'
 internal/store/migrations/014_manager_role.sql	CHECK (role IN ('viewer', 'editor', 'manager'))	CHECK (role IN ('viewer', 'editor'))	go test ./internal/store -count=1 -run TestMigration014ManagerRole
+internal/server/web/e2e.mjs	if (b.v !== 1) throw new ChainError(	if (false) throw new ChainError(	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (signed) throw new FormatError('a version 1	if (false) throw new FormatError('a version 1	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (b.v !== 2) throw new FormatError(	if (false) throw new FormatError(	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (!b.signer || !b.signerFp) throw	if (!b.signer && !b.signerFp) throw	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (b.signer === b.owner) throw new FormatError(	if (false) throw new FormatError(	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	signer: field('string', { omitEmpty: true }),	signer: field('string'),	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	signerFp: field('string', { omitEmpty: true }),	signerFp: field('string'),	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	keyFp = pre.signerFp;	keyFp = pre.ownerFp;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (env.signer !== pre.signer) {	if (false) {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (pre.v === 2) {	if (false) {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (b.v === 2) return checkManagerRecord(prev, b, linked);	if (false) return checkManagerRecord(prev, b, linked);	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	m.user === b.signer && m.role === 'manager');	m.user === b.signer);	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (!(await linked(b.signer, listed.fp, b.signerFp))) {	if (false) {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (b.owner !== prev.owner) throw new ChainError("a manager's record changes the owner");	if (false) throw new ChainError("a manager's record changes the owner");	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (b.handover !== '' || b.transfer !== '') throw new ChainError("a manager's	if (false) throw new ChainError("a manager's	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (!sameManagers(prev.members, b.members)) {	if (false) {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	return x.length === y.length && x.every(	return x.every(	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	m.user === y[i].user && m.role === y[i].role && m.fp === y[i].fp);	m.user === y[i].user && m.role === y[i].role);	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	m.user === y[i].user && m.role === y[i].role && m.fp === y[i].fp);	m.role === y[i].role && m.fp === y[i].fp);	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (m.role !== 'viewer' && m.role !== 'editor' && m.role !== 'manager') {	if (m.role !== 'viewer' && m.role !== 'editor') {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (listed.role !== 'editor' && listed.role !== 'manager') {	if (listed.role !== 'editor') {	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	(m.role === 'editor' || m.role === 'manager')) listedFp = m.fp;	m.role === 'editor') listedFp = m.fp;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/e2e.mjs	if (m.role !== 'editor' && m.role !== 'manager') continue;	if (m.role !== 'editor') continue;	node --test internal/server/web/e2e_test.mjs
+internal/server/web/viewer.mjs	x.user === env.signer && (x.role === 'editor' || x.role === 'manager'))	x.user === env.signer && x.role === 'editor')	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (m.role === 'editor' || m.role === 'manager') listedFps.push	if (m.role === 'editor') listedFps.push	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	m.user === id && (m.role === 'editor' || m.role === 'manager'))) return true	m.user === id && m.role === 'editor')) return true	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	await catchUpEstate(deps, caller, artifact, missing);	void missing;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	await openWraps(caller, artifact, keys.wraps, commits, aks, held);	void held;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	.filter(([epoch]) => !held.has(epoch)));	.filter(() => true));	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	['estate', artifact, String(epoch)], ak));	['estat', artifact, String(epoch)], ak));	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	/estate/${epoch}`, { body: { sealed } });	/estates/${epoch}`, { body: { sealed } });	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	      // Reading does not depend on the copy.	      throw new Error('stop');	node --test internal/server/web/viewer_test.mjs
+internal/server/web/meta.mjs	m.user === id && (m.role === 'editor' || m.role === 'manager'));	m.user === id && m.role === 'editor');	node --test internal/server/web/meta_test.mjs
+internal/server/web/sharing.mjs	if (manager) Object.assign(body, { signer: manager.user, signerFp: manager.fp });	if (false) Object.assign(body, { signer: manager.user, signerFp: manager.fp });	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	v: manager ? 2 : 1,	v: 1,	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	signer: manager.user, signerFp: manager.fp }	signer: manager.user, signerFp: manager.user }	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	va.latest.owner === caller.record.userId ? null : {	true ? null : {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	m.role === 'manager' && m.fp === caller.fp)) return 'manager';	m.role === 'manager')) return 'manager';	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (role === 'manager') checkOwnerOnly(manager, 'make someone a manager');	if (false) checkOwnerOnly(manager, 'make someone a manager');	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (i >= 0 && list[i].role === 'manager') checkOwnerOnly(manager	if (false) checkOwnerOnly(manager	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	m.role === 'manager')) checkOwnerOnly(manager, 'remove a manager');	false)) checkOwnerOnly(manager, 'remove a manager');	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (manager) throw new SharingError('owner-only'	if (false) throw new SharingError('owner-only'	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	wraps.push(await wrapTo(owner, artifact, epoch, ak));	void owner;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (r.manager) {	if (false) {	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (ROLE_RANK.get(role) > 0 && u.role === 'viewer'	if (role === 'editor' && u.role === 'viewer'	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	ROLE_RANK.get(list[i].role) >= ROLE_RANK.get(role)))	list[i].role === 'editor'))	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	demote = from > 0 && to === 0;	demote = from === 1 && to === 0;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	res.unchanged = !res.promoted && !res.demoted && !relist;	res.unchanged = !res.promoted && !demote && !relist;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	await verifyArtifact(deps, caller, va.artifact, va.latest.ownerFp);	await verifyArtifact(deps, caller, va.artifact, caller.fp);	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	callerRole: callerRoleOf(caller, va),	callerRole: 'owner',	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	(m.role === 'manager' && callerRole !== 'owner')) return	(m.role === 'manager' && false)) return	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	const offered = callerRole === 'owner' ?	const offered = true ?	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	(m.role === 'editor' || m.role === 'manager') && m.fp === caller.fp	m.role === 'editor' && m.fp === caller.fp	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (u.id === latest.owner) throw new SharingError('unshare-owner'	if (u.id === caller.record.userId) throw new SharingError('unshare-owner'	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (u.id === latest.owner) throw new SharingError('share-self'	if (u.id === caller.record.userId) throw new SharingError('share-self'	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	const manager = adminRole(caller, va) === 'manager';	const manager = false;	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (!role) throw new SharingError('not-owner'	if (false) throw new SharingError('not-owner'	node --test internal/server/web/sharing_test.mjs

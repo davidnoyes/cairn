@@ -1833,6 +1833,8 @@ export const BODY_SCHEMAS = {
     prev: field('string'),
     transfer: field('string'),
     handover: field('string'),
+    signer: field('string', { omitEmpty: true }),
+    signerFp: field('string', { omitEmpty: true }),
   },
   transfer: {
     v: field('number'),
@@ -2096,11 +2098,27 @@ export function decodeEnvelope(bytesOrText) {
 
 // openEnvelope verifies env's signature against pub for purpose, strictly
 // decodes its body against BODY_SCHEMAS[purpose], and requires the body's
-// "v" field to be 1. It refuses purpose 'rotation' with FormatError: a
+// "v" field to be 1 (a membership body may also be 2, see
+// checkMembershipVersion). It refuses purpose 'rotation' with FormatError: a
 // rotation also needs newSig, which only openRotation checks.
 export async function openEnvelope(env, pub, purpose) {
   if (purpose === 'rotation') throw new FormatError('open a rotation envelope with openRotation');
   return openEnvelopeBody(env, pub, purpose);
+}
+
+// checkMembershipVersion enforces the version rule of a membership body:
+// version 1 has neither signer field, and version 2 has both, non-empty,
+// with a signer who is not the owner. Any other version is refused with
+// FormatError. Mirrors checkVersion in internal/e2e/envelope.go.
+function checkMembershipVersion(b) {
+  const signed = b.signer !== undefined || b.signerFp !== undefined;
+  if (b.v === 1) {
+    if (signed) throw new FormatError('a version 1 membership body has no signer or signerFp');
+    return;
+  }
+  if (b.v !== 2) throw new FormatError(`body version ${b.v}, want 1 or 2`);
+  if (!b.signer || !b.signerFp) throw new FormatError('a version 2 membership body needs signer and signerFp');
+  if (b.signer === b.owner) throw new FormatError('a version 2 membership body is signed by a manager, not the owner');
 }
 
 async function openEnvelopeBody(env, pub, purpose) {
@@ -2108,7 +2126,11 @@ async function openEnvelopeBody(env, pub, purpose) {
   if (!schema) throw new FormatError(`unknown purpose: ${purpose}`);
   if (!(await verifyEnvelope(pub, purpose, env))) throw new DecryptError('bad envelope signature');
   const body = decodeStrict(unb64(env.body), schema);
-  if (body.v !== 1) throw new FormatError(`body version ${body.v}, want 1`);
+  if (purpose === 'membership') {
+    checkMembershipVersion(body);
+  } else if (body.v !== 1) {
+    throw new FormatError(`body version ${body.v}, want 1`);
+  }
   return body;
 }
 
@@ -2161,16 +2183,27 @@ async function ownerKeys(pairs) {
   return keys;
 }
 
-// openRecord verifies one record under the key its ownerFp names, and
-// checks the fields that do not depend on the record before it. The body is
-// decoded strictly before the signature is checked, only to read ownerFp;
-// openEnvelope then decodes the same bytes the same way, so the ownerFp it
-// returns is the one whose key verified the record. Mirrors openRecord in
+// openRecord verifies one record under the key its ownerFp names, or for a
+// version 2 record the key its signerFp names, and checks the fields that do
+// not depend on the record before it. The body is decoded strictly before
+// the signature is checked, only to read the fingerprint; openEnvelope then
+// decodes the same bytes the same way, so the fingerprint it uses is the one
+// whose key verified the record. Mirrors openRecord in
 // internal/e2e/chain.go.
 async function openRecord(env, artifact, owners) {
   const pre = decodeStrict(unb64(env.body), BODY_SCHEMAS.membership);
-  if (!owners.has(pre.ownerFp)) throw new ChainError(`no owner key for ownerFp ${pre.ownerFp}`);
-  const b = await openEnvelope(env, owners.get(pre.ownerFp), 'membership');
+  checkMembershipVersion(pre);
+  let keyFp = pre.ownerFp;
+  let who = 'owner';
+  if (pre.v === 2) {
+    keyFp = pre.signerFp;
+    who = 'signer';
+    if (env.signer !== pre.signer) {
+      throw new ChainError(`the envelope's signer ${env.signer} is not the body's signer ${pre.signer}`);
+    }
+  }
+  if (!owners.has(keyFp)) throw new ChainError(`no ${who} key for fingerprint ${keyFp}`);
+  const b = await openEnvelope(env, owners.get(keyFp), 'membership');
   if (b.artifact !== artifact) throw new ChainError(`record for artifact ${b.artifact}`);
   if (b.members === null || b.excluded === null) {
     throw new ChainError('members and excluded must be arrays');
@@ -2189,7 +2222,9 @@ async function openRecord(env, artifact, owners) {
   }
   for (const m of b.members) {
     if (m.user === b.owner) throw new ChainError('the owner is listed as a member');
-    if (m.role !== 'viewer' && m.role !== 'editor') throw new ChainError(`member ${m.user} has role ${m.role}`);
+    if (m.role !== 'viewer' && m.role !== 'editor' && m.role !== 'manager') {
+      throw new ChainError(`member ${m.user} has role ${m.role}`);
+    }
     if (!isHex64(m.fp)) throw new ChainError(`member ${m.user} fp is not 64 lowercase hex digits`);
     for (const e of b.excluded) {
       if (e.user === m.user || e.fp === m.fp) {
@@ -2210,6 +2245,7 @@ function isHex64(s) {
 }
 
 async function checkFirstRecord(b, anchor, linked) {
+  if (b.v !== 1) throw new ChainError(`the first record is version ${b.v}, and only an owner signs it`);
   if (b.seq !== 1) throw new ChainError(`first record has seq ${b.seq}`);
   if (b.prev !== '') throw new ChainError('first record has a prev');
   if (b.epoch !== 1) throw new ChainError(`first record has epoch ${b.epoch}`);
@@ -2235,6 +2271,7 @@ async function checkNextRecord(input, owners, linked, prev, prevHash, b, handove
     throw new ChainError(`epoch ${b.epoch} follows ${prev.epoch}`);
   }
 
+  if (b.v === 2) return checkManagerRecord(prev, b, linked);
   if (b.owner === prev.owner) {
     if (b.transfer !== '' || b.handover !== '') {
       throw new ChainError('transfer or handover set without a change of owner');
@@ -2260,7 +2297,9 @@ async function checkNextRecord(input, owners, linked, prev, prevHash, b, handove
     }
     return;
   }
-  if (listed.role !== 'editor') throw new ChainError(`the new owner is listed as ${listed.role}, not editor`);
+  if (listed.role !== 'editor' && listed.role !== 'manager') {
+    throw new ChainError(`the new owner is listed as ${listed.role}, not editor or manager`);
+  }
   if (!(await linked(b.owner, listed.fp, b.ownerFp))) {
     throw new ChainError('ownerFp does not follow from the fp the previous record lists for the new owner');
   }
@@ -2279,6 +2318,40 @@ async function checkNextRecord(input, owners, linked, prev, prevHash, b, handove
   if (t.to !== b.owner) throw new ChainError(`offer to ${t.to}, not the new owner`);
   if (t.toFp !== listed.fp) throw new ChainError("offer's toFp is not the fp listed for the new owner");
   if (t.prev !== prevHash) throw new ChainError("offer's prev is not the previous record's hash");
+}
+
+// checkManagerRecord checks a version 2 record b, which a manager signed,
+// against the record before it, prev. openRecord has verified it under the
+// key b.signerFp names. The manager's key is reached from the fp prev lists
+// for them; the owner is unchanged, and no transfer or handover is set.
+// Every entry with role manager is the same in both records, so a manager
+// adds, removes, and changes none. Mirrors checkManagerRecord in
+// internal/e2e/chain.go.
+async function checkManagerRecord(prev, b, linked) {
+  const listed = prev.members.find((m) => m.user === b.signer && m.role === 'manager');
+  if (!listed) throw new ChainError(`the previous record does not list ${b.signer} as a manager`);
+  if (!(await linked(b.signer, listed.fp, b.signerFp))) {
+    throw new ChainError("signerFp does not follow from the fp the previous record lists for the manager");
+  }
+  if (b.owner !== prev.owner) throw new ChainError("a manager's record changes the owner");
+  if (!(await linked(b.owner, prev.ownerFp, b.ownerFp))) {
+    throw new ChainError("ownerFp does not follow from the previous record's");
+  }
+  if (b.handover !== '' || b.transfer !== '') throw new ChainError("a manager's record sets transfer or handover");
+  if (!sameManagers(prev.members, b.members)) {
+    throw new ChainError("a manager's record adds, removes, or changes a manager");
+  }
+}
+
+// sameManagers reports whether the members with role manager are identical,
+// in user, role, and fp, in a and b. Both lists are sorted by user ID, so the
+// managers come out in the same order. Mirrors sameManagers in
+// internal/e2e/chain.go.
+function sameManagers(a, b) {
+  const managers = (ms) => ms.filter((m) => m.role === 'manager');
+  const x = managers(a);
+  const y = managers(b);
+  return x.length === y.length && x.every((m, i) => m.user === y[i].user && m.role === y[i].role && m.fp === y[i].fp);
 }
 
 // checkSuccessor checks the successor record served for the handover b: it
@@ -2538,7 +2611,7 @@ export async function verifyLinkChain(input) {
   }
   const editors = Object.create(null);
   for (const m of b.members) {
-    if (m.role !== 'editor') continue;
+    if (m.role !== 'editor' && m.role !== 'manager') continue;
     const kp = hasOwn(input.keys, m.user) ? input.keys[m.user] : null;
     if (!kp) continue;
     try {
@@ -2613,7 +2686,7 @@ async function openApproval(input, listedFp) {
       sigErr ??= err;
     }
   }
-  throw sigErr ?? new ApprovalSignerError(`${signer} is not the owner or a listed editor`);
+  throw sigErr ?? new ApprovalSignerError(`${signer} is not the owner or a listed editor or manager`);
 }
 
 // checkApproval runs the four checks that let an owner's client list an
@@ -2637,7 +2710,7 @@ export async function checkApproval(input) {
     listedFp = latest.ownerFp;
   } else {
     for (const m of latest.members) {
-      if (m.user === approval.signer && m.role === 'editor') listedFp = m.fp;
+      if (m.user === approval.signer && (m.role === 'editor' || m.role === 'manager')) listedFp = m.fp;
     }
   }
   const body = await openApproval(input, listedFp);

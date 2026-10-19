@@ -288,18 +288,12 @@ function requireEpochs(aks, chain) {
   return aks;
 }
 
-// callerAKs returns the AK of every epoch up to the chain's latest: for the
-// owner from the estate copies, for anyone else by opening their own wraps.
-// Each is checked against the akCommit the verified chain lists. Mirrors
-// callerAKs in approve.go and epochAKs in share.go.
-export async function callerAKs(deps, caller, artifact, chain) {
-  const commits = epochCommits(chain);
-  const keys = await call(deps, null, 'GET', `/api/artifacts/${artifact}/keys`);
-  if (chain.latest.owner === caller.record.userId) {
-    return requireEpochs(await openEstate(await e2e.ekSealCryptoKey(caller.record.ek), artifact, keys.estate, commits), chain);
-  }
-  const aks = new Map();
-  for (const w of keys.wraps) {
+// openWraps opens the caller's own wraps, each checked against the akCommit
+// the verified chain lists, and adds them to aks. A wrap of an epoch in skip
+// is left alone.
+async function openWraps(caller, artifact, wraps, commits, aks, skip = new Map()) {
+  for (const w of wraps) {
+    if (skip.has(w.epoch)) continue;
     const ak = await e2e.unwrap(
       caller.record.x25519,
       { purpose: 'ak', artifact, epoch: w.epoch, recipientId: caller.record.userId, recipientPub: caller.record.x25519.publicKey },
@@ -308,7 +302,44 @@ export async function callerAKs(deps, caller, artifact, chain) {
     await checkCommit(ak, artifact, w.epoch, commits, 'your wrap');
     aks.set(w.epoch, ak);
   }
-  return requireEpochs(aks, chain);
+  return aks;
+}
+
+// catchUpEstate stores the estate copy of each epoch the owner read through a
+// wrap, because a manager started it and only the owner can seal one. A
+// failure is ignored: the owner has read every AK already, and the next open
+// tries again.
+async function catchUpEstate(deps, caller, artifact, epochs) {
+  const ekKey = await e2e.ekSealCryptoKey(caller.record.ek);
+  for (const [epoch, ak] of epochs) {
+    try {
+      const sealed = e2e.b64(await e2e.seal(ekKey, ['estate', artifact, String(epoch)], ak));
+      await call(deps, null, 'PUT', `/api/artifacts/${artifact}/estate/${epoch}`, { body: { sealed } });
+    } catch {
+      // Reading does not depend on the copy.
+    }
+  }
+}
+
+// callerAKs returns the AK of every epoch up to the chain's latest: for the
+// owner from the estate copies, for anyone else by opening their own wraps.
+// An epoch a manager started has no estate copy, so the owner reads it
+// through their own wrap and then stores the missing copy. Each is checked
+// against the akCommit the verified chain lists. Mirrors callerAKs in
+// approve.go and epochAKs in share.go.
+export async function callerAKs(deps, caller, artifact, chain) {
+  const commits = epochCommits(chain);
+  const keys = await call(deps, null, 'GET', `/api/artifacts/${artifact}/keys`);
+  if (chain.latest.owner === caller.record.userId) {
+    const aks = await openEstate(await e2e.ekSealCryptoKey(caller.record.ek), artifact, keys.estate, commits);
+    const held = new Map(aks);
+    await openWraps(caller, artifact, keys.wraps, commits, aks, held);
+    const missing = new Map([...aks].filter(([epoch]) => !held.has(epoch)));
+    requireEpochs(aks, chain);
+    await catchUpEstate(deps, caller, artifact, missing);
+    return aks;
+  }
+  return requireEpochs(await openWraps(caller, artifact, keys.wraps, commits, new Map()), chain);
 }
 
 // successorAKs opens the AKs for the owner's released successor: a caller
@@ -527,7 +558,7 @@ async function trustedSigner(deps, opened, env) {
   if (env.signer === latest.owner) {
     listedFp = latest.ownerFp;
   } else {
-    const m = latest.members.find((x) => x.user === env.signer && x.role === 'editor');
+    const m = latest.members.find((x) => x.user === env.signer && (x.role === 'editor' || x.role === 'manager'));
     if (!m) return null;
     listedFp = m.fp;
   }
@@ -675,7 +706,7 @@ export function keysMessage(opened, version, { signer, token, tokenExpires, path
 export async function writerKeys(deps, opened) {
   const latest = opened.latest;
   const listedFps = [[latest.owner, latest.ownerFp]];
-  for (const m of latest.members) if (m.role === 'editor') listedFps.push([m.user, m.fp]);
+  for (const m of latest.members) if (m.role === 'editor' || m.role === 'manager') listedFps.push([m.user, m.fp]);
   const linked = e2e.rotationLinker(opened.membership.rotations);
   const out = {};
   for (const [user, listedFp] of listedFps) {
@@ -703,7 +734,7 @@ export function canWrite(opened) {
   if (!opened.caller || !opened.record) return false;
   const id = opened.record.userId;
   const latest = opened.latest;
-  if (id === latest.owner || latest.members.some((m) => m.user === id && m.role === 'editor')) return true;
+  if (id === latest.owner || latest.members.some((m) => m.user === id && (m.role === 'editor' || m.role === 'manager'))) return true;
   return opened.mode === 'link' && latest.publicWrites === true;
 }
 

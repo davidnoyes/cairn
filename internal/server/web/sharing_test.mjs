@@ -12,11 +12,12 @@ import { V1, V2, buildWorld, readServerKeyring, rotationRecord, seedKeyring, mak
 import { openArtifact } from './viewer.mjs';
 import { readMeta } from './meta.mjs';
 import { ARTIFACT, ORIGIN, depsFor, extraUser, keyStoreRecord, makeShareServer, metaItem, seedDatabase, seedFile, seedMeta, seedVersion } from './sharing_fixture.mjs';
-import { KeyChangedError, SharingError, members, pin, publicLinkFor, reseal, setPublic, share, unshare } from './sharing.mjs';
+import { KeyChangedError, SharingError, memberControls, members, pin, publicLinkFor, reseal, setPublic, share, unshare } from './sharing.mjs';
 
 const U = {};
 for (const name of ['owner', 'editor', 'viewer', 'outsider']) U[name] = await makeUser(name);
 U.other = await extraUser('other', '88888888-8888-4888-8888-888888888888');
+U.manager = await extraUser('manager', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 const records = {};
 for (const name of Object.keys(U)) records[name] = await keyStoreRecord(U[name]);
 const enc = new TextEncoder();
@@ -35,7 +36,7 @@ async function scene({ who = 'owner', members: m = STD_MEMBERS, users = [U.outsi
 
 const bodyOf = (env) => JSON.parse(dec.decode(e2e.unb64(env.body)));
 const lastPut = (s) => s.server.puts.membership.at(-1);
-const noPuts = (s) => assert.deepEqual(s.server.puts, { membership: [], meta: [], db: [], file: [], version: [] });
+const noPuts = (s) => assert.deepEqual(s.server.puts, { membership: [], meta: [], db: [], file: [], version: [], estate: [] });
 const headOf = (world, i) => e2e.bodyHash(e2e.unb64(world.records[i].body));
 
 async function unwrapFor(name, w) {
@@ -1070,4 +1071,187 @@ test('a version PUT the server answers 409 for is an epoch-moved error', async (
   s.server.failPut = (kind) => (kind === 'version' ? new Response('{"error":"moved to a new epoch"}', { status: 409 }) : null);
   const err = await reseal(s.deps, ARTIFACT).catch((e) => e);
   assert.equal(err.code, 'epoch-moved');
+});
+
+// ---- managers ----
+// A manager shares, unshares, and changes public like the owner, in version 2
+// records that name them. Making a manager, and any change to a manager's
+// entry, stay with the owner.
+
+const MANAGERS = [
+  { user: U.manager, role: 'manager' },
+  { user: U.other, role: 'manager' },
+  { user: U.editor, role: 'editor' },
+  { user: U.viewer, role: 'viewer' },
+];
+
+async function managerScene(opts = {}) {
+  return scene({ who: 'manager', members: MANAGERS, users: [U.outsider], ...opts });
+}
+
+const codeOf = async (p) => (await p.catch((e) => e)).code;
+
+test('a manager shares in a version 2 record that names them, with a wrap of every epoch', async () => {
+  const s = await managerScene({ epoch2: true });
+  const res = await share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer');
+  assert.equal(res.epoch, 2);
+  const put = lastPut(s);
+  assert.equal(put.membership.signer, U.manager.id, 'the envelope is signed by the manager');
+  const body = bodyOf(put.membership);
+  assert.equal(body.v, 2);
+  assert.equal(body.signer, U.manager.id);
+  assert.equal(body.signerFp, U.manager.fp);
+  assert.equal(body.owner, U.owner.id);
+  assert.equal(body.ownerFp, U.owner.fp);
+  assert.deepEqual(body.members.find((m) => m.user === U.outsider.id), { user: U.outsider.id, role: 'viewer', fp: U.outsider.fp });
+  assert.deepEqual(put.wraps.map((w) => [w.user, w.epoch]), [[U.outsider.id, 1], [U.outsider.id, 2]]);
+  for (const w of put.wraps) assert.deepEqual(await unwrapFor('outsider', w), s.world.aks[w.epoch]);
+  // Every member reads the new chain.
+  const opened = await openAs(s, 'outsider');
+  assert.deepEqual(opened.aks.get(2), s.world.aks[2]);
+  assert.equal(opened.latest.members.some((m) => m.user === U.outsider.id), true);
+});
+
+test('a manager changes a viewer without a new epoch, and demotes an editor to viewer in a new one', async () => {
+  const s = await managerScene();
+  assert.equal((await share(s.deps, ARTIFACT, 'viewer@example.com', 'editor')).promoted, true);
+  assert.equal(bodyOf(lastPut(s).membership).epoch, 1);
+  const res = await share(s.deps, ARTIFACT, 'editor@example.com', 'viewer');
+  assert.equal(res.demoted, true);
+  assert.equal(res.epoch, 2);
+  assert.equal(bodyOf(lastPut(s).membership).epoch, 2);
+  assert.equal(bodyOf(lastPut(s).membership).v, 2);
+});
+
+test("a manager's unshare starts an epoch wrapped to the owner and the members who stay, with no estate copy", async () => {
+  const s = await managerScene();
+  const res = await unshare(s.deps, ARTIFACT, 'editor@example.com');
+  assert.equal(res.epoch, 2);
+  const put = lastPut(s);
+  const body = bodyOf(put.membership);
+  assert.equal(body.v, 2);
+  assert.equal(body.epoch, 2);
+  assert.deepEqual(put.estate, []);
+  assert.deepEqual(put.wraps.map((w) => w.user).sort(), [U.manager.id, U.other.id, U.owner.id, U.viewer.id].sort());
+  assert.equal(put.wraps.every((w) => w.epoch === 2), true);
+  const ak2 = await unwrapFor('owner', put.wraps.find((w) => w.user === U.owner.id));
+  assert.equal(await e2e.akCommit(ak2, ARTIFACT, 2), body.akCommit);
+  assert.equal(res.reseal.error, undefined);
+  // The owner reads the epoch through that wrap, and adds the estate copy.
+  const opened = await openAs(s, 'owner');
+  assert.deepEqual(opened.aks.get(2), ak2);
+  assert.deepEqual(s.server.puts.estate.map((e) => e.epoch), [2]);
+  assert.deepEqual(await estateAK({ estate: s.server.puts.estate }, 2), ak2);
+});
+
+test('a manager makes the artifact public and private, in version 2 records', async () => {
+  const s = await managerScene();
+  const on = await setPublic(s.deps, ARTIFACT, true, { writes: true });
+  assert.ok(on.link);
+  const put = lastPut(s);
+  assert.equal(bodyOf(put.membership).v, 2);
+  assert.equal(bodyOf(put.membership).public, true);
+  assert.notEqual(put.linkTokenHash, '');
+  const off = await setPublic(s.deps, ARTIFACT, false);
+  assert.equal(off.newEpoch, true);
+  const next = lastPut(s);
+  assert.deepEqual(next.estate, []);
+  assert.equal(next.wraps.some((w) => w.user === U.owner.id && w.epoch === 2), true);
+});
+
+test('each change a manager may not make is refused as owner-only, and sends nothing', async () => {
+  const s = await managerScene();
+  assert.equal(await codeOf(share(s.deps, ARTIFACT, 'outsider@example.com', 'manager')), 'owner-only');
+  assert.equal(await codeOf(share(s.deps, ARTIFACT, 'editor@example.com', 'manager')), 'owner-only');
+  assert.equal(await codeOf(share(s.deps, ARTIFACT, 'other@example.com', 'viewer')), 'owner-only');
+  assert.equal(await codeOf(share(s.deps, ARTIFACT, 'other@example.com', 'manager')), 'owner-only');
+  assert.equal(await codeOf(share(s.deps, ARTIFACT, 'manager@example.com', 'editor')), 'owner-only', 'their own entry');
+  assert.equal(await codeOf(unshare(s.deps, ARTIFACT, 'other@example.com')), 'owner-only');
+  assert.equal(await codeOf(unshare(s.deps, ARTIFACT, 'manager@example.com')), 'owner-only', 'themself');
+  assert.equal(await codeOf(share(s.deps, ARTIFACT, 'owner@example.com', 'viewer')), 'share-self');
+  assert.equal(await codeOf(unshare(s.deps, ARTIFACT, 'owner@example.com')), 'unshare-owner');
+  noPuts(s);
+});
+
+test('a manager listed under another fingerprint than their current one is refused', async () => {
+  const s = await scene({ who: 'manager', members: [{ user: U.manager, role: 'manager', fp: 'c'.repeat(64) }] });
+  assert.equal(await codeOf(share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer')), 'not-owner');
+  assert.equal(await codeOf(unshare(s.deps, ARTIFACT, 'manager@example.com')), 'not-owner');
+  assert.equal(await codeOf(setPublic(s.deps, ARTIFACT, true)), 'not-owner');
+  noPuts(s);
+});
+
+test('a manager may re-seal, and members reports the caller role for the page', async () => {
+  const s = await managerScene();
+  await reseal(s.deps, ARTIFACT);
+  assert.equal((await members(s.deps, ARTIFACT)).callerRole, 'manager');
+  assert.equal((await members(asUser(s, 'editor'), ARTIFACT)).callerRole, '');
+  assert.equal((await members(asUser(s, 'owner'), ARTIFACT)).callerRole, 'owner');
+});
+
+test('the owner makes a manager and removes one', async () => {
+  const s = await scene();
+  const made = await share(s.deps, ARTIFACT, 'editor@example.com', 'manager');
+  assert.equal(made.promoted, true);
+  const body = bodyOf(lastPut(s).membership);
+  assert.equal(body.v, 1);
+  assert.equal(body.epoch, 1);
+  assert.deepEqual(body.members.find((m) => m.user === U.editor.id), { user: U.editor.id, role: 'manager', fp: U.editor.fp });
+  assert.deepEqual(lastPut(s).wraps, []);
+  const added = await share(s.deps, ARTIFACT, 'outsider@example.com', 'manager');
+  assert.equal(added.role, 'manager');
+  assert.equal(bodyOf(lastPut(s).membership).members.find((m) => m.user === U.outsider.id).role, 'manager');
+  assert.equal(lastPut(s).wraps.length, 1, 'a new manager gets the wrap of the one epoch');
+  // Removing one starts an epoch the owner seals: an estate copy and no owner wrap.
+  const gone = await unshare(s.deps, ARTIFACT, 'editor@example.com');
+  assert.equal(gone.epoch, 2);
+  assert.equal(lastPut(s).estate.length, 1);
+  assert.equal(lastPut(s).wraps.some((w) => w.user === U.owner.id), false);
+  assert.equal(bodyOf(lastPut(s).membership).v, 1);
+});
+
+test('the owner demotes a manager to editor in the same epoch, and to viewer in a new one', async () => {
+  const s = await managerScene({ who: 'owner' });
+  const down = await share(s.deps, ARTIFACT, 'manager@example.com', 'editor');
+  assert.equal(down.demoted, true);
+  assert.equal(down.epoch, 1);
+  assert.equal(bodyOf(lastPut(s).membership).epoch, 1);
+  const viewer = await share(s.deps, ARTIFACT, 'other@example.com', 'viewer');
+  assert.equal(viewer.demoted, true);
+  assert.equal(viewer.epoch, 2);
+  assert.equal(lastPut(s).estate.length, 1);
+});
+
+test('a viewer account can never be made a manager, and an existing manager may stay or become editor', async () => {
+  const s = await scene({ members: MANAGERS });
+  s.server.directory.get(U.outsider.id).role = 'viewer';
+  s.server.directory.get(U.editor.id).role = 'viewer';
+  s.server.directory.get(U.manager.id).role = 'viewer';
+  assert.equal(await codeOf(share(s.deps, ARTIFACT, 'outsider@example.com', 'manager')), 'viewer-account');
+  assert.equal(await codeOf(share(s.deps, ARTIFACT, 'editor@example.com', 'manager')), 'viewer-account');
+  assert.equal(await codeOf(share(s.deps, ARTIFACT, 'outsider@example.com', 'editor')), 'viewer-account');
+  noPuts(s);
+  assert.equal((await share(s.deps, ARTIFACT, 'manager@example.com', 'manager')).unchanged, true);
+  assert.equal((await share(s.deps, ARTIFACT, 'manager@example.com', 'editor')).demoted, true);
+  assert.equal(lastPut(s).membership.signer, U.owner.id);
+});
+
+test('share refuses a role that is not viewer, editor, or manager', async () => {
+  const s = await scene();
+  assert.equal(await codeOf(share(s.deps, ARTIFACT, 'outsider@example.com', 'owner')), 'bad-role');
+  noPuts(s);
+});
+
+test('memberControls offers manager only to the owner, and nothing on a manager entry to a manager', () => {
+  const row = (role, account = 'member') => ({ role, account });
+  assert.deepEqual(memberControls('owner', row('editor')), { roles: ['viewer', 'editor', 'manager'], removable: true });
+  assert.deepEqual(memberControls('owner', row('manager')), { roles: ['viewer', 'editor', 'manager'], removable: true });
+  assert.deepEqual(memberControls('manager', row('editor')), { roles: ['viewer', 'editor'], removable: true });
+  assert.deepEqual(memberControls('manager', row('manager')), { roles: [], removable: false });
+  assert.deepEqual(memberControls('owner', row('owner')), { roles: [], removable: false });
+  // A viewer account is offered only viewer, unless it keeps an entry it had.
+  assert.deepEqual(memberControls('owner', row('viewer', 'viewer')).roles, ['viewer']);
+  assert.deepEqual(memberControls('owner', row('editor', 'viewer')).roles, ['viewer', 'editor']);
+  assert.deepEqual(memberControls('owner', row('manager', 'viewer')).roles, ['viewer', 'editor', 'manager']);
+  assert.deepEqual(memberControls('manager', row('editor', 'viewer')).roles, ['viewer', 'editor']);
 });

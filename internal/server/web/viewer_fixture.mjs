@@ -15,6 +15,7 @@ const ids = {
   editor: '44444444-4444-4444-8444-444444444444',
   viewer: '66666666-6666-4666-8666-666666666666',
   outsider: '77777777-7777-4777-8777-777777777777',
+  manager: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
 };
 
 function randomBytes(n) {
@@ -58,9 +59,11 @@ export function fakeStorage() {
   };
 }
 
+// membershipBody is a record's body; o.signer, a manager, makes it a version 2
+// body that names them and their key's fingerprint last.
 function membershipBody(o) {
   return enc.encode(JSON.stringify({
-    v: 1,
+    v: o.signer ? 2 : 1,
     artifact: ARTIFACT,
     epoch: o.epoch,
     seq: o.seq,
@@ -75,15 +78,18 @@ function membershipBody(o) {
     prev: o.prev,
     transfer: '',
     handover: '',
+    ...(o.signer ? { signer: o.signer.id, signerFp: o.signer.fp } : {}),
   }));
 }
 
 // buildWorld is an artifact with a chain of two records at epoch 1: the
 // owner's first, with no members, and a second that lists members (each
 // {user, role}, with fp defaulting to the user's) and sets public. epoch2
-// adds a third record that starts epoch 2 under a new AK. It also holds each
-// epoch's estate copy and every member's wrap.
-export async function buildWorld({ owner, members = [], isPublic = false, epoch2 = false, publicWrites = false }) {
+// adds a third record that starts epoch 2 under a new AK. epoch2By, a member
+// listed as manager, signs that record as a manager does: version 2, an owner
+// wrap of epoch 2 and no estate copy of it. It also holds each epoch's estate
+// copy and every member's wrap, and owners, the keys of everyone who signed.
+export async function buildWorld({ owner, members = [], isPublic = false, epoch2 = false, epoch2By = null, publicWrites = false }) {
   const aks = { 1: randomBytes(32), 2: randomBytes(32) };
   const commits = {
     1: await e2e.akCommit(aks[1], ARTIFACT, 1),
@@ -94,17 +100,19 @@ export async function buildWorld({ owner, members = [], isPublic = false, epoch2
     { epoch: 1, seq: 1, members: [], public: false },
     { epoch: 1, seq: 2, members: listed, public: isPublic, publicWrites },
   ];
-  if (epoch2) specs.push({ epoch: 2, seq: 3, members: listed, public: isPublic, publicWrites });
+  if (epoch2 || epoch2By) specs.push({ epoch: 2, seq: 3, members: listed, public: isPublic, publicWrites, signer: epoch2By });
   const records = [];
   let prev = '';
   for (const s of specs) {
     const body = membershipBody({ ...s, owner, prev, akCommit: commits[s.epoch] });
-    records.push(await e2e.newEnvelope(owner.ed.seed, owner.id, 'membership', body));
+    const by = s.signer ?? owner;
+    records.push(await e2e.newEnvelope(by.ed.seed, by.id, 'membership', body));
     prev = await e2e.bodyHash(body);
   }
   const top = specs.at(-1).epoch;
   const estate = [];
   for (let e = 1; e <= top; e++) {
+    if (epoch2By && e === 2) continue;
     const ekKey = await e2e.ekSealCryptoKey(owner.ek);
     estate.push({ epoch: e, sealed: e2e.b64(await e2e.seal(ekKey, ['estate', ARTIFACT, String(e)], aks[e])) });
   }
@@ -116,7 +124,13 @@ export async function buildWorld({ owner, members = [], isPublic = false, epoch2
       wraps[m.user.id].push({ epoch: e, wrapped: e2e.b64(wrapped), fp: m.user.fp });
     }
   }
-  return { owner, aks, commits, records, estate, wraps, members, top, isPublic };
+  const owners = { [owner.fp]: owner.pair };
+  if (epoch2By) {
+    owners[epoch2By.fp] = epoch2By.pair;
+    const wrapped = await e2e.wrap({ purpose: 'ak', artifact: ARTIFACT, epoch: 2, recipientId: owner.id, recipientPub: owner.x.pub }, aks[2]);
+    wraps[owner.id] = [{ epoch: 2, wrapped: e2e.b64(wrapped), fp: owner.fp }];
+  }
+  return { owner, aks, commits, records, estate, wraps, owners, members, top, isPublic };
 }
 
 // manifestFor seals a manifest for version vid at epoch under the world's
@@ -162,6 +176,10 @@ export function makeServer(world, { who = null, linkTokenB64 = null, keyring } =
     membershipOverride: null,
     openMembership: false,
     keysOverride: null,
+    // estatePuts is every PUT .../estate/{epoch} the server took, and
+    // failEstate makes it answer 500.
+    estatePuts: [],
+    failEstate: false,
     directory: new Map(),
     notFound: new Set(),
     rotations: {},
@@ -213,7 +231,7 @@ export function makeServer(world, { who = null, linkTokenB64 = null, keyring } =
       if (rest === 'membership') {
         if (!member && !linkOk && !server.openMembership) return json(404, { error: 'not found' });
         if (server.membershipOverride) return json(200, server.membershipOverride(linkOk && !member));
-        const owners = { [world.owner.fp]: world.owner.pair };
+        const owners = world.owners;
         const keys = {};
         for (const mm of world.members) if (mm.role === 'editor') keys[mm.user.id] = mm.user.pair;
         return json(200, {
@@ -229,8 +247,17 @@ export function makeServer(world, { who = null, linkTokenB64 = null, keyring } =
       if (rest === 'keys') {
         if (!member) return json(404, { error: 'not found' });
         if (server.keysOverride) return json(200, server.keysOverride);
-        if (server.who.id === world.owner.id || heir) return json(200, { wraps: [], estate: world.estate });
+        if (server.who.id === world.owner.id || heir) return json(200, { wraps: world.wraps[server.who.id] ?? [], estate: world.estate });
         return json(200, { wraps: world.wraps[server.who.id] ?? [], estate: [] });
+      }
+      const estate = /^estate\/(\d+)$/.exec(rest);
+      if (estate && method === 'PUT') {
+        if (server.who?.id !== world.owner.id) return json(403, { error: 'forbidden' });
+        if (server.failEstate) return json(500, { error: 'broken' });
+        const put = { epoch: Number(estate[1]), ...JSON.parse(init.body) };
+        server.estatePuts.push(put);
+        world.estate.push({ epoch: put.epoch, sealed: put.sealed });
+        return json(200, { epoch: put.epoch });
       }
       if (rest === '') {
         return member || linkOk ? json(200, server.artifact) : json(404, { error: 'not found' });

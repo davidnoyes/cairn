@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as e2e from './e2e.mjs';
 import { loadArgon2 } from './argon2.mjs';
+import { ARTIFACT, makeUser } from './viewer_fixture.mjs';
 import './vendor/wasm_exec.js'; // Side effect: defines globalThis.Go.
 
 const { fromHex: hex, toHex } = e2e;
@@ -1179,6 +1180,7 @@ function chainInput(v) {
     anchor: v.anchor,
     currentOwnerFp: v.currentOwnerFp,
     pin: v.pin,
+    linked: v.rotations ? e2e.rotationLinker(v.rotations) : undefined,
   };
 }
 
@@ -1859,4 +1861,146 @@ describe('leading zero bytes', () => {
       assert.equal(toHex(await e2e.ed25519PublicKey(seed)), 'd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a');
     }, { emptyX: true });
   });
+});
+
+// ---- managers ----
+
+// A version 2 record's signer is a manager the previous record lists, and the
+// manager's key is reached from the fp it lists through linked, as an owner's
+// is from ownerFp.
+test('verifyChain: a manager record asks linked about the manager key and the owner key, and waits for it', async () => {
+  const v = vf.chain.find((c) => c.name === 'manager-key-rotated');
+  const bodies = v.records.map((r) => JSON.parse(new TextDecoder().decode(e2e.unb64(r.body))));
+  const second = bodies.findIndex((b) => b.v === 2);
+  assert.ok(second > 0, 'the vector has a manager record');
+  const manager = bodies[second].signer;
+  const input = chainInput(v);
+  const calls = [];
+  const real = input.linked;
+  input.linked = async (user, from, to) => {
+    calls.push([user, from, to]);
+    return real(user, from, to);
+  };
+  await e2e.verifyChain(input);
+  assert.ok(calls.some(([user, , to]) => user === manager && to === bodies[second].signerFp), 'the manager key');
+  assert.ok(calls.some(([user, , to]) => user === bodies[second].owner && to === bodies[second].ownerFp), 'the owner key');
+  // Refusing either link refuses the chain, even when the answer is a Promise.
+  for (const who of [manager, bodies[second].owner]) {
+    const refuse = chainInput(v);
+    refuse.linked = async (user, from, to) => user !== who && real(user, from, to);
+    await assert.rejects(() => e2e.verifyChain(refuse), e2e.ChainError, who);
+  }
+});
+
+test('verifyChain: a manager record that links by fingerprint equality refuses a manager who rotated without the rotation records', async () => {
+  const v = vf.chain.find((c) => c.name === 'manager-key-rotated');
+  const input = chainInput(v);
+  input.linked = undefined;
+  await assert.rejects(() => e2e.verifyChain(input), e2e.ChainError);
+});
+
+// A manager signs an approval wherever an editor does, and a viewer does not.
+test('checkApproval: a listed manager may sign an approval, and a viewer may not', async () => {
+  const v = vf.approval.find((a) => a.name === 'editor-signed');
+  const input = (role) => ({
+    artifact: v.artifact,
+    latest: { ...v.latest, members: v.latest.members.map((m) => (m.user === v.approval.signer ? { ...m, role } : m)) },
+    approval: v.approval,
+    signerKeys: v.signerKeys,
+    user: v.user,
+    directory: v.directory,
+    rotations: v.rotations,
+  });
+  await e2e.checkApproval(input('editor'));
+  await e2e.checkApproval(input('manager'));
+  await assert.rejects(() => e2e.checkApproval(input('viewer')), e2e.ApprovalSignerError);
+});
+
+// Through a link, a visitor trusts the owner, editors, and managers the
+// record lists, by the keys the server serves that hash to the listed fp.
+test('verifyLinkChain: a manager the record lists is a writer the visitor trusts', async () => {
+  const owner = await makeUser('owner');
+  const manager = await makeUser('manager');
+  const viewer = await makeUser('viewer');
+  const ak = crypto.getRandomValues(new Uint8Array(32));
+  const body = new TextEncoder().encode(JSON.stringify({
+    v: 1,
+    artifact: ARTIFACT,
+    epoch: 1,
+    seq: 1,
+    owner: owner.id,
+    ownerFp: owner.fp,
+    akCommit: await e2e.akCommit(ak, ARTIFACT, 1),
+    members: [manager, viewer].map((u) => ({ user: u.id, role: u === manager ? 'manager' : 'viewer', fp: u.fp })).sort((a, b) => (a.user < b.user ? -1 : 1)),
+    excluded: [],
+    team: 'none',
+    public: true,
+    publicWrites: false,
+    prev: '',
+    transfer: '',
+    handover: '',
+  }));
+  const input = {
+    link: { artifact: ARTIFACT, ak, epoch: 1, o: owner.fp },
+    records: [await e2e.newEnvelope(owner.ed.seed, owner.id, 'membership', body)],
+    owners: { [owner.fp]: owner.pair },
+    offers: {},
+    successors: {},
+    keys: { [manager.id]: manager.pair, [viewer.id]: viewer.pair },
+    rotations: {},
+  };
+  const got = await e2e.verifyLinkChain(input);
+  assert.deepEqual(Object.keys(got.editors), [manager.id]);
+  assert.deepEqual(got.editors[manager.id], manager.pair);
+});
+
+// A manager's record keeps every manager entry as it was: user, role, and fp.
+// Built here because no vector re-lists a manager under another fingerprint
+// with the manager's own signing key unchanged.
+test('verifyChain: a manager record that changes a manager entry\'s fp is refused', async () => {
+  const owner = await makeUser('owner');
+  const manager = await makeUser('manager');
+  const editor = await makeUser('editor');
+  const ak = crypto.getRandomValues(new Uint8Array(32));
+  const akCommit = await e2e.akCommit(ak, ARTIFACT, 1);
+  const entry = (u, role, fp = u.fp) => ({ user: u.id, role, fp });
+  const sorted = (list) => list.sort((a, b) => (a.user < b.user ? -1 : 1));
+  const chainWith = async (managerEntry) => {
+    const specs = [
+      { by: owner, members: [] },
+      { by: owner, members: sorted([entry(manager, 'manager'), entry(editor, 'viewer')]) },
+      { by: manager, members: sorted([managerEntry, entry(editor, 'editor')]) },
+    ];
+    const records = [];
+    let prev = '';
+    for (const [i, spec] of specs.entries()) {
+      const body = new TextEncoder().encode(JSON.stringify({
+        v: spec.by === owner ? 1 : 2,
+        artifact: ARTIFACT,
+        epoch: 1,
+        seq: i + 1,
+        owner: owner.id,
+        ownerFp: owner.fp,
+        akCommit,
+        members: spec.members,
+        excluded: [],
+        team: 'none',
+        public: false,
+        publicWrites: false,
+        prev,
+        transfer: '',
+        handover: '',
+        ...(spec.by === owner ? {} : { signer: manager.id, signerFp: manager.fp }),
+      }));
+      records.push(await e2e.newEnvelope(spec.by.ed.seed, spec.by.id, 'membership', body));
+      prev = await e2e.bodyHash(body);
+    }
+    return { artifact: ARTIFACT, records, owners: { [owner.fp]: owner.pair, [manager.fp]: manager.pair }, offers: {}, successors: {}, anchor: owner.fp };
+  };
+  const got = await e2e.verifyChain(await chainWith(entry(manager, 'manager')));
+  assert.equal(got.latest.seq, 3, 'the same entry is accepted');
+  await assert.rejects(async () => e2e.verifyChain(await chainWith(entry(manager, 'manager', 'f'.repeat(64)))), e2e.ChainError);
+  // Nor may another user take the entry over, even under the same fp.
+  const other = await makeUser('outsider');
+  await assert.rejects(async () => e2e.verifyChain(await chainWith(entry(other, 'manager', manager.fp))), e2e.ChainError);
 });

@@ -6,7 +6,7 @@
 import { changePassword, createApiKey, enrollPasskey, listPasskeys, newRecoveryCode, passkeysAvailable, removePasskey, signOut } from './account.mjs';
 import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { describeArtifact } from './meta.mjs';
-import { KeyChangedError, members, pin, publicLinkFor, setPublic, share, unshare } from './sharing.mjs';
+import { KeyChangedError, memberControls, members, pin, publicLinkFor, setPublic, share, unshare } from './sharing.mjs';
 import { bannerView, myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions, who } from './successor.mjs';
 import { confirmRecoveryCode, describeError, describePasskeyError, pageDeps, watchStrength } from './ui.mjs';
 
@@ -190,9 +190,10 @@ function artifactRow(a, mine) {
     td(minute(a.updatedAt), 'mono updated'),
   );
   const actions = el('div', 'actions');
+  // A manager shares too, and the dialog verifies they are one.
+  if (mine || a.access === 'manager') actions.append(btn('Share', '', () => openShare(a.id, row.name)));
   if (mine) {
     actions.append(
-      btn('Share', '', () => openShare(a.id, row.name)),
       confirmButton('Delete', 'Delete for good?', () => del('/api/artifacts/' + a.id)
         .then(() => { status('artifacts-status', 'Artifact deleted.'); return reloadArtifacts(); })
         .catch(failIn('artifacts-status'))),
@@ -288,6 +289,11 @@ async function listMembers(s) {
   if (s !== sharing) return;
   $('public').checked = res.public;
   $('public-writes').checked = res.publicWrites;
+  s.callerRole = res.callerRole;
+  // Only the owner makes a manager.
+  const manager = $('share-role').querySelector('option[value=manager]');
+  manager.hidden = manager.disabled = res.callerRole !== 'owner';
+  if (manager.disabled && $('share-role').value === 'manager') $('share-role').value = 'viewer';
   $('members').replaceChildren(...res.members.map((m) => memberRow(s, m)));
 }
 
@@ -305,12 +311,10 @@ function memberRow(s, m) {
     td(m.state, 'pin'),
   );
   const actions = el('div', 'actions');
+  const { roles, removable } = memberControls(s.callerRole, m);
   if (m.role !== 'owner') {
     const role = el('select', 'role');
     role.setAttribute('aria-label', 'Role of ' + who);
-    // A viewer account can only be a viewer, unless it is still listed as the
-    // editor it was before its account changed.
-    const roles = m.account === 'viewer' && m.role !== 'editor' ? ['viewer'] : ['viewer', 'editor'];
     for (const r of roles) {
       const o = el('option', '', r);
       o.value = r;
@@ -322,8 +326,10 @@ function memberRow(s, m) {
       return `${who} is now ${role.value}.` + epochNote(res);
     }, acceptNewKey ? undefined : () => setRole(true));
     role.addEventListener('change', () => setRole(false));
-    actions.appendChild(role);
-    if (m.account === 'viewer' && m.role === 'editor') {
+    // A manager's entry is the owner's to change: a manager sees it, with no
+    // select, no Make viewer, no Accept new key, and no Remove.
+    if (roles.length > 0) actions.appendChild(role);
+    if (roles.length > 0 && m.account === 'viewer' && (m.role === 'editor' || m.role === 'manager')) {
       // Their account became a viewer account, so the entry promises writes
       // the server refuses. Offer to make it match.
       actions.appendChild(btn('Make viewer', '', () => {
@@ -331,7 +337,7 @@ function memberRow(s, m) {
         setRole(false);
       }));
     }
-    if (m.state === 'changed') {
+    if (m.state === 'changed' && roles.length > 0) {
       // share with the same role lists their new keys; without acceptNewKey
       // it refuses, and the refusal is the warning.
       const acceptKey = (acceptNewKey) => act(() => 'Checking the new key…', async () => {
@@ -339,13 +345,13 @@ function memberRow(s, m) {
         return `Accepted the new key of ${who}.` + epochNote(res);
       }, acceptNewKey ? undefined : () => acceptKey(true));
       actions.appendChild(btn('Accept new key', 'danger', () => acceptKey(false)));
-    } else if (m.state !== 'verified' && m.state !== '-' && m.state !== 'conflict') {
+    } else if (m.state !== 'changed' && m.state !== 'verified' && m.state !== '-' && m.state !== 'conflict') {
       actions.appendChild(btn('Verify', '', () => act(() => 'Marking the key verified…', async () => {
         await pin(deps, who, { verified: true });
         return `Marked the key of ${who} verified.`;
       })));
     }
-    actions.appendChild(btn('Remove', 'danger', () => act(() => 'Removing the member and re-sealing…', async () => {
+    if (removable) actions.appendChild(btn('Remove', 'danger', () => act(() => 'Removing the member and re-sealing…', async () => {
       const res = await unshare(deps, s.id, who);
       return `Removed ${who}.` + epochNote(res);
     })));
