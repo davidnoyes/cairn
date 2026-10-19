@@ -81,7 +81,7 @@ test('app: the owner lists their artifacts by name, and a viewer finds the share
 test('app: Account holds API keys, passkeys, and the successor, and only an admin has the Admin tab, with Users in it', async ({ ownerPage, browser }) => {
   const s = loadState();
   await openTab(ownerPage, 'Account');
-  await expect(ownerPage.getByRole('tab')).toHaveText(['Artifacts', 'Account', 'Admin']);
+  await expect(ownerPage.getByRole('tab')).toHaveText(['Artifacts', 'Groups', 'Account', 'Admin']);
   const account = ownerPage.getByRole('tabpanel', { name: 'Account' });
   await expect(account.getByRole('heading')).toHaveText(['Password', 'Recovery code', 'API keys', 'Passkeys', 'Your successor', 'Your code', 'Notice address', 'Users who named you']);
 
@@ -102,7 +102,7 @@ test('app: Account holds API keys, passkeys, and the successor, and only an admi
     const page = await context.newPage();
     await signIn(page, s.users.viewer.email, s.users.viewer.password);
     await openTab(page, 'Artifacts');
-    await expect(page.getByRole('tab')).toHaveText(['Artifacts', 'Account']);
+    await expect(page.getByRole('tab')).toHaveText(['Artifacts', 'Groups', 'Account']);
     await page.waitForLoadState('networkidle');
     expect(api).toContain('/api/keys');
     expect(api.filter((p) => p.startsWith('/api/admin/'))).toEqual([]);
@@ -124,7 +124,7 @@ test('app: the arrow keys, Home, and End move between tabs, past one that is hid
   // WebKit does not focus a button on click, so focus the tab directly.
   await openTab(ownerPage, 'Artifacts');
   await ownerPage.getByRole('tab', { name: 'Artifacts' }).focus();
-  for (const [key, name] of [['ArrowRight', 'Account'], ['ArrowRight', 'Admin'], ['ArrowRight', 'Artifacts'], ['ArrowLeft', 'Admin'], ['Home', 'Artifacts'], ['End', 'Admin']]) {
+  for (const [key, name] of [['ArrowRight', 'Groups'], ['ArrowRight', 'Account'], ['ArrowRight', 'Admin'], ['ArrowRight', 'Artifacts'], ['ArrowLeft', 'Admin'], ['Home', 'Artifacts'], ['End', 'Admin']]) {
     await ownerPage.keyboard.press(key);
     await expectTab(ownerPage, name);
   }
@@ -140,7 +140,7 @@ test('app: the arrow keys, Home, and End move between tabs, past one that is hid
     await signIn(page, s.users.viewer.email, s.users.viewer.password);
     await openTab(page, 'Artifacts');
     await page.getByRole('tab', { name: 'Artifacts' }).focus();
-    for (const [key, name] of [['End', 'Account'], ['ArrowRight', 'Artifacts'], ['ArrowLeft', 'Account']]) {
+    for (const [key, name] of [['End', 'Account'], ['ArrowRight', 'Artifacts'], ['ArrowRight', 'Groups'], ['ArrowLeft', 'Artifacts'], ['ArrowLeft', 'Account']]) {
       await page.keyboard.press(key);
       await expectTab(page, name);
     }

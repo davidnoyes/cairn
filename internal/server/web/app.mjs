@@ -181,10 +181,23 @@ async function listArtifacts({ me }) {
 
 // One load at a time: two loads opening the same artifact for the first time
 // would both pin its owner at the keyring's next revision.
+// While any load is queued or running, both lists are marked busy, so
+// assistive technology, and a test, knows the rows may still be replaced.
 let artifactsLoad = Promise.resolve();
+let artifactsLoading = 0;
+function setArtifactsBusy(busy) {
+  for (const id of ['own', 'shared']) {
+    if (busy) $(id).setAttribute('aria-busy', 'true'); else $(id).removeAttribute('aria-busy');
+  }
+}
 function loadArtifacts(ctx) {
+  artifactsLoading++;
+  setArtifactsBusy(true);
   const run = artifactsLoad.then(() => listArtifacts(ctx));
-  artifactsLoad = run.catch(() => {});
+  artifactsLoad = run.catch(() => {}).finally(() => {
+    artifactsLoading--;
+    if (artifactsLoading === 0) setArtifactsBusy(false);
+  });
   return run;
 }
 

@@ -11,11 +11,18 @@ function item(name) {
   return cliJson('owner', ['artifact', 'list']).find((a) => a.name === name);
 }
 
+// settled waits until no load of the Artifacts lists is queued or running, so
+// the rows a test acts on are not about to be replaced.
+async function settled(page) {
+  await expect(page.locator('#own')).not.toHaveAttribute('aria-busy', 'true', { timeout: 60_000 });
+}
+
 // newFolder creates a folder in the one in view and waits for its row.
 async function newFolder(page, name) {
   await page.getByLabel('New folder name').fill(name);
   await page.getByRole('button', { name: 'New folder' }).click();
   await expect(page.locator('#own tr').filter({ hasText: name })).toHaveCount(1, { timeout: 30_000 });
+  await settled(page);
 }
 
 test('folders: create, nest, move in and out, rename, open, and delete the tree', async ({ ownerPage, browserName }) => {
@@ -28,6 +35,7 @@ test('folders: create, nest, move in and out, rename, open, and delete the tree'
 
   await ownerPage.goto(`${s.appOrigin}/app`);
   await ownerPage.getByRole('tab', { name: 'Artifacts' }).click();
+  await settled(ownerPage);
   const crumbs = ownerPage.locator('#crumbs');
 
   // A folder at the top level, then one inside it.
@@ -49,6 +57,7 @@ test('folders: create, nest, move in and out, rename, open, and delete the tree'
   await expect(ownerPage.locator('#artifacts-status')).toHaveText('Moved.', { timeout: 30_000 });
   await expect.poll(() => item(doc).parent).toBe(outerID);
   await expect(docRow).toHaveCount(0);
+  await settled(ownerPage);
 
   // Dragging it onto Top in the breadcrumb moves it back out.
   await ownerPage.locator(`#own tr[data-id="${outerID}"]`).getByRole('button', { name: outer }).click();
@@ -57,6 +66,7 @@ test('folders: create, nest, move in and out, rename, open, and delete the tree'
   await expect(ownerPage.locator('#artifacts-status')).toHaveText('Moved.', { timeout: 30_000 });
   await expect(docRow).toHaveCount(0);
   await expect.poll(() => item(doc).parent ?? null, { timeout: 30_000 }).toBeNull();
+  await settled(ownerPage);
 
   // Rename the inner folder; the name is sealed, and every client reads it.
   const renamed = `${inner}-renamed`;
@@ -66,6 +76,7 @@ test('folders: create, nest, move in and out, rename, open, and delete the tree'
   await innerRow.getByRole('button', { name: 'Save' }).click();
   await expect(ownerPage.locator('#artifacts-status')).toHaveText('Folder renamed.', { timeout: 30_000 });
   await expect.poll(() => item(renamed)?.id).toBe(innerID);
+  await settled(ownerPage);
 
   // A folder's own address says it is a folder, rather than failing.
   await ownerPage.goto(`${s.appOrigin}/shared/${outerID}`);
@@ -74,6 +85,7 @@ test('folders: create, nest, move in and out, rename, open, and delete the tree'
   // Deleting the outer folder states what goes, then removes both folders.
   await ownerPage.goto(`${s.appOrigin}/app`);
   await ownerPage.getByRole('tab', { name: 'Artifacts' }).click();
+  await settled(ownerPage);
   const del = ownerPage.locator(`#own tr[data-id="${outerID}"]`).getByRole('button', { name: /^Delete/ });
   await del.click();
   await expect(del).toHaveText('Delete 2 folders and 0 artifacts?');
@@ -94,6 +106,14 @@ test('folders: drag onto a folder row, move a folder, and delete a folder that h
 
   await ownerPage.goto(`${s.appOrigin}/app`);
   await ownerPage.getByRole('tab', { name: 'Artifacts' }).click();
+  await settled(ownerPage);
+  // Work inside a fresh folder, so the rows sit together on screen whatever
+  // earlier tests left at the top level.
+  const work = `work-${stamp}`;
+  await newFolder(ownerPage, work);
+  const workID = item(work).id;
+  cli('owner', ['move', doc, '--to', work]);
+  await ownerPage.locator(`#own tr[data-id="${workID}"]`).getByRole('button', { name: work }).click();
   await newFolder(ownerPage, box);
   await newFolder(ownerPage, sub);
   const boxID = item(box).id;
@@ -106,13 +126,15 @@ test('folders: drag onto a folder row, move a folder, and delete a folder that h
   await docRow.dragTo(boxRow);
   await expect(docRow).toHaveCount(0, { timeout: 30_000 });
   await expect.poll(() => item(doc).parent).toBe(boxID);
+  await settled(ownerPage);
 
   // Move to… on a folder offers the other folder, and moves it whole.
   const subRow = ownerPage.locator(`#own tr[data-id="${subID}"]`);
   await subRow.getByRole('button', { name: 'Move to…' }).click();
-  await subRow.getByLabel(`Move ${sub} to`).selectOption({ label: box });
+  await subRow.getByLabel(`Move ${sub} to`).selectOption({ label: `${work} / ${box}` });
   await expect(subRow).toHaveCount(0, { timeout: 30_000 });
   await expect.poll(() => item(sub).parent).toBe(boxID);
+  await settled(ownerPage);
 
   // Deleting the box names both folders and the artifact, then removes them.
   const del = boxRow.getByRole('button', { name: /^Delete/ });
