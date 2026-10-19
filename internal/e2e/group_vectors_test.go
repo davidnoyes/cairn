@@ -28,13 +28,13 @@ func gmember(u chainUser) GroupMember  { return GroupMember{User: u.id, FP: u.fp
 type groupFixture struct {
 	t       testing.TB
 	records []Envelope
-	keys    map[string]KeyPair
+	keys    map[string]GroupKey
 }
 
 // newGroup starts a chain with creator's first record, after edit.
 func newGroup(t testing.TB, creator chainUser, name string, members []GroupMember, edit func(*GroupBody)) *groupFixture {
 	t.Helper()
-	f := &groupFixture{t: t, keys: map[string]KeyPair{}}
+	f := &groupFixture{t: t, keys: map[string]GroupKey{}}
 	b := GroupBody{V: 1, Group: groupID, Seq: 1, Name: name, Members: members, Signer: creator.id, SignerFP: creator.fp}
 	if edit != nil {
 		edit(&b)
@@ -87,7 +87,7 @@ func (f *groupFixture) addRaw(signer chainUser, id string, body []byte) *groupFi
 		f.t.Fatal(err)
 	}
 	f.records = append(f.records, env)
-	f.keys[signer.fp] = signer.keys
+	f.keys[signer.fp] = GroupKey{User: signer.id, KeyPair: signer.keys}
 	return f
 }
 
@@ -111,6 +111,8 @@ type groupCase struct {
 	name, why string
 	build     func(t testing.TB, u chainUsers) GroupInput
 	err       error
+	// rule is the rule a refusal names, which the verifier's error must carry.
+	rule      string
 	rotations func(t testing.TB, u chainUsers) map[string][]Envelope
 }
 
@@ -238,33 +240,33 @@ func groupCases() []groupCase {
 			}},
 
 		// The first record.
-		{name: "no-records", why: "the server served no records", err: ErrChain,
+		{name: "no-records", why: "the server served no records", rule: "no-records", err: ErrChain,
 			build: func(t testing.TB, u chainUsers) GroupInput {
-				return GroupInput{Group: groupID, Keys: map[string]KeyPair{}}
+				return GroupInput{Group: groupID, Keys: map[string]GroupKey{}}
 			}},
-		{name: "first-signer-is-member", why: "alice signs the first record and lists herself as a member, with bob as the manager", err: ErrChain,
+		{name: "first-signer-is-member", why: "alice signs the first record and lists herself as a member, with bob as the manager", rule: "first-signer-not-manager", err: ErrChain,
 			build: func(t testing.TB, u chainUsers) GroupInput {
 				return newGroup(t, u.alice, "Reviewers", []GroupMember{gmember(u.alice), gmanager(u.bob)}, nil).input()
 			}},
-		{name: "first-signer-not-listed", why: "alice signs the first record and does not list herself", err: ErrChain,
+		{name: "first-signer-not-listed", why: "alice signs the first record and does not list herself", rule: "first-signer-not-manager", err: ErrChain,
 			build: func(t testing.TB, u chainUsers) GroupInput {
 				return newGroup(t, u.alice, "Reviewers", []GroupMember{gmanager(u.bob)}, nil).input()
 			}},
-		{name: "first-signer-fp-differs", why: "the first record lists alice under another fingerprint than the key that signed it", err: ErrChain,
+		{name: "first-signer-fp-differs", why: "the first record lists alice under another fingerprint than the key that signed it", rule: "first-signer-fp-differs", err: ErrChain,
 			build: func(t testing.TB, u chainUsers) GroupInput {
 				return newGroup(t, u.alice, "Reviewers", []GroupMember{{User: u.alice.id, FP: u.carol.fp, Role: "manager"}}, nil).input()
 			}},
-		{name: "first-record-seq-2", why: "the first record has seq 2", err: ErrChain,
+		{name: "first-record-seq-2", why: "the first record has seq 2", rule: "first-seq", err: ErrChain,
 			build: first(func(u chainUsers, b *GroupBody) { b.Seq = 2 })},
-		{name: "first-record-has-prev", why: "the first record names a prev", err: ErrChain,
+		{name: "first-record-has-prev", why: "the first record names a prev", rule: "first-prev", err: ErrChain,
 			build: first(func(u chainUsers, b *GroupBody) { b.Prev = strings.Repeat("0", 64) })},
-		{name: "group-id-not-a-uuid", why: "the group ID is not a lowercase UUID", err: ErrChain,
+		{name: "group-id-not-a-uuid", why: "the group ID is not a lowercase UUID", rule: "group-id-not-uuid", err: ErrChain,
 			build: func(t testing.TB, u chainUsers) GroupInput {
 				in := newGroup(t, u.alice, "Reviewers", []GroupMember{gmanager(u.alice)}, func(b *GroupBody) { b.Group = "reviewers" }).input()
 				in.Group = "reviewers"
 				return in
 			}},
-		{name: "group-id-asked-for-differs", why: "the records are for another group than the one asked for", err: ErrChain,
+		{name: "group-id-asked-for-differs", why: "the records are for another group than the one asked for", rule: "group-id-differs", err: ErrChain,
 			build: func(t testing.TB, u chainUsers) GroupInput {
 				in := newGroup(t, u.alice, "Reviewers", []GroupMember{gmanager(u.alice)}, nil).input()
 				in.Group = otherGroupID
@@ -272,106 +274,110 @@ func groupCases() []groupCase {
 			}},
 
 		// Who signs a later record.
-		{name: "signer-not-listed", why: "mallory, whom the previous record does not list, signs the next record", err: ErrChain,
+		{name: "signer-not-listed", why: "mallory, whom the previous record does not list, signs the next record", rule: "signer-not-manager", err: ErrChain,
 			build: rawGroup(func(u chainUsers) chainUser { return u.mallory }, "", func(u chainUsers, b *GroupBody) {
 				b.Signer, b.SignerFP = u.mallory.id, u.mallory.fp
 			}, nil)},
-		{name: "signer-is-member", why: "carol, listed as a member, signs the next record", err: ErrChain,
+		{name: "signer-is-member", why: "carol, listed as a member, signs the next record", rule: "signer-not-manager", err: ErrChain,
 			build: rawGroup(func(u chainUsers) chainUser { return u.carol }, "", func(u chainUsers, b *GroupBody) {
 				b.Signer, b.SignerFP = u.carol.id, u.carol.fp
 			}, nil)},
-		{name: "signer-key-not-linked", why: "bob signs under a new key, and no rotation chain links it to the fp the previous record lists", err: ErrChain,
+		{name: "signer-key-not-linked", why: "bob signs under a new key, and no rotation chain links it to the fp the previous record lists", rule: "signer-key-not-linked", err: ErrChain,
 			build: func(t testing.TB, u chainUsers) GroupInput {
 				return twoManagers(t, u).add(bobRotated(t, u), nil).input()
 			}},
-		{name: "signer-key-missing", why: "keys has no key for the signerFp", err: ErrChain,
+		{name: "signer-key-missing", why: "keys has no key for the signerFp", rule: "signer-key-missing", err: ErrChain,
 			build: func(t testing.TB, u chainUsers) GroupInput {
 				in := twoManagers(t, u).add(u.bob, nil).input()
-				in.Keys = map[string]KeyPair{u.alice.fp: u.alice.keys}
+				in.Keys = map[string]GroupKey{u.alice.fp: {User: u.alice.id, KeyPair: u.alice.keys}}
 				return in
 			}},
-		{name: "forged-signature", why: "mallory signs a record that names bob as its signer, under bob's fingerprint", err: ErrDecrypt,
+		{name: "signer-key-of-another-user", why: "bob signs a record that names alice as its signer, under bob's fingerprint, and bob's key is served as bob's", rule: "signer-key-of-another-user", err: ErrChain,
+			build: rawGroup(func(u chainUsers) chainUser { return u.bob }, "u-alice", func(u chainUsers, b *GroupBody) {
+				b.Signer, b.SignerFP = u.alice.id, u.bob.fp
+			}, nil)},
+		{name: "forged-signature", why: "mallory signs a record that names bob as its signer, under bob's fingerprint", rule: "signature", err: ErrDecrypt,
 			build: func(t testing.TB, u chainUsers) GroupInput {
 				in := rawGroup(func(u chainUsers) chainUser { return u.mallory }, "u-bob", func(u chainUsers, b *GroupBody) {
 					b.Signer, b.SignerFP = u.bob.id, u.bob.fp
 				}, nil)(t, u)
 				// bob's real keys are served for his fingerprint, as the directory would.
-				in.Keys[u.bob.fp] = u.bob.keys
+				in.Keys[u.bob.fp] = GroupKey{User: u.bob.id, KeyPair: u.bob.keys}
 				delete(in.Keys, u.mallory.fp)
 				return in
 			}},
-		{name: "signer-differs-from-envelope-signer", why: "the body's signer is alice, and the envelope names carol as the signer", err: ErrChain,
+		{name: "signer-differs-from-envelope-signer", why: "the body's signer is alice, and the envelope names carol as the signer", rule: "envelope-signer-differs", err: ErrChain,
 			build: rawGroup(aliceSigns, "u-carol", nil, nil)},
 
 		// seq and prev.
-		{name: "skipped-seq", why: "the second record has seq 3", err: ErrChain,
+		{name: "skipped-seq", why: "the second record has seq 3", rule: "seq-skipped", err: ErrChain,
 			build: rawGroup(aliceSigns, "", func(u chainUsers, b *GroupBody) { b.Seq = 3 }, nil)},
-		{name: "repeated-seq", why: "the second record has seq 1", err: ErrChain,
+		{name: "repeated-seq", why: "the second record has seq 1", rule: "seq-skipped", err: ErrChain,
 			build: rawGroup(aliceSigns, "", func(u chainUsers, b *GroupBody) { b.Seq = 1 }, nil)},
-		{name: "wrong-prev", why: "the second record's prev is not the first record's hash", err: ErrChain,
+		{name: "wrong-prev", why: "the second record's prev is not the first record's hash", rule: "prev-wrong", err: ErrChain,
 			build: rawGroup(aliceSigns, "", func(u chainUsers, b *GroupBody) { b.Prev = strings.Repeat("0", 64) }, nil)},
-		{name: "group-id-changes", why: "the second record is for another group", err: ErrChain,
+		{name: "group-id-changes", why: "the second record is for another group", rule: "group-id-differs", err: ErrChain,
 			build: rawGroup(aliceSigns, "", func(u chainUsers, b *GroupBody) { b.Group = otherGroupID }, nil)},
 
 		// The members.
-		{name: "members-unsorted", why: "the members are not sorted by user ID", err: ErrChain,
+		{name: "members-unsorted", why: "the members are not sorted by user ID", rule: "members-unsorted", err: ErrChain,
 			build: rawGroup(aliceSigns, "", func(u chainUsers, b *GroupBody) {
 				b.Members = []GroupMember{gmanager(u.alice), gmember(u.carol), gmanager(u.bob)}
 			}, nil)},
-		{name: "duplicate-user", why: "carol is listed twice", err: ErrChain,
+		{name: "duplicate-user", why: "carol is listed twice", rule: "member-duplicate", err: ErrChain,
 			build: rawGroup(aliceSigns, "", func(u chainUsers, b *GroupBody) {
 				b.Members = []GroupMember{gmanager(u.alice), gmember(u.carol), gmember(u.carol)}
 			}, nil)},
-		{name: "no-manager-left", why: "alice removes herself and bob, leaving only a member", err: ErrChain,
+		{name: "no-manager-left", why: "alice removes herself and bob, leaving only a member", rule: "no-manager", err: ErrChain,
 			build: rawGroup(aliceSigns, "", func(u chainUsers, b *GroupBody) { b.Members = []GroupMember{gmember(u.carol)} }, nil)},
-		{name: "bad-role", why: "carol's role is owner", err: ErrChain,
+		{name: "bad-role", why: "carol's role is owner", rule: "member-role-invalid", err: ErrChain,
 			build: rawGroup(aliceSigns, "", func(u chainUsers, b *GroupBody) {
 				b.Members = []GroupMember{gmanager(u.alice), {User: u.carol.id, FP: u.carol.fp, Role: "owner"}}
 			}, nil)},
-		{name: "member-fp-malformed", why: "carol's fp is not 64 lowercase hex digits", err: ErrChain,
+		{name: "member-fp-malformed", why: "carol's fp is not 64 lowercase hex digits", rule: "member-fp-malformed", err: ErrChain,
 			build: rawGroup(aliceSigns, "", func(u chainUsers, b *GroupBody) {
 				b.Members = []GroupMember{gmanager(u.alice), {User: u.carol.id, FP: strings.ToUpper(u.carol.fp), Role: "member"}}
 			}, nil)},
-		{name: "no-members", why: "the members list is empty", err: ErrChain,
+		{name: "no-members", why: "the members list is empty", rule: "members-none", err: ErrChain,
 			build: rawGroup(aliceSigns, "", func(u chainUsers, b *GroupBody) { b.Members = []GroupMember{} }, nil)},
-		{name: "members-1001", why: "the group lists 1001 members", err: ErrChain,
+		{name: "members-1001", why: "the group lists 1001 members", rule: "members-too-many", err: ErrChain,
 			build: func(t testing.TB, u chainUsers) GroupInput {
 				return newGroup(t, u.alice, "Everyone", manyMembers(u, 1000), nil).input()
 			}},
 
 		// The name.
-		{name: "name-empty", why: "the name is empty", err: ErrChain, build: named("")},
-		{name: "name-101-code-points", why: "the name is 101 code points", err: ErrChain, build: named(strings.Repeat("a", 101))},
-		{name: "name-newline", why: "the name holds a line feed, a C0 control character", err: ErrChain, build: named("Review\ners")},
-		{name: "name-c1-control", why: "the name holds U+0085, a C1 control character", err: ErrChain, build: named("Review\u0085ers")},
-		{name: "name-delete", why: "the name holds U+007F", err: ErrChain, build: named("Review\u007fers")},
+		{name: "name-empty", why: "the name is empty", rule: "name-empty", err: ErrChain, build: named("")},
+		{name: "name-101-code-points", why: "the name is 101 code points", rule: "name-too-long", err: ErrChain, build: named(strings.Repeat("a", 101))},
+		{name: "name-newline", why: "the name holds a line feed, a C0 control character", rule: "name-control-character", err: ErrChain, build: named("Review\ners")},
+		{name: "name-c1-control", why: "the name holds U+0085, a C1 control character", rule: "name-control-character", err: ErrChain, build: named("Review\u0085ers")},
+		{name: "name-delete", why: "the name holds U+007F", rule: "name-control-character", err: ErrChain, build: named("Review\u007fers")},
 
 		// The body.
-		{name: "unknown-body-key", why: "the body has a key the format does not", err: ErrFormat,
+		{name: "unknown-body-key", why: "the body has a key the format does not", rule: "body-format", err: ErrFormat,
 			build: rawGroup(aliceSigns, "", nil, func(body []byte) []byte {
 				return []byte(strings.Replace(string(body), `"name":`, `"extra":1,"name":`, 1))
 			})},
-		{name: "body-version-2", why: "the body's v is 2", err: ErrFormat,
+		{name: "body-version-2", why: "the body's v is 2", rule: "body-version", err: ErrFormat,
 			build: rawGroup(aliceSigns, "", nil, func(body []byte) []byte {
 				return []byte(strings.Replace(string(body), `"v":1`, `"v":2`, 1))
 			})},
-		{name: "signer-fp-missing", why: "the body has no signerFp", err: ErrFormat,
+		{name: "signer-fp-missing", why: "the body has no signerFp", rule: "body-format", err: ErrFormat,
 			build: rawGroup(aliceSigns, "", nil, func(body []byte) []byte {
 				return signerFpKey.ReplaceAll(body, nil)
 			})},
 
 		// The keyring's pin.
-		{name: "rollback", why: "the keyring pins seq 4 and the chain has three records", err: ErrRollback,
+		{name: "rollback", why: "the keyring pins seq 4 and the chain has three records", rule: "pin-rolled-back", err: ErrRollback,
 			build: func(t testing.TB, u chainUsers) GroupInput {
 				f := threeRecords(t, u)
 				return f.withPin(4, f.head(3))
 			}},
-		{name: "fork", why: "the record at the pinned seq 2 hashes to another head", err: ErrFork,
+		{name: "fork", why: "the record at the pinned seq 2 hashes to another head", rule: "pin-forked", err: ErrFork,
 			build: func(t testing.TB, u chainUsers) GroupInput {
 				f := threeRecords(t, u)
 				return f.withPin(2, f.head(3))
 			}},
-		{name: "pin-seq-zero", why: "the keyring pins seq 0", err: ErrFormat,
+		{name: "pin-seq-zero", why: "the keyring pins seq 0", rule: "pin-seq-invalid", err: ErrFormat,
 			build: func(t testing.TB, u chainUsers) GroupInput {
 				f := threeRecords(t, u)
 				return f.withPin(0, f.head(1))
@@ -391,11 +397,12 @@ type groupVec struct {
 	Why       string                `json:"why"`
 	Group     string                `json:"group"`
 	Records   []Envelope            `json:"records"`
-	Keys      map[string]KeyPair    `json:"keys"`
+	Keys      map[string]GroupKey   `json:"keys"`
 	Rotations map[string][]Envelope `json:"rotations"`
 	Pin       *GroupPin             `json:"pin"`
 	Want      *groupWantVec         `json:"want,omitempty"`
 	Error     string                `json:"error,omitempty"`
+	Rule      string                `json:"rule,omitempty"`
 }
 
 // groupVectors builds the group section from groupCases. Want comes from the
@@ -414,7 +421,7 @@ func groupVectors(t testing.TB) []groupVec {
 			v.Rotations = c.rotations(t, u)
 		}
 		if c.err != nil {
-			v.Error = chainErrorKind(t, c.err)
+			v.Error, v.Rule = chainErrorKind(t, c.err), c.rule
 		} else {
 			last := in.Records[len(in.Records)-1].Body
 			var b GroupBody
@@ -445,6 +452,9 @@ func checkGroupVectors(t *testing.T, vs []groupVec) {
 		if v.Error != "" {
 			if !errors.Is(err, chainErrorKinds[v.Error]) {
 				t.Errorf("%s (%s): got %v, want %s", v.Name, v.Why, err, v.Error)
+			}
+			if got := GroupRule(err); got != v.Rule || v.Rule == "" {
+				t.Errorf("%s (%s): refused under rule %q, want %q", v.Name, v.Why, got, v.Rule)
 			}
 			continue
 		}

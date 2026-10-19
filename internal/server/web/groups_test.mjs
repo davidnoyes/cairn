@@ -537,7 +537,7 @@ test('a record is signed by its signer\'s keys and no one else\'s', async () => 
     group: GROUP, seq: 2, prev: await headOf(first), members: [{ user: U.owner.id, fp: U.editor.fp, role: 'manager' }, entry(U.editor, 'manager')],
   });
   s.server.groups.set(GROUP, [first, second]);
-  await assert.rejects(groupMembers(s.deps, GROUP), (err) => err instanceof e2e.ChainError && /does not lead to/.test(err.message));
+  await assert.rejects(groupMembers(s.deps, GROUP), (err) => err instanceof e2e.ChainError && /belongs to/.test(err.message));
 });
 
 test('a group view with no keys for a signer is refused', async () => {
@@ -586,4 +586,90 @@ test('rotation records that do not lead to a signer\'s current key make none of 
   });
   s.server.groups.set(GROUP, [first]);
   await assert.rejects(groupMembers(s.deps, GROUP), (err) => err instanceof e2e.ChainError && /no signer key/.test(err.message));
+});
+
+// ---- the directory vouches for a signer's served key ----
+
+test('a signer the directory lists must have the served key there, even when nothing is pinned yet', async () => {
+  const s = await scene({ who: 'editor', members: [entry(U.editor)] });
+  const real = s.server.signersOf;
+  s.server.signersOf = (recs) => {
+    const out = real(recs);
+    out[U.owner.id] = { ...out[U.owner.id], x25519: U.outsider.pair.x25519, ed25519: U.outsider.pair.ed25519 };
+    return out;
+  };
+  await assert.rejects(
+    groupMembers(s.deps, GROUP),
+    (err) => err instanceof e2e.ChainError && /owner@example\.com/.test(err.message) && /directory/.test(err.message),
+  );
+  assert.equal(s.server.keyring.rev, 0, 'nothing was pinned from the planted key');
+});
+
+// ---- the keyring moves between a read and a write ----
+
+// otherDeviceStores adds a record named name to the server's group and stores
+// its head in the keyring, as another device of the same user would.
+async function otherDeviceStores(s, name) {
+  const chain = s.server.groups.get(GROUP);
+  const next = await groupRecord(U.owner, { group: GROUP, seq: chain.length + 1, prev: await headOf(chain.at(-1)), name });
+  chain.push(next);
+  const head = await headOf(next);
+  const other = depsFor(s.server, records.owner, { storage: s.deps.storage });
+  await updateKeyring(other, await signedInCaller(other), (k) => {
+    k.groups ??= {};
+    k.groups[GROUP] = { seq: bodyOf(next).seq, head };
+  });
+}
+
+// movesOnRead makes the next `times` reads of the directory, which follow the
+// keyring's read, be followed by another device storing a newer head.
+function movesOnRead(s, times) {
+  const real = s.deps.fetch;
+  let n = 0;
+  s.deps.fetch = async (path, init) => {
+    const resp = await real(path, init);
+    if ((init?.method ?? 'GET') === 'GET' && path === '/api/users' && n < times) {
+      n += 1;
+      await otherDeviceStores(s, `Renamed ${n}`);
+    }
+    return resp;
+  };
+}
+
+test('a first read that another device overtakes is read again, and shows the newer chain', async () => {
+  const s = await scene();
+  movesOnRead(s, 1);
+  const res = await groupMembers(s.deps, GROUP);
+  assert.deepEqual([res.name, res.seq], ['Renamed 1', 2]);
+  assert.equal((await readKeyring(s.server, U.owner)).groups[GROUP].seq, 2, 'the entry did not go back');
+});
+
+test('a chain the keyring already holds is read again when another device overtakes it', async () => {
+  const s = await scene();
+  await groupMembers(s.deps, GROUP);
+  movesOnRead(s, 1);
+  const res = await groupMembers(s.deps, GROUP);
+  assert.deepEqual([res.name, res.seq], ['Renamed 1', 2]);
+});
+
+test('a group that keeps moving is a keyring-moved error, and the entry has not gone back', async () => {
+  const s = await scene();
+  movesOnRead(s, 2);
+  await assert.rejects(groupMembers(s.deps, GROUP), (err) => err.name === 'GroupError' && err.code === 'keyring-moved');
+  assert.equal((await readKeyring(s.server, U.owner)).groups[GROUP].seq, 3);
+});
+
+// ---- deleting removes the entry ----
+
+test('deleteGroup removes the group\'s keyring entry, after the server confirms', async () => {
+  const s = await scene();
+  await groupMembers(s.deps, GROUP);
+  assert.ok((await readKeyring(s.server, U.owner)).groups?.[GROUP], 'the keyring holds the entry');
+  const real = s.deps.fetch;
+  s.deps.fetch = async (path, init) => (init?.method === 'DELETE' ? json(403, { error: 'no' }) : real(path, init));
+  await assert.rejects(deleteGroup(s.deps, GROUP), ApiError);
+  assert.ok((await readKeyring(s.server, U.owner)).groups?.[GROUP], 'a refused delete leaves it');
+  s.deps.fetch = real;
+  await deleteGroup(s.deps, GROUP);
+  assert.equal((await readKeyring(s.server, U.owner)).groups?.[GROUP], undefined);
 });

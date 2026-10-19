@@ -220,6 +220,10 @@ func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "user owns artifacts; disable the account instead")
 			return
 		}
+		if errors.Is(err, store.ErrSignedGroupRecord) {
+			writeError(w, http.StatusConflict, "user signed a record of a group that still exists; disable the account instead")
+			return
+		}
 		s.writeStoreError(w, err, "user")
 		return
 	}

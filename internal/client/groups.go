@@ -27,6 +27,9 @@ var (
 	ErrNotGroupMember = errors.New("the group does not list that user")
 	// ErrLastManager means the change leaves the group with no manager.
 	ErrLastManager = errors.New("the group would have no manager; make another user a manager first, or delete the group")
+	// ErrGroupMoved means another device stored a newer head of the group in
+	// the keyring while this client was reading it, twice running.
+	ErrGroupMoved = errors.New("another device stored a newer head of the group while it was read; run the command again")
 )
 
 // GroupSummary is one row of Groups, as the server lists it. The name and the
@@ -120,10 +123,10 @@ type VerifiedGroup struct {
 // groupSigners is what anchorSigners makes of the keys a group's answer
 // serves for the users who signed its records.
 type groupSigners struct {
-	// keys holds, by fingerprint, the keys that may have signed a record.
-	keys map[string]e2e.KeyPair
-	// mayBe is, by user ID, the fingerprints that user may have signed under.
-	mayBe map[string]map[string]bool
+	// keys holds, by fingerprint, the keys that may have signed a record, with
+	// the user each belongs to: a signer's current key, and any earlier one
+	// their rotation records link to it.
+	keys map[string]e2e.GroupKey
 	// rotations are each signer's rotation records, by user ID.
 	rotations map[string][]e2e.Envelope
 	// pins are the pins to store for signers once the chain verifies.
@@ -134,17 +137,24 @@ type groupSigners struct {
 // current key the answer serves for them must be the keyring's pin or follow
 // from it by their rotation records, else it is a *KeyChangedError unless
 // acceptNewKey, and a signer not pinned yet is pinned unverified. The caller's
-// own key is k's. A record may be signed by that current key or by an earlier
-// one their rotation records link to it, and by no other: a key the server
-// serves that nothing anchors is not one.
+// own key is k's. A signer the directory still lists must have the same
+// current key there as the answer serves, else it is e2e.ErrChain: a server
+// cannot plant a key of its own for a real user. A record may be signed by that
+// current key or by an earlier one their rotation records link to it, and by
+// no other: a key the server serves that nothing anchors is not one, and
+// VerifyGroupChain refuses a record whose key belongs to another user.
 func (c *Client) anchorSigners(k *UnlockedKeys, kr *e2e.Keyring, w groupWire, acceptNewKey bool) (*groupSigners, error) {
 	out := &groupSigners{
-		keys: map[string]e2e.KeyPair{}, mayBe: map[string]map[string]bool{},
+		keys:      map[string]e2e.GroupKey{},
 		rotations: map[string][]e2e.Envelope{}, pins: map[string]e2e.Pin{},
+	}
+	dir, err := c.Directory()
+	if err != nil {
+		return nil, err
 	}
 	for _, env := range w.Records {
 		id := env.Signer
-		if _, ok := out.mayBe[id]; ok {
+		if _, ok := out.rotations[id]; ok {
 			continue
 		}
 		served, ok := w.Signers[id]
@@ -178,10 +188,12 @@ func (c *Client) anchorSigners(k *UnlockedKeys, kr *e2e.Keyring, w groupWire, ac
 			if pin != nil {
 				out.pins[id] = *pin
 			}
+			if i := slices.IndexFunc(dir, func(d DirectoryUser) bool { return d.ID == id }); i >= 0 && dir[i].FP != curFP {
+				return nil, fmt.Errorf("%w: the keys the server served for %s, who signed a record of group %s, are not the ones the directory lists for them", e2e.ErrChain, dir[i].Email, w.ID)
+			}
 		}
 		linked := e2e.RotationLinker(out.rotations)
-		out.mayBe[id] = map[string]bool{curFP: true}
-		out.keys[curFP] = cur
+		out.keys[curFP] = e2e.GroupKey{User: id, KeyPair: cur}
 		for _, r := range served.Rotations {
 			var b e2e.RotationBody
 			if json.Unmarshal(r.Body, &b) != nil {
@@ -195,8 +207,7 @@ func (c *Client) anchorSigners(k *UnlockedKeys, kr *e2e.Keyring, w groupWire, ac
 				}
 				fp := hex.EncodeToString(e2e.Fingerprint(x, ed))
 				if linked(id, fp, curFP) {
-					out.mayBe[id][fp] = true
-					out.keys[fp] = kp
+					out.keys[fp] = e2e.GroupKey{User: id, KeyPair: kp}
 				}
 			}
 		}
@@ -210,7 +221,18 @@ func (c *Client) anchorSigners(k *UnlockedKeys, kr *e2e.Keyring, w groupWire, ac
 // shorter than the stored seq, or forked at it, is refused. After success the
 // keyring stores the chain's seq and head, and the pins of signers seen for
 // the first time or whose keys rotated.
+//
+// If another device stored a newer head in the keyring while the group was
+// read, the group is read again, so the chain shown is checked against it.
 func (c *Client) VerifyGroup(k *UnlockedKeys, groupID string, acceptNewKey bool) (*VerifiedGroup, error) {
+	vg, err := c.verifyGroup(k, groupID, acceptNewKey)
+	if errors.Is(err, ErrGroupMoved) {
+		return c.verifyGroup(k, groupID, acceptNewKey)
+	}
+	return vg, err
+}
+
+func (c *Client) verifyGroup(k *UnlockedKeys, groupID string, acceptNewKey bool) (*VerifiedGroup, error) {
 	kr, err := c.ReadKeyring(k)
 	if err != nil {
 		return nil, err
@@ -230,41 +252,44 @@ func (c *Client) VerifyGroup(k *UnlockedKeys, groupID string, acceptNewKey bool)
 	if err != nil {
 		return nil, fmt.Errorf("the records of group %s do not verify: %w", groupID, err)
 	}
-	for i, b := range chain.Bodies {
-		if !signers.mayBe[b.Signer][b.SignerFP] {
-			return nil, fmt.Errorf("the records of group %s do not verify: %w: record %d is signed under a key that %s's pinned key does not lead to", groupID, e2e.ErrChain, i+1, b.Signer)
-		}
-	}
 	for id, pin := range signers.pins {
 		if err := c.storePin(k, id, pin, kr.Pins[id].FP); err != nil {
 			return nil, fmt.Errorf("pinning the signer %s of group %s failed: %w", id, groupID, err)
 		}
 	}
-	if len(signers.pins) > 0 {
-		if kr, err = c.ReadKeyring(k); err != nil {
-			return nil, err
-		}
-	}
-	vg := &VerifiedGroup{ID: groupID, Chain: chain, Keyring: kr, Rotations: signers.rotations}
-	if vg.Keyring, err = c.recordGroup(k, kr, groupID, chain); err != nil {
+	kr, err = c.recordGroup(k, kr, groupID, chain)
+	if err != nil {
 		return nil, err
 	}
-	return vg, nil
+	return &VerifiedGroup{ID: groupID, Chain: chain, Keyring: kr, Rotations: signers.rotations}, nil
 }
 
 // recordGroup stores a verified chain as groupID's groups entry, unless the
-// keyring already holds it. On a merge it keeps whichever entry has the
-// higher seq, so a later chain another device stored is not replaced by this
-// one, and refuses the same seq at another head (e2e.ErrFork).
+// keyring already holds it. The entry never goes back: when the keyring now
+// holds a higher seq than the chain, another device stored a newer head after
+// this chain was checked, and recordGroup is ErrGroupMoved so the caller reads
+// the group again. The same seq at another head is e2e.ErrFork.
 func (c *Client) recordGroup(k *UnlockedKeys, kr *e2e.Keyring, groupID string, chain *e2e.GroupChain) (*e2e.Keyring, error) {
 	want := e2e.GroupPin{Seq: chain.Latest.Seq, Head: chain.Head}
 	if p := kr.GroupPin(groupID); p != nil && *p == want {
-		return kr, nil
+		// Nothing to write, but another device may have stored a newer head
+		// since kr was read.
+		now, err := c.ReadKeyring(k)
+		if err != nil {
+			return nil, err
+		}
+		if cur := now.GroupPin(groupID); cur != nil && cur.Seq > want.Seq {
+			return nil, ErrGroupMoved
+		}
+		return now, nil
 	}
 	return c.UpdateKeyring(k, func(kr *e2e.Keyring) error {
 		cur := kr.GroupPin(groupID)
 		if cur != nil && cur.Seq == want.Seq && cur.Head != want.Head {
 			return fmt.Errorf("%w: record %d of group %s", e2e.ErrFork, cur.Seq, groupID)
+		}
+		if cur != nil && cur.Seq > want.Seq {
+			return ErrGroupMoved
 		}
 		if cur == nil || cur.Seq < want.Seq {
 			kr.SetGroup(groupID, chain)
@@ -584,7 +609,19 @@ func (c *Client) RenameGroup(groupID, name string, acceptNewKey bool) error {
 }
 
 // DeleteGroup deletes a group. The server allows a manager of the group, or
-// an administrator, so the client reads no chain first.
+// an administrator, so the client reads no chain first. Once the server
+// confirms, the group's entry leaves the keyring; nothing else removes one.
 func (c *Client) DeleteGroup(groupID string) error {
-	return c.doJSON("DELETE", "/api/groups/"+groupID, nil, nil)
+	k, err := c.Unlock()
+	if err != nil {
+		return err
+	}
+	if err := c.doJSON("DELETE", "/api/groups/"+groupID, nil, nil); err != nil {
+		return err
+	}
+	_, err = c.UpdateKeyring(k, func(kr *e2e.Keyring) error {
+		delete(kr.Groups, groupID)
+		return nil
+	})
+	return err
 }

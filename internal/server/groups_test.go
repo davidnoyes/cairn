@@ -668,3 +668,83 @@ func TestGroupServesItsSignersKeys(t *testing.T) {
 		}
 	}
 }
+
+// A group ID is never reused: after the group is deleted, a first record
+// under its ID is a 409, as for a group that exists.
+func TestAGroupIDCannotBeReusedAfterTheGroupIsDeleted(t *testing.T) {
+	w := newGroupWorld(t)
+	first := firstGroupBody(w.alice, "Reviewers", gm(w.alice, "manager"))
+	env := signGroup(t, w.alice, first)
+	w.alice.mustDo("POST", "/api/groups", map[string]any{"record": env}, nil, http.StatusCreated)
+	w.alice.mustDo("DELETE", "/api/groups/"+first.Group, nil, nil, http.StatusOK)
+
+	code, msg := status(w.alice.testClient, "POST", "/api/groups", map[string]any{"record": env})
+	if code != http.StatusConflict || !strings.Contains(msg, "deleted") {
+		t.Errorf("re-creating a deleted group: %d %q, want 409 and a mention of the deletion", code, msg)
+	}
+	// Another signer, another content, the same ID: refused all the same.
+	again := firstGroupBody(w.bob, "Mine", gm(w.bob, "manager"))
+	again.Group = first.Group
+	wantStatus(t, w.bob.testClient, "POST", "/api/groups", map[string]any{"record": signGroup(t, w.bob, again)}, http.StatusConflict)
+	w.alice.mustDo("GET", "/api/groups/"+first.Group, nil, nil, http.StatusNotFound)
+}
+
+// An account that signed a record of a group that still exists is not
+// deleted: 409, as for one that owns artifacts. A member who signed nothing
+// is, and so is the signer once the group is gone.
+func TestAnAccountThatSignedAGroupRecordCannotBeDeleted(t *testing.T) {
+	w := newGroupWorld(t)
+	g := newGroup(t, w.alice, "Reviewers", gm(w.alice, "manager"), gm(w.bob, "member"))
+
+	code, msg := status(w.admin, "DELETE", "/api/admin/users/"+w.alice.id, nil)
+	if code != http.StatusConflict || !strings.Contains(msg, "group") {
+		t.Errorf("deleting a signer: %d %q, want 409 naming the group", code, msg)
+	}
+	if _, err := w.s.store.UserByID(w.alice.id); err != nil {
+		t.Errorf("the signer was deleted anyway: %v", err)
+	}
+	// Deactivating is the way out, and the group stays readable.
+	if err := w.s.store.SetUserDisabled(w.alice.id, true); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Signers map[string]json.RawMessage `json:"signers"`
+	}
+	w.carol.mustDo("GET", "/api/groups/"+g.id, nil, &got, http.StatusOK)
+	if _, ok := got.Signers[w.alice.id]; !ok {
+		t.Errorf("the deactivated signer's keys are not served: %v", got.Signers)
+	}
+
+	wantStatus(t, w.admin, "DELETE", "/api/admin/users/"+w.bob.id, nil, http.StatusOK)
+	w.admin.mustDo("DELETE", "/api/groups/"+g.id, nil, nil, http.StatusOK)
+	wantStatus(t, w.admin, "DELETE", "/api/admin/users/"+w.alice.id, nil, http.StatusOK)
+}
+
+// A member who was deactivated and carried over unchanged can be re-listed
+// once reactivated, and a changed fingerprint is checked again.
+func TestAReactivatedGroupMemberCanBeListedAgain(t *testing.T) {
+	w := newGroupWorld(t)
+	g := newGroup(t, w.alice, "Reviewers", gm(w.alice, "manager"), gm(w.bob, "member"))
+	if err := w.s.store.SetUserDisabled(w.bob.id, true); err != nil {
+		t.Fatal(err)
+	}
+	g.apply(w.alice, func(b *e2e.GroupBody) { b.Name = "Release reviewers" }) // carried over unchanged
+	if err := w.s.store.SetUserDisabled(w.bob.id, false); err != nil {
+		t.Fatal(err)
+	}
+	promote := func(b *e2e.GroupBody) {
+		for i := range b.Members {
+			if b.Members[i].User == w.bob.id {
+				b.Members[i].Role = "manager"
+			}
+		}
+	}
+	g.apply(w.alice, promote) // listed again, now a changed entry, and active
+	g.put(w.alice, g.next(w.alice, func(b *e2e.GroupBody) {
+		for i := range b.Members {
+			if b.Members[i].User == w.bob.id {
+				b.Members[i].FP = w.carol.keys.fp()
+			}
+		}
+	}), http.StatusBadRequest)
+}

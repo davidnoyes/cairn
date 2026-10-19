@@ -48,7 +48,7 @@ async function buildChain(steps) {
   return records;
 }
 
-const keysOf = (...users) => Object.fromEntries(users.map((u) => [u.fp, u.pair]));
+const keysOf = (...users) => Object.fromEntries(users.map((u) => [u.fp, { user: u.id, ...u.pair }]));
 const ALL = keysOf(...Object.values(U));
 const verify = (records, extra = {}) => e2e.verifyGroupChain({ group: GROUP, records, keys: ALL, pin: null, ...extra });
 const MGRS = [entry(U.owner, 'manager'), entry(U.editor)];
@@ -99,7 +99,7 @@ test('the first record must list its signer as manager, under signerFp', async (
     'another user manager under the signer fp': [{ user: U.editor.id, fp: U.owner.fp, role: 'manager' }, entry(U.owner)],
   };
   for (const [what, members] of Object.entries(cases)) {
-    await assert.rejects(() => recordFor(U.owner, { members }).then((r) => verify([r])), refused(e2e.ChainError, /signer as manager/), what);
+    await assert.rejects(() => recordFor(U.owner, { members }).then((r) => verify([r])), refused(e2e.ChainError, /signer (as manager|under another fp)/), what);
   }
 });
 
@@ -186,7 +186,7 @@ test('members must be sorted by user ID and unique', async () => {
   const unsorted = await sealBody({ ...bodyFor(U.owner), members: [hi, lo] });
   await assert.rejects(() => verify([unsorted]), refused(e2e.ChainError, /sorted/));
   const dup = await sealBody({ ...bodyFor(U.owner), members: [a, a] });
-  await assert.rejects(() => verify([dup]), refused(e2e.ChainError, /sorted/));
+  await assert.rejects(() => verify([dup]), refused(e2e.ChainError, /twice/));
 });
 
 test('members are compared by UTF-8 bytes, as Go compares strings', async () => {
@@ -204,9 +204,10 @@ test('a group lists 1 to 1000 members', async () => {
   const filler = (n) => Array.from({ length: n }, (_, i) => ({ user: `u-${String(i).padStart(5, '0')}`, fp: 'e'.repeat(64), role: 'member' }));
   const mgr = { user: 'a-manager', fp: U.owner.fp, role: 'manager' };
   const sign = (members) => sealBody({ ...bodyFor(U.owner), members, signer: 'a-manager' });
-  assert.equal((await verify([await sign([mgr, ...filler(999)])])).seq, 1);
-  await assert.rejects(() => sign([mgr, ...filler(1000)]).then((r) => verify([r])), refused(e2e.ChainError, /1001 members/));
-  await assert.rejects(() => sign([]).then((r) => verify([r])), refused(e2e.ChainError, /0 members/));
+  const keys = { [U.owner.fp]: { user: 'a-manager', ...U.owner.pair } };
+  assert.equal((await verify([await sign([mgr, ...filler(999)])], { keys })).seq, 1);
+  await assert.rejects(() => sign([mgr, ...filler(1000)]).then((r) => verify([r], { keys })), refused(e2e.ChainError, /1001 members/));
+  await assert.rejects(() => sign([]).then((r) => verify([r], { keys })), refused(e2e.ChainError, /0 members/));
 });
 
 test('members that is null is refused', async () => {
@@ -273,7 +274,29 @@ test('the signature must verify under the key signerFp names', async () => {
 test('a signer with no key for signerFp, or a key that does not hash to it, is refused', async () => {
   const records = await buildChain([{ signer: U.owner }]);
   await assert.rejects(() => verify(records, { keys: {} }), refused(e2e.ChainError, /no signer key/));
-  await assert.rejects(() => verify(records, { keys: { [U.owner.fp]: U.editor.pair } }), e2e.ChainError);
+  await assert.rejects(() => verify(records, { keys: { [U.owner.fp]: { user: U.owner.id, ...U.editor.pair } } }), e2e.ChainError);
+});
+
+test('a key signs only for the user it belongs to', async () => {
+  const records = await buildChain([{ signer: U.owner }]);
+  const mislabelled = { [U.owner.fp]: { user: U.editor.id, ...U.owner.pair } };
+  await assert.rejects(
+    () => verify(records, { keys: mislabelled }),
+    (err) => err instanceof e2e.ChainError && err.rule === 'signer-key-of-another-user',
+  );
+  const claimsEditor = [await recordFor(U.owner, { over: { signer: U.editor.id }, members: [entry(U.editor, 'manager')] })];
+  await assert.rejects(
+    () => verify(claimsEditor),
+    (err) => err instanceof e2e.ChainError && err.rule === 'signer-key-of-another-user',
+  );
+});
+
+test('a refusal names its rule', async () => {
+  const records = await buildChain([{ signer: U.owner }]);
+  await assert.rejects(() => verify(records, { keys: {} }), (err) => err.rule === 'signer-key-missing');
+  await assert.rejects(() => verify([]), (err) => err.rule === 'no-records');
+  const unnamed = [await recordFor(U.owner, { over: { name: '' } })];
+  await assert.rejects(() => verify(unnamed), (err) => err.rule === 'name-empty');
 });
 
 test('the body must be a version 1 group body with exactly its keys', async () => {

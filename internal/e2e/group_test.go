@@ -15,7 +15,8 @@ func TestGroupCasesFailForTheirOwnReason(t *testing.T) {
 		"no-records":                          "no group records",
 		"first-signer-is-member":              "does not list its signer",
 		"first-signer-not-listed":             "does not list its signer",
-		"first-signer-fp-differs":             "does not list its signer",
+		"first-signer-fp-differs":             "under another fp than signerFp",
+		"signer-key-of-another-user":          "belongs to \"u-bob\"",
 		"first-record-seq-2":                  "first record has seq 2",
 		"first-record-has-prev":               "first record has a prev",
 		"group-id-not-a-uuid":                 "not a lowercase UUID",
@@ -31,7 +32,7 @@ func TestGroupCasesFailForTheirOwnReason(t *testing.T) {
 		"wrong-prev":                          "prev is not the previous record's hash",
 		"group-id-changes":                    "record for group",
 		"members-unsorted":                    "not sorted by user ID",
-		"duplicate-user":                      "not sorted by user ID, or duplicated",
+		"duplicate-user":                      "lists user \"u-carol\" twice",
 		"no-manager-left":                     "lists no manager",
 		"bad-role":                            "has role \"owner\"",
 		"member-fp-malformed":                 "fp is not 64 lowercase hex digits",
@@ -68,6 +69,9 @@ func TestGroupCasesFailForTheirOwnReason(t *testing.T) {
 		if !errors.Is(err, c.err) {
 			t.Errorf("%s: got %v, want %v", c.name, err, c.err)
 			continue
+		}
+		if got := GroupRule(err); got != c.rule || c.rule == "" {
+			t.Errorf("%s: refused under rule %q, want %q", c.name, got, c.rule)
 		}
 		want, ok := reasons[c.name]
 		if !ok {

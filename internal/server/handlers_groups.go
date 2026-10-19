@@ -310,6 +310,8 @@ func (s *Server) acceptGroupRecord(callerID, id string, cur *groupLatest, env e2
 	}
 	if _, err := s.store.AddGroupRecord(body.Group, body.Seq, store.Envelope{Body: env.Body, Sig: env.Sig, Signer: env.Signer}, members, s.clk.Now()); errors.Is(err, store.ErrStale) {
 		return nil, groupRefuse(http.StatusConflict, "another record was stored first; read the group again")
+	} else if errors.Is(err, store.ErrGroupIDReused) {
+		return nil, groupRefuse(http.StatusConflict, "group %s was deleted; a group ID is never used again", body.Group)
 	} else if err != nil {
 		return nil, err
 	}

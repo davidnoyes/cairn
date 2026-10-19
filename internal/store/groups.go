@@ -84,7 +84,8 @@ func (s *Store) GroupMembers(id string) ([]GroupMember, error) {
 // AddGroupRecord stores a `group` record at seq and replaces the group's
 // members with those the record lists, in one transaction. Seq 1 creates the
 // group. A seq that is not one more than the last, which includes a first
-// record for a group that exists, is ErrStale, with that last seq in last.
+// record for a group that exists, is ErrStale, with that last seq in last. A
+// first record under the ID of a deleted group is ErrGroupIDReused.
 // A member whose account is gone is left out of group_members: the record
 // carries such an entry over unchanged, and the signed record still lists it.
 func (s *Store) AddGroupRecord(id string, seq int, rec Envelope, members []GroupMember, at time.Time) (last int, err error) {
@@ -100,6 +101,13 @@ func (s *Store) AddGroupRecord(id string, seq int, rec Envelope, members []Group
 		return last, ErrStale
 	}
 	if seq == 1 {
+		var used bool
+		if err := tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM deleted_groups WHERE id = ?)`, id).Scan(&used); err != nil {
+			return 0, err
+		}
+		if used {
+			return 0, ErrGroupIDReused
+		}
 		if _, err := tx.Exec(`INSERT INTO groups (id, created_at) VALUES (?, ?)`, id, formatTime(at)); err != nil {
 			return 0, err
 		}
@@ -121,9 +129,14 @@ func (s *Store) AddGroupRecord(id string, seq int, rec Envelope, members []Group
 }
 
 // DeleteGroup deletes a group with its records and members, or returns
-// ErrNotFound.
+// ErrNotFound. It keeps the ID, so no later first record can reuse it.
 func (s *Store) DeleteGroup(id string) error {
-	res, err := s.db.Exec(`DELETE FROM groups WHERE id = ?`, id)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`DELETE FROM groups WHERE id = ?`, id)
 	if err != nil {
 		return err
 	}
@@ -132,7 +145,10 @@ func (s *Store) DeleteGroup(id string) error {
 	} else if n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	if _, err := tx.Exec(`INSERT INTO deleted_groups (id, deleted_at) VALUES (?, ?)`, id, now()); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // KeyedUserByID reads a user and their current keys. A missing user is

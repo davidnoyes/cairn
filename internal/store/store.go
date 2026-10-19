@@ -146,6 +146,15 @@ var ErrLegacyData = errors.New("this data directory holds accounts or artifacts 
 // their members would lose the owner every record is signed by.
 var ErrOwnsArtifacts = errors.New("user owns artifacts")
 
+// ErrSignedGroupRecord is returned when deleting a user who signed a record of
+// a group that still exists: the group's chain would lose the key that
+// verifies it. Deactivate the account instead.
+var ErrSignedGroupRecord = errors.New("user signed a group record")
+
+// ErrGroupIDReused is returned for a first group record whose ID a deleted
+// group used.
+var ErrGroupIDReused = errors.New("group ID was used by a deleted group")
+
 // ErrOwnerActive is returned when an administrator deletes an artifact whose
 // owner's account is active: the owner decides.
 var ErrOwnerActive = errors.New("the owner's account is active")

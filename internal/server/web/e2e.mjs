@@ -2453,6 +2453,14 @@ export async function verifyChain(input) {
 const GROUP_NAME_MAX = 100;
 const GROUP_MEMBERS_MAX = 1000;
 
+// ruled tags err with the rule of a group record it broke, a short stable key
+// the vectors carry, and returns it for throwing. Mirrors GroupRuleError in
+// internal/e2e/group.go.
+function ruled(rule, err) {
+  err.rule = rule;
+  return err;
+}
+
 // checkGroupName refuses a group name that is not 1 to 100 Unicode code
 // points with no control character: the C0 controls (U+0000 to U+001F), and
 // DEL with the C1 controls (U+007F to U+009F), as Go's unicode.IsControl
@@ -2460,48 +2468,90 @@ const GROUP_MEMBERS_MAX = 1000;
 export function checkGroupName(name) {
   const points = [...name];
   if (points.length < 1 || points.length > GROUP_NAME_MAX) {
-    throw new ChainError(`group name has ${points.length} code points, want 1 to ${GROUP_NAME_MAX}`);
+    throw ruled(
+      points.length < 1 ? 'name-empty' : 'name-too-long',
+      new ChainError(`group name has ${points.length} code points, want 1 to ${GROUP_NAME_MAX}`),
+    );
   }
   for (const ch of points) {
     const c = ch.codePointAt(0);
-    if (c <= 0x1f || (c >= 0x7f && c <= 0x9f)) throw new ChainError('group name has a control character');
+    if (c <= 0x1f || (c >= 0x7f && c <= 0x9f)) {
+      throw ruled('name-control-character', new ChainError('group name has a control character'));
+    }
   }
 }
 
+// groupOwnerKeys keeps the Ed25519 key of each {user, x25519, ed25519} entry
+// that hashes to its fingerprint, with its user, and drops the rest.
+async function groupOwnerKeys(entries) {
+  const eds = await ownerKeys(entries);
+  const keys = new Map();
+  for (const [fp, ed] of eds) keys.set(fp, { user: entries[fp].user, ed });
+  return keys;
+}
+
 // openGroupRecord verifies one group record under the key its signerFp
-// names, and checks the fields that do not depend on the record before it.
-// The body is decoded strictly before the signature is checked, only to read
-// the fingerprint; openEnvelope then decodes the same bytes the same way.
+// names, which must belong to the record's signer, and checks the fields that
+// do not depend on the record before it. The body is decoded strictly before
+// the signature is checked, only to read the fingerprint; openEnvelope then
+// decodes the same bytes the same way.
 async function openGroupRecord(env, group, keys) {
-  const pre = decodeStrict(unb64(env.body), BODY_SCHEMAS.group);
-  if (!keys.has(pre.signerFp)) throw new ChainError(`no signer key for fingerprint ${pre.signerFp}`);
-  const b = await openEnvelope(env, keys.get(pre.signerFp), 'group');
-  if (env.signer !== b.signer) throw new ChainError(`the envelope's signer ${env.signer} is not the body's signer ${b.signer}`);
-  if (!UUID_RE.test(b.group)) throw new ChainError(`group ${b.group} is not a lowercase UUID`);
-  if (b.group !== group) throw new ChainError(`record for group ${b.group}`);
+  let pre;
+  try {
+    pre = decodeStrict(unb64(env.body), BODY_SCHEMAS.group);
+  } catch (e) {
+    throw ruled('body-format', e);
+  }
+  const key = keys.get(pre.signerFp);
+  if (!key) throw ruled('signer-key-missing', new ChainError(`no signer key for fingerprint ${pre.signerFp}`));
+  if (key.user !== pre.signer) {
+    throw ruled(
+      'signer-key-of-another-user',
+      new ChainError(`the key for fingerprint ${pre.signerFp} belongs to ${key.user}, not the record's signer ${pre.signer}`),
+    );
+  }
+  let b;
+  try {
+    b = await openEnvelope(env, key.ed, 'group');
+  } catch (e) {
+    throw ruled(e instanceof DecryptError ? 'signature' : 'body-version', e);
+  }
+  if (env.signer !== b.signer) {
+    throw ruled('envelope-signer-differs', new ChainError(`the envelope's signer ${env.signer} is not the body's signer ${b.signer}`));
+  }
+  if (!UUID_RE.test(b.group)) throw ruled('group-id-not-uuid', new ChainError(`group ${b.group} is not a lowercase UUID`));
+  if (b.group !== group) throw ruled('group-id-differs', new ChainError(`record for group ${b.group}`));
   checkGroupName(b.name);
-  if (b.members === null) throw new ChainError('members must be an array');
+  if (b.members === null) throw ruled('members-none', new ChainError('members must be an array'));
   if (b.members.length < 1 || b.members.length > GROUP_MEMBERS_MAX) {
-    throw new ChainError(`${b.members.length} members, want 1 to ${GROUP_MEMBERS_MAX}`);
+    throw ruled(
+      b.members.length < 1 ? 'members-none' : 'members-too-many',
+      new ChainError(`${b.members.length} members, want 1 to ${GROUP_MEMBERS_MAX}`),
+    );
   }
   for (let i = 1; i < b.members.length; i++) {
-    if (compareUtf8(b.members[i - 1].user, b.members[i].user) >= 0) {
-      throw new ChainError('members not sorted by user ID, or duplicated');
-    }
+    const order = compareUtf8(b.members[i - 1].user, b.members[i].user);
+    if (order === 0) throw ruled('member-duplicate', new ChainError(`group lists user ${b.members[i].user} twice`));
+    if (order > 0) throw ruled('members-unsorted', new ChainError('members not sorted by user ID'));
   }
   for (const m of b.members) {
-    if (m.role !== 'member' && m.role !== 'manager') throw new ChainError(`member ${m.user} has role ${m.role}`);
-    if (!isHex64(m.fp)) throw new ChainError(`group member ${m.user} fp is not 64 lowercase hex digits`);
+    if (m.role !== 'member' && m.role !== 'manager') {
+      throw ruled('member-role-invalid', new ChainError(`member ${m.user} has role ${m.role}`));
+    }
+    if (!isHex64(m.fp)) {
+      throw ruled('member-fp-malformed', new ChainError(`group member ${m.user} fp is not 64 lowercase hex digits`));
+    }
   }
-  if (!b.members.some((m) => m.role === 'manager')) throw new ChainError('no manager listed');
+  if (!b.members.some((m) => m.role === 'manager')) throw ruled('no-manager', new ChainError('no manager listed'));
   return b;
 }
 
 // verifyGroupChain checks every record of a group's chain, as the client
 // rules in design/e2e-api.md ("Group records") require, and refuses the whole
 // chain when any check fails. input is {group, records, keys, pin, linked}:
-// records oldest first; keys maps a fingerprint to the {x25519, ed25519}
-// pair that hashes to it (a pair that does not is ignored); pin the keyring's
+// records oldest first; keys maps a fingerprint to the {user, x25519,
+// ed25519} entry whose pair hashes to it (one that does not is ignored), and
+// a record is accepted only under a key whose user is its signer; pin the keyring's
 // {seq, head} for the group, or null on first sight; and linked the hook of
 // verifyChain, defaulting to fromFp === toFp. The first record is seq 1, has
 // no prev, and lists its signer as manager under signerFp. Each later record
@@ -2509,30 +2559,36 @@ async function openGroupRecord(env, group, keys) {
 // linked to it, and follows it by seq and prev. A record that fails to parse
 // throws FormatError, one whose signature fails DecryptError, and a chain
 // shorter than the pin RollbackError or forked at it ForkError; every other
-// broken rule throws ChainError. Returns {bodies, latest, seq, head}.
+// broken rule throws ChainError. Each refusal carries a rule property, the
+// short stable key of the rule it broke. Returns {bodies, latest, seq, head}.
 export async function verifyGroupChain(input) {
   const records = input.records ?? [];
-  if (records.length === 0) throw new ChainError('no group records');
+  if (records.length === 0) throw ruled('no-records', new ChainError('no group records'));
   const linked = input.linked ?? ((_user, fromFp, toFp) => fromFp === toFp);
-  const keys = await ownerKeys(input.keys);
+  const keys = await groupOwnerKeys(input.keys ?? {});
   const bodies = [];
   let prevHash = '';
   for (let i = 0; i < records.length; i++) {
     const b = await openGroupRecord(records[i], input.group, keys);
     if (i === 0) {
-      if (b.seq !== 1) throw new ChainError(`the first group record has seq ${b.seq}`);
-      if (b.prev !== '') throw new ChainError('the first group record has a prev');
-      if (!b.members.some((m) => m.user === b.signer && m.role === 'manager' && m.fp === b.signerFp)) {
-        throw new ChainError('the first group record does not list its signer as manager under signerFp');
+      if (b.seq !== 1) throw ruled('first-seq', new ChainError(`the first group record has seq ${b.seq}`));
+      if (b.prev !== '') throw ruled('first-prev', new ChainError('the first group record has a prev'));
+      const first = b.members.find((m) => m.user === b.signer && m.role === 'manager');
+      if (!first) throw ruled('first-signer-not-manager', new ChainError('the first group record does not list its signer as manager'));
+      if (first.fp !== b.signerFp) {
+        throw ruled('first-signer-fp-differs', new ChainError('the first group record lists its signer under another fp than signerFp'));
       }
     } else {
       const before = bodies[i - 1];
-      if (b.seq !== before.seq + 1) throw new ChainError(`seq ${b.seq} follows ${before.seq}`);
-      if (b.prev !== prevHash) throw new ChainError("prev is not the previous group record's hash");
+      if (b.seq !== before.seq + 1) throw ruled('seq-skipped', new ChainError(`seq ${b.seq} follows ${before.seq}`));
+      if (b.prev !== prevHash) throw ruled('prev-wrong', new ChainError("prev is not the previous group record's hash"));
       const manager = before.members.find((m) => m.role === 'manager' && m.user === b.signer);
-      if (!manager) throw new ChainError(`the previous record does not list ${b.signer} as a manager`);
+      if (!manager) throw ruled('signer-not-manager', new ChainError(`the previous record does not list ${b.signer} as a manager`));
       if (!(await linked(b.signer, manager.fp, b.signerFp))) {
-        throw new ChainError("signerFp does not follow from the fp the previous record lists for the manager");
+        throw ruled(
+          'signer-key-not-linked',
+          new ChainError('signerFp does not follow from the fp the previous record lists for the manager'),
+        );
       }
     }
     bodies.push(b);
@@ -2540,10 +2596,15 @@ export async function verifyGroupChain(input) {
   }
   const pin = input.pin;
   if (pin) {
-    if (!Number.isInteger(pin.seq) || pin.seq < 1) throw new FormatError(`pinned group seq ${pin.seq}`);
-    if (typeof pin.head !== 'string') throw new FormatError('pinned group head is not a string');
-    if (records.length < pin.seq) throw new RollbackError(`${records.length} group records, pinned seq ${pin.seq}`);
-    if ((await bodyHash(unb64(records[pin.seq - 1].body))) !== pin.head) throw new ForkError(`group record ${pin.seq}`);
+    if (!Number.isInteger(pin.seq) || pin.seq < 1) throw ruled('pin-seq-invalid', new FormatError(`pinned group seq ${pin.seq}`));
+    if (typeof pin.head !== 'string') throw ruled('pin-seq-invalid', new FormatError('pinned group head is not a string'));
+    if (records.length < pin.seq) {
+      throw ruled('pin-rolled-back', new RollbackError(`${records.length} group records, pinned seq ${pin.seq}`));
+    }
+    const pinned = await bodyHash(unb64(records[pin.seq - 1].body));
+    if (pinned !== pin.head) {
+      throw ruled('pin-forked', new ForkError(`group record ${pin.seq}`));
+    }
   }
   const latest = bodies[bodies.length - 1];
   return { bodies, latest, seq: latest.seq, head: prevHash };

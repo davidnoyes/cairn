@@ -1228,7 +1228,13 @@ describe('group', () => {
         linked: v.rotations ? e2e.rotationLinker(v.rotations) : undefined,
       };
       if (v.error) {
-        await assert.rejects(() => e2e.verifyGroupChain(input), chainErrors[v.error] ?? Error, `${v.name}: ${v.why}`);
+        assert.ok(chainErrors[v.error], `${v.name}: unknown error kind ${v.error}`);
+        assert.ok(v.rule, `${v.name}: a refused case names its rule`);
+        await assert.rejects(
+          () => e2e.verifyGroupChain(input),
+          (err) => err instanceof chainErrors[v.error] && err.rule === v.rule,
+          `${v.name}: ${v.why}`,
+        );
         return;
       }
       const got = await e2e.verifyGroupChain(input);

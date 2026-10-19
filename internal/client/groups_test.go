@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
@@ -562,9 +563,11 @@ func TestGroupRecordKeepsTheHigherSeqAndRefusesAFork(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	kr, err := s.ada.recordGroup(k, stale, v.ID, vg.Chain)
-	if err != nil || kr.Groups[v.ID] != other {
-		t.Errorf("recordGroup over a higher seq: %+v, %v, want the entry kept", kr.Groups[v.ID], err)
+	if _, err := s.ada.recordGroup(k, stale, v.ID, vg.Chain); !errors.Is(err, ErrGroupMoved) {
+		t.Errorf("recordGroup over a higher seq: %v, want ErrGroupMoved", err)
+	}
+	if kr, err := s.ada.ReadKeyring(k); err != nil || kr.Groups[v.ID] != other {
+		t.Errorf("the entry after the refused write: %+v, %v, want it kept", kr.Groups[v.ID], err)
 	}
 
 	forked := e2e.GroupPin{Seq: 1, Head: e2e.BodyHash([]byte("forked"))}
@@ -669,8 +672,8 @@ func TestAGroupRecordSignedUnderAnotherUsersKeyIsRefused(t *testing.T) {
 	w.Records = []e2e.Envelope{first, second}
 	w.Signers[bob.UserID] = groupSignerWire{X25519: e2e.B64(bob.X25519Pub), Ed25519: e2e.B64(bob.Ed25519Pub)}
 	proxy := answeringWith(t, s.host, v.ID, w)
-	if _, err := viaProxy(proxy, s.bob).ShowGroup(v.ID, false); !errors.Is(err, e2e.ErrChain) || !strings.Contains(err.Error(), "does not lead to") {
-		t.Errorf("ShowGroup of a record signed under bob's key, claiming ada: %v, want ErrChain, not lead to", err)
+	if _, err := viaProxy(proxy, s.bob).ShowGroup(v.ID, false); !errors.Is(err, e2e.ErrChain) || !strings.Contains(err.Error(), "belongs to") {
+		t.Errorf("ShowGroup of a record signed under bob's key, claiming ada: %v, want ErrChain, belongs to", err)
 	}
 }
 
@@ -702,7 +705,138 @@ func TestSignerKeysTakeOnlyRotationsThatLeadToTheCurrentKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.keys) != 1 || len(got.mayBe[adaID]) != 1 {
-		t.Errorf("ada's keys = %v, %v, want her current key only", got.keys, got.mayBe)
+	if len(got.keys) != 1 {
+		t.Errorf("ada's keys = %v, want her current key only", got.keys)
+	}
+}
+
+// A signer the directory lists must have the key there that the group answer
+// serves, even where nothing else would stop the server planting a pin.
+func TestAGroupSignerKeyMustMatchTheDirectory(t *testing.T) {
+	s := newSharing(t)
+	adaID := mustUnlock(t, s.ada).UserID
+	v, err := s.ada.CreateGroup("Reviewers", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := mustUnlock(t, s.bob)
+	kr, err := s.bob.ReadKeyring(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := groupAnswer(t, s.bob, v.ID)
+	if _, err := s.bob.anchorSigners(k, kr, w, false); err != nil {
+		t.Fatalf("anchorSigners with the directory's keys: %v", err)
+	}
+	// Bob has not pinned ada, so only the directory can tell the key is not hers.
+	_, pair, _ := strangerKeys(t)
+	served := w.Signers[adaID]
+	served.X25519, served.Ed25519 = pair.X25519, pair.Ed25519
+	w.Signers[adaID] = served
+	_, err = s.bob.anchorSigners(k, kr, w, false)
+	if !errors.Is(err, e2e.ErrChain) || !strings.Contains(err.Error(), "ada@example.com") || !strings.Contains(err.Error(), "directory") {
+		t.Errorf("anchorSigners with a planted key for ada: %v, want ErrChain naming ada and the directory", err)
+	}
+	if _, ok := kr.Pins[adaID]; ok {
+		t.Errorf("a pin for ada was made from the planted key")
+	}
+}
+
+// If another device stores a newer head between this client's read and its
+// write, the group is read again and shown from its newer chain.
+func TestAGroupHeadNeverGoesBackWhenTheKeyringMovesMeanwhile(t *testing.T) {
+	s := newSharing(t)
+	v, err := s.ada.CreateGroup("Reviewers", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var once sync.Once
+	proxy := tamperingProxy(t, s.host, "/api/groups/"+v.ID, func(map[string]json.RawMessage) {
+		// The answer going back is the chain at seq 1. Another device adds a
+		// record and stores seq 2 before this client writes its keyring.
+		once.Do(func() {
+			if _, err := s.ada.AddGroupMember(v.ID, "bob@example.com", false, false); err != nil {
+				t.Error(err)
+			}
+		})
+	})
+	got, err := viaProxy(proxy, s.ada).ShowGroup(v.ID, false)
+	if err != nil {
+		t.Fatalf("ShowGroup while the keyring moved: %v", err)
+	}
+	if got.Seq != 2 || len(got.Members) != 2 {
+		t.Errorf("the group shown = seq %d, %d members, want seq 2 with bob", got.Seq, len(got.Members))
+	}
+	if p := mustKeyring(t, s.ada).GroupPin(v.ID); p == nil || p.Seq != 2 {
+		t.Errorf("the keyring's entry = %+v, want seq 2", p)
+	}
+}
+
+// If the keyring moves again on the second read, the command is an error that
+// says to run it again, and the entry still has not gone back.
+func TestAGroupThatKeepsMovingIsAnError(t *testing.T) {
+	s := newSharing(t)
+	s.withCarol(t)
+	v, err := s.ada.CreateGroup("Reviewers", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adds := []string{"bob@example.com", "carol@example.com"}
+	var n int
+	proxy := tamperingProxy(t, s.host, "/api/groups/"+v.ID, func(map[string]json.RawMessage) {
+		if n < len(adds) {
+			if _, err := s.ada.AddGroupMember(v.ID, adds[n], false, false); err != nil {
+				t.Error(err)
+			}
+			n++
+		}
+	})
+	if _, err := viaProxy(proxy, s.ada).ShowGroup(v.ID, false); !errors.Is(err, ErrGroupMoved) {
+		t.Fatalf("ShowGroup while the keyring kept moving: %v, want ErrGroupMoved", err)
+	}
+	if p := mustKeyring(t, s.ada).GroupPin(v.ID); p == nil || p.Seq != 3 {
+		t.Errorf("the keyring's entry = %+v, want seq 3", p)
+	}
+}
+
+func mustKeyring(t *testing.T, c *Client) *e2e.Keyring {
+	t.Helper()
+	kr, err := c.ReadKeyring(mustUnlock(t, c))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return kr
+}
+
+// Deleting a group removes its keyring entry, once the server confirms; a
+// refused delete leaves it.
+func TestDeletingAGroupRemovesItsKeyringEntry(t *testing.T) {
+	s := newSharing(t)
+	v, err := s.ada.CreateGroup("Reviewers", []string{"bob@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.bob.ShowGroup(v.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	for who, c := range map[string]*Client{"ada": s.ada, "bob": s.bob} {
+		if mustKeyring(t, c).GroupPin(v.ID) == nil {
+			t.Fatalf("%s's keyring holds no entry for the group", who)
+		}
+	}
+	if err := s.bob.DeleteGroup(v.ID); err == nil {
+		t.Fatal("a member who is no manager deleted the group")
+	}
+	if mustKeyring(t, s.bob).GroupPin(v.ID) == nil {
+		t.Errorf("bob's entry went although the server refused the delete")
+	}
+	if err := s.ada.DeleteGroup(v.ID); err != nil {
+		t.Fatal(err)
+	}
+	if p := mustKeyring(t, s.ada).GroupPin(v.ID); p != nil {
+		t.Errorf("ada's entry after the delete = %+v, want none", p)
+	}
+	if mustKeyring(t, s.bob).GroupPin(v.ID) == nil {
+		t.Errorf("bob's entry went with ada's delete; only the deleting client's keyring changes")
 	}
 }

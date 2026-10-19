@@ -13011,6 +13011,7 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
@@ -13053,6 +13054,7 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
@@ -13110,10 +13112,12 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         },
         "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36": {
+          "user": "u-bob",
           "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
           "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
         }
@@ -13161,10 +13165,12 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         },
         "de200a62b3a39aeab764fd5ad9a4d8579bff2e6c5f1066f5c66542d92c492302": {
+          "user": "u-bob",
           "x25519": "wljJXOJ-hNO2rhXMm6q51PO9UQKI8EueOrDhx9hPijg",
           "ed25519": "volSkr1PT_69R3ERxKTKNVYfH8qD1Bpf23vQz31AJYg"
         }
@@ -13221,6 +13227,7 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
@@ -13263,6 +13270,7 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
@@ -13305,6 +13313,7 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
@@ -13337,6 +13346,7 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
@@ -13369,6 +13379,7 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
@@ -18406,6 +18417,7 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
@@ -18466,6 +18478,7 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
@@ -18511,7 +18524,8 @@
       "keys": {},
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "no-records"
     },
     {
       "name": "first-signer-is-member",
@@ -18526,13 +18540,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "first-signer-not-manager"
     },
     {
       "name": "first-signer-not-listed",
@@ -18547,13 +18563,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "first-signer-not-manager"
     },
     {
       "name": "first-signer-fp-differs",
@@ -18568,13 +18586,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "first-signer-fp-differs"
     },
     {
       "name": "first-record-seq-2",
@@ -18589,13 +18609,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "first-seq"
     },
     {
       "name": "first-record-has-prev",
@@ -18610,13 +18632,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "first-prev"
     },
     {
       "name": "group-id-not-a-uuid",
@@ -18631,13 +18655,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "group-id-not-uuid"
     },
     {
       "name": "group-id-asked-for-differs",
@@ -18652,13 +18678,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "group-id-differs"
     },
     {
       "name": "signer-not-listed",
@@ -18678,17 +18706,20 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         },
         "383b848526c6689dd89696159535db4d0e8507a1eb71d8fc4e818ffd737d14e5": {
+          "user": "u-mallory",
           "x25519": "PFgpmqGbGnT1YRO9FC2mx5mgaFJqDqcGL0KkojPPlkg",
           "ed25519": "mc19rN27RI4Hx0REmrHdS6QQxcTuQFAZrLSwpwRJp4E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "signer-not-manager"
     },
     {
       "name": "signer-is-member",
@@ -18708,17 +18739,20 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         },
         "9b7a34830c2e8afe0fbe9485a476255419429a5526c2b6a772d7a2c85fa14d22": {
+          "user": "u-carol",
           "x25519": "SBkarAneeA-5ohBkSETwt8TmBAmexEtzdpRJHOQrams",
           "ed25519": "xzytrdzI-fF4RYwK8Tff9FUJzvfBsGPQFucr6o6dISU"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "signer-not-manager"
     },
     {
       "name": "signer-key-not-linked",
@@ -18738,17 +18772,20 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         },
         "de200a62b3a39aeab764fd5ad9a4d8579bff2e6c5f1066f5c66542d92c492302": {
+          "user": "u-bob",
           "x25519": "wljJXOJ-hNO2rhXMm6q51PO9UQKI8EueOrDhx9hPijg",
           "ed25519": "volSkr1PT_69R3ERxKTKNVYfH8qD1Bpf23vQz31AJYg"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "signer-key-not-linked"
     },
     {
       "name": "signer-key-missing",
@@ -18768,13 +18805,48 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "signer-key-missing"
+    },
+    {
+      "name": "signer-key-of-another-user",
+      "why": "bob signs a record that names alice as its signer, under bob's fingerprint, and bob's key is served as bob's",
+      "group": "6f1d2c3a-0b4e-4c5d-8e7f-0123456789ab",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJncm91cCI6IjZmMWQyYzNhLTBiNGUtNGM1ZC04ZTdmLTAxMjM0NTY3ODlhYiIsInNlcSI6MSwicHJldiI6IiIsIm5hbWUiOiJSZXZpZXdlcnMiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1hbGljZSIsImZwIjoiMDUxMTQwNmE3NGFhMmU0ZjU0MjM2MjIzOTVlZWI1YjRmNmUwZTQ4NWQyNTVlYmZhY2U5YzA2NGQwN2YwZTQ1NiIsInJvbGUiOiJtYW5hZ2VyIn0seyJ1c2VyIjoidS1ib2IiLCJmcCI6ImU1NDgyZWU3MjUzNTJiNjAzODk1NTlkNDdjYjY1ZDVlMTExMzBiNmYzODUwY2UwNDZjNGQ2NTc0NjA4YzJmMzYiLCJyb2xlIjoibWFuYWdlciJ9LHsidXNlciI6InUtY2Fyb2wiLCJmcCI6IjliN2EzNDgzMGMyZThhZmUwZmJlOTQ4NWE0NzYyNTU0MTk0MjlhNTUyNmMyYjZhNzcyZDdhMmM4NWZhMTRkMjIiLCJyb2xlIjoibWVtYmVyIn1dLCJzaWduZXIiOiJ1LWFsaWNlIiwic2lnbmVyRnAiOiIwNTExNDA2YTc0YWEyZTRmNTQyMzYyMjM5NWVlYjViNGY2ZTBlNDg1ZDI1NWViZmFjZTljMDY0ZDA3ZjBlNDU2In0",
+          "sig": "bIHu3xo1I14NHPiRogHrjqqEMJC4zz-TSj5U9YgTcNr-vY7azfkse2aaTox3R03Kz60a7kvAExGBJeaIAYOGCg",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJncm91cCI6IjZmMWQyYzNhLTBiNGUtNGM1ZC04ZTdmLTAxMjM0NTY3ODlhYiIsInNlcSI6MiwicHJldiI6IjYzNTEyNDUwY2QzNjQ3YmZkOWQyNmJkODcxMzE5ZDU5ZTI1ZDI4ZDUwMWY0NzUxYjg4MWJlMGRhOWY1MzZkZDAiLCJuYW1lIjoiUmV2aWV3ZXJzIiwibWVtYmVycyI6W3sidXNlciI6InUtYWxpY2UiLCJmcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJyb2xlIjoibWFuYWdlciJ9LHsidXNlciI6InUtYm9iIiwiZnAiOiJlNTQ4MmVlNzI1MzUyYjYwMzg5NTU5ZDQ3Y2I2NWQ1ZTExMTMwYjZmMzg1MGNlMDQ2YzRkNjU3NDYwOGMyZjM2Iiwicm9sZSI6Im1hbmFnZXIifSx7InVzZXIiOiJ1LWNhcm9sIiwiZnAiOiI5YjdhMzQ4MzBjMmU4YWZlMGZiZTk0ODVhNDc2MjU1NDE5NDI5YTU1MjZjMmI2YTc3MmQ3YTJjODVmYTE0ZDIyIiwicm9sZSI6Im1lbWJlciJ9XSwic2lnbmVyIjoidS1hbGljZSIsInNpZ25lckZwIjoiZTU0ODJlZTcyNTM1MmI2MDM4OTU1OWQ0N2NiNjVkNWUxMTEzMGI2ZjM4NTBjZTA0NmM0ZDY1NzQ2MDhjMmYzNiJ9",
+          "sig": "X8yCYs3CpuKuDHOTIUw-pRbdXqCQKkoAU5nwpDS0grpfvFrCI5F1WIdMuEYSq1J6OUC_yZdVrWSg5QJmBScZBw",
+          "signer": "u-alice"
+        }
+      ],
+      "keys": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        },
+        "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36": {
+          "user": "u-bob",
+          "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
+          "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
+        }
+      },
+      "rotations": {},
+      "pin": null,
+      "error": "chain",
+      "rule": "signer-key-of-another-user"
     },
     {
       "name": "forged-signature",
@@ -18794,17 +18866,20 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         },
         "e5482ee725352b60389559d47cb65d5e11130b6f3850ce046c4d6574608c2f36": {
+          "user": "u-bob",
           "x25519": "8fm7JJs7K0ZsQELum4-LmaM4BgY8IgLbPmrkToEQaQU",
           "ed25519": "HUrn2oXRmQ18GG6C02vAwY-wnWBn4O5VnRkuvHi0O-Q"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "decrypt"
+      "error": "decrypt",
+      "rule": "signature"
     },
     {
       "name": "signer-differs-from-envelope-signer",
@@ -18824,13 +18899,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "envelope-signer-differs"
     },
     {
       "name": "skipped-seq",
@@ -18850,13 +18927,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "seq-skipped"
     },
     {
       "name": "repeated-seq",
@@ -18876,13 +18955,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "seq-skipped"
     },
     {
       "name": "wrong-prev",
@@ -18902,13 +18983,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "prev-wrong"
     },
     {
       "name": "group-id-changes",
@@ -18928,13 +19011,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "group-id-differs"
     },
     {
       "name": "members-unsorted",
@@ -18954,13 +19039,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "members-unsorted"
     },
     {
       "name": "duplicate-user",
@@ -18980,13 +19067,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "member-duplicate"
     },
     {
       "name": "no-manager-left",
@@ -19006,13 +19095,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "no-manager"
     },
     {
       "name": "bad-role",
@@ -19032,13 +19123,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "member-role-invalid"
     },
     {
       "name": "member-fp-malformed",
@@ -19058,13 +19151,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "member-fp-malformed"
     },
     {
       "name": "no-members",
@@ -19084,13 +19179,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "members-none"
     },
     {
       "name": "members-1001",
@@ -19105,13 +19202,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "members-too-many"
     },
     {
       "name": "name-empty",
@@ -19126,13 +19225,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "name-empty"
     },
     {
       "name": "name-101-code-points",
@@ -19147,13 +19248,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "name-too-long"
     },
     {
       "name": "name-newline",
@@ -19168,13 +19271,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "name-control-character"
     },
     {
       "name": "name-c1-control",
@@ -19189,13 +19294,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "name-control-character"
     },
     {
       "name": "name-delete",
@@ -19210,13 +19317,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "chain"
+      "error": "chain",
+      "rule": "name-control-character"
     },
     {
       "name": "unknown-body-key",
@@ -19236,13 +19345,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "format"
+      "error": "format",
+      "rule": "body-format"
     },
     {
       "name": "body-version-2",
@@ -19262,13 +19373,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "format"
+      "error": "format",
+      "rule": "body-version"
     },
     {
       "name": "signer-fp-missing",
@@ -19288,13 +19401,15 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
       },
       "rotations": {},
       "pin": null,
-      "error": "format"
+      "error": "format",
+      "rule": "body-format"
     },
     {
       "name": "rollback",
@@ -19319,6 +19434,7 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
@@ -19328,7 +19444,8 @@
         "seq": 4,
         "head": "82427d959e3063a56a6cb98174e27d21deb2409eec194ecf5e9d2384b80463b0"
       },
-      "error": "rollback"
+      "error": "rollback",
+      "rule": "pin-rolled-back"
     },
     {
       "name": "fork",
@@ -19353,6 +19470,7 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
@@ -19362,7 +19480,8 @@
         "seq": 2,
         "head": "82427d959e3063a56a6cb98174e27d21deb2409eec194ecf5e9d2384b80463b0"
       },
-      "error": "fork"
+      "error": "fork",
+      "rule": "pin-forked"
     },
     {
       "name": "pin-seq-zero",
@@ -19387,6 +19506,7 @@
       ],
       "keys": {
         "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "user": "u-alice",
           "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
           "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
         }
@@ -19396,7 +19516,8 @@
         "seq": 0,
         "head": "db2c2cc863a099ddcf55df58f7c7b30814dca37416cd6b657e01fec5f74b2947"
       },
-      "error": "format"
+      "error": "format",
+      "rule": "pin-seq-invalid"
     }
   ]
 }

@@ -137,3 +137,53 @@ func TestKeyedUserByID(t *testing.T) {
 		t.Errorf("a missing user: %v, want ErrNotFound", err)
 	}
 }
+
+// An account that signed a record of a group that still exists cannot be
+// deleted; once the group is gone, it can.
+func TestDeleteUserWhoSignedAGroupRecordIsErrSignedGroupRecord(t *testing.T) {
+	s := testStore(t)
+	a, b := testAccount(t, s, "a@x.y"), testAccount(t, s, "b@x.y")
+	m := []GroupMember{{a.ID, "manager", "fp-a"}, {b.ID, "member", "fp-b"}}
+	if _, err := s.AddGroupRecord(testGroup, 1, Envelope{Body: []byte("one"), Sig: []byte("s"), Signer: a.ID}, m, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteUser(a.ID); !errors.Is(err, ErrSignedGroupRecord) {
+		t.Fatalf("DeleteUser(signer) = %v, want ErrSignedGroupRecord", err)
+	}
+	if _, err := s.UserByID(a.ID); err != nil {
+		t.Errorf("signer deleted anyway: %v", err)
+	}
+	// A member who signed nothing is deleted, and drops out of the members.
+	if err := s.DeleteUser(b.ID); err != nil {
+		t.Fatalf("DeleteUser(member) = %v", err)
+	}
+	if err := s.DeleteGroup(testGroup); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteUser(a.ID); err != nil {
+		t.Errorf("DeleteUser(signer) after the group was deleted = %v", err)
+	}
+}
+
+// A deleted group's ID is kept, and a first record may not use it again.
+func TestAGroupIDIsNotReusedAfterTheGroupIsDeleted(t *testing.T) {
+	s := testStore(t)
+	a := testAccount(t, s, "a@x.y")
+	m := []GroupMember{{a.ID, "manager", "fp-a"}}
+	if _, err := s.AddGroupRecord(testGroup, 1, rec("one"), m, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteGroup(testGroup); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddGroupRecord(testGroup, 1, rec("again"), m, t0); !errors.Is(err, ErrGroupIDReused) {
+		t.Fatalf("a first record under a deleted ID: %v, want ErrGroupIDReused", err)
+	}
+	if _, err := s.GroupRecords(testGroup); !errors.Is(err, ErrNotFound) {
+		t.Errorf("the refused record was stored: %v", err)
+	}
+	// Another ID is unaffected.
+	if _, err := s.AddGroupRecord("7f1d2c3a-0b4e-4c5d-8e7f-0123456789ab", 1, rec("other"), m, t0); err != nil {
+		t.Errorf("a new ID: %v", err)
+	}
+}

@@ -23,7 +23,7 @@ const encoder = new TextEncoder();
 
 // GroupError is a refusal of this module. code says which, for a page that
 // answers it: not-signed-in, viewer-account, bad-role, bad-name, not-manager,
-// not-member, last-manager, moved, read-back.
+// not-member, last-manager, moved, keyring-moved, read-back.
 export class GroupError extends Error {
   constructor(code, message, options) {
     super(message, options);
@@ -72,15 +72,18 @@ async function fpOf(pair) {
 // signed a record. A signer's current key must be the keyring's pin for them,
 // or follow from it by their rotation records: else it is a KeyChangedError
 // unless acceptNewKey, and a signer not pinned yet is pinned unverified. The
-// caller's own key is their own. It returns {keys, mayBe, rotations, pins}:
-// keys maps a fingerprint to the pair that may have signed a record, mayBe a
-// user ID to the fingerprints that user may have signed under, rotations the
-// records by user, and pins the pins to store once the chain verifies. A
-// record may be signed by a signer's current key, or by an earlier one their
-// rotation records link to it, and by no other: a key the server serves that
-// nothing anchors is not one. Mirrors anchorSigners in groups.go.
+// caller's own key is their own. A signer the directory still lists must have
+// the same current key there as the answer serves, else it is a ChainError: a
+// server cannot plant a key of its own for a real user. It returns {keys,
+// rotations, pins}: keys maps a fingerprint to the {user, x25519, ed25519}
+// that may have signed a record, rotations the records by user, and pins the
+// pins to store once the chain verifies. A record may be signed by a signer's
+// current key, or by an earlier one their rotation records link to it, and by
+// no other: a key the server serves that nothing anchors is not one, and
+// verifyGroupChain refuses a record whose key belongs to another user.
+// Mirrors anchorSigners in groups.go.
 async function anchorSigners(deps, caller, kr, dir, id, view, acceptNewKey) {
-  const out = { keys: {}, mayBe: new Map(), rotations: {}, pins: new Map() };
+  const out = { keys: {}, rotations: {}, pins: new Map() };
   for (const user of new Set(view.records.map((env) => env.signer))) {
     const served = Object.hasOwn(view.signers ?? {}, user) ? view.signers[user] : null;
     if (!served) throw new e2e.ChainError(`the server did not serve the keys of ${user}, who signed a record of group ${id}`);
@@ -103,11 +106,15 @@ async function anchorSigners(deps, caller, kr, dir, id, view, acceptNewKey) {
       const listed = dir.find((d) => d.id === user);
       const u = { id: user, email: listed?.email ?? user, resetAt: listed?.resetAt ?? '', x25519Pub, ed25519Pub, fp: curFp };
       const { pin } = await checkPin(deps, kr, u, acceptNewKey, out.rotations);
+      if (listed && listed.fp !== curFp) {
+        throw new e2e.ChainError(
+          `the keys the server served for ${listed.email}, who signed a record of group ${id}, are not the ones the directory lists for them`,
+        );
+      }
       if (pin) out.pins.set(user, pin);
     }
     const linked = e2e.rotationLinker(out.rotations);
-    out.mayBe.set(user, new Set([curFp]));
-    out.keys[curFp] = cur;
+    out.keys[curFp] = { user, ...cur };
     for (const env of out.rotations[user]) {
       let b;
       try {
@@ -123,8 +130,7 @@ async function anchorSigners(deps, caller, kr, dir, id, view, acceptNewKey) {
           continue;
         }
         if (await linked(user, fp, curFp)) {
-          out.mayBe.get(user).add(fp);
-          out.keys[fp] = pair;
+          out.keys[fp] = { user, ...pair };
         }
       }
     }
@@ -137,43 +143,56 @@ async function anchorSigners(deps, caller, kr, dir, id, view, acceptNewKey) {
 // the new seq and head there, and the pins of signers seen for the first time
 // or whose keys rotated. It returns {chain, rotations, dir, keyring}. A chain
 // shorter than the stored seq, or forked at it, is refused and nothing is
-// stored.
+// stored. The keyring's entry never goes back: if another device stored a
+// newer head after this chain was checked, it throws GroupError keyring-moved
+// and openGroup reads the group again.
 async function acceptGroup(deps, caller, id, view, acceptNewKey) {
   const records = view.records;
   if (!Array.isArray(records) || records.length === 0) throw new e2e.ChainError('no records');
-  let kr = await readKeyring(deps, caller);
+  const kr = await readKeyring(deps, caller);
   const dir = await directory(deps);
   const signers = await anchorSigners(deps, caller, kr, dir, id, view, acceptNewKey);
   const { keys, rotations } = signers;
   const pin = Object.hasOwn(kr.groups ?? {}, id) ? kr.groups[id] : null;
   const chain = await e2e.verifyGroupChain({ group: id, records, keys, pin, linked: e2e.rotationLinker(rotations) });
-  chain.bodies.forEach((b, i) => {
-    if (!signers.mayBe.get(b.signer)?.has(b.signerFp)) {
-      throw new e2e.ChainError(`record ${i + 1} is signed under a key that ${b.signer}'s pinned key does not lead to`);
-    }
-  });
   for (const [user, decided] of signers.pins) {
     await storePin(deps, caller, user, decided, Object.hasOwn(kr.pins, user) ? kr.pins[user].fp : '');
   }
-  if (signers.pins.size > 0) kr = await readKeyring(deps, caller);
-  let keyring = kr;
+  const moved = () => new GroupError('keyring-moved', 'Another device updated this group while it was being read. Try again.');
+  const entryOf = (k) => (Object.hasOwn(k.groups ?? {}, id) ? k.groups[id] : null);
+  let keyring;
   if (!pin || pin.seq < chain.seq) {
     keyring = await updateKeyring(deps, caller, (k) => {
-      const cur = Object.hasOwn(k.groups ?? {}, id) ? k.groups[id] : null;
+      const cur = entryOf(k);
       if (cur && cur.seq === chain.seq && cur.head !== chain.head) throw new e2e.ForkError(`record ${cur.seq} of group ${id}`);
+      if (cur && cur.seq > chain.seq) throw moved();
       if (!cur || cur.seq < chain.seq) {
         k.groups ??= {};
         k.groups[id] = { seq: chain.seq, head: chain.head };
       }
     });
+  } else {
+    // Nothing to write, but another device may have stored a newer head
+    // since the keyring was read.
+    keyring = await readKeyring(deps, caller);
+    const held = entryOf(keyring);
+    if (held && held.seq > chain.seq) throw moved();
   }
   return { chain, rotations, dir, keyring };
 }
 
-// openGroup reads a group and accepts its chain.
+// openGroup reads a group and accepts its chain. If the keyring moved on
+// meanwhile, it reads the group once more, so the chain shown is checked
+// against the newer head.
 async function openGroup(deps, caller, id, acceptNewKey) {
-  const view = await call(deps, null, 'GET', `/api/groups/${id}`);
-  return { view, ...(await acceptGroup(deps, caller, id, view, acceptNewKey)) };
+  for (let attempt = 0; ; attempt++) {
+    const view = await call(deps, null, 'GET', `/api/groups/${id}`);
+    try {
+      return { view, ...(await acceptGroup(deps, caller, id, view, acceptNewKey)) };
+    } catch (err) {
+      if (!(err instanceof GroupError && err.code === 'keyring-moved' && attempt === 0)) throw err;
+    }
+  }
 }
 
 // callerRole is the role the latest record lists the caller under, or ''.
@@ -336,12 +355,16 @@ export async function renameGroup(deps, id, name, { acceptNewKey = false } = {})
 }
 
 // deleteGroup deletes the group. The server allows a manager of it, or an
-// administrator, so nothing is read first.
+// administrator, so nothing is read first. Once the server confirms, the
+// group's entry leaves the keyring; nothing else removes one.
 export async function deleteGroup(deps, id) {
-  await unlock(deps);
+  const caller = await unlock(deps);
   const resp = await deps.fetch(`/api/groups/${id}`, { method: 'DELETE' });
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}));
     throw new ApiError(data.error || `request failed (${resp.status})`, resp.status);
   }
+  await updateKeyring(deps, caller, (k) => {
+    if (k.groups) delete k.groups[id];
+  });
 }

@@ -163,7 +163,8 @@ func (s *Store) SetUserDisabled(userID string, disabled bool) error {
 
 // DeleteUser deletes an account. A user who owns artifacts is
 // ErrOwnsArtifacts: disable the account instead, so an administrator can hand
-// the artifacts over.
+// the artifacts over. One who signed a record of a group that still exists is
+// ErrSignedGroupRecord.
 func (s *Store) DeleteUser(userID string) error {
 	var owns bool
 	if err := s.db.QueryRow(`SELECT EXISTS (SELECT 1 FROM artifacts WHERE owner_id = ?)`, userID).Scan(&owns); err != nil {
@@ -171,6 +172,13 @@ func (s *Store) DeleteUser(userID string) error {
 	}
 	if owns {
 		return ErrOwnsArtifacts
+	}
+	var signed bool
+	if err := s.db.QueryRow(`SELECT EXISTS (SELECT 1 FROM group_records WHERE signer = ?)`, userID).Scan(&signed); err != nil {
+		return err
+	}
+	if signed {
+		return ErrSignedGroupRecord
 	}
 	return s.exec1(`DELETE FROM users WHERE id = ?`, userID)
 }
