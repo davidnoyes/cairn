@@ -25,8 +25,14 @@ func (s *Server) routes() {
 	handle("POST /api/auth/forgot", s.handleForgot)
 	handle("POST /api/auth/reset/begin", s.handleResetBegin)
 	handle("POST /api/auth/reset/complete", s.handleResetComplete)
+	handle("GET /api/auth/config", s.handleAuthConfig)
+	handle("GET /api/auth/google", s.handleGoogleProof)
 	handle("POST /api/auth/refuse/begin", s.handleRefuseBegin)
 	handle("POST /api/auth/refuse", s.handleRefuse)
+
+	// Google sign-in: the browser's round trip, which makes a proof.
+	handle("GET /auth/google", s.handleGoogleStart)
+	handle("GET /auth/google/callback", withAppCSP(s.handleGoogleCallback))
 
 	// Signed-in account
 	handle("GET /api/me", s.requireAuth(s.handleMe))
@@ -110,7 +116,9 @@ func (s *Server) routes() {
 	// Pages. Account pages send the app CSP: scripts load only from files.
 	handle("GET /", s.handleRoot)
 	handle("GET /login", withAppCSP(s.handleLoginPage))
-	for _, page := range []string{"signup", "verify", "forgot", "reset", "refuse"} {
+	handle("GET /signup", withAppCSP(s.handleModePage("signup.html")))
+	handle("GET /forgot", withAppCSP(s.handleModePage("forgot.html")))
+	for _, page := range []string{"verify", "reset", "refuse"} {
 		handle("GET /"+page, withAppCSP(s.handleStaticPage(page+".html")))
 	}
 	handle("GET /app", withAppCSP(s.handleAppPage))

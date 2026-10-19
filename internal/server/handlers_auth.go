@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -112,17 +113,26 @@ func (s *Server) sendVerifyLink(u *store.User) {
 	s.sendMail(u.Email, "Verify your Cairn account", "Follow this link to verify your account:\n\n"+link+"\n\nThis link expires in 24 hours.")
 }
 
-func (s *Server) sendResetLink(u *store.User) {
+// newResetToken replaces u's reset token with a new one that lasts 30
+// minutes, and returns its raw bytes, shown once.
+func (s *Server) newResetToken(u *store.User) ([]byte, error) {
 	if err := s.store.DeleteTokens(u.ID, "reset"); err != nil {
 		s.log.Error("delete old reset tokens", "err", err)
 	}
 	raw, hash, err := newLinkToken()
 	if err != nil {
-		s.log.Error("generate reset token", "err", err)
-		return
+		return nil, err
 	}
 	if err := s.store.CreateToken(hash, u.ID, "reset", s.clk.Now().Add(30*time.Minute)); err != nil {
-		s.log.Error("store reset token", "err", err)
+		return nil, err
+	}
+	return raw, nil
+}
+
+func (s *Server) sendResetLink(u *store.User) {
+	raw, err := s.newResetToken(u)
+	if err != nil {
+		s.log.Error("issue reset token", "err", err)
 		return
 	}
 	link := s.cfg.PublicURL + "/reset#token=" + e2e.B64(raw)
@@ -190,10 +200,32 @@ type signupRequest struct {
 	Bundle  bundleWire `json:"bundle"`
 }
 
+// signupWithGoogle creates the account already verified, because the proof
+// showed the caller owns the address, and sends no mail. An address that
+// already has a verified account is a 409, which reveals nothing the caller
+// has not proved.
+func (s *Server) signupWithGoogle(w http.ResponseWriter, email, name, authHash string, bundle store.Bundle) {
+	u, err := s.store.CreateAccount(email, name, authHash, bundle, email == s.cfg.AdminEmail)
+	if errors.Is(err, store.ErrExists) {
+		writeError(w, http.StatusConflict, "an account for this address already exists")
+		return
+	}
+	if err == nil {
+		err = s.store.MarkVerified(u.ID, s.clk.Now())
+	}
+	if err != nil {
+		s.writeStoreError(w, err, "account")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"status": "active"})
+}
+
 // handleSignup creates an unverified account, or re-sends a link for one
 // that is still unverified. A verified account at the address changes
 // nothing; its owner is mailed instead. The response is always 202, so
-// sign-up never reveals which addresses already have an account.
+// sign-up never reveals which addresses already have an account. With Google
+// sign-in on, a proof for the address replaces the link: see
+// signupWithGoogle.
 func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	var req signupRequest
 	if !readJSON(w, r, &req) {
@@ -202,6 +234,9 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	email := normalizeEmail(req.Email)
 	if len(req.Name) > maxNameLen {
 		writeError(w, http.StatusBadRequest, "name is too long")
+		return
+	}
+	if s.googleEnabled() && !s.requireProof(w, s.proofCookieToken(r), email) {
 		return
 	}
 	if !s.domainAllowed(email) {
@@ -221,6 +256,11 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	authHash, err := auth.HashPassword(string(authKey))
 	if err != nil {
 		s.writeStoreError(w, err, "account")
+		return
+	}
+
+	if s.googleEnabled() {
+		s.signupWithGoogle(w, email, req.Name, authHash, bundle)
 		return
 	}
 
@@ -315,6 +355,9 @@ type loginRequest struct {
 	Email   string `json:"email"`
 	AuthKey string `json:"authKey"`
 	Client  string `json:"client"`
+	// GoogleProof is the command-line tool's proof, base64url. A browser
+	// sends none, and its proof cookie is read instead.
+	GoogleProof string `json:"googleProof,omitempty"`
 }
 
 type loginResponse struct {
@@ -332,6 +375,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
 	if retryAfter, blocked := s.checkSignInLimits(email, ip); blocked {
 		writeRateLimited(w, retryAfter)
+		return
+	}
+	// The proof comes before the passphrase check, so nobody can try a
+	// passphrase without one.
+	proofToken := cmp.Or(req.GoogleProof, s.proofCookieToken(r))
+	if s.googleEnabled() && !s.requireProof(w, proofToken, email) {
 		return
 	}
 	authKey, err := e2e.UnB64(req.AuthKey)
@@ -369,6 +418,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "token")
 		return
 	}
+	// The proof is used only now that sign-in has succeeded, so a mistyped
+	// passphrase can be retried until the proof expires.
+	if s.googleEnabled() {
+		if !s.useProof(w, proofToken) {
+			return
+		}
+		s.clearProofCookie(w)
+	}
 	s.setSessionCookie(w, token, s.cfg.TokenTTL)
 	resp := loginResponse{User: toMeView(u), Bundle: encodeBundle(*bundle)}
 	if req.Client == "cli" {
@@ -388,9 +445,47 @@ type forgotRequest struct {
 	Email string `json:"email"`
 }
 
+// forgotWithGoogle answers a forgot request on a Google server. A proof
+// stands for the mailed link: the reset token goes in the response, and the
+// proof is used. The body's email, if any, must be the proof's.
+func (s *Server) forgotWithGoogle(w http.ResponseWriter, r *http.Request, req forgotRequest) {
+	token := s.proofCookieToken(r)
+	p, err := s.peekProof(token)
+	if err != nil {
+		s.writeStoreError(w, err, "google proof")
+		return
+	}
+	if p == nil || (req.Email != "" && normalizeEmail(req.Email) != p.Email) {
+		writeError(w, http.StatusForbidden, errNeedGoogle)
+		return
+	}
+	u, err := s.store.UserByEmail(p.Email)
+	if errors.Is(err, store.ErrNotFound) || (err == nil && u.VerifiedAt == "") {
+		writeError(w, http.StatusNotFound, "no account for this address")
+		return
+	}
+	if err != nil {
+		s.writeStoreError(w, err, "account")
+		return
+	}
+	raw, err := s.newResetToken(u)
+	if err != nil {
+		s.writeStoreError(w, err, "reset token")
+		return
+	}
+	if !s.useProof(w, token) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"token": e2e.B64(raw)})
+}
+
 func (s *Server) handleForgot(w http.ResponseWriter, r *http.Request) {
 	var req forgotRequest
 	if !readJSON(w, r, &req) {
+		return
+	}
+	if s.googleEnabled() {
+		s.forgotWithGoogle(w, r, req)
 		return
 	}
 	email := normalizeEmail(req.Email)

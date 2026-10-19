@@ -2344,3 +2344,15 @@ internal/webauthn/webauthn.go	if flags&flagUserVerified == 0 {	if false {	go tes
 internal/webauthn/webauthn.go	if !verifySignature(pub, msg, a.Signature) {	if false && !verifySignature(pub, msg, a.Signature) {	go test ./internal/webauthn -run 'TestVerifyRefuses/signature$|TestVerifySignatureAllAlgorithms'
 internal/webauthn/webauthn.go	&& signCount <= cred.SignCount	&& signCount < cred.SignCount	go test ./internal/webauthn -run TestVerifyCounter
 internal/webauthn/webauthn.go	(cred.SignCount != 0 || signCount != 0) &&	true &&	go test ./internal/webauthn -run TestVerifyCounter
+||||||| base
+internal/server/google.go	|| subtle.ConstantTimeCompare([]byte(st.State), []byte(q.Get("state"))) != 1 {	|| subtle.ConstantTimeCompare([]byte(st.State), []byte(st.State)) != 1 {	go test ./internal/server -count=1 -run TestGoogleCallbackRefusals
+internal/server/google.go	case c.Aud != s.cfg.GoogleClientID:	case false:	go test ./internal/server -count=1 -run TestGoogleCallbackRefusals
+internal/server/google.go	case email == "" || !c.EmailVerified:	case email == "":	go test ./internal/server -count=1 -run TestGoogleCallbackRefusals
+internal/server/google.go	case slices.Contains(s.cfg.SignupDomains, domain) && normalizeEmail(c.HD) != domain:	case slices.Contains(s.cfg.SignupDomains, domain) && false:	go test ./internal/server -count=1 -run TestGoogleCallbackRefusals
+internal/server/google.go	if p == nil || p.Email != email {	if p == nil {	go test ./internal/server -count=1 -run TestGoogleLoginNeedsAProofForTheSameAddress
+internal/server/handlers_auth.go	if !s.useProof(w, proofToken) {	if false && !s.useProof(w, proofToken) {	go test ./internal/server -count=1 -run TestGoogleFullSignIn
+internal/server/handlers_auth.go	if !s.useProof(w, token) {	if false && !s.useProof(w, token) {	go test ./internal/server -count=1 -run TestGoogleForgotReturnsAResetToken
+internal/store/googleproofs.go	FROM google_proofs WHERE hash = ? AND used_at IS NULL AND expires_at > ?	FROM google_proofs WHERE hash = ? AND used_at IS NULL AND ? != ''	go test ./internal/store -count=1 -run TestGoogleProof
+internal/store/googleproofs.go	SET used_at = ? WHERE hash = ? AND used_at IS NULL AND expires_at > ?	SET used_at = ? WHERE hash = ? AND used_at IS NULL AND ? != ''	go test ./internal/store -count=1 -run TestGoogleProof
+internal/store/googleproofs.go	SET used_at = ? WHERE hash = ? AND used_at IS NULL AND	SET used_at = ? WHERE hash = ? AND	go test ./internal/store -count=1 -run TestGoogleProof
+internal/store/googleproofs.go	FROM google_proofs WHERE hash = ? AND used_at IS NULL AND	FROM google_proofs WHERE hash = ? AND	go test ./internal/store -count=1 -run TestGoogleProof

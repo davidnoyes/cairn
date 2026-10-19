@@ -141,11 +141,33 @@ func (s *Server) redirectShellReference(w http.ResponseWriter, r *http.Request, 
 // is not enough to go straight through: the browser also needs the keys that
 // sign-in unlocked, and only the page's script can see those.
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
+	s.renderLogin(w, http.StatusOK, r.URL.Query().Get("next"), "")
+}
+
+// renderLogin writes the sign-in page. Its body carries the next address
+// (after the safe-next rule), whether Google sign-in is on, and an error to
+// show, as data attributes: the page loads no inline script, so its script
+// reads them from the body.
+func (s *Server) renderLogin(w http.ResponseWriter, status int, next, msg string) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(status)
 	if err := s.templates().ExecuteTemplate(w, "login.html", map[string]any{
-		"Next": safeNext(r.URL.Query().Get("next")),
+		"Next":   safeNext(next),
+		"Google": s.googleEnabled(),
+		"Error":  msg,
 	}); err != nil {
 		s.log.Error("render login", "err", err)
+	}
+}
+
+// handleModePage serves a signed-out account page whose only input is
+// whether Google sign-in is on, which it reads from data-google on the body.
+func (s *Server) handleModePage(name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if err := s.templates().ExecuteTemplate(w, name, map[string]any{"Google": s.googleEnabled()}); err != nil {
+			s.log.Error("render page", "page", name, "err", err)
+		}
 	}
 }
 

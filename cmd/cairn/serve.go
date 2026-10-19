@@ -45,6 +45,8 @@ func runServe(args []string) error {
 	fs.Var(&signupDomains, "signup-domain", "an email domain that may sign up (repeatable)")
 	maxUploadMB := fs.Int64("max-upload-mb", envInt64Or("CAIRN_MAX_UPLOAD_MB", 256), "max pushed version or stored file size (MiB)")
 	maxDBMB := fs.Int64("max-db-mb", envInt64Or("CAIRN_MAX_DB_MB", 50), "max database revision size (MiB)")
+	googleClientID := fs.String("google-client-id", envOr("CAIRN_GOOGLE_CLIENT_ID", ""), "Google OAuth 2.0 client ID; setting it turns on Google sign-in, which needs --google-client-secret and --public-url (register <public-url>/auth/google/callback as the redirect URI)")
+	googleClientSecret := fs.String("google-client-secret", envOr("CAIRN_GOOGLE_CLIENT_SECRET", ""), "Google OAuth 2.0 client secret (required with --google-client-id)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -70,6 +72,10 @@ func runServe(args []string) error {
 	if err != nil {
 		return err
 	}
+	googleAuthURL, googleTokenURL, err := serveGoogleURLs()
+	if err != nil {
+		return err
+	}
 	srv, err := server.New(server.Config{
 		Addr:          *addr,
 		DataDir:       *dataDir,
@@ -83,6 +89,11 @@ func runServe(args []string) error {
 		MaxDBMB:       *maxDBMB,
 		Logger:        logger,
 		Clock:         clk,
+
+		GoogleClientID:     *googleClientID,
+		GoogleClientSecret: *googleClientSecret,
+		GoogleAuthURL:      googleAuthURL,
+		GoogleTokenURL:     googleTokenURL,
 	})
 	if err != nil {
 		return err

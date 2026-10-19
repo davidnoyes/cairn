@@ -3,6 +3,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -35,6 +36,11 @@ type Config struct {
 	MaxDBMB       int64       // size cap per database revision, encrypted bytes
 	Logger        *slog.Logger
 	Clock         clock.Clock // defaults to the wall clock; tests move it without sleeping
+
+	GoogleClientID     string // the OAuth 2.0 client ID; setting it turns on Google sign-in, which needs GoogleClientSecret and PublicURL
+	GoogleClientSecret string
+	GoogleAuthURL      string // Google's authorization endpoint; empty means the real one. Only a test build sets it
+	GoogleTokenURL     string // Google's token endpoint; empty means the real one. Only a test build sets it
 }
 
 func (c *Config) applyDefaults() {
@@ -86,6 +92,10 @@ type Server struct {
 	signIn    *signInLimiters
 	mailLimit *limiter
 
+	googleAuthURL  string       // where the browser goes to sign in with Google
+	googleTokenURL string       // where the code is exchanged
+	httpClient     *http.Client // calls Google's token endpoint; tests replace it
+
 	tmpl     *template.Template
 	tmplOnce sync.Once
 }
@@ -94,6 +104,9 @@ func New(cfg Config) (*Server, error) {
 	cfg.applyDefaults()
 	if cfg.Mail == nil {
 		return nil, errors.New("no mail sender configured: --smtp-url is required, because sign-up and reset cannot work without mail")
+	}
+	if err := checkGoogleConfig(cfg); err != nil {
+		return nil, err
 	}
 	contentDomain, err := resolveContentDomain(cfg.PublicURL, cfg.ContentDomain)
 	if err != nil {
@@ -130,6 +143,9 @@ func New(cfg Config) (*Server, error) {
 		mail:           cfg.Mail,
 		signIn:         newSignInLimiters(cfg.Clock),
 		mailLimit:      newMailLimiter(cfg.Clock),
+		googleAuthURL:  cmp.Or(cfg.GoogleAuthURL, googleAuthEndpoint),
+		googleTokenURL: cmp.Or(cfg.GoogleTokenURL, googleTokenEndpoint),
+		httpClient:     &http.Client{Timeout: googleTimeout},
 	}
 	if u, err := url.Parse(cfg.PublicURL); err == nil && u.Scheme == "https" {
 		s.secure = true
