@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in the command-line tool · Cairn</title>
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body data-port="{{.Port}}" data-state="{{.State}}">
+  <div class="wrap">
+  <main class="card">
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32">
+        <rect x="11" y="7"  width="10" height="4" rx="2" fill="#C6F135"/>
+        <rect x="8"  y="14" width="16" height="4" rx="2" fill="#C6F135" opacity=".7"/>
+        <rect x="5"  y="21" width="22" height="4" rx="2" fill="#C6F135" opacity=".45"/>
+      </svg>
+    </div>
+    <h1>cairn</h1>
+    <p class="sub">command-line sign-in</p>
+    <form id="form" method="dialog" hidden>
+      <p class="text">Signed in with Google as <strong id="email"></strong>.</p>
+      <p class="text">Only continue if you just ran <code>cairn login</code> on this computer. The tool still asks for your password.</p>
+      <button type="submit" id="submit" disabled>Sign in the command-line tool</button>
+    </form>
+    <p class="error" id="error" role="alert" hidden></p>
+  </main>
+  </div>
+  <script type="module" src="/cli.js"></script>
+</body>
+</html>

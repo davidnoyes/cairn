@@ -27,12 +27,14 @@ func (s *Server) routes() {
 	handle("POST /api/auth/reset/complete", s.handleResetComplete)
 	handle("GET /api/auth/config", s.handleAuthConfig)
 	handle("GET /api/auth/google", s.handleGoogleProof)
+	handle("POST /api/auth/cli", s.handleCLIProof)
 	handle("POST /api/auth/refuse/begin", s.handleRefuseBegin)
 	handle("POST /api/auth/refuse", s.handleRefuse)
 
 	// Google sign-in: the browser's round trip, which makes a proof.
 	handle("GET /auth/google", s.handleGoogleStart)
 	handle("GET /auth/google/callback", withAppCSP(s.handleGoogleCallback))
+	handle("GET /auth/cli", withAppCSP(s.handleCLIPage))
 
 	// Signed-in account
 	handle("GET /api/me", s.requireAuth(s.handleMe))

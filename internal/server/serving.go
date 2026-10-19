@@ -261,6 +261,8 @@ var appAssets = map[string]string{
 	"/verify.js":         "verify.js",
 	"/login.js":          "login.js",
 	"/forgot.js":         "forgot.js",
+	"/cli.js":            "cli.js",
+	"/cli.mjs":           "cli.mjs",
 	"/reset.js":          "reset.js",
 	"/refuse.js":         "refuse.js",
 	"/app.mjs":           "app.mjs",

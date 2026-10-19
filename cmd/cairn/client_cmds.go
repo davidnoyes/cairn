@@ -63,6 +63,20 @@ func readPasswordOrStdin(stdin bool, prompt string) (string, error) {
 	return readPassword(prompt)
 }
 
+// refuseOnGoogleServer fails when host asks for Google sign-in, which needs a
+// browser: the user does it on the web page named by command.
+func refuseOnGoogleServer(host, page, action string) error {
+	c := client.New(host, "")
+	google, err := c.GoogleSignIn()
+	if err != nil {
+		return err
+	}
+	if google {
+		return fmt.Errorf("this server uses Google sign-in, which needs a browser: %s at %s/%s", action, c.Host, page)
+	}
+	return nil
+}
+
 func runSignup(args []string) error {
 	fs := flag.NewFlagSet("signup", flag.ExitOnError)
 	host := fs.String("host", envOr("CAIRN_HOST", ""), "server URL, e.g. http://localhost:8787")
@@ -74,6 +88,9 @@ func runSignup(args []string) error {
 	}
 	if *host == "" || *email == "" {
 		return fmt.Errorf("usage: cairn signup --host <url> --email <email> [--name <name>]")
+	}
+	if err := refuseOnGoogleServer(*host, "signup", "sign up"); err != nil {
+		return err
 	}
 	password, err := readPasswordOrStdin(*pwStdin, "password: ")
 	if err != nil {
@@ -153,6 +170,22 @@ func runLogin(args []string) error {
 	if *host == "" {
 		return fmt.Errorf("--host is required (e.g. cairn login --host http://localhost:8787)")
 	}
+	c := client.New(*host, "")
+	google, err := c.GoogleSignIn()
+	if err != nil {
+		return err
+	}
+	var proof string
+	if google {
+		h, err := awaitGoogleProof(c.Host)
+		if err != nil {
+			return err
+		}
+		if *email != "" && e2e.NormalizeEmail(*email) != e2e.NormalizeEmail(h.Email) {
+			return fmt.Errorf("the Google sign-in was for %s, but --email is %s", h.Email, *email)
+		}
+		*email, proof = h.Email, h.Proof
+	}
 	if *email == "" {
 		fmt.Print("email: ")
 		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
@@ -165,8 +198,7 @@ func runLogin(args []string) error {
 	if err != nil {
 		return err
 	}
-	c := client.New(*host, "")
-	out, err := c.Login(*email, password)
+	out, err := c.LoginWithGoogle(*email, password, proof)
 	if err != nil {
 		return err
 	}
@@ -261,6 +293,9 @@ func runForgot(args []string) error {
 	}
 	if *host == "" || *email == "" {
 		return fmt.Errorf("usage: cairn forgot --host <url> --email <email>")
+	}
+	if err := refuseOnGoogleServer(*host, "forgot", "reset your password"); err != nil {
+		return err
 	}
 	if err := client.New(*host, "").Forgot(*email); err != nil {
 		return err

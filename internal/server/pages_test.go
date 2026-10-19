@@ -15,7 +15,7 @@ import (
 var accountPages = []string{"/signup", "/verify", "/login", "/forgot", "/reset", "/refuse", "/app"}
 
 // pageTemplates are the template files behind accountPages.
-var pageTemplates = []string{"signup.html", "verify.html", "login.html", "forgot.html", "reset.html", "refuse.html", "app.html"}
+var pageTemplates = []string{"signup.html", "verify.html", "login.html", "forgot.html", "reset.html", "refuse.html", "app.html", "cli.html"}
 
 var (
 	scriptSrcRe = regexp.MustCompile(`<script[^>]*\ssrc="([^"]+)"`)

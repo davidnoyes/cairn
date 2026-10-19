@@ -2356,3 +2356,14 @@ internal/store/googleproofs.go	FROM google_proofs WHERE hash = ? AND used_at IS 
 internal/store/googleproofs.go	SET used_at = ? WHERE hash = ? AND used_at IS NULL AND expires_at > ?	SET used_at = ? WHERE hash = ? AND used_at IS NULL AND ? != ''	go test ./internal/store -count=1 -run TestGoogleProof
 internal/store/googleproofs.go	SET used_at = ? WHERE hash = ? AND used_at IS NULL AND	SET used_at = ? WHERE hash = ? AND	go test ./internal/store -count=1 -run TestGoogleProof
 internal/store/googleproofs.go	FROM google_proofs WHERE hash = ? AND used_at IS NULL AND	FROM google_proofs WHERE hash = ? AND	go test ./internal/store -count=1 -run TestGoogleProof
+internal/server/cli_auth.go	port >= minCLIPort	port >= minCLIPort-1	go test ./internal/server -count=1 -run CLI
+internal/server/cli_auth.go	port <= maxCLIPort	port <= maxCLIPort+1	go test ./internal/server -count=1 -run CLI
+internal/server/cli_auth.go	len(state) < minCLIState	len(state) < 1	go test ./internal/server -count=1 -run CLI
+internal/server/cli_auth.go	len(state) > maxCLIState	len(state) > 1000	go test ./internal/server -count=1 -run CLI
+internal/server/cli_auth.go	c == '-', c == '_':	c == '-':	go test ./internal/server -count=1 -run CLI
+internal/server/cli_auth.go	if !s.useProof(w, token) {	if token == "" {	go test ./internal/server -count=1 -run CLI
+internal/server/cli_auth.go	s.clearProofCookie(w)	_ = token	go test ./internal/server -count=1 -run CLI
+internal/server/cli_auth.go	cliProofTTL = 2 * time.Minute	cliProofTTL = 10 * time.Minute	go test ./internal/server -count=1 -run CLI
+cmd/cairn/google_login.go	subtle.ConstantTimeCompare([]byte(q.Get("state")), []byte(state)) != 1	subtle.ConstantTimeCompare([]byte(state), []byte(state)) != 1	go test ./cmd/cairn -count=1 -run LoginWithGoogle
+cmd/cairn/client_cmds.go	e2e.NormalizeEmail(*email) != e2e.NormalizeEmail(h.Email)	false	go test ./cmd/cairn -count=1 -run LoginWithGoogle
+internal/server/web/cli.mjs	redirect.startsWith(`http://127.0.0.1:${port}/callback?`)	redirect.startsWith('http://')	node --test internal/server/web/cli_test.mjs

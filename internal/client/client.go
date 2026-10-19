@@ -159,6 +159,15 @@ func (c *Client) doJSON(method, path string, in, out any) error {
 // Auth. Signup, Login, Logout, password reset, and API key management live
 // in account.go.
 
+// GoogleSignIn reports whether the server asks for Google sign-in.
+func (c *Client) GoogleSignIn() (bool, error) {
+	var out struct {
+		Google bool `json:"google"`
+	}
+	err := c.doJSON("GET", "/api/auth/config", nil, &out)
+	return out.Google, err
+}
+
 func (c *Client) Me() (*store.User, error) {
 	var u store.User
 	return &u, c.doJSON("GET", "/api/me", nil, &u)

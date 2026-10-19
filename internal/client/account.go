@@ -239,6 +239,12 @@ type passwordSession struct {
 // key; the session token is the credential for the endpoints that need a
 // session.
 func (c *Client) passwordSignIn(email, password string) (*passwordSession, error) {
+	return c.signIn(email, password, "")
+}
+
+// signIn is passwordSignIn with a Google proof, base64url, for a server that
+// asks for Google sign-in; the empty proof sends none.
+func (c *Client) signIn(email, password, googleProof string) (*passwordSession, error) {
 	if password == "" {
 		return nil, ErrEmptyPassword
 	}
@@ -262,9 +268,11 @@ func (c *Client) passwordSignIn(email, password string) (*passwordSession, error
 		Bundle bundleWire `json:"bundle"`
 		Token  string     `json:"token"`
 	}
-	if err := c.doJSON("POST", "/api/auth/login", map[string]any{
-		"email": email, "authKey": e2e.B64(authKey), "client": "cli",
-	}, &loginOut); err != nil {
+	login := map[string]any{"email": email, "authKey": e2e.B64(authKey), "client": "cli"}
+	if googleProof != "" {
+		login["googleProof"] = googleProof
+	}
+	if err := c.doJSON("POST", "/api/auth/login", login, &loginOut); err != nil {
 		return nil, err
 	}
 
@@ -287,7 +295,13 @@ func (c *Client) passwordSignIn(email, password string) (*passwordSession, error
 // away. The full four-part key, including keySecret, is returned for the
 // caller to save; it never touches the wire.
 func (c *Client) Login(email, password string) (*LoginResult, error) {
-	ps, err := c.passwordSignIn(email, password)
+	return c.LoginWithGoogle(email, password, "")
+}
+
+// LoginWithGoogle is Login for a server that asks for Google sign-in:
+// googleProof is the proof the browser handed to the tool, base64url.
+func (c *Client) LoginWithGoogle(email, password, googleProof string) (*LoginResult, error) {
+	ps, err := c.signIn(email, password, googleProof)
 	if err != nil {
 		return nil, err
 	}

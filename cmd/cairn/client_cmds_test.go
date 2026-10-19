@@ -723,9 +723,10 @@ func TestReadPasswordOrStdinStripsCRLF(t *testing.T) {
 }
 
 func TestRunLoginEmptyStdinRefused(t *testing.T) {
+	host, _ := newTestServer(t) // login asks the server how to sign in first
 	t.Setenv("CAIRN_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 	withStdin(t, "")
-	err := runLogin([]string{"--host", "http://127.0.0.1:1", "--email", "ada@example.com", "--password-stdin"})
+	err := runLogin([]string{"--host", host, "--email", "ada@example.com", "--password-stdin"})
 	if !errors.Is(err, client.ErrEmptyPassword) {
 		t.Errorf("runLogin with empty stdin: err = %v, want ErrEmptyPassword", err)
 	}
