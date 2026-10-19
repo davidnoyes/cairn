@@ -32,14 +32,16 @@ mutations, and Playwright only on `e2e/*` branches and `feat/e2e-trust-model`.
   (server), `backup.go`, `import_cmds.go` (import a pre-encryption backup),
   `verify_cmd.go`, `client_cmds.go` (signup/login/artifact/push/open),
   `share_cmds.go`, `transfer_cmds.go`, `successor_cmds.go`, `rotate_cmds.go`,
+  `folder_cmds.go` (folder/move), `group_cmds.go`,
   `data_cmds.go` (db/files/reseal), `config.go` (command-line state at
   `~/.config/cairn/config.json`, override with `CAIRN_CONFIG`; headless via
   `CAIRN_HOST` + `CAIRN_API_KEY`).
 - `cmd/cairn-release/` — makes the release key and signs the manifest.
   `cmd/argon2wasm/` — Argon2id compiled to wasm for the browser.
 - `internal/e2e/` — the crypto core (seal, blobs, wrap, signatures, membership
-  chain, keyring, rotation). `internal/server/web/e2e.mjs` is its browser twin;
-  `testdata/vectors.json` ties them byte for byte.
+  chain, group records in `group.go`, keyring, rotation).
+  `internal/server/web/e2e.mjs` is its browser twin; `testdata/vectors.json`
+  ties them byte for byte.
 - `internal/access/` — the permission table as one pure function.
   `internal/membership/` — acceptance rules for signed membership records.
 - `internal/store/` — metadata SQLite (`modernc.org/sqlite`, pure Go).
@@ -75,7 +77,14 @@ mutations, and Playwright only on `e2e/*` branches and `feat/e2e-trust-model`.
   `webauthntest` is a software authenticator for tests. Design:
   `design/google-signin.md`.
 - `internal/client/` — Go API client used by the command-line tool (does the encryption,
-  signing, and membership checks).
+  signing, and membership checks). `folders.go` and `groups.go` back the folder
+  and group commands.
+- Folders (design: `design/e2e-api.md` "Folders") are artifacts with
+  `kind = folder` and no content; `internal/store/folders.go` owns placement,
+  depth, and cycle checks, and `internal/server/folders.go` refuses content
+  routes for a folder. Groups (`design/e2e-api.md` "Groups") are signed record
+  chains: `internal/server/handlers_groups.go`, and `groups.mjs` and
+  `groups-tab.mjs` in the browser. Plan for both: `design/rbac-folders.md`.
 - `browser/` — Playwright specs. `design/` — e2e design docs. `deploy/gcp/` —
   deployment guide and VM startup script.
 - `examples/` — reference artifacts: `guestbook` (single file, exercised by

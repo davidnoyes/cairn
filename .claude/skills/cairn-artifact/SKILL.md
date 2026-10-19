@@ -89,6 +89,10 @@ Without a session to attach, `cairn push ./artifact --artifact "<name>"
 only on `artifact create`: `cairn` blinds the value on your machine, so a raw
 `POST /api/artifacts/<id>/resources` with plain text is refused.
 
+If the user keeps artifacts in folders, add `--in <folder>` to
+`artifact create` or `push --create`. `cairn folder list` shows their tree,
+and `cairn move <artifact> --to <folder>` files an existing one.
+
 Every new artifact is private. The `push --json` output has the artifact id,
 the version id and a `url`, which is the full-screen address on the app host.
 Report these to the user, built from the host:

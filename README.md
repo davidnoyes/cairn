@@ -517,6 +517,45 @@ repo; copy the directory into any other project's `.claude/skills/` (or
 `~/.claude/skills/` for global use) to let Claude publish artifacts from
 there.
 
+### Folders
+
+A folder holds artifacts and other folders, up to 16 deep. Its name is
+encrypted like an artifact's, so the server sees which items sit together but
+not what anything is called. Folders are private to their owner for now; a
+shared folder, whose sharing reaches everything inside it, comes later.
+
+```sh
+cairn folder create Reports                         # at the top level
+cairn folder create 2026 --in Reports               # inside another folder
+cairn push ./dist --artifact q3 --create --in 2026  # create an artifact in a folder
+cairn move q3 --to Reports                          # or --top
+cairn folder list --json                            # your tree
+cairn folder delete Reports                         # and everything in it, after asking
+```
+
+On the app's **Artifacts** tab, your own items show as a tree with
+breadcrumbs. Use **New folder** and **Move to…**, or drag a row onto a
+folder, and a folder row has **Rename** and **Delete**.
+
+### Groups
+
+A group is a named set of people, kept as a chain of records that its
+managers sign. Anyone who is not a viewer account can create one and becomes
+its manager. Every signed-in user can see a group's name and members, and
+each client checks the chain before it shows them. Sharing an artifact with
+a group comes in the next release.
+
+```sh
+cairn group create Design --member bob@example.com
+cairn group add Design carol@example.com --manager
+cairn group show Design                    # members, roles, fingerprints, pins
+cairn group remove Design bob@example.com
+cairn group rename Design "Product design"
+cairn group list --json
+```
+
+The app has a **Groups** tab for the same tasks.
+
 ### Successors and key rotation
 
 A successor is one user you choose who can read the artifacts you own if you
