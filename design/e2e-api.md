@@ -2683,7 +2683,7 @@ an ID matches a group by its ID only, and otherwise a user ID; any other
 argument is a group's exact name. A group's name is chosen by its managers,
 so a name never stands in for an ID: a group named after someone's user ID
 cannot take a share meant for that user. The command names the group it
-resolved before it acts.
+acted on, with its ID.
 
 - `cairn share ITEM GROUP --role viewer|editor` lists the group, then
   approves each of its current members whose checks pass, and names the rest

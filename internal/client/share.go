@@ -512,7 +512,12 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 		return p.User.ID == u.ID && (p.State == PendingApproved || p.State == PendingLeft)
 	}); p >= 0 {
 		approved = true
-		if pending[p].State == PendingApproved {
+		// The owner named a user who left, so there is no approval of theirs
+		// to check, and no wraps are sent because they hold them already.
+		// Only a state of left skips the check: every other approved user
+		// passes it.
+		ownerNamedThemAfterLeaving := pending[p].State == PendingLeft
+		if !ownerNamedThemAfterLeaving {
 			if err := checkApproved(k, latest, va.Membership.Rotations, dir, pending[p]); err != nil {
 				return nil, fmt.Errorf("%w: %s: %w", ErrApprovalUnverified, u.Email, err)
 			}

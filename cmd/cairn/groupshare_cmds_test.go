@@ -91,12 +91,12 @@ func TestShareWithAGroupByName(t *testing.T) {
 }
 
 func TestShareWithAGroupPrintsWhatItDid(t *testing.T) {
-	w, _ := groupShareWorld(t)
+	w, gid := groupShareWorld(t)
 	out, err := runQuiet(t, runShare, w.artifact, "Reviewers", "--role", "viewer")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"with group Reviewers as viewer", "approved cat@example.com", "approved dan@example.com"} {
+	for _, want := range []string{"with group Reviewers (" + gid + ") as viewer", "approved cat@example.com", "approved dan@example.com"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("share printed %q, want %q", out, want)
 		}
@@ -106,7 +106,7 @@ func TestShareWithAGroupPrintsWhatItDid(t *testing.T) {
 		t.Errorf("share again printed %q, %v", out, err)
 	}
 	out, err = runQuiet(t, runShare, w.artifact, "Reviewers", "--role", "viewer")
-	if err != nil || !strings.Contains(out, "already shared with Reviewers as viewer; nothing changed") {
+	if err != nil || !strings.Contains(out, "already shared with Reviewers ("+gid+") as viewer; nothing changed") {
 		t.Errorf("a third share printed %q, %v", out, err)
 	}
 }

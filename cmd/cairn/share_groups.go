@@ -99,9 +99,9 @@ func printShareGroup(a *client.Artifact, res *client.ShareGroupResult, jsonOut b
 	}
 	printDropped(res.DroppedGroups)
 	if res.Unchanged {
-		fmt.Printf("%s (%s) is already shared with %s as %s; nothing changed\n", a.Name, a.ID, res.Group.Name, res.Role)
+		fmt.Printf("%s (%s) is already shared with %s (%s) as %s; nothing changed\n", a.Name, a.ID, res.Group.Name, res.Group.ID, res.Role)
 	} else {
-		fmt.Printf("shared %s (%s) with group %s as %s\n", a.Name, a.ID, res.Group.Name, res.Role)
+		fmt.Printf("shared %s (%s) with group %s (%s) as %s\n", a.Name, a.ID, res.Group.Name, res.Group.ID, res.Role)
 	}
 	for _, d := range res.Approved {
 		fmt.Printf("approved %s (%s), fingerprint %s\n", d.Email, d.Name, showFP(d.FP))

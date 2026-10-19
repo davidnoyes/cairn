@@ -78,17 +78,30 @@ func (c *Client) Groups() ([]GroupSummary, error) {
 	return out, nil
 }
 
-// ResolveGroup finds the group ref names: a group ID, else an exact name. A
-// name two groups share is ErrAmbiguousGroup, and none is ErrNoGroup.
+// IsID reports whether ref is shaped like an ID, a UUID in its canonical
+// lowercase form. An argument of that shape names a group by ID or a user by
+// ID, never a group by name: a group's name is chosen by its managers.
+func IsID(ref string) bool {
+	u, err := uuid.Parse(ref)
+	return err == nil && u.String() == ref
+}
+
+// ResolveGroup finds the group ref names: by ID when ref is shaped like one,
+// and otherwise by exact name, so a group named after a user's ID never
+// answers to it. A name two groups share is ErrAmbiguousGroup, and none is
+// ErrNoGroup.
 func (c *Client) ResolveGroup(ref string) (*GroupSummary, error) {
 	all, err := c.Groups()
 	if err != nil {
 		return nil, err
 	}
-	for i := range all {
-		if all[i].ID == ref {
-			return &all[i], nil
+	if IsID(ref) {
+		for i := range all {
+			if all[i].ID == ref {
+				return &all[i], nil
+			}
 		}
+		return nil, fmt.Errorf("%w with id %q", ErrNoGroup, ref)
 	}
 	var matches []GroupSummary
 	for _, g := range all {
@@ -98,7 +111,7 @@ func (c *Client) ResolveGroup(ref string) (*GroupSummary, error) {
 	}
 	switch len(matches) {
 	case 0:
-		return nil, fmt.Errorf("%w with id or name %q", ErrNoGroup, ref)
+		return nil, fmt.Errorf("%w with name %q", ErrNoGroup, ref)
 	case 1:
 		return &matches[0], nil
 	}

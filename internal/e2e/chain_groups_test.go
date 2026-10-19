@@ -36,6 +36,20 @@ func groupChainCases() []chainCase {
 	groups := func(gs ...GroupShare) func(b *MembershipBody) {
 		return func(b *MembershipBody) { b.Groups = gs }
 	}
+	// rawGroups is alice's second record with "groups": value spelled out.
+	rawGroups := func(value string) func(t testing.TB, u chainUsers) ChainInput {
+		return func(t testing.TB, u chainUsers) ChainInput {
+			f := base(t, u)
+			b := f.last()
+			b.Seq++
+			b.Prev = f.head(1)
+			body, err := json.Marshal(b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return f.addRaw(u.alice, append(body[:len(body)-1], []byte(`,"groups":`+value+`}`)...)).input()
+		}
+	}
 	return []chainCase{
 		{name: "groups-listed", why: "alice lists two groups, sorted by group ID, in her second record", seq: 2, epoch: 1,
 			build: listed(groups(GroupShare{chainGroupA, "viewer"}, GroupShare{chainGroupB, "editor"}))},
@@ -67,6 +81,10 @@ func groupChainCases() []chainCase {
 				}
 				return f.addRaw(u.alice, append(body[:len(body)-1], []byte(`,"groups":[]}`)...)).input()
 			}},
+		{name: "groups-null", why: "a record whose groups is null, which the format leaves out", err: ErrFormat,
+			build: rawGroups(`null`)},
+		{name: "groups-not-array", why: "a record whose groups is an object, not an array", err: ErrFormat,
+			build: rawGroups(`{}`)},
 		{name: "groups-role-manager", why: "a group listed with role manager", err: ErrChain,
 			build: listed(groups(GroupShare{chainGroupA, "manager"}))},
 		{name: "groups-id-not-uuid", why: "a group ID in uppercase, which is not a lowercase UUID", err: ErrChain,

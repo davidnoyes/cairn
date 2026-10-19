@@ -6275,6 +6275,64 @@
       "error": "format"
     },
     {
+      "name": "groups-null",
+      "why": "a record whose groups is null, which the format leaves out",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoibWFuYWdlciIsImZwIjoiZTU0ODJlZTcyNTM1MmI2MDM4OTU1OWQ0N2NiNjVkNWUxMTEzMGI2ZjM4NTBjZTA0NmM0ZDY1NzQ2MDhjMmYzNiJ9LHsidXNlciI6InUtY2Fyb2wiLCJyb2xlIjoidmlld2VyIiwiZnAiOiI5YjdhMzQ4MzBjMmU4YWZlMGZiZTk0ODVhNDc2MjU1NDE5NDI5YTU1MjZjMmI2YTc3MmQ3YTJjODVmYTE0ZDIyIn1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "pPKF1VTkTk3bkI1uyJ3YBamUZOU1ziik-hmesge6od_OJT_V_So_8VIGFoVt4OsO9T3KKa3KIEVmT06RDYVAAw",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoibWFuYWdlciIsImZwIjoiZTU0ODJlZTcyNTM1MmI2MDM4OTU1OWQ0N2NiNjVkNWUxMTEzMGI2ZjM4NTBjZTA0NmM0ZDY1NzQ2MDhjMmYzNiJ9LHsidXNlciI6InUtY2Fyb2wiLCJyb2xlIjoidmlld2VyIiwiZnAiOiI5YjdhMzQ4MzBjMmU4YWZlMGZiZTk0ODVhNDc2MjU1NDE5NDI5YTU1MjZjMmI2YTc3MmQ3YTJjODVmYTE0ZDIyIn1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6ImM1ODA5NmRkZTAzYzA1NjE0Yjg0N2JkMTJhNWY0MTBlYjAyODkzMjFjZGNhZjhmMDY4MDdkMzc5OGNkZjk1MWIiLCJ0cmFuc2ZlciI6IiIsImhhbmRvdmVyIjoiIiwiZ3JvdXBzIjpudWxsfQ",
+          "sig": "4GLdIGZ-sVc68miThFy-n2JVI7x06G3VIBipJE2oTX6PYHcBDhuwVu6h7Vd2xqHODUnNUw-8t79Egrr_7GI3AQ",
+          "signer": "u-alice"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        }
+      },
+      "offers": {},
+      "successors": {},
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "error": "format"
+    },
+    {
+      "name": "groups-not-array",
+      "why": "a record whose groups is an object, not an array",
+      "artifact": "artifact-chain",
+      "records": [
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6MSwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoibWFuYWdlciIsImZwIjoiZTU0ODJlZTcyNTM1MmI2MDM4OTU1OWQ0N2NiNjVkNWUxMTEzMGI2ZjM4NTBjZTA0NmM0ZDY1NzQ2MDhjMmYzNiJ9LHsidXNlciI6InUtY2Fyb2wiLCJyb2xlIjoidmlld2VyIiwiZnAiOiI5YjdhMzQ4MzBjMmU4YWZlMGZiZTk0ODVhNDc2MjU1NDE5NDI5YTU1MjZjMmI2YTc3MmQ3YTJjODVmYTE0ZDIyIn1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6IiIsInRyYW5zZmVyIjoiIiwiaGFuZG92ZXIiOiIifQ",
+          "sig": "pPKF1VTkTk3bkI1uyJ3YBamUZOU1ziik-hmesge6od_OJT_V_So_8VIGFoVt4OsO9T3KKa3KIEVmT06RDYVAAw",
+          "signer": "u-alice"
+        },
+        {
+          "body": "eyJ2IjoxLCJhcnRpZmFjdCI6ImFydGlmYWN0LWNoYWluIiwiZXBvY2giOjEsInNlcSI6Miwib3duZXIiOiJ1LWFsaWNlIiwib3duZXJGcCI6IjA1MTE0MDZhNzRhYTJlNGY1NDIzNjIyMzk1ZWViNWI0ZjZlMGU0ODVkMjU1ZWJmYWNlOWMwNjRkMDdmMGU0NTYiLCJha0NvbW1pdCI6IjJmOThlNzEyOGY3YjdiYjc0OTJhYzZmN2Y4NDM0ZWE3NDBmOTY2YzkyMTg5NzlhYTRjN2Y1ZjU3ODY5OTQxZGQiLCJtZW1iZXJzIjpbeyJ1c2VyIjoidS1ib2IiLCJyb2xlIjoibWFuYWdlciIsImZwIjoiZTU0ODJlZTcyNTM1MmI2MDM4OTU1OWQ0N2NiNjVkNWUxMTEzMGI2ZjM4NTBjZTA0NmM0ZDY1NzQ2MDhjMmYzNiJ9LHsidXNlciI6InUtY2Fyb2wiLCJyb2xlIjoidmlld2VyIiwiZnAiOiI5YjdhMzQ4MzBjMmU4YWZlMGZiZTk0ODVhNDc2MjU1NDE5NDI5YTU1MjZjMmI2YTc3MmQ3YTJjODVmYTE0ZDIyIn1dLCJleGNsdWRlZCI6W10sInRlYW0iOiJub25lIiwicHVibGljIjpmYWxzZSwicHVibGljV3JpdGVzIjpmYWxzZSwicHJldiI6ImM1ODA5NmRkZTAzYzA1NjE0Yjg0N2JkMTJhNWY0MTBlYjAyODkzMjFjZGNhZjhmMDY4MDdkMzc5OGNkZjk1MWIiLCJ0cmFuc2ZlciI6IiIsImhhbmRvdmVyIjoiIiwiZ3JvdXBzIjp7fX0",
+          "sig": "zDBZ_QRqP1bOyYLSNLRhfEDU2dLQq3ucTZXjFwS0wNcstfJ_JxakplU5DCmNKCGEP2pibdeckebga8Lh5FswDA",
+          "signer": "u-alice"
+        }
+      ],
+      "owners": {
+        "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456": {
+          "x25519": "3Z5Etrj8Z6VR8uI58WGXOSajbJUDyotTluKX8FgQQnc",
+          "ed25519": "FxxDcLXW8i1NtaAOPHz8AsDaHqUiZhwMNQ0Wi7OUi_E"
+        }
+      },
+      "offers": {},
+      "successors": {},
+      "anchor": "0511406a74aa2e4f5423622395eeb5b4f6e0e485d255ebface9c064d07f0e456",
+      "currentOwnerFp": "",
+      "pin": null,
+      "error": "format"
+    },
+    {
       "name": "groups-role-manager",
       "why": "a group listed with role manager",
       "artifact": "artifact-chain",
