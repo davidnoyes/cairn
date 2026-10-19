@@ -48,6 +48,7 @@ export function pageDeps() {
       return { score, feedback };
     },
     keyStore: createKeyStore(indexedDB),
+    credentials: globalThis.navigator?.credentials,
   };
 }
 

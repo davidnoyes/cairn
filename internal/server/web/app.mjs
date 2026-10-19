@@ -3,7 +3,7 @@
 // element with createElement and textContent: the app CSP's Trusted Types
 // rule refuses a string assigned to innerHTML. It never opens a native
 // dialog: a destructive action asks again in its own button.
-import { changePassword, createApiKey, newRecoveryCode, signOut } from './account.mjs';
+import { changePassword, createApiKey, enrollPasskey, listPasskeys, newRecoveryCode, removePasskey, signOut } from './account.mjs';
 import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { describeArtifact } from './meta.mjs';
 import { KeyChangedError, members, pin, publicLinkFor, setPublic, share, unshare } from './sharing.mjs';
@@ -450,6 +450,53 @@ $('key-form').addEventListener('submit', async (event) => {
   }
 });
 
+// -------------------------------------------------------------- passkeys
+async function loadPasskeys() {
+  const passkeys = await listPasskeys(deps);
+  $('passkeys').replaceChildren(...passkeys.map((p) => {
+    const tr = el('tr');
+    tr.dataset.passkey = p.id;
+    tr.append(td(p.name || '(unnamed)', 'name'), td(day(p.createdAt), 'mono'), td(day(p.lastUsedAt), 'mono'));
+    const actions = el('div', 'actions');
+    actions.appendChild(confirmButton('Remove', 'Remove this passkey?', () => removePasskey(deps, p.id)
+      .then(() => { status('passkeys-status', 'Passkey removed. Delete it from your password manager too.'); return loadPasskeys(); })
+      .catch(failIn('passkeys-status'))));
+    tr.appendChild(td(actions));
+    return tr;
+  }));
+}
+
+// describePasskeyError names the two refusals a browser gives in its own
+// words: the user closed the prompt, or the passkey is already enrolled.
+function describePasskeyError(err) {
+  if (err.name === 'NotAllowedError') return 'The passkey prompt was closed or timed out, so nothing was added.';
+  if (err.name === 'InvalidStateError') return 'That passkey is already added.';
+  return describeError(err);
+}
+
+$('passkey-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = event.submitter;
+  const password = $('passkey-password');
+  if (!deps.credentials || !globalThis.PublicKeyCredential) {
+    status('passkeys-status', 'This browser cannot use passkeys.', true);
+    return;
+  }
+  button.disabled = true;
+  status('passkeys-status', 'Adding the passkey…');
+  try {
+    await enrollPasskey(deps, { name: $('passkey-name').value, password: password.value });
+    $('passkey-name').value = '';
+    status('passkeys-status', 'Passkey added. You can sign in with it next time.');
+    await loadPasskeys();
+  } catch (err) {
+    status('passkeys-status', describePasskeyError(err), true);
+  } finally {
+    password.value = '';
+    button.disabled = false;
+  }
+});
+
 // --------------------------------------------------------------- account
 let me;
 watchStrength(deps, $('pw-new'), $('pw-strength'), () => [me?.email, me?.name]);
@@ -659,6 +706,7 @@ async function loadUsers() {
 const lists = [
   { name: 'artifacts', status: 'artifacts-status', load: loadArtifacts },
   { name: 'API keys', status: 'keys-status', load: loadKeys },
+  { name: 'passkeys', status: 'passkeys-status', load: loadPasskeys },
   { name: 'successor', status: 'successor-status', load: loadSuccessor },
   { name: 'users', status: 'users-status', load: loadUsers, admin: true },
 ];

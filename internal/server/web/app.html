@@ -108,6 +108,20 @@
       </form>
       <p class="status-line" id="keys-status" role="status"></p>
       <p class="secret mono" id="key-new"></p>
+      <h2 class="next">Passkeys</h2>
+      <p class="hint">A passkey can unlock your account when you sign in, in place of your password. Your password and recovery code keep working. Only a passkey that supports the PRF extension can unlock Cairn.</p>
+      <div class="list">
+        <table>
+          <thead><tr><th>name</th><th>added</th><th>last used</th><th></th></tr></thead>
+          <tbody id="passkeys"></tbody>
+        </table>
+      </div>
+      <form class="bar" id="passkey-form" method="dialog">
+        <input id="passkey-name" placeholder="passkey name" aria-label="Passkey name" autocomplete="off">
+        <input id="passkey-password" type="password" placeholder="your password" aria-label="Your password" autocomplete="current-password">
+        <button class="btn primary" type="submit">Add passkey</button>
+      </form>
+      <p class="status-line" id="passkeys-status" role="status"></p>
       <h2 class="next">Your successor</h2>
       <p class="hint">Name one person who can read the artifacts you own, 14 days after they ask, unless you refuse. Ask them for their code, from here or <span class="mono">cairn successor code</span>.</p>
       <p id="current-successor"></p>
