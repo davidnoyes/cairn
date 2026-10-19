@@ -1,6 +1,6 @@
 # Roles, groups, and folders
 
-Status: **plan, for review**. Nothing here is built. It extends the
+Status: **plan, decisions agreed**. Nothing here is built. It extends the
 [trust model](e2e-trust-model.md) and builds on
 [Google sign-in and passkey unlock](google-signin.md).
 
@@ -24,12 +24,15 @@ seal it.
 
 | Question | Decision |
 | --- | --- |
-| Server roles | Administrator, member, and guest |
+| Server roles | Administrator, member, and viewer account: a viewer account can read what is shared with it and write nothing |
 | Who creates groups | Any member; the creator manages the group |
+| Group membership | Signed by a group manager, and checked by every client and the server |
 | Who can share | The owner, and a new **manager** role the owner grants |
 | Folder contents | Like Google Drive: editors of a folder can add artifacts they own |
 | How folder sharing reaches contents | Copied onto each artifact's member list, now and when artifacts are added; each artifact keeps its own key |
 | A child's access | More than its folder, never less; to shut someone out of one artifact, move it out of the folder |
+| Deleting a folder | Like Google Drive: the owner's own items inside are deleted, and other people's items move to their owners' top level |
+| Public folders | Out of scope |
 
 ## Two kinds of check
 
@@ -48,29 +51,37 @@ the content written after that too.
 
 ## Server roles
 
-| Action | Administrator | Member | Guest |
+| Action | Administrator | Member | Viewer account |
 | --- | --- | --- | --- |
-| Open what is shared with them as a viewer or an editor | Yes | Yes | Yes |
-| Create artifacts and folders | Yes | Yes | No |
-| Create API keys, and sign in with `cairn login` | Yes | Yes | No |
-| Create groups | Yes | Yes | No |
+| Open what is shared with them | Yes | Yes | Yes |
+| Create API keys, and sign in with `cairn login` | Yes | Yes | Yes |
+| Write a database or files, push a version, or write through public writes | Yes, where their role allows | Yes, where their role allows | No |
+| Be listed as editor or manager of an artifact or folder | Yes | Yes | No |
+| Create artifacts, folders, and groups | Yes | Yes | No |
 | Be a group manager | Yes | Yes | No |
-| Be made an artifact's or folder's manager | Yes | Yes | No |
 | Grant roles, deactivate accounts, and delete them | Yes | No | No |
 
 - The role replaces the `is_admin` flag: `users.role` is `admin`, `member`,
-  or `guest`. Migration makes every current administrator `admin` and
-  everyone else `member`.
-- **Becoming a guest.** A new flag, `--guest-domain`, names email domains
-  whose sign-ups become guests, so outside collaborators can join. An address
-  in a `--signup-domain` signs up as a member. An administrator can change
-  anyone's role later.
-- **Guests as editors.** A guest an owner lists as editor can write the
-  database and files and push versions of that artifact, because the owner
-  chose to trust them with it. A guest cannot create anything of their own.
-- **Demotion.** Making a member a guest keeps what they own, but they can no
-  longer create anything. An administrator who wants their artifacts handled
-  offers an ownership transfer, as today.
+  or `viewer`. Migration makes every current administrator `admin` and
+  everyone else `member`. The server role is called a **viewer account** in
+  the pages, so it reads differently from the viewer role on an artifact.
+- **A viewer account is still a user.** It has keys, can be shared with,
+  joins groups, and uses `cairn login` and API keys, for example for an agent
+  that reads a dashboard. It just never writes.
+- **Becoming a viewer account.** A new flag, `--viewer-domain`, names email
+  domains whose sign-ups become viewer accounts, so outside readers can join.
+  An address in a `--signup-domain` signs up as a member. An administrator can
+  change anyone's role later.
+- **Enforced twice.** The server refuses every write from a viewer account,
+  whatever an artifact's member list says. The membership checks also refuse
+  a new member list that lists a viewer account as editor or manager, so the
+  share dialog offers only the viewer role for them.
+- **Demotion.** Making a member a viewer account stops their writes at once.
+  They keep what they own, but cannot change it. Member lists that still name
+  them as editor are left as they are; the owner or a manager is prompted to
+  change the entry to viewer the next time they open the artifact. No new
+  epoch is needed, because they keep their read access. An administrator who
+  wants their artifacts handled offers an ownership transfer, as today.
 - An administrator still cannot read what is not shared with them. Roles are
   server checks only.
 
@@ -82,8 +93,10 @@ Today's whole-team share becomes the built-in group **Everyone**.
 - **Creating.** Any member or administrator creates a group and becomes its
   manager. A group's name is visible to every signed-in user, like the user
   directory, so it is not encrypted.
-- **Managing.** A group manager adds and removes members and other managers.
-  An administrator can do the same, and can delete a group.
+- **Managing.** A group manager adds and removes members and other managers,
+  by signing a new group record. An administrator who is not a manager of the
+  group cannot change its members, because they cannot sign its record. They
+  can delete the group, which ends every share made through it at once.
 - **Sharing with a group.** An owner or manager lists the group in a member
   list, with a role: viewer or editor. A group cannot be a manager.
 - **Joining.** When someone joins a group, every artifact and folder shared
@@ -96,15 +109,34 @@ Today's whole-team share becomes the built-in group **Everyone**.
   then shows them as **still holding the key**, and the next owner or manager
   to open it starts a new epoch.
 
+### Signed group records
+
+Group membership is a signed chain, built like an artifact's member list:
+
+- Each group record holds the group ID, a sequence number, and the members
+  and managers, each with the fingerprint the signer saw for them. The
+  creator signs the first record. Each later record is signed by a manager
+  listed in the previous one.
+- The server accepts a record only when its signer is a manager in the
+  previous record and its sequence number is the next one. It stores the
+  chain, and serves it with every share that names the group.
+- A client checks the whole chain before it trusts a group: before it lists a
+  newcomer for approval, before it seals a key to one, and before it shows a
+  group's members. Each client remembers the newest record it has seen for
+  each group, and refuses an older one, so the server cannot roll a group
+  back to a member list that suits it.
+- The approver still sees the newcomer's name and fingerprint, and the client
+  compares that fingerprint with the one in the group record. A mismatch is a
+  key-change warning, as for any share.
+- A group record goes through the same three checks as a member list, in the
+  server, the command-line tool, and the browser, tied by shared test vectors.
+
 ### Risks of groups
 
-- **Group membership is not signed in this plan.** The server keeps it, so an
-  operator could add someone to a group. The approval step is the defense:
-  an approver sees the newcomer's name and fingerprint before sealing any key,
-  exactly as with the team share today. Signed group records, checked by
-  clients, are a later step.
 - **A group manager can add anyone to the group.** They still cannot grant
   reading by themselves; an approver for each artifact must agree.
+- **A new device has no record of a group's newest version**, so it accepts
+  whatever chain the server serves first, as with a keyring today.
 
 ## The manager role
 
@@ -170,10 +202,10 @@ files.
 | Remove any item, which moves it to its owner's top level | Yes | Yes | Yes | No |
 | Rename the folder | Yes | Yes | Yes | No |
 | Share and unshare the folder | Yes | Yes | No | No |
-| Delete the folder, once it is empty | Yes | No | No | No |
+| Delete the folder | Yes | No | No | No |
 
-A guest listed as editor of a folder can create nothing in it, because
-guests create nothing.
+A viewer account can only be a folder's viewer, so it sees the folder and
+changes nothing in it.
 
 ### Inherited access
 
@@ -210,6 +242,19 @@ folder lists.
 - Moving a folder moves its whole subtree; every item inside gains and loses
   inherited entries in one pass.
 
+### Deleting a folder
+
+Deleting a folder works as in Google Drive. Only the folder's owner can do it,
+and the page first lists what happens to everything inside:
+
+- Items the owner owns, folders included, are deleted with it.
+- Items other people own move to the top level of their owners, with their
+  own folders and contents intact. People who had them only through the
+  deleted folder lose them at once on the server, and each item moves to a
+  new epoch when its owner or a manager next opens it.
+- The owner confirms once, then the client deletes and moves item by item,
+  showing progress and resuming if interrupted.
+
 ### Cost
 
 Sharing a folder writes one signed member list for each item inside it.
@@ -244,30 +289,19 @@ review gate. Tests are written at design time, before the code they cover.
 
 | # | Milestone | Proof it works |
 | --- | --- | --- |
-| R1 | Server roles: `users.role`, guests, `--guest-domain`, the role table on every endpoint, the **Admin** tab, and commands | Integration tests for every cell of the role table; a guest cannot create an artifact, folder, group, or API key, and can still edit what is shared with them as editor |
+| R1 | Server roles: `users.role`, viewer accounts, `--viewer-domain`, the role table on every endpoint, the **Admin** tab, and commands | Integration tests for every cell of the role table; a viewer account reads what is shared with it and uses an API key, and every write it tries is refused, even where a member list still names it editor |
 | R2 | Manager role: acceptance rules, both chain checks, test vectors, the estate-copy catch-up, the share dialog, and commands | Go and JavaScript check the same vectors; a manager's record is accepted, and one that changes the managers, drops the owner, or comes from a removed manager is refused; the owner's client adds the estate copy after a manager's epoch |
-| R3 | Groups: model, management, sharing with a group, approval of newcomers, immediate server cut-off when someone leaves; **Everyone** replaces the team share | Integration tests: a newcomer cannot read until approved; someone who leaves gets 404 at once and a new epoch follows; a browser walkthrough of creating a group and sharing with it |
-| F1 | Folders as content-less artifacts: create, rename, nest, move, list, delete when empty, encrypted names, the tree on the **Artifacts** tab, and `cairn folder` | Names are ciphertext on disk; moves respect the folder table; depth over 16 is refused; a browser walkthrough of the tree |
+| R3 | Groups: signed group records with their three checks and test vectors, management, sharing with a group, approval of newcomers, immediate server cut-off when someone leaves; **Everyone** replaces the team share | Go and JavaScript check the same group-record vectors; a record from a non-manager or a rolled-back chain is refused; a newcomer cannot read until approved; someone who leaves gets 404 at once and a new epoch follows; a browser walkthrough of creating a group and sharing with it |
+| F1 | Folders as content-less artifacts: create, rename, nest, move, list, delete with the folder owner's items, encrypted names, the tree on the **Artifacts** tab, and `cairn folder` | Names are ciphertext on disk; moves respect the folder table; depth over 16 is refused; a browser walkthrough of the tree |
 | F2 | Inherited access for items the actor can sign: fan-out on share, new epochs on unshare and on moving out, inherited entries in member lists | Sharing a folder lets a member open every item inside it; unsharing ends their access at once and moves each item to a new epoch; a record that drops an inherited entry is refused |
-| F3 | Drive-style contents: editors add their own items, inheritance updates queued for other owners, `cairn apply`, the "yet to apply" notices | An item another user owns becomes readable only after its owner applies the update; removal is immediate either way; a browser walkthrough with two owners |
+| F3 | Drive-style contents: editors add their own items, inheritance updates queued for other owners, deleting a folder that holds other people's items, `cairn apply`, the "yet to apply" notices | An item another user owns becomes readable only after its owner applies the update; removal is immediate either way; deleting the folder moves that item to its owner and deletes the rest; a browser walkthrough with two owners |
 
 R1 is independent and small. R2 comes before F2, because inherited access
 needs managers to sign member lists. R3 and F1 can proceed in parallel after
 R2.
 
-## Open questions
+## Out of scope
 
-These have a proposed answer in the plan, and need a decision before their
-milestone starts:
-
-1. **Guests and the command-line tool.** The plan keeps guests out of API
-   keys and `cairn login`. Agents working for a guest would then need a
-   member's key.
-2. **Deleting a folder.** The plan allows it only once the folder is empty.
-   Google Drive instead moves other people's items to their owners and
-   deletes the rest.
-3. **Signed group membership.** The plan relies on approval, as the team share
-   does today. Signing group records would close the gap where an operator
-   adds someone to a group, at the cost of another signed chain.
-4. **Public folders.** Out of scope here. One would need a link key for every
-   item inside it.
+- Public folders. One would need a link key for every item inside it.
+- Custom roles defined by administrators.
+- Group membership synced from Google Workspace.
