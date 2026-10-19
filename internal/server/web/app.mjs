@@ -82,7 +82,7 @@ function confirmButton(label, again, action) {
   const b = btn(label, 'danger', async () => {
     if (!b.classList.contains('armed')) {
       b.classList.add('armed');
-      b.textContent = again;
+      b.textContent = typeof again === 'function' ? again() : again;
       timer = setTimeout(() => { b.classList.remove('armed'); b.textContent = label; }, 4000);
       return;
     }
@@ -243,7 +243,10 @@ function renderOwn() {
   }
   $('own').replaceChildren(...kids.map((i) => {
     const row = ownRows.get(i.id);
-    fillOwnActions(row);
+    if (!row.filled) {
+      fillOwnActions(row);
+      row.filled = true;
+    }
     return row.tr;
   }));
 }
@@ -273,8 +276,9 @@ function renderCrumbs() {
   $('crumbs').replaceChildren(...nodes);
 }
 
-// fillOwnActions sets the buttons of one own row. They are built each time
-// the tree is laid out, because a folder's delete states what it removes now.
+// fillOwnActions sets the buttons of one own row, once per load: laying the
+// tree out again keeps them, so a Delete armed while names are still being
+// read stays armed. A folder's Delete counts what it removes when clicked.
 function fillOwnActions(row) {
   const { id } = row;
   const actions = [];
@@ -283,8 +287,10 @@ function fillOwnActions(row) {
   else actions.push(btn('Share', '', () => openShare(id, row.name)));
   actions.push(moveButton(row));
   if (row.folder) {
-    const t = subtree(own, id);
-    const again = `Delete ${plural(t.folders.length, 'folder', 'folders')} and ${plural(t.artifacts.length, 'artifact', 'artifacts')}?`;
+    const again = () => {
+      const t = subtree(own, id);
+      return `Delete ${plural(t.folders.length, 'folder', 'folders')} and ${plural(t.artifacts.length, 'artifact', 'artifacts')}?`;
+    };
     actions.push(confirmButton('Delete', again, () => removeFolder(id)));
   } else {
     actions.push(confirmButton('Delete', 'Delete for good?', () => del('/api/artifacts/' + id)
