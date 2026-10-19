@@ -2689,3 +2689,26 @@ exact name.
   users who left with the hint to run `cairn unshare ITEM USER`, which
   excludes an unlisted holder in a new epoch.
 - `cairn members ITEM` shows the listed groups with their names and roles.
+
+### Sharing with groups in the browser
+
+Milestone R3c brings the team share and group shares to the browser, which
+until then refuses to change a member list that uses either.
+
+- **The share dialog** lists users, groups, and **Everyone**, with the roles
+  each may take: a user `viewer`, `editor`, or `manager`; a group or Everyone
+  `viewer` or `editor`. Adding a group or Everyone writes the record, then
+  approves the members whose checks pass, as `cairn share` does, and names
+  the rest as waiting.
+- **Waiting and left.** The dialog shows newcomers waiting for approval, with
+  the group that holds each, their fingerprint, and **Approve**, and users
+  who left, as still holding the key, with **Remove**, which starts a new
+  epoch that excludes them.
+- **Editors approve too.** An editor sees the waiting newcomers and
+  **Approve** in the same dialog, and nothing else in it. The **Artifacts**
+  tab marks each row with newcomers the caller can approve, and how many.
+- **Every new epoch** the browser starts lists approved users and excludes
+  users who left, under the same rules as the Go client, so the browser and
+  the command-line tool build the same records from the same state.
+- A group that no longer exists is dropped from the next record the browser
+  writes, and the dialog says so.
