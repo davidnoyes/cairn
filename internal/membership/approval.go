@@ -15,7 +15,7 @@ import (
 const (
 	RuleApprover         Rule = "approver"          // the caller is the owner or a listed editor or manager (403)
 	RuleApprovalUser     Rule = "approval user"     // the user is a verified, active account (404)
-	RuleTeamNone         Rule = "team none"         // the record shares with a team (409)
+	RuleTeamNone         Rule = "team none"         // the record shares with a team, or the user is in a listed group (409)
 	RuleHolds            Rule = "holds"             // the user holds no wrap and is not listed (409)
 	RuleApprovalExcluded Rule = "approval excluded" // the user matches no excluded entry (409)
 	RuleApprovalShared   Rule = "approval shared"   // no other user shares their fingerprint or email (409)
@@ -87,9 +87,9 @@ func CheckApproval(cur Current, dir Directory, ch ApprovalChange) (*ApprovalResu
 		return nil, statusError(http.StatusForbidden, RuleApprover, "you are not the owner or a listed editor or manager")
 	}
 
-	// 409: the record shares with a team.
-	if latest.Team != access.TeamViewer && latest.Team != access.TeamEditor {
-		return nil, conflict(RuleTeamNone, "the record's team is %q, so there is no team to approve into", latest.Team)
+	// 409: the record shares with a team or lists a group.
+	if latest.Team != access.TeamViewer && latest.Team != access.TeamEditor && len(latest.Groups) == 0 {
+		return nil, conflict(RuleTeamNone, "the record's team is %q and it lists no group, so there is no one to approve into", latest.Team)
 	}
 
 	u, err := dir.User(ch.User)
@@ -98,6 +98,14 @@ func CheckApproval(cur Current, dir Directory, ch ApprovalChange) (*ApprovalResu
 	}
 	if u == nil || !u.Verified || !u.Active {
 		return nil, statusError(http.StatusNotFound, RuleApprovalUser, "%s is not a user to approve", ch.User)
+	}
+	// 409: the team share is on, or the user is a member of a listed group.
+	in, err := covered(dir, u.ID, latest.Team, latest.Groups)
+	if err != nil {
+		return nil, err
+	}
+	if !in {
+		return nil, conflict(RuleTeamNone, "the record's team is %q, and %s is in none of its groups", latest.Team, u.ID)
 	}
 	if u.ID == cur.Owner.ID {
 		return nil, conflict(RuleHolds, "%s is the owner and needs no wrap", u.ID)

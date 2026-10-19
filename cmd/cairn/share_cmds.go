@@ -143,6 +143,10 @@ func runMembers(args []string) error {
 	if err != nil {
 		return explainRefusal(c, err)
 	}
+	groups, err := c.ListedGroups(va)
+	if err != nil {
+		return explainRefusal(c, err)
+	}
 	if *jsonOut {
 		out := make([]map[string]string, 0, len(rows))
 		for _, r := range rows {
@@ -152,7 +156,7 @@ func runMembers(args []string) error {
 			}
 			out = append(out, row)
 		}
-		res := map[string]any{"artifact": a.ID, "epoch": va.Chain.Latest.Epoch, "seq": va.Chain.Latest.Seq, "members": out}
+		res := map[string]any{"artifact": a.ID, "epoch": va.Chain.Latest.Epoch, "seq": va.Chain.Latest.Seq, "members": out, "groups": groupsJSON(groups)}
 		if by := signedBy(va.Chain.Latest, rows); by != nil {
 			res["signedBy"] = by
 		}
@@ -168,6 +172,9 @@ func runMembers(args []string) error {
 			who = r.User
 		}
 		fmt.Printf("%-6s  %-32s  %-10s  %s\n", r.Role, who, priorLabel(r.State, r.WasVerified), showFP(r.FP))
+	}
+	for _, g := range groups {
+		fmt.Printf("%-6s  %-32s  group %s\n", g.Role, groupLabel(g), g.ID)
 	}
 	if by := signedBy(va.Chain.Latest, rows); by != nil {
 		fmt.Printf("record %d was signed by manager %s\n", va.Chain.Latest.Seq, by["email"])
@@ -245,7 +252,7 @@ func (o *openOffer) text(artifactID string) string {
 }
 
 func runShare(args []string) error {
-	const usage = "cairn share ARTIFACT USER [--role viewer|editor|manager] [--accept-new-key] [--accept-new-owner] [--json]"
+	const usage = "cairn share ARTIFACT USER|GROUP|everyone [--role viewer|editor|manager] [--accept-new-key] [--accept-new-owner] [--json]"
 	fs := flag.NewFlagSet("share", flag.ExitOnError)
 	accept := acceptNewOwnerFlag(fs)
 	role := fs.String("role", "viewer", "viewer, editor, or manager (only the owner makes a manager)")
@@ -263,6 +270,22 @@ func runShare(args []string) error {
 	a, err := resolveArtifact(c, pos[0])
 	if err != nil {
 		return err
+	}
+	switch {
+	case pos[1] == everyone:
+		if *role != "viewer" && *role != "editor" {
+			return fmt.Errorf("everyone is shared as viewer or editor, not %q", *role)
+		}
+		return teamCommand(c, a, *role, *jsonOut)
+	case !strings.Contains(pos[1], "@"):
+		// A user ID has no @, so a name no group has is tried as a user.
+		res, err := c.ShareGroup(a.ID, pos[1], *role, *acceptNewKey)
+		if !errors.Is(err, client.ErrNoGroup) {
+			if err != nil {
+				return explainRefusal(c, err)
+			}
+			return printShareGroup(a, res, *jsonOut)
+		}
 	}
 	res, err := c.Share(a.ID, pos[1], *role, *acceptNewKey)
 	if err != nil {
@@ -317,6 +340,9 @@ func epochChangeJSON(out map[string]any, ch client.EpochChange) {
 	}
 	out["newEpoch"], out["excluded"], out["link"] = ch.NewEpoch, excluded, ch.Link
 	out["unreadableEpochs"] = append([]int{}, ch.Unreadable...)
+	if len(ch.DroppedGroups) > 0 {
+		out["droppedGroups"] = ch.DroppedGroups
+	}
 	if ch.NewEpoch {
 		out["resealed"] = resealJSON(ch.Resealed, ch.ResealErr)
 	}
@@ -378,6 +404,7 @@ func printUnreadable(epochs []int) {
 // because their pusher is no longer an editor. It prints nothing when ch did
 // not start a new epoch.
 func printEpochChange(c *client.Client, artifact string, epoch int, ch client.EpochChange) {
+	printDropped(ch.DroppedGroups)
 	if !ch.NewEpoch {
 		return
 	}
@@ -404,7 +431,7 @@ func printEpochChange(c *client.Client, artifact string, epoch int, ch client.Ep
 }
 
 func runUnshare(args []string) error {
-	const usage = "cairn unshare ARTIFACT USER [--accept-new-owner] [--json]"
+	const usage = "cairn unshare ARTIFACT USER|GROUP|everyone [--accept-new-owner] [--json]"
 	fs := flag.NewFlagSet("unshare", flag.ExitOnError)
 	accept := acceptNewOwnerFlag(fs)
 	jsonOut := fs.Bool("json", false, "JSON output")
@@ -420,6 +447,18 @@ func runUnshare(args []string) error {
 	a, err := resolveArtifact(c, pos[0])
 	if err != nil {
 		return err
+	}
+	switch {
+	case pos[1] == everyone:
+		return teamCommand(c, a, "none", *jsonOut)
+	case !strings.Contains(pos[1], "@"):
+		res, err := c.UnshareGroup(a.ID, pos[1])
+		if !errors.Is(err, client.ErrNoGroup) {
+			if err != nil {
+				return explainRefusal(c, err)
+			}
+			return printUnshareGroup(c, a, res, *jsonOut)
+		}
 	}
 	res, err := c.Unshare(a.ID, pos[1])
 	if err != nil {
@@ -555,10 +594,17 @@ func listPending(c *client.Client, id, name string, jsonOut bool) error {
 	if err != nil {
 		return explainRefusal(c, err)
 	}
+	names, err := groupNames(c, list)
+	if err != nil {
+		return explainRefusal(c, err)
+	}
 	if jsonOut {
-		out := make([]map[string]string, 0, len(list))
+		out := make([]map[string]any, 0, len(list))
 		for _, p := range list {
-			entry := map[string]string{"user": p.User.ID, "name": p.User.Name, "email": p.User.Email, "fp": p.User.FP, "state": p.State}
+			entry := map[string]any{"user": p.User.ID, "name": p.User.Name, "email": p.User.Email, "fp": p.User.FP, "state": p.State}
+			if len(p.Groups) > 0 {
+				entry["groups"] = groupsJSON(groupRows(p.Groups, names))
+			}
 			if p.RotationsErr != nil {
 				entry["rotationsUnreadable"] = "true"
 			}
@@ -571,15 +617,17 @@ func listPending(c *client.Client, id, name string, jsonOut bool) error {
 		if err != nil {
 			return explainRefusal(c, err)
 		}
-		if va.Chain.Latest.Team == "none" {
+		if va.Chain.Latest.Team == "none" && len(va.Chain.Latest.Groups) == 0 {
 			fmt.Printf("%s is not shared with the team; run cairn team %s viewer|editor\n", name, id)
+		} else if va.Chain.Latest.Team == "none" {
+			fmt.Printf("no group members waiting on %s\n", name)
 		} else {
 			fmt.Printf("no team members waiting on %s\n", name)
 		}
 		return nil
 	}
 	states := map[string]bool{}
-	var unreadable []client.PendingUser
+	var unreadable, left []client.PendingUser
 	for _, p := range list {
 		// A user whose records could not be read is not told to be shared
 		// with again: nothing says their keys changed.
@@ -588,9 +636,15 @@ func listPending(c *client.Client, id, name string, jsonOut bool) error {
 		} else {
 			unreadable = append(unreadable, p)
 		}
-		fmt.Printf("%-10s  %-20s  %-32s  %s\n", p.State, p.User.Name, p.User.Email, showFP(p.User.FP))
+		fmt.Printf("%-10s  %-20s  %-32s  %s%s\n", p.State, p.User.Name, p.User.Email, showFP(p.User.FP), groupSuffix(groupRows(p.Groups, names)))
+		if p.State == client.PendingLeft {
+			left = append(left, p)
+		}
 	}
-	fmt.Println("new: waiting for approval; approved: approved, not yet listed by the owner; keyChanged: keys changed since they were wrapped to or listed; rotated: keys rotated since they were listed; the owner's next record lists the new keys")
+	fmt.Println("new: waiting for approval; approved: approved, not yet listed by the owner; left: left every group that held them, and the server no longer lets them read; keyChanged: keys changed since they were wrapped to or listed; rotated: keys rotated since they were listed; the owner's next record lists the new keys")
+	for _, p := range left {
+		fmt.Printf("left: %s still holds the key; to start a new epoch that excludes them, run: cairn unshare %s %s\n", p.User.Email, id, p.User.Email)
+	}
 	if states[client.PendingNew] {
 		fmt.Printf("compare a fingerprint with them, then run: cairn approve %s USER\n", id)
 	}
@@ -721,11 +775,17 @@ func runTeam(args []string) error {
 	if err != nil {
 		return err
 	}
-	res, err := c.Team(a.ID, pos[1])
+	return teamCommand(c, a, pos[1], *jsonOut)
+}
+
+// teamCommand sets the artifact's team share and prints what changed. It is
+// cairn team, and cairn share and unshare with everyone.
+func teamCommand(c *client.Client, a *client.Artifact, team string, jsonOut bool) error {
+	res, err := c.Team(a.ID, team)
 	if err != nil {
 		return explainRefusal(c, err)
 	}
-	if *jsonOut {
+	if jsonOut {
 		listed, unlisted := listingJSON(res.Listed, res.Unlisted)
 		out := map[string]any{
 			"artifact": a.ID, "team": res.Team, "epoch": res.Epoch, "unchanged": res.Unchanged,
@@ -807,19 +867,20 @@ func runPublic(args []string) error {
 			"link": res.Link, "unchanged": res.Unchanged,
 		}
 		out["listed"], _ = listingJSON(res.Listed, nil)
-		epochChangeJSON(out, client.EpochChange{NewEpoch: res.NewEpoch, Excluded: res.Excluded, Link: res.Link, Resealed: res.Resealed, ResealErr: res.ResealErr, Unreadable: res.Unreadable})
+		epochChangeJSON(out, client.EpochChange{NewEpoch: res.NewEpoch, Excluded: res.Excluded, Link: res.Link, Resealed: res.Resealed, ResealErr: res.ResealErr, Unreadable: res.Unreadable, DroppedGroups: res.DroppedGroups})
 		return printArtifactJSON(a.ID, out)
 	}
 	if !res.Public {
 		if res.NewEpoch {
 			fmt.Printf("%s is private\n", a.Name)
-			printEpochChange(c, a.ID, res.Epoch, client.EpochChange{NewEpoch: true, Excluded: res.Excluded, Resealed: res.Resealed, ResealErr: res.ResealErr, Unreadable: res.Unreadable})
+			printEpochChange(c, a.ID, res.Epoch, client.EpochChange{NewEpoch: true, Excluded: res.Excluded, Resealed: res.Resealed, ResealErr: res.ResealErr, Unreadable: res.Unreadable, DroppedGroups: res.DroppedGroups})
 			printListing(a.ID, "", res.Listed, nil)
 		} else {
 			fmt.Printf("%s is already private; nothing changed\n", a.Name)
 		}
 		return nil
 	}
+	printDropped(res.DroppedGroups)
 	if res.Unchanged {
 		fmt.Printf("%s is already public; nothing changed\n", a.Name)
 	} else {

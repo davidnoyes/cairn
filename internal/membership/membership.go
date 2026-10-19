@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 
 	"github.com/aloisdeniel/cairn/internal/access"
@@ -36,6 +37,8 @@ const (
 	RuleMembers       Rule = "members"        // shape, order, roles, fingerprints
 	RuleExcluded      Rule = "excluded"       // shape and order
 	RuleTeam          Rule = "team"           // none, viewer or editor
+	RuleGroups        Rule = "groups"         // shape, order, roles, and at most 100
+	RuleNewGroup      Rule = "new group"      // a group the record adds exists
 	RuleAKCommit      Rule = "akCommit"       // format, and changes exactly with the epoch
 	RuleEpoch         Rule = "epoch"          // the current epoch or the next
 	RuleNewMember     Rule = "new member"     // a new or changed member is the user's current, unique key
@@ -89,6 +92,11 @@ type Directory interface {
 	// Sharing returns the IDs of every user whose current fingerprint is fp
 	// or whose normalized email is email.
 	Sharing(fp, email string) ([]string, error)
+	// GroupExists reports whether the group exists: a deleted one does not.
+	GroupExists(id string) (bool, error)
+	// GroupMember reports whether the group's latest record lists the user. A
+	// deleted group lists no one.
+	GroupMember(group, user string) (bool, error)
 }
 
 // WrapIn is a wrap a change carries.
@@ -143,6 +151,7 @@ type Result struct {
 	Record   *store.Record
 	Members  []store.Member
 	Excluded []store.Excluded
+	Groups   []store.ArtifactGroup
 	// Wraps carry the recipient's current fingerprint.
 	Wraps  []store.Wrap
 	Estate []store.Estate
@@ -301,7 +310,7 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 	}
 
 	// A folder is private to its owner until folders can be shared.
-	if cur.Kind == store.KindFolder && (len(body.Members) > 0 || body.Team != access.TeamNone || body.Public || body.PublicWrites) {
+	if cur.Kind == store.KindFolder && (len(body.Members) > 0 || body.Team != access.TeamNone || len(body.Groups) > 0 || body.Public || body.PublicWrites) {
 		return nil, conflict(RuleFolder, "folders cannot be shared yet")
 	}
 
@@ -316,6 +325,21 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 		return nil, refuse(RuleAKCommit, "a same-epoch record keeps akCommit")
 	case prev != nil && newEpoch && body.AKCommit == prev.AKCommit:
 		return nil, refuse(RuleAKCommit, "a next-epoch record needs a new akCommit")
+	}
+
+	// A group the record adds exists. One it carries over may have been
+	// deleted since: it grants nothing, and the next change drops it.
+	for _, g := range body.Groups {
+		if prev != nil && slices.ContainsFunc(prev.Groups, func(p e2e.GroupShare) bool { return p.Group == g.Group }) {
+			continue
+		}
+		ok, err := dir.GroupExists(g.Group)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, refuse(RuleNewGroup, "group %s does not exist", g.Group)
+		}
 	}
 
 	prevMembers := map[string]e2e.Member{}
@@ -453,11 +477,24 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 				return nil, refuse(RuleSameEpoch, "a same-epoch record excludes %s", x.User)
 			}
 		}
-		if body.Team == access.TeamNone && prev.Team != access.TeamNone {
-			for _, h := range holders {
-				if _, ok := listed[h]; !ok {
-					return nil, refuse(RuleSameEpoch, "a same-epoch record sets team none while team member %s holds a wrap", h)
-				}
+		// Dropping a group, or lowering team to none, leaves an unlisted
+		// holder who read before it without a reason to read after it. One who
+		// had already left read through neither, so the record changes
+		// nothing for them.
+		for _, h := range holders {
+			if _, ok := listed[h]; ok {
+				continue
+			}
+			before, err := covered(dir, h, prev.Team, prev.Groups)
+			if err != nil {
+				return nil, err
+			}
+			after, err := covered(dir, h, body.Team, body.Groups)
+			if err != nil {
+				return nil, err
+			}
+			if before && !after {
+				return nil, refuse(RuleSameEpoch, "a same-epoch record leaves %s, who holds a wrap, with no team share or group to read through", h)
 			}
 		}
 	}
@@ -623,7 +660,26 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 	for _, x := range body.Excluded {
 		res.Excluded = append(res.Excluded, store.Excluded{UserID: x.User, FP: x.FP, Email: x.Email})
 	}
+	for _, g := range body.Groups {
+		res.Groups = append(res.Groups, store.ArtifactGroup{GroupID: g.Group, Role: g.Role})
+	}
 	return res, nil
+}
+
+// covered reports whether an unlisted holder reads under a record with this
+// team and groups: the team share is on, or the user is a member of a listed
+// group.
+func covered(dir Directory, user, team string, groups []e2e.GroupShare) (bool, error) {
+	if team != access.TeamNone {
+		return true, nil
+	}
+	for _, g := range groups {
+		ok, err := dir.GroupMember(g.Group, user)
+		if ok || err != nil {
+			return ok, err
+		}
+	}
+	return false, nil
 }
 
 // checkShape is rule 4: members and excluded are arrays sorted by user ID
@@ -652,6 +708,9 @@ func checkShape(b *e2e.MembershipBody, ownerID string) error {
 	}
 	if !isHex64(b.AKCommit) {
 		return refuse(RuleAKCommit, "akCommit is not 64 lowercase hex")
+	}
+	if err := e2e.CheckGroupShares(b.Groups); err != nil {
+		return refuse(RuleGroups, "%v", err)
 	}
 	for i, x := range b.Excluded {
 		switch {
@@ -837,6 +896,9 @@ func Apply(tx *store.ArtifactTx, res *Result) error {
 	if err := tx.SetExcluded(res.Excluded); err != nil {
 		return err
 	}
+	if err := tx.SetGroups(res.Groups); err != nil {
+		return err
+	}
 	if res.NewEpoch {
 		keep := make([]string, len(res.Members))
 		for i, m := range res.Members {
@@ -925,3 +987,9 @@ func (d txDirectory) User(id string) (*User, error) {
 }
 
 func (d txDirectory) Sharing(fp, email string) ([]string, error) { return d.tx.UsersSharing(fp, email) }
+
+func (d txDirectory) GroupExists(id string) (bool, error) { return d.tx.GroupExists(id) }
+
+func (d txDirectory) GroupMember(group, user string) (bool, error) {
+	return d.tx.IsGroupMember(group, user)
+}

@@ -419,9 +419,9 @@ type ShareResult struct {
 	// is listed again by name.
 	Dropped []e2e.ExcludedEntry
 	EpochChange
-	// Listed are approved team members the record also lists, with the role
-	// the team grants; Unlisted are those whose approval failed a check, who
-	// the owner is asked about.
+	// Listed are approved team and group members the record also lists, with
+	// the role they are granted; Unlisted are those whose approval failed a
+	// check, who the owner is asked about.
 	Listed   []DirectoryUser
 	Unlisted []UnlistedUser
 
@@ -505,11 +505,17 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	rotated := slices.ContainsFunc(pending, func(p PendingUser) bool { return p.User.ID == u.ID && p.State == PendingRotated })
 	// An approved user holds their wraps already, so the owner's client takes
 	// the server's word for it only after the checks listApproved makes.
+	// A user who left every group holds their wraps still, and the owner who
+	// lists them by name decides about them as for any share.
 	approved := false
-	if p := slices.IndexFunc(pending, func(p PendingUser) bool { return p.User.ID == u.ID && p.State == PendingApproved }); p >= 0 {
+	if p := slices.IndexFunc(pending, func(p PendingUser) bool {
+		return p.User.ID == u.ID && (p.State == PendingApproved || p.State == PendingLeft)
+	}); p >= 0 {
 		approved = true
-		if err := checkApproved(k, latest, va.Membership.Rotations, dir, pending[p]); err != nil {
-			return nil, fmt.Errorf("%w: %s: %w", ErrApprovalUnverified, u.Email, err)
+		if pending[p].State == PendingApproved {
+			if err := checkApproved(k, latest, va.Membership.Rotations, dir, pending[p]); err != nil {
+				return nil, fmt.Errorf("%w: %s: %w", ErrApprovalUnverified, u.Email, err)
+			}
 		}
 	}
 
@@ -552,15 +558,13 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 		return res, nil
 	}
 	res.Unchanged = false
-	lst := approvedListing{pins: pins}
-	if latest.Team != "none" {
-		if lst, err = c.listApproved(k, va, dir, pending, latest.Team, func(id string) bool {
-			return slices.ContainsFunc(members, func(m e2e.Member) bool { return m.User == id })
-		}); err != nil {
-			return nil, err
-		}
-		maps.Copy(lst.pins, pins)
+	lst, err := c.listApproved(k, va, dir, pending, latest, func(id string) bool {
+		return slices.ContainsFunc(members, func(m e2e.Member) bool { return m.User == id })
+	})
+	if err != nil {
+		return nil, err
 	}
+	maps.Copy(lst.pins, pins)
 	members = append(members, lst.members...)
 	res.Listed, res.Unlisted = lst.listed, lst.unlisted
 	slices.SortFunc(members, func(a, b e2e.Member) int { return strings.Compare(a.User, b.User) })
@@ -595,7 +599,7 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	next := latest
 	next.Members = members
 	next.Excluded, res.Dropped = dropExcluded(latest.Excluded, members, dir)
-	if err := c.putRecord(k, artifactID, va, next, wraps, nil, ""); err != nil {
+	if res.DroppedGroups, err = c.putRecord(k, artifactID, va, next, wraps, nil, ""); err != nil {
 		// A member who rotated needs no wrap, which cairn could not know
 		// while their records were out of reach: the server refuses it as a
 		// bad request.
@@ -697,10 +701,17 @@ func signChained(seed []byte, signer string, va *VerifiedArtifact, next e2e.Memb
 // public record carries the hash of the epoch's link token, which the server
 // requires of every public record: linkHash for a next epoch, whose estate
 // copy the server does not hold yet, or empty to take it from the epoch's own.
-func (c *Client) putRecord(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, next e2e.MembershipBody, wraps, estate []map[string]any, linkHash string) error {
+// It drops each listed group that no longer exists from the record, and
+// returns their IDs.
+func (c *Client) putRecord(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, next e2e.MembershipBody, wraps, estate []map[string]any, linkHash string) ([]string, error) {
+	var dropped []string
+	var err error
+	if next.Groups, dropped, err = c.liveGroups(next.Groups); err != nil {
+		return nil, err
+	}
 	next, env, err := signNext(k.Ed25519Seed, k.UserID, va, signedBy(next, k))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if wraps == nil {
 		wraps = []map[string]any{}
@@ -710,10 +721,10 @@ func (c *Client) putRecord(k *UnlockedKeys, artifactID string, va *VerifiedArtif
 	}
 	if next.Public && linkHash == "" {
 		if linkHash, err = c.linkTokenHashFor(k, artifactID, va.Chain, next.Epoch); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return c.doJSON("PUT", "/api/artifacts/"+artifactID+"/membership", map[string]any{
+	return dropped, c.doJSON("PUT", "/api/artifacts/"+artifactID+"/membership", map[string]any{
 		"membership": env, "wraps": wraps, "estate": estate, "linkTokenHash": linkHash,
 	}, nil)
 }

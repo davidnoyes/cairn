@@ -49,6 +49,13 @@ type Member struct {
 	FP     string
 }
 
+// ArtifactGroup is a group the latest record lists, and the role it grants:
+// viewer or editor.
+type ArtifactGroup struct {
+	GroupID string
+	Role    string
+}
+
 // Excluded is an entry of the latest record's excluded list.
 type Excluded struct {
 	UserID string
@@ -94,10 +101,14 @@ type Offer struct {
 // AccessState is what the permission check needs about one caller and one
 // artifact: the artifact, the caller's entry in the latest record (nil when
 // not listed), every wrap the caller holds, and the artifact owner's
-// nomination when it names the caller (nil otherwise).
+// nomination when it names the caller (nil otherwise). HasGroups is true when
+// the artifact's latest record lists a group, and InGroup when the caller is
+// a member, in its latest record, of one.
 type AccessState struct {
 	Artifact       *Artifact
 	Member         *Member
+	InGroup        bool
+	HasGroups      bool
 	Wraps          []Wrap
 	OwnerSuccessor *Successor
 }
@@ -215,6 +226,9 @@ func (s *Store) AccessState(artifactID, userID string) (*AccessState, error) {
 		return nil, err
 	}
 	st := &AccessState{Artifact: a}
+	if err := tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM artifact_groups WHERE artifact_id = ?)`, artifactID).Scan(&st.HasGroups); err != nil {
+		return nil, err
+	}
 	if userID == "" {
 		return st, nil
 	}
@@ -228,6 +242,11 @@ func (s *Store) AccessState(artifactID, userID string) (*AccessState, error) {
 		return nil, err
 	}
 	if st.Wraps, err = queryWraps(tx, `WHERE artifact_id = ? AND user_id = ? ORDER BY epoch`, artifactID, userID); err != nil {
+		return nil, err
+	}
+	if err := tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM artifact_groups ag
+		JOIN group_members gm ON gm.group_id = ag.group_id
+		WHERE ag.artifact_id = ? AND gm.user_id = ?)`, artifactID, userID).Scan(&st.InGroup); err != nil {
 		return nil, err
 	}
 	sc, err := scanSuccessor(tx.QueryRow(`SELECT `+successorCols+successorFrom+`WHERE s.user_id = ? AND s.successor_id = ?`, a.OwnerID, userID))
@@ -493,6 +512,54 @@ func (t *ArtifactTx) Members() ([]Member, error) {
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+// SetGroups replaces the list of groups the artifact is shared with.
+func (t *ArtifactTx) SetGroups(groups []ArtifactGroup) error {
+	if _, err := t.tx.Exec(`DELETE FROM artifact_groups WHERE artifact_id = ?`, t.id); err != nil {
+		return err
+	}
+	for _, g := range groups {
+		if _, err := t.tx.Exec(`INSERT INTO artifact_groups (artifact_id, group_id, role) VALUES (?, ?, ?)`,
+			t.id, g.GroupID, g.Role); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Groups returns the groups the artifact is shared with, ordered by group ID.
+func (t *ArtifactTx) Groups() ([]ArtifactGroup, error) {
+	rows, err := t.tx.Query(`SELECT group_id, role FROM artifact_groups WHERE artifact_id = ? ORDER BY group_id`, t.id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ArtifactGroup
+	for rows.Next() {
+		var g ArtifactGroup
+		if err := rows.Scan(&g.GroupID, &g.Role); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+// GroupExists reports whether a group with this ID exists: not one that was
+// deleted.
+func (t *ArtifactTx) GroupExists(id string) (bool, error) {
+	var ok bool
+	err := t.tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM groups WHERE id = ?)`, id).Scan(&ok)
+	return ok, err
+}
+
+// IsGroupMember reports whether the group's latest record lists the user. A
+// deleted group lists no one.
+func (t *ArtifactTx) IsGroupMember(groupID, userID string) (bool, error) {
+	var ok bool
+	err := t.tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?)`, groupID, userID).Scan(&ok)
+	return ok, err
 }
 
 // SetExcluded replaces the excluded list.

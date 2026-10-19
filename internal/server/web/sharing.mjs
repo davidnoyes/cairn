@@ -31,7 +31,7 @@ const encoder = new TextEncoder();
 // answers it: not-signed-in, bad-role, not-owner, share-self, unshare-owner,
 // unknown-user, directory-duplicate, not-member, member-key-changed,
 // member-deleted, pin-conflict, public-writes-with-off, cannot-reseal,
-// team-unsupported, handover-not-acked, no-write-key, read-back, epoch-moved,
+// team-unsupported, groups-unsupported, handover-not-acked, no-write-key, read-back, epoch-moved,
 // viewer-account, owner-only, owner-missing.
 export class SharingError extends Error {
   constructor(code, message, options) {
@@ -275,6 +275,12 @@ function checkNoTeam(va) {
   if (va.latest.team !== 'none') throw new SharingError('team-unsupported', 'This artifact is shared with a team, which the browser cannot change yet. Use the cairn tool.');
 }
 
+// checkNoGroups refuses a member list that lists groups, which the browser
+// cannot change yet: a record it signed would drop them.
+function checkNoGroups(va) {
+  if ((va.latest.groups ?? []).length > 0) throw new SharingError('groups-unsupported', 'This artifact is shared with groups, which the browser cannot change yet. Use the cairn tool.');
+}
+
 // callerRoleOf is how the caller may change the artifact's members: 'owner'
 // when the latest record names them as owner under their current fingerprint,
 // 'manager' when it lists them as manager under it, else ''.
@@ -308,6 +314,7 @@ async function adminAction(deps, artifactId) {
   checkHandover(va);
   const manager = adminRole(caller, va) === 'manager';
   checkNoTeam(va);
+  checkNoGroups(va);
   return { caller, va, manager };
 }
 

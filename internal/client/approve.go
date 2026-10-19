@@ -13,15 +13,16 @@ import (
 	"strings"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 var (
 	// ErrNotApprover means the caller is neither the owner nor a listed
 	// editor, so their client never wraps keys.
 	ErrNotApprover = errors.New("only the owner, an editor, or a manager can approve team members")
-	// ErrNoTeam means the latest record's team is none, so there is no team
-	// to approve into.
-	ErrNoTeam = errors.New("the artifact is not shared with the team; the owner sets it with cairn team")
+	// ErrNoTeam means the latest record's team is none and it lists no group,
+	// so there is no one to approve into.
+	ErrNoTeam = errors.New("the artifact is not shared with the team or a group; the owner shares with cairn share ARTIFACT everyone, or with a group")
 	// ErrAlreadyListed means the latest record lists the user. Only the owner
 	// shares again, through a membership record.
 	ErrAlreadyListed = errors.New("the user is already a member of the artifact")
@@ -34,7 +35,8 @@ var (
 	// that are no longer theirs. A changed key is never a new member.
 	ErrChangedKey = errors.New("the user's keys changed after they were wrapped to or listed; the owner shares again with cairn share")
 	// ErrNotWaiting means the server lists the user as none of new, approved,
-	// keyChanged, or rotated.
+	// keyChanged, or rotated. A user who left is not waiting either: cairn
+	// unshare removes them.
 	ErrNotWaiting = errors.New("the user is not waiting for approval on this artifact")
 	// ErrApprovalUnverified means the owner's client does not list a user the
 	// server reports as approved, because the approval does not check out.
@@ -49,6 +51,7 @@ var (
 const (
 	PendingNew        = "new"
 	PendingApproved   = "approved"
+	PendingLeft       = "left"
 	PendingKeyChanged = "keyChanged"
 	PendingRotated    = "rotated"
 )
@@ -57,11 +60,15 @@ const (
 // the keys the server serves for them now, and why the caller's client
 // should ask about them. Approval is the stored approval of an approved
 // user, shown to the owner only. State is rotated only after the client
-// checked the user's rotation chain itself, as pendingFor does.
+// checked the user's rotation chain itself, as pendingFor does. Groups are the
+// IDs of the listed groups the server says hold a new or approved user; the
+// client checks them against the groups' verified chains before it relies on
+// them.
 type PendingUser struct {
 	User     DirectoryUser
 	State    string
 	Approval *e2e.Envelope
+	Groups   []string
 	// RotationsErr is why a keyChanged entry is one: the server called the
 	// user rotated, and their rotation records could not be read.
 	RotationsErr error
@@ -71,6 +78,7 @@ type pendingWire struct {
 	directoryWire
 	State    string        `json:"state"`
 	Approval *e2e.Envelope `json:"approval"`
+	Group    []string      `json:"group"`
 }
 
 // Pending lists the users the caller, an owner, an editor, or a manager, should be
@@ -109,7 +117,7 @@ func (c *Client) pendingFor(k *UnlockedKeys, artifactID string, va *VerifiedArti
 				return nil, fetchErr
 			}
 		}
-		out = append(out, PendingUser{User: u, State: w.State, Approval: w.Approval, RotationsErr: fetchErr})
+		out = append(out, PendingUser{User: u, State: w.State, Approval: w.Approval, Groups: w.Group, RotationsErr: fetchErr})
 	}
 	return out, nil
 }
@@ -198,19 +206,28 @@ type ApproveResult struct {
 	Epoch       int
 }
 
-// Approve approves who, a team member waiting for access, at the
+// Approve approves who, a team or group member waiting for access, at the
 // artifact's current epoch: it wraps the AK of every epoch to them and
 // signs an approval of their name and fingerprint. The caller must be the
 // owner or a listed editor or manager. It refuses, before asking the server, a user
 // the chain excludes, a directory in which two user IDs share an email or a
 // fingerprint, a user who is listed, already approved, or whose key changed
 // after they were wrapped to, and a user whose pinned key changed, unless
-// acceptNewKey. The pin is stored once the server accepts the approval.
+// acceptNewKey. While the team share is off, the user must be listed by the
+// verified chain of a listed group that holds them, under the fingerprint the
+// directory serves for them: a difference is a key-change warning, which
+// acceptNewKey overrides too. The pin is stored once the server accepts the
+// approval.
 func (c *Client) Approve(artifactID, who string, acceptNewKey bool) (*ApproveResult, error) {
 	k, err := c.Unlock()
 	if err != nil {
 		return nil, err
 	}
+	return c.approveWith(k, artifactID, who, acceptNewKey)
+}
+
+// approveWith is Approve for a caller whose keys are unlocked already.
+func (c *Client) approveWith(k *UnlockedKeys, artifactID, who string, acceptNewKey bool) (*ApproveResult, error) {
 	va, err := c.VerifyArtifact(k, artifactID, "")
 	if err != nil {
 		return nil, err
@@ -222,7 +239,7 @@ func (c *Client) Approve(artifactID, who string, acceptNewKey bool) (*ApproveRes
 	if !approverOf(latest, k) {
 		return nil, ErrNotApprover
 	}
-	if latest.Team == "none" {
+	if latest.Team == "none" && len(latest.Groups) == 0 {
 		return nil, ErrNoTeam
 	}
 	dir, err := c.Directory()
@@ -252,12 +269,15 @@ func (c *Client) Approve(artifactID, who string, acceptNewKey bool) (*ApproveRes
 		return nil, fmt.Errorf("%w: %s", ErrAlreadyListed, u.Email)
 	}
 	switch {
-	case p < 0:
+	case p < 0 || pending[p].State == PendingLeft:
 		return nil, fmt.Errorf("%w: %s", ErrNotWaiting, u.Email)
 	case pending[p].State == PendingApproved:
 		return nil, fmt.Errorf("%w: %s", ErrAlreadyApproved, u.Email)
 	case pending[p].User.FP != u.FP:
 		return nil, fmt.Errorf("%w: %s", ErrPendingKeysDiffer, u.Email)
+	}
+	if err := c.checkGroupCover(k, va, latest, pending[p], u, acceptNewKey); err != nil {
+		return nil, err
 	}
 	prior, pin, err := c.checkPin(va.Keyring, u, acceptNewKey, va.Membership.Rotations)
 	if err != nil {
@@ -354,7 +374,7 @@ func (c *Client) callerAKs(k *UnlockedKeys, artifactID string, chain *e2e.Chain)
 	return aks, nil
 }
 
-// UnlistedUser is an approved team member the owner's client did not list,
+// UnlistedUser is an approved team or group member the owner's client did not list,
 // because their approval failed a check (Err says which, by errors.Is), and
 // who the owner must be asked about by name and fingerprint.
 type UnlistedUser struct {
@@ -418,19 +438,38 @@ func checkApproved(k *UnlockedKeys, latest e2e.MembershipBody, rotations map[str
 }
 
 // listApproved decides, for each approved user the server reports, whether
-// the owner's client may list them as role without asking: only when the
+// the owner's client may list them without asking, under the role rec gives
+// them: the highest of its team share and its groups that hold them, from
+// the groups' verified chains (grantedRole). It lists them only when the
 // approval passes all four checks of e2e.CheckApproval, the directory lists
 // the keys the pending entry does, and the keys do not contradict the
-// owner's pin. A user failing a check is reported, never listed. skip names
-// users already in the record being built. An error is a failure that ends
-// the command (fatalFetch), never a user to leave unlisted.
-func (c *Client) listApproved(k *UnlockedKeys, va *VerifiedArtifact, dir []DirectoryUser, pending []PendingUser, role string, skip func(id string) bool) (approvedListing, error) {
+// owner's pin. A user failing a check, or whom a group holds in the server's
+// word only, is reported, never listed. A user rec gives no role is left for
+// the caller to exclude. skip names users already in the record being built.
+// An error is a failure that ends the command, never a user to leave unlisted.
+func (c *Client) listApproved(k *UnlockedKeys, va *VerifiedArtifact, dir []DirectoryUser, pending []PendingUser, rec e2e.MembershipBody, skip func(id string) bool) (approvedListing, error) {
 	out := approvedListing{pins: map[string]pinDecision{}}
+	chains := groupSet{}
 	for _, p := range pending {
 		if p.State != PendingApproved || skip(p.User.ID) {
 			continue
 		}
-		err := checkApproved(k, va.Chain.Latest, va.Membership.Rotations, dir, p)
+		role, err := c.grantedRole(k, va, rec, p, chains)
+		if errors.Is(err, ErrNotInGroup) {
+			out.unlisted = append(out.unlisted, UnlistedUser{User: p.User, Err: err})
+			continue
+		}
+		if err != nil {
+			return out, err
+		}
+		if role == "" {
+			continue
+		}
+		// A viewer account is listed as a viewer, whatever role it is granted.
+		if i := slices.IndexFunc(dir, func(d DirectoryUser) bool { return d.ID == p.User.ID }); i >= 0 && dir[i].Role == store.RoleViewer {
+			role = "viewer"
+		}
+		err = checkApproved(k, va.Chain.Latest, va.Membership.Rotations, dir, p)
 		var pin *e2e.Pin
 		if err == nil {
 			_, pin, err = c.checkPin(va.Keyring, p.User, false, va.Membership.Rotations)
@@ -451,25 +490,24 @@ func (c *Client) listApproved(k *UnlockedKeys, va *VerifiedArtifact, dir []Direc
 	return out, nil
 }
 
-// teamNoneNextEpoch is Team none while a team member holds a wrap: a next-epoch
-// record that excludes each of them.
-func (c *Client) teamNoneNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, pending []PendingUser, res *TeamResult) (*TeamResult, error) {
+// coverEndsNextEpoch is a change to the team share or the groups that leaves
+// an unlisted holder of a wrap without a reason to read: a next-epoch record,
+// next, that excludes each of them, and lists the ones another group or the
+// team still covers.
+func (c *Client) coverEndsNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedArtifact, pending []PendingUser, next e2e.MembershipBody) (*EpochChange, []DirectoryUser, error) {
 	dir, err := c.Directory()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	next := va.Chain.Latest
-	next.Team = "none"
-	change, _, err := c.putNextEpoch(k, artifactID, va, dir, pending, nextEpochRecord{next: next})
+	change, listed, err := c.putNextEpoch(k, artifactID, va, dir, pending, nextEpochRecord{next: next})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := c.readBack(k, artifactID, change.Link); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	c.resealInto(k, artifactID, change)
-	res.EpochChange, res.Epoch = *change, va.Chain.Latest.Epoch+1
-	return res, nil
+	return change, listed, nil
 }
 
 // Team
@@ -527,29 +565,31 @@ func (c *Client) Team(artifactID, team string) (*TeamResult, error) {
 	listed := func(id string) bool {
 		return slices.ContainsFunc(latest.Members, func(m e2e.Member) bool { return m.User == id })
 	}
+	next := latest
+	next.Team = team
 	if team == "none" {
 		// A team member holds a wrap while they are approved, or while a
 		// wrap they hold is for keys that are no longer theirs, including
-		// keys they rotated away from.
-		if slices.ContainsFunc(pending, func(p PendingUser) bool {
-			return p.State == PendingApproved || (p.State == PendingKeyChanged || p.State == PendingRotated) && !listed(p.User.ID)
-		}) {
-			return c.teamNoneNextEpoch(k, artifactID, va, pending, res)
+		// keys they rotated away from. A listed group still covers the
+		// approved ones it holds.
+		if holdersLose(pending, latest, next) {
+			change, _, err := c.coverEndsNextEpoch(k, artifactID, va, pending, next)
+			if err != nil {
+				return nil, err
+			}
+			res.EpochChange, res.Epoch = *change, latest.Epoch+1
+			return res, nil
 		}
 	}
-	lst := approvedListing{pins: map[string]pinDecision{}}
-	if team != "none" {
-		dir, err := c.Directory()
-		if err != nil {
-			return nil, err
-		}
-		if lst, err = c.listApproved(k, va, dir, pending, team, listed); err != nil {
-			return nil, err
-		}
+	dir, err := c.Directory()
+	if err != nil {
+		return nil, err
+	}
+	lst, err := c.listApproved(k, va, dir, pending, next, listed)
+	if err != nil {
+		return nil, err
 	}
 	res.Listed, res.Unlisted = lst.listed, lst.unlisted
-	next := latest
-	next.Team = team
 	next.Members = slices.Clone(latest.Members)
 	// The pending legend names this command to list the new keys of a member
 	// who rotated, so a team already set is Unchanged only if none waits.
@@ -563,7 +603,7 @@ func (c *Client) Team(artifactID, team string) (*TeamResult, error) {
 	}
 	next.Members = append(next.Members, lst.members...)
 	slices.SortFunc(next.Members, func(a, b e2e.Member) int { return strings.Compare(a.User, b.User) })
-	if err := c.putRecord(k, artifactID, va, next, nil, nil, ""); err != nil {
+	if res.DroppedGroups, err = c.putRecord(k, artifactID, va, next, nil, nil, ""); err != nil {
 		return nil, err
 	}
 	for id, d := range lst.pins {

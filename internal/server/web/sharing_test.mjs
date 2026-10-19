@@ -326,6 +326,20 @@ test('share leaves no pin when the membership write fails', async () => {
   assert.deepEqual((await readServerKeyring(s.server, U.owner)).pins, {});
 });
 
+test('share refuses an artifact that lists groups', async () => {
+  const s = await scene();
+  const latest = bodyOf(s.world.records[1]);
+  const groups = [{ group: '11111111-1111-4111-8111-111111111111', role: 'viewer' }];
+  const record = await e2e.newEnvelope(U.owner.ed.seed, U.owner.id, 'membership', enc.encode(JSON.stringify({ ...latest, seq: 3, groups, prev: await headOf(s.world, 1) })));
+  s.server.records = [...s.world.records, record];
+  for (const fn of [
+    () => share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer'),
+    () => unshare(s.deps, ARTIFACT, 'editor@example.com'),
+    () => setPublic(s.deps, ARTIFACT, true),
+  ]) assert.equal((await fn().catch((e) => e)).code, 'groups-unsupported');
+  noPuts(s);
+});
+
 test('share refuses a team artifact and an unacknowledged handover', async () => {
   const team = await scene();
   const latest = bodyOf(team.world.records[1]);

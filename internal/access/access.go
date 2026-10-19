@@ -141,10 +141,12 @@ type Wrap struct {
 
 // Artifact is the artifact's state from its latest membership record.
 type Artifact struct {
-	ID           string
-	OwnerID      string
-	Epoch        int
-	Team         string
+	ID      string
+	OwnerID string
+	Epoch   int
+	Team    string
+	// HasGroups is true when the latest record lists a group.
+	HasGroups    bool
 	Public       bool
 	PublicWrites bool
 }
@@ -165,6 +167,10 @@ type Request struct {
 	// LinkToken is true when the request carried X-Cairn-Link-Token and its
 	// hash matched the artifact's public token hash.
 	LinkToken bool
+	// InGroup is true when the caller is a member, in its latest record, of a
+	// group the artifact's latest record lists. A deleted group has no
+	// members, so it never sets it.
+	InGroup bool
 	// Successor is true when the caller is the released successor of the
 	// artifact's owner. The caller of Check works that out; an artifact only
 	// shared with the nominating user never sets it.
@@ -188,8 +194,9 @@ func match(r Request) matches {
 	m.owner = m.signedIn && c.UserID == a.OwnerID
 	m.member = m.signedIn && r.Member != nil
 	// A team member the record also lists matches as a member first, so the
-	// "record does not list them" condition needs no check here.
-	m.team = m.signedIn && (a.Team == TeamViewer || a.Team == TeamEditor) && holdsWrap(c.Wraps, a.Epoch)
+	// "record does not list them" condition needs no check here. A member of
+	// a listed group matches the same way, at the same level.
+	m.team = m.signedIn && (a.Team == TeamViewer || a.Team == TeamEditor || r.InGroup) && holdsWrap(c.Wraps, a.Epoch)
 	m.successor = m.signedIn && r.Successor
 	m.link = a.Public && r.LinkToken
 	if c.LinkOnly {
@@ -268,8 +275,8 @@ func Check(r Request, act Action) Decision {
 	if !allowed(m, r.Artifact, act) {
 		return Forbidden
 	}
-	// An approval needs a team share to approve into.
-	if act == ApproveMember && r.Artifact.Team != TeamViewer && r.Artifact.Team != TeamEditor {
+	// An approval needs a team share or a listed group to approve into.
+	if act == ApproveMember && r.Artifact.Team != TeamViewer && r.Artifact.Team != TeamEditor && !r.Artifact.HasGroups {
 		return Conflict
 	}
 	return Allow

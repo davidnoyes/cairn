@@ -73,6 +73,11 @@ func (d fakeDir) Sharing(fp, email string) ([]string, error) {
 	return ids, nil
 }
 
+// A fakeDir has no groups: see groupDir for one that has.
+func (d fakeDir) GroupExists(string) (bool, error) { return false, nil }
+
+func (d fakeDir) GroupMember(string, string) (bool, error) { return false, nil }
+
 // fixture is an artifact at epoch 2, seq 3, owned by o: a is an editor, b a
 // viewer, x excluded, team viewer, and tm a team member holding wraps for
 // epochs 1 and 2. c is a verified user with no access.

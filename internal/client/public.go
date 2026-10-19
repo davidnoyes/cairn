@@ -36,6 +36,9 @@ type PublicResult struct {
 	ResealErr error
 	// Unreadable is as in EpochChange.
 	Unreadable []int
+	// DroppedGroups are the groups the record dropped because they no longer
+	// exist.
+	DroppedGroups []string
 }
 
 // Public makes the artifact public, or sets whether a signed-in link holder
@@ -108,7 +111,7 @@ func (c *Client) Public(artifactID string, on bool, writes *bool) (*PublicResult
 		res.Unchanged = true
 		return res, nil
 	}
-	if err := c.putRecord(k, artifactID, va, next, nil, nil, ""); err != nil {
+	if res.DroppedGroups, err = c.putRecord(k, artifactID, va, next, nil, nil, ""); err != nil {
 		return nil, err
 	}
 	for id, d := range pins {
@@ -143,7 +146,7 @@ func (c *Client) publicOffNextEpoch(k *UnlockedKeys, artifactID string, va *Veri
 	}
 	c.resealInto(k, artifactID, change)
 	return &PublicResult{Epoch: va.Chain.Latest.Epoch + 1, NewEpoch: true, Excluded: change.Excluded, Listed: listed,
-		Resealed: change.Resealed, ResealErr: change.ResealErr, Unreadable: change.Unreadable}, nil
+		Resealed: change.Resealed, ResealErr: change.ResealErr, Unreadable: change.Unreadable, DroppedGroups: change.DroppedGroups}, nil
 }
 
 // linkTokenHashFor is the hash of the epoch's link token the server stores

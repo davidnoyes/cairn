@@ -39,11 +39,19 @@ type ExcludedEntry struct {
 	Email string `json:"email"`
 }
 
+// GroupShare is a group a membership record lists, and the role it grants:
+// viewer or editor.
+type GroupShare struct {
+	Group string `json:"group"`
+	Role  string `json:"role"`
+}
+
 // MembershipBody is signed by the owner, or, as version 2, by a manager:
 // Signer and SignerFP then name the manager and the key that signed. They
-// are the only fields with `omitempty`, because a version 1 body has
-// neither: see checkVersion. An explicit empty value still fails
-// DecodeStrict's round trip.
+// and Groups are the only fields with `omitempty`, because a version 1 body
+// has no signer fields, and a record that lists no groups has no groups key:
+// see checkVersion. An explicit empty value still fails DecodeStrict's round
+// trip.
 type MembershipBody struct {
 	V            int             `json:"v"`
 	Artifact     string          `json:"artifact"`
@@ -55,6 +63,7 @@ type MembershipBody struct {
 	Members      []Member        `json:"members"`
 	Excluded     []ExcludedEntry `json:"excluded"`
 	Team         string          `json:"team"`
+	Groups       []GroupShare    `json:"groups,omitempty"`
 	Public       bool            `json:"public"`
 	PublicWrites bool            `json:"publicWrites"`
 	Prev         string          `json:"prev"`

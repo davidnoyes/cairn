@@ -49,6 +49,9 @@ type EpochChange struct {
 	Link      string
 	Resealed  *ResealResult
 	ResealErr error
+	// DroppedGroups are the groups the record dropped because they no longer
+	// exist.
+	DroppedGroups []string
 	// Unreadable are the epochs the owner could not read when they made the
 	// change, because the wrap a manager made for them did not open: their
 	// content stays unreadable. It is empty when a manager made the change,
@@ -96,7 +99,7 @@ func (c *Client) putNextEpoch(k *UnlockedKeys, artifactID string, va *VerifiedAr
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := c.putRecord(k, artifactID, va, b.next, b.wraps, b.estate, b.linkHash); err != nil {
+	if b.change.DroppedGroups, err = c.putRecord(k, artifactID, va, b.next, b.wraps, b.estate, b.linkHash); err != nil {
 		return nil, nil, err
 	}
 	for id, d := range b.lst.pins {
@@ -148,13 +151,10 @@ func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 		return slices.ContainsFunc(next.Members, func(m e2e.Member) bool { return m.User == id })
 	}
 
-	// Team members who hold a wrap are listed or excluded.
-	lst := approvedListing{pins: map[string]pinDecision{}}
-	if next.Team != "none" {
-		var err error
-		if lst, err = c.listApproved(k, va, dir, pending, next.Team, func(id string) bool { return inMembers(id) || id == r.exclude }); err != nil {
-			return nil, err
-		}
+	// Team and group members who hold a wrap are listed or excluded.
+	lst, err := c.listApproved(k, va, dir, pending, next, func(id string) bool { return inMembers(id) || id == r.exclude })
+	if err != nil {
+		return nil, err
 	}
 	next.Members = append(slices.Clone(next.Members), lst.members...)
 	slices.SortFunc(next.Members, func(a, b e2e.Member) int { return strings.Compare(a.User, b.User) })
@@ -233,12 +233,17 @@ func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 			exclude1(p.User, pin.FP, reason)
 		case p.User.ID == r.exclude:
 			exclude1(p.User, p.User.FP, "removed")
-		case p.State == PendingApproved || p.State == PendingRotated:
+		case p.State == PendingApproved || p.State == PendingRotated || p.State == PendingLeft:
 			// A rotated user who is not listed holds wraps under their new keys
 			// and an approval for their old ones, which no record can list.
 			reason := "team sharing ended while they held a wrap"
-			if p.State == PendingRotated {
+			switch {
+			case p.State == PendingRotated:
 				reason = "their keys rotated after they were approved, so the approval no longer checks out"
+			case p.State == PendingLeft:
+				reason = "left the group"
+			case latest.Team == "none" || next.Team != "none":
+				reason = "no group they belong to is shared with the artifact any more"
 			}
 			if i := slices.IndexFunc(lst.unlisted, func(u UnlistedUser) bool { return u.User.ID == p.User.ID }); i >= 0 {
 				reason = fmt.Sprintf("their approval does not check out: %v", lst.unlisted[i].Err)
@@ -459,7 +464,7 @@ func (c *Client) Unshare(artifactID, who string) (*UnshareResult, error) {
 	next := latest
 	next.Members = slices.DeleteFunc(slices.Clone(latest.Members), func(m e2e.Member) bool { return m.User == u.ID })
 	if len(next.Members) == len(latest.Members) && !slices.ContainsFunc(pending, func(p PendingUser) bool {
-		return p.User.ID == u.ID && (p.State == PendingApproved || p.State == PendingKeyChanged || p.State == PendingRotated)
+		return p.User.ID == u.ID && (p.State == PendingApproved || p.State == PendingLeft || p.State == PendingKeyChanged || p.State == PendingRotated)
 	}) {
 		return nil, fmt.Errorf("%w: %s", ErrNotMember, u.Email)
 	}

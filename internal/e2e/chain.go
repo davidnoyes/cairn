@@ -176,6 +176,9 @@ func openRecord(env Envelope, artifact string, owners map[string][]byte) (Member
 	if b.Team != "none" && b.Team != "viewer" && b.Team != "editor" {
 		return b, fmt.Errorf("%w: team %q", ErrChain, b.Team)
 	}
+	if err := CheckGroupShares(b.Groups); err != nil {
+		return b, err
+	}
 	if !isHex64(b.AKCommit) {
 		return b, fmt.Errorf("%w: akCommit is not 64 lowercase hex digits", ErrChain)
 	}
@@ -211,6 +214,31 @@ func openRecord(env Envelope, artifact string, owners map[string][]byte) (Member
 		}
 	}
 	return b, nil
+}
+
+// maxGroupShares is the most groups a membership record lists.
+const maxGroupShares = 100
+
+// CheckGroupShares checks the groups of a membership record, as openRecord and
+// the server do: at most
+// maxGroupShares entries, each a lowercase UUID with role viewer or editor,
+// sorted by group ID and unique.
+func CheckGroupShares(gs []GroupShare) error {
+	if len(gs) > maxGroupShares {
+		return fmt.Errorf("%w: %d groups, at most %d", ErrChain, len(gs), maxGroupShares)
+	}
+	for i, g := range gs {
+		if !isUUID(g.Group) {
+			return fmt.Errorf("%w: group %q is not a lowercase UUID", ErrChain, g.Group)
+		}
+		if g.Role != "viewer" && g.Role != "editor" {
+			return fmt.Errorf("%w: group %q has role %q", ErrChain, g.Group, g.Role)
+		}
+		if i > 0 && gs[i-1].Group >= g.Group {
+			return fmt.Errorf("%w: groups not sorted by group ID, or duplicated", ErrChain)
+		}
+	}
+	return nil
 }
 
 // isHex64 reports whether s is 64 lowercase hex digits: a SHA-256 hash or

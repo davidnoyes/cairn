@@ -1801,6 +1801,11 @@ const MEMBER_SCHEMA = {
   fp: field('string'),
 };
 
+const GROUP_SHARE_SCHEMA = {
+  group: field('string'),
+  role: field('string'),
+};
+
 const GROUP_MEMBER_SCHEMA = {
   user: field('string'),
   fp: field('string'),
@@ -1834,6 +1839,7 @@ export const BODY_SCHEMAS = {
     members: field('array', { item: MEMBER_SCHEMA }),
     excluded: field('array', { item: EXCLUDED_SCHEMA }),
     team: field('string'),
+    groups: field('array', { item: GROUP_SHARE_SCHEMA, omitEmpty: true }),
     public: field('boolean'),
     publicWrites: field('boolean'),
     prev: field('string'),
@@ -2016,8 +2022,9 @@ function decodeValue(value, f) {
 // decodeObject builds a plain object with exactly schema's fields, each
 // looked up case-insensitively in obj (preferring an exact match) or given
 // its zero value when absent. A field marked omitEmpty (newSig of
-// ENVELOPE_SCHEMA, matching Go's envelopeJSON, and signer and signerFp of the
-// membership body, which a version 1 record does not carry) is left out of the
+// ENVELOPE_SCHEMA, matching Go's envelopeJSON, signer and signerFp of the
+// membership body, which a version 1 record does not carry, and its groups,
+// which a record that lists none omits) is left out of the
 // result entirely when its decoded value is the zero value, mirroring Go's
 // `json:",omitempty"`, which drops a zero value on marshal. An absent field
 // therefore round-trips; one present with the zero value explicitly (such
@@ -2029,8 +2036,8 @@ function decodeObject(obj, schema) {
   for (const [name, f] of Object.entries(schema)) {
     const key = findKey(obj, name);
     const value = key === null ? zeroValue(f) : decodeValue(obj[key], f);
-    // Go's omitempty also drops an empty map, so "groups":{} does not round-trip.
-    if (f.omitEmpty && (deepEqual(value, zeroValue(f)) || (f.type === 'map' && Object.keys(value).length === 0))) continue;
+    // Go's omitempty also drops an empty map or slice, so "groups":{} and "groups":[] do not round-trip.
+    if (f.omitEmpty && (deepEqual(value, zeroValue(f)) || (f.type === 'map' && Object.keys(value).length === 0) || (f.type === 'array' && value.length === 0))) continue;
     out[name] = value;
   }
   return out;
@@ -2227,6 +2234,7 @@ async function openRecord(env, artifact, owners) {
     throw new ChainError('members and excluded must be arrays');
   }
   if (b.team !== 'none' && b.team !== 'viewer' && b.team !== 'editor') throw new ChainError(`team ${b.team}`);
+  checkGroupShares(b.groups ?? []);
   if (!isHex64(b.akCommit)) throw new ChainError('akCommit is not 64 lowercase hex digits');
   for (let i = 1; i < b.members.length; i++) {
     if (compareUtf8(b.members[i - 1].user, b.members[i].user) >= 0) {
@@ -2254,6 +2262,22 @@ async function openRecord(env, artifact, owners) {
     if (e.user === b.owner) throw new ChainError('the owner is excluded');
   }
   return b;
+}
+
+// MAX_GROUP_SHARES is the most groups a membership record lists.
+const MAX_GROUP_SHARES = 100;
+
+// checkGroupShares checks the groups of a membership record: at most
+// MAX_GROUP_SHARES entries, each a lowercase UUID with role viewer or
+// editor, sorted by group ID and unique. Mirrors checkGroupShares in
+// internal/e2e/chain.go.
+function checkGroupShares(gs) {
+  if (gs.length > MAX_GROUP_SHARES) throw new ChainError(`${gs.length} groups, at most ${MAX_GROUP_SHARES}`);
+  gs.forEach((g, i) => {
+    if (!UUID_RE.test(g.group)) throw new ChainError(`group ${g.group} is not a lowercase UUID`);
+    if (g.role !== 'viewer' && g.role !== 'editor') throw new ChainError(`group ${g.group} has role ${g.role}`);
+    if (i > 0 && gs[i - 1].group >= g.group) throw new ChainError('groups not sorted by group ID, or duplicated');
+  });
 }
 
 // isHex64 reports whether s is 64 lowercase hex digits: a SHA-256 hash or

@@ -106,8 +106,9 @@ func (s *Server) accessRequest(c access.Caller, id string, token []byte) (*store
 	req := access.Request{
 		Caller: c,
 		Artifact: access.Artifact{ID: a.ID, OwnerID: a.OwnerID, Epoch: a.Epoch, Team: a.Team,
-			Public: a.Public, PublicWrites: a.PublicWrites},
+			HasGroups: st.HasGroups, Public: a.Public, PublicWrites: a.PublicWrites},
 		LinkToken: linkMatches(a, token),
+		InGroup:   c.UserID != "" && st.InGroup,
 		// Only the owner's own released successor: an artifact merely shared
 		// with the nominating user is not the owner's.
 		Successor: c.UserID != "" && st.OwnerSuccessor != nil && st.OwnerSuccessor.Released(s.clk.Now()),
@@ -723,22 +724,29 @@ type pendingView struct {
 	Ed25519Pub string        `json:"ed25519Pub"`
 	State      string        `json:"state"`
 	Approval   *e2e.Envelope `json:"approval"`
+	// Group is the IDs of the listed groups that hold the user, for a new or
+	// approved one, and empty otherwise.
+	Group []string `json:"group"`
 }
 
 // States of a pending entry. rotated is a changed key that a chain of the
 // user's rotation records explains; keyChanged is any other change. Like
-// approved, rotated is for the owner only.
+// approved, rotated is for the owner only. left is an unlisted user who holds
+// a wrap for the current epoch and is covered by neither the team share nor
+// a listed group, so the server no longer lets them read.
 const (
 	pendingNew        = "new"
 	pendingApproved   = "approved"
+	pendingLeft       = "left"
 	pendingKeyChanged = "keyChanged"
 	pendingRotated    = "rotated"
 )
 
 // handlePending lists the users the caller's client should ask about: team
 // members waiting, and changed keys. Approved entries, with the stored
-// approval, are for whoever signs member lists: the owner and managers. A user who matches an excluded entry by
-// user ID, fingerprint, or normalized email never appears.
+// approval, and users who left, are for whoever signs member lists: the owner
+// and managers. A user who matches an excluded entry by user ID, fingerprint,
+// or normalized email never appears.
 func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
 	a, caller := requestArtifact(r), requestUser(r)
 	level := access.LevelOf(requestAccess(r))
@@ -797,15 +805,29 @@ func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
 				}
 				return rotationLinked(rows, oldFP, u.FP)
 			}
-			state := pendingState(latest, u, listed, wraps[u.ID], approval[u.ID], explained)
+			holding := []string{}
+			for _, g := range latest.Groups {
+				in, err := tx.IsGroupMember(g.Group, u.ID)
+				if err != nil {
+					return err
+				}
+				if in {
+					holding = append(holding, g.Group)
+				}
+			}
+			covered := latest.Team != access.TeamNone || len(holding) > 0
+			state := pendingState(latest, u, listed, wraps[u.ID], approval[u.ID], covered, explained)
 			if rotErr != nil {
 				return rotErr
 			}
-			if state == "" || ((state == pendingApproved || state == pendingRotated) && !mayDecide) {
+			if state == "" || ((state == pendingApproved || state == pendingLeft || state == pendingRotated) && !mayDecide) {
 				continue
 			}
 			v := pendingView{ID: u.ID, Name: u.Name, Email: u.Email, X25519Pub: e2e.B64(u.X25519Pub),
-				Ed25519Pub: e2e.B64(u.Ed25519Pub), State: state}
+				Ed25519Pub: e2e.B64(u.Ed25519Pub), State: state, Group: []string{}}
+			if state == pendingNew || state == pendingApproved {
+				v.Group = holding
+			}
 			if ap := approval[u.ID]; state == pendingApproved && ap != nil {
 				env := envelopeOf(ap.Envelope)
 				v.Approval = &env
@@ -826,10 +848,12 @@ func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
 // is no longer theirs, or who is unlisted and was approved under one, has a
 // changed key: rotated when explained(oldFP) says a chain of their rotation
 // records leads from that fingerprint to the current one, else keyChanged.
-// An unlisted user with a wrap for the current epoch is approved; an unlisted
-// user with none is new while the record shares with a team.
+// An unlisted user with a wrap for the current epoch is approved while
+// covered, which is while the record shares with a team or a listed group
+// holds them, and has left otherwise; an unlisted user with none is new while
+// covered.
 func pendingState(latest *e2e.MembershipBody, u *store.KeyedUser, listed map[string]e2e.Member, wraps []store.Wrap,
-	approval *store.Approval, explained func(oldFP string) bool) string {
+	approval *store.Approval, covered bool, explained func(oldFP string) bool) string {
 	changed := func(oldFP string) string {
 		if explained(oldFP) {
 			return pendingRotated
@@ -855,13 +879,16 @@ func pendingState(latest *e2e.MembershipBody, u *store.KeyedUser, listed map[str
 	}
 	for _, wr := range wraps {
 		if wr.Epoch == latest.Epoch {
-			return pendingApproved
+			if covered {
+				return pendingApproved
+			}
+			return pendingLeft
 		}
 	}
-	if latest.Team != access.TeamNone {
-		return pendingNew
+	if !covered {
+		return ""
 	}
-	return ""
+	return pendingNew
 }
 
 type approveRequest struct {

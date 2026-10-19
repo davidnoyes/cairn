@@ -593,7 +593,7 @@ func chainCases() []chainCase {
 			build: pinned(2, 3, func(f *chainFixture) string { return f.head(3) })},
 		{name: "pin-seq-zero", why: "a pin with seq 0", err: ErrFormat,
 			build: pinned(1, 0, func(f *chainFixture) string { return "" })},
-	}, append(successorChainCases(), managerChainCases()...)...)
+	}, append(successorChainCases(), append(managerChainCases(), groupChainCases()...)...)...)
 }
 
 func TestVerifyChain(t *testing.T) {
