@@ -92,6 +92,57 @@ Until Cairn serves artifacts from separate content origins, an artifact you
 open runs on the same origin as your keys and can use them. Open only artifacts
 you trust.
 
+### Google sign-in
+
+A team on Google Workspace can make Google sign-in the first step for
+everyone. Google proves who you are. Your password still unlocks your keys,
+because Google gives your browser nothing secret that Google and the server do
+not also know. Google, a Workspace administrator, or the server operator can
+at most sign in as you. None of them can read your work.
+
+To turn it on:
+
+1. In the GCP console, create an OAuth 2.0 client of type **Web application**.
+   Add `<public URL>/auth/google/callback` as an authorized redirect URI.
+2. Start the server with the client's ID and secret:
+
+   ```sh
+   ./cairn serve --public-url https://cairn.example.com \
+     --signup-domain example.com --smtp-url smtp://relay:587 \
+     --google-client-id <id> --google-client-secret <secret>
+   ```
+
+With Google on:
+
+- `/signup`, `/login`, and `/forgot` each send you through Google first. Sign-up
+  takes the address from Google and needs no verification email.
+- An address in a `--signup-domain` must belong to that domain's Workspace, so
+  a personal Google Account made with a company address is refused.
+- `/forgot` takes you straight to the reset page after Google, in place of the
+  emailed link. Your recovery code still decides whether you keep your keys.
+- `cairn login` opens your browser for the Google step, then asks for your
+  password in the terminal. `cairn signup` and `cairn forgot` send you to the
+  web pages.
+- Turning off someone's Google Account stops new sign-ins. It does not end a
+  session that is already open or revoke an API key. To cut someone off at
+  once, deactivate their Cairn account from the **Admin** tab.
+
+### Unlock with a passkey
+
+On the **Account** tab, **Add passkey** lets a passkey unlock your account in
+place of your password when you sign in. Cairn asks for your password once, to
+seal your keys under the passkey. On a Google server, Google sign-in still
+comes first.
+
+Only a passkey that supports the WebAuthn PRF extension can unlock Cairn,
+because the passkey must produce a secret that the server never sees. The page
+refuses one that cannot. Your password and recovery code keep working, and
+actions that change your keys, such as creating an API key or rotating your
+keys, still ask for the password. Rotating your keys removes your passkeys, so
+add them again afterwards.
+
+Passkeys need `--public-url`, and they work only at that address.
+
 ### Push your first artifact
 
 ```sh

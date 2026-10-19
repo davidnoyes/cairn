@@ -31,6 +31,8 @@ hosted in GCP where every member can publish:
 | An operator with the data directory, a backup, or a disk snapshot | No |
 | An operator with write access to the live database | Not through a verified key. They can swap a key nobody has verified yet, or add a fake account for someone to approve into a team share; both leave a trace in GCP audit logs |
 | Someone who controls the user's mailbox | No. They can reset the password and take over the account, but not read existing work |
+| Someone who controls the user's Google Account, on a server with Google sign-in, including a Workspace administrator who resets it | No. They pass the Google step, but still need the password or an enrolled passkey, and guessing the password goes through the server's sign-in rate limit |
+| Someone holding an unlocked device with an enrolled passkey | Yes, if they also pass the passkey's user verification: a fingerprint or the device PIN |
 | Another signed-in user who has no share | No |
 | A shared artifact written by another user, running in your browser | Only that artifact, which you can already read. It cannot share, publish, or delete it, even when you own it |
 | The successor the user nominated | Only the artifacts the user owns, 14 days after asking, unless the user refuses |
@@ -49,6 +51,10 @@ a web app:
   visible, not impossible.
 - **Metadata stays visible:** user emails and names, artifact IDs, owners,
   who shares with whom, the public flag, timestamps, and approximate sizes.
+- **Turning off a Google Account does not end sessions or API keys.** On a
+  server with Google sign-in, a session lasts until it expires, and a device
+  API key keeps working. To cut someone off at once, an administrator
+  deactivates their Cairn account.
 - **The server can delete data or serve an older copy.** Signatures and
   authenticated encryption stop content forged by anyone who is not a current
   owner or editor, but they cannot prove that a copy is the latest one. Each
@@ -341,8 +347,10 @@ to the new address.
 An administrator can still deactivate and delete accounts and artifacts. The
 administrator can deny service, but cannot read.
 
-A passkey that supports the WebAuthn PRF extension can later wrap `MK` too, so
-a forgotten password usually costs nothing. That is a later milestone.
+A passkey that supports the WebAuthn PRF extension can wrap `MK` too, so a
+user can sign in with it in place of the password.
+[Google sign-in and passkey unlock](google-signin.md) describes it, along with
+Google sign-in as a first step before the password.
 
 ### Rotating your keys
 
@@ -827,8 +835,10 @@ and lists its tests.
 | 8 | Deploy integrity on a GCP VM: signed CI images, signature check at deploy, audit log sink and alerts, `cairn verify`, deployment guide | `cairn verify` passes against a release and fails when one served file changes; an unsigned image is refused |
 | 9 | Import and docs: `cairn import`, README, skill, `CLAUDE.md` invariants | Import a backup of your real server into a fresh one, then compare every artifact |
 
-Passkey unlock through the WebAuthn PRF extension, a tamper-evident log of
-public keys, and per-artifact CI keys follow as later milestones.
+Passkey unlock through the WebAuthn PRF extension is built, with Google
+sign-in; see [Google sign-in and passkey unlock](google-signin.md). A
+tamper-evident log of public keys and per-artifact CI keys follow as later
+milestones.
 
 ## Decisions
 

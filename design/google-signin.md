@@ -1,6 +1,6 @@
 # Google sign-in and passkey unlock
 
-Status: **agreed, being implemented**. This document extends the
+Status: **implemented**. This document extends the
 [trust model](e2e-trust-model.md) and the [HTTP API](e2e-api.md). It changes
 how a person proves who they are. It does not change what the server can
 read.
@@ -291,10 +291,12 @@ describes: each needs a JSON body and a same-origin request.
 
 ## Data
 
-Migration `011_google_passkeys.sql` adds:
+Migration `011_google_proofs.sql` adds `google_proofs`: `hash`, `email`,
+`name`, `expires_at`, `used_at`. It has no user ID, because a proof can come
+before the account exists.
 
-- `google_proofs`: `hash`, `email`, `name`, `expires_at`, `used_at`. It has no
-  user ID, because a proof can come before the account exists.
+Migration `012_passkeys.sql` adds:
+
 - `passkeys`: `id` (the credential ID, base64url), `user_id`, `name`,
   `public_key`, `alg`, `sign_count`, `mk`, `created_at`, `last_used_at`.
 - A `passkeys` column on `bundle_archives`, holding the removed passkeys'
