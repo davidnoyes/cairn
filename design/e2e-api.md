@@ -2800,3 +2800,71 @@ The share dialog opens for a folder as for an artifact. It shows inherited
 entries grayed, with the folder they come from, and does not offer to remove
 or lower them. Sharing or unsharing shows progress over the items inside,
 and a folder or item that is pending offers **Finish sharing**.
+
+**Shared with you** becomes a tree in the same way as **Your artifacts**: a
+shared folder opens to the items inside it that the caller can read, with a
+breadcrumb. An item whose folder the caller cannot read stays at the top of
+the list.
+
+## Folders with other people's items
+
+Milestone F3 of the [roles, groups, and folders plan](rbac-folders.md):
+folder contents work as in Google Drive, so a folder can hold items that
+other people own.
+
+### Placing an item in someone else's folder
+
+- An item may sit in a folder whose owner is someone else. Creating or
+  moving an item into a folder needs editor access to the folder, or
+  manager or owner access, and the caller must own the item or manage it.
+  Moving an item out of a folder, or removing it, needs editor access to the
+  folder it leaves, and puts it at the top level of its owner.
+- Moving an item from one folder to another needs both: editor access to
+  the folder it leaves and to the one it enters. The checks for depth and
+  cycles stay as in F1.
+- A folder's editors may create folders inside it. Each new folder belongs to
+  the editor who creates it.
+
+### Inheritance others have to apply
+
+The client that shares a folder signs the records of the items it can sign:
+those its user owns or manages. Any other item inside stays pending, as in
+F2, until its owner or one of its managers applies the share.
+
+- **Listed, not readable.** A member of a folder sees each item inside it.
+  An item they cannot read yet appears as a stub, with its ID, its kind, its
+  owner, and `inherit` `pending`, and no name, because its name is sealed
+  under a key they do not hold yet. The page shows it as an item its owner
+  has yet to share with them.
+- **Applying.** `cairn apply` signs every pending record the caller can: it
+  adds missing inherited entries, sealing each epoch's key to the new
+  members, and starts a new epoch where a `via` entry no longer holds. It
+  also approves the newcomers whose checks pass, as `cairn share` does for a
+  group. The **Artifacts** tab names the items the caller can apply and
+  offers **Apply**. Applying always waits for that click or command, so a
+  client never writes on its user's behalf unasked.
+- **Removal stays immediate.** Taking access away still needs no one to
+  apply anything: the server stops serving at once, and the new epoch
+  follows when the item's owner or a manager applies it.
+
+### Deleting a folder with other people's items
+
+Only the folder's owner deletes it. Before it starts, the page and the
+command-line tool show what happens to everything inside:
+
+- Items the owner owns are deleted, folders included, down to any folder
+  someone else owns.
+- A folder someone else owns moves to that person's top level with
+  everything inside it, and so does any other item someone else owns.
+- The server refuses to delete a folder that still holds an item its owner
+  owns, so the client deletes those first. Removing the folder then moves the
+  remaining items to their owners' top levels, through
+  `ON DELETE SET NULL`. People who had those items only through the deleted
+  folder lose them at once on the server.
+
+### Commands for other people's items
+
+- `cairn apply [--json]` applies every pending record and approval the
+  caller can, and prints what it did and what still waits on someone else.
+- `cairn folder list` shows stubs as `(not shared with you yet, owned by
+  EMAIL)`.
