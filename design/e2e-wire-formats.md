@@ -356,7 +356,9 @@ from it or from the user directory alone:
   no link, the client takes the creator's key from the server and pins it
   unverified, as the trust model describes for any first visit. A client
   that has a pin for a later owner also checks that the chain reaches it.
-  The latest record must verify under the current owner's current key.
+  The latest record must verify under the current owner's current key, or,
+  for a version 2 record, under the key of a manager the previous record
+  lists, reached through that manager's rotation chain from the listed `fp`.
 - **Anyone else's key** must hash to the `fp` listed for that user in the
   current owner-signed membership record, or be linked to that key by a
   rotation chain that verifies, in either direction. A signature made before
@@ -370,7 +372,8 @@ from it or from the user directory alone:
 
 A verifier checks the signature first, then parses the body, then checks that
 every field in the body matches the context it expected, such as the artifact
-ID and the epoch. It refuses a body with `v` other than 1.
+ID and the epoch. It refuses a body with `v` other than 1, except a membership
+record, which is version 2 when a manager signs it.
 
 Parsing is strict, because Go and JavaScript disagree on loose JSON. Go
 matches keys without regard to case and keeps the last of two duplicates. A
@@ -391,6 +394,7 @@ surrogate.
 | Purpose | Signed by | Body |
 | --- | --- | --- |
 | `membership` | The owner | `{"v":1,"artifact","epoch","seq","owner","ownerFp","akCommit","members":[{"user","role","fp"}],"excluded":[{"user","fp","email"}],"team","public","publicWrites","prev","transfer","handover"}` |
+| `membership` (v2) | A manager | The version 1 body with `"v":2` and two more keys, `"signer"` and `"signerFp"` |
 | `transfer` | The current owner | `{"v":1,"artifact","from","to","toFp","prev"}` |
 | `approval` | The approving owner or editor | `{"v":1,"artifact","epoch","user","fp"}` |
 | `manifest` | Whoever pushed | `{"v":1,"artifact","version","epoch","files":[{"path","blob","size","sha256"}]}` |
@@ -403,8 +407,8 @@ surrogate.
 | `refusal` | The user, with their existing key | `{"v":1,"user","requestedAt"}` |
 | `release` | The release key | `{"v":1,"version","assets":[{"origin","path","sha256"}],"templates":[{"name","source"}]}` |
 
-- In a membership record, `role` is `viewer` or `editor`, `team` is `none`,
-  `viewer`, or `editor`, and `prev` is `hex(SHA-256)` of the previous
+- In a membership record, `role` is `viewer`, `editor`, or `manager`, `team`
+  is `none`, `viewer`, or `editor`, and `prev` is `hex(SHA-256)` of the previous
   record's body, or empty for the first. Members are sorted by user ID.
 - A membership record's `seq` is 1 for the first record and goes up by one
   for each record after it. `ownerFp` is the fingerprint of the key that

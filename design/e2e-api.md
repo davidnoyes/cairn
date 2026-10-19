@@ -2256,3 +2256,91 @@ given.
 
 A server could send genuine files to the checker and altered ones to a
 target. `cairn verify` is a spot check, not the control.
+
+## Managers
+
+Milestone R2 of [roles, groups, and folders](rbac-folders.md) adds the
+**manager** role. An owner lists a member as `manager`. A manager can do
+everything an editor can, and also signs member lists: share, unshare, change
+roles below manager, approve and list team members, make the artifact public
+or private, and start a new epoch. Only the owner adds, removes, or changes a
+manager, transfers ownership, deletes the artifact, or vouches for a version.
+
+### Manager-signed records
+
+A record signed by a manager is a version 2 body: the version 1 fields plus
+`signer` and `signerFp`, both required.
+
+```json
+{"v": 2, "...": "every version 1 field", "signer": "user ID", "signerFp": "64 hex"}
+```
+
+- `signer` is the manager's user ID and `signerFp` the fingerprint of the key
+  that signed it. The envelope's `signer` is the same user ID.
+- A record the owner signs stays version 1, so every existing chain stays
+  valid. A version 1 body has neither field; a version 2 body has both, and
+  `signer` is never the owner.
+- `role` in a member entry is `viewer`, `editor`, or `manager`.
+
+A version 2 record is accepted, by the server and by every client, only when
+all of these hold, on top of every rule for a version 1 record:
+
+- The previous record lists `signer` as `manager`. A first record is never
+  version 2.
+- The record verifies under the key `signerFp` names. A client reaches that
+  key through the manager's rotation chain from the `fp` the previous record
+  lists for them; the server requires `signerFp` to be the manager's current
+  fingerprint.
+- `owner` is the previous record's owner, and `ownerFp` follows from the
+  previous record's by the owner's rotation chain, as for an owner's record
+  that keeps the owner.
+- `transfer` and `handover` are empty.
+- Every entry with role `manager`, in the previous record or this one, appears
+  in both with the same `user`, `role`, and `fp`. A manager can therefore add
+  no manager, remove none, change none's role or `fp`, and cannot remove or
+  change their own entry.
+- A viewer account is never a new `editor` or `manager`, in any record.
+
+An owner's record that removes a manager, or demotes one to viewer, starts a
+new epoch, as removing an editor does. Demoting a manager to editor stays in
+the same epoch, because both hold the same keys.
+
+### Wraps when a manager starts an epoch
+
+The owner holds no wraps and reads each epoch through the estate copy, which
+only the owner can seal. So a next-epoch record signed by a manager carries,
+instead of an estate copy, a wrap of the new epoch for the owner: the owner
+counts as a listed member for that epoch's wraps. The server refuses an
+estate copy in a manager's change.
+
+The owner's client adds the missing estate copy the next time it opens the
+artifact, from its own wrap:
+
+| Endpoint | Auth | Purpose |
+| --- | --- | --- |
+| `PUT /api/artifacts/{id}/estate/{epoch}` | The owner, with any credential | `{"sealed"}`, the estate copy of that epoch's `AK`, accepted only when the epoch exists and has none |
+
+Until then, a released successor cannot read that epoch, and the owner's
+client reads it through its wrap.
+
+### Who counts as a writer
+
+A client accepts a manifest, revision, record, or approval signed by the
+owner, an editor, or a manager listed under that key, by the same rules as an
+editor today. The server's permission table gives a manager every editor
+action plus `Share`, `ApproveMember`, and `ListPending`; `Delete`,
+`Transfer`, and `ReviewVersions` stay with the owner. An ownership offer may
+go to a listed editor or manager.
+
+### Commands for managers
+
+- `cairn share ITEM USER --role manager` works for the owner only.
+- A manager runs `cairn share`, `cairn unshare`, `cairn public`, and
+  `cairn team` like the owner, for roles below manager.
+- `cairn members` shows each record's signer when it is not the owner.
+
+### Left for later
+
+When an owner removes a manager, the plan has the client list the member-list
+changes that manager signed, for review. R2 records each record's signer, so
+the list can be built later; it does not show it yet.
