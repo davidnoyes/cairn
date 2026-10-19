@@ -101,6 +101,28 @@ test('share adds a viewer at the current epoch with a wrap of every epoch, and p
   assert.deepEqual(opened.aks.get(2), s.world.aks[2]);
 });
 
+// A viewer account writes nothing, so it can only be listed as a viewer. An
+// editor whose account was later made a viewer account keeps the entry until
+// the owner changes it, as the server's membership check allows.
+test('share refuses to make a viewer account an editor, before signing anything', async () => {
+  const s = await scene();
+  s.server.directory.get(U.outsider.id).role = 'viewer';
+  await assert.rejects(share(s.deps, ARTIFACT, 'outsider@example.com', 'editor'), (err) => err.code === 'viewer-account' && /viewer account and can only be a viewer/.test(err.message));
+  noPuts(s);
+  const res = await share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer');
+  assert.deepEqual(bodyOf(lastPut(s).membership).members.at(-1), { user: U.outsider.id, role: 'viewer', fp: U.outsider.fp });
+  assert.equal(res.role, 'viewer');
+});
+
+test('share leaves a demoted editor listed as editor, and refuses to promote a viewer account', async () => {
+  const s = await scene();
+  s.server.directory.get(U.editor.id).role = 'viewer';
+  s.server.directory.get(U.viewer.id).role = 'viewer';
+  assert.equal((await share(s.deps, ARTIFACT, 'editor@example.com', 'editor')).unchanged, true);
+  await assert.rejects(share(s.deps, ARTIFACT, 'viewer@example.com', 'editor'), (err) => err.code === 'viewer-account');
+  noPuts(s);
+});
+
 test('share finds a user by ID', async () => {
   const s = await scene();
   await share(s.deps, ARTIFACT, U.other.id, 'editor');
@@ -716,10 +738,17 @@ test('members lists the owner and each member with their pin state', async () =>
   const res = await members(s.deps, ARTIFACT);
   assert.deepEqual([res.artifact, res.epoch, res.seq, res.public, res.publicWrites], [ARTIFACT, 1, 2, true, false]);
   assert.deepEqual(res.members, [
-    { user: U.owner.id, role: 'owner', fp: U.owner.fp, currentFp: U.owner.fp, name: 'owner', email: 'owner@example.com', state: 'self', wasVerified: false },
-    { user: U.editor.id, role: 'editor', fp: U.editor.fp, currentFp: U.editor.fp, name: 'editor', email: 'editor@example.com', state: 'verified', wasVerified: false },
-    { user: U.viewer.id, role: 'viewer', fp: U.viewer.fp, currentFp: '', name: '', email: '', state: '-', wasVerified: false },
+    { user: U.owner.id, role: 'owner', fp: U.owner.fp, currentFp: U.owner.fp, account: 'member', name: 'owner', email: 'owner@example.com', state: 'self', wasVerified: false },
+    { user: U.editor.id, role: 'editor', fp: U.editor.fp, currentFp: U.editor.fp, account: 'member', name: 'editor', email: 'editor@example.com', state: 'verified', wasVerified: false },
+    { user: U.viewer.id, role: 'viewer', fp: U.viewer.fp, currentFp: '', account: '', name: '', email: '', state: '-', wasVerified: false },
   ]);
+});
+
+test('members names each member\'s account, so a viewer account can be offered only the viewer role', async () => {
+  const s = await scene();
+  s.server.directory.get(U.viewer.id).role = 'viewer';
+  const rows = (await members(s.deps, ARTIFACT)).members;
+  assert.deepEqual(rows.map((r) => r.account), ['member', 'member', 'viewer']);
 });
 
 test('members shows a first sight as new, a rotation as rotated, and a rollback as a conflict', async () => {

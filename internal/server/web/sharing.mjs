@@ -31,7 +31,8 @@ const encoder = new TextEncoder();
 // answers it: not-signed-in, bad-role, not-owner, share-self, unshare-owner,
 // unknown-user, directory-duplicate, not-member, member-key-changed,
 // member-deleted, pin-conflict, public-writes-with-off, cannot-reseal,
-// team-unsupported, handover-not-acked, no-write-key, read-back, epoch-moved.
+// team-unsupported, handover-not-acked, no-write-key, read-back, epoch-moved,
+// viewer-account.
 export class SharingError extends Error {
   constructor(code, message, options) {
     super(message, options);
@@ -79,7 +80,7 @@ function directoryUser(w) {
   const ed25519Pub = e2e.unb64(w.ed25519Pub);
   if (x25519Pub.length !== 32) throw new e2e.FormatError(`the directory's X25519 key for ${w.id} is not 32 bytes`);
   if (ed25519Pub.length !== 32) throw new e2e.FormatError(`the directory's Ed25519 key for ${w.id} is not 32 bytes`);
-  return { id: w.id, name: w.name, email: w.email, x25519Pub, ed25519Pub, resetAt: w.resetAt ?? '' };
+  return { id: w.id, name: w.name, email: w.email, role: w.role ?? 'member', x25519Pub, ed25519Pub, resetAt: w.resetAt ?? '' };
 }
 
 export async function directory(deps) {
@@ -406,6 +407,9 @@ export async function members(deps, artifactId) {
       r.wasVerified = wasVerified(va.keyring, r.user, r.state);
     }
     r.currentFp = u ? u.fp : '';
+    // account is the person's server role, so the page can offer a viewer
+    // account nothing but the viewer role.
+    r.account = u ? u.role : '';
     if (u) {
       r.name = u.name;
       r.email = u.email;
@@ -442,6 +446,12 @@ export async function share(deps, artifactId, who, role, { acceptNewKey = false 
 
   const list = latest.members.map((m) => ({ ...m }));
   const i = list.findIndex((m) => m.user === u.id);
+  // A viewer account writes nothing, so it can only be a viewer. An editor
+  // whose account became a viewer account keeps the entry until changed, as
+  // the server's membership check allows.
+  if (role === 'editor' && u.role === 'viewer' && !(i >= 0 && list[i].role === 'editor')) {
+    throw new SharingError('viewer-account', `${u.email} is a viewer account and can only be a viewer.`);
+  }
   let needsWraps = true;
   let demote = false;
   if (i < 0) {

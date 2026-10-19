@@ -35,13 +35,14 @@
         <button class="btn danger" type="button" id="refuse-succession">Refuse</button>
       </div>
     </div>
+    <p class="note" id="viewer-note" hidden>You have a viewer account: you can open what is shared with you, and change nothing.</p>
     <div class="warning" id="rotate-banner" role="alert" hidden>
       <p>Your successor can read your artifacts. Run <span class="mono">cairn rotate-keys</span> to end their access; until then Cairn refuses your changes.</p>
     </div>
 
     <section id="artifacts" role="tabpanel" aria-labelledby="tab-artifacts" class="active">
       <h2>Your artifacts</h2>
-      <p class="hint">Create one with <span class="mono">cairn push DIR --create</span>.</p>
+      <p class="hint" id="create-hint">Create one with <span class="mono">cairn push DIR --create</span>.</p>
       <div class="list">
         <table>
           <thead><tr><th>name</th><th>description</th><th>access</th><th>visibility</th><th>updated</th><th></th></tr></thead>

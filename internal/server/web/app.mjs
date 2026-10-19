@@ -295,10 +295,12 @@ function memberRow(s, m) {
   const who = m.email || m.user;
   const tr = el('tr');
   tr.dataset.email = m.email;
+  const roleCell = td(m.role, 'role');
+  if (m.account === 'viewer') roleCell.appendChild(pill('viewer account'));
   tr.append(
     td(m.name, 'name'),
     td(m.email, 'email'),
-    td(m.role, 'role'),
+    roleCell,
     td(m.currentFp || m.fp, 'fp mono'),
     td(m.state, 'pin'),
   );
@@ -306,7 +308,10 @@ function memberRow(s, m) {
   if (m.role !== 'owner') {
     const role = el('select', 'role');
     role.setAttribute('aria-label', 'Role of ' + who);
-    for (const r of ['viewer', 'editor']) {
+    // A viewer account can only be a viewer, unless it is still listed as the
+    // editor it was before its account changed.
+    const roles = m.account === 'viewer' && m.role !== 'editor' ? ['viewer'] : ['viewer', 'editor'];
+    for (const r of roles) {
       const o = el('option', '', r);
       o.value = r;
       o.selected = r === m.role;
@@ -546,6 +551,9 @@ $('rc-form').addEventListener('submit', async (event) => {
 // ------------------------------------------------------------- successor
 // showBanners shows what me says about a successor's request, on every tab.
 function showBanners() {
+  const viewerAccount = me?.role === 'viewer';
+  $('viewer-note').hidden = !viewerAccount;
+  $('create-hint').hidden = viewerAccount;
   const v = bannerView(me);
   $('succession-banner').hidden = !v.banner;
   $('refuse-succession').hidden = !v.refuse;
@@ -683,13 +691,27 @@ async function loadUsers() {
     if (u.name) who.appendChild(el('div', 'sub', u.name));
     tr.append(td(who), td(u.id, 'mono'));
     const flags = el('div', 'status');
-    if (u.isAdmin) flags.appendChild(pill('admin', 'admin'));
+    const accountRole = u.role ?? (u.isAdmin ? 'admin' : 'member');
+    if (accountRole === 'admin') flags.appendChild(pill('admin', 'admin'));
+    if (accountRole === 'viewer') flags.appendChild(pill('viewer account'));
     if (!u.verified) flags.appendChild(pill('unverified'));
     if (u.disabled) flags.appendChild(pill('disabled', 'off'));
     tr.appendChild(td(flags));
     const actions = el('div', 'actions');
+    const role = el('select', 'role');
+    role.setAttribute('aria-label', 'Account of ' + u.email);
+    for (const [value, label] of [['admin', 'administrator'], ['member', 'member'], ['viewer', 'viewer account']]) {
+      const o = el('option', '', label);
+      o.value = value;
+      o.selected = value === accountRole;
+      role.appendChild(o);
+    }
+    role.addEventListener('change', () => send('PATCH', '/api/admin/users/' + u.id, { role: role.value }).then(reload, (err) => {
+      role.value = accountRole;
+      failIn('users-status')(err);
+    }));
     actions.append(
-      btn(u.isAdmin ? 'Revoke admin' : 'Make admin', '', () => send('PATCH', '/api/admin/users/' + u.id, { isAdmin: !u.isAdmin }).then(reload, failIn('users-status'))),
+      role,
       btn(u.disabled ? 'Enable' : 'Disable', '', () => send('PATCH', '/api/admin/users/' + u.id, { disabled: !u.disabled }).then(reload, failIn('users-status'))),
       confirmButton('Delete', 'Delete for good?', () => del('/api/admin/users/' + u.id).then(reload, failIn('users-status'))),
     );
