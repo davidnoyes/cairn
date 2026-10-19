@@ -3185,3 +3185,4 @@ internal/server/web/e2e.mjs	if (i > 0 && gs[i - 1].group >= g.group) throw	if (f
 internal/server/web/e2e.mjs	if (gs.length > MAX_GROUP_SHARES) throw	if (false) throw	node --test internal/server/web/e2e_test.mjs
 internal/server/web/sharing.mjs	checkNoGroups(va);	void 0;	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if ((va.latest.groups ?? []).length > 0) throw	if ((va.latest.groups ?? []).length > 1) throw	node --test internal/server/web/sharing_test.mjs
+internal/server/web/folders.mjs	    event.dataTransfer.clearData();	    void 0;	node --test internal/server/web/folders_test.mjs

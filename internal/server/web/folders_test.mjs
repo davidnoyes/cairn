@@ -292,6 +292,7 @@ function fakeEl() {
 function fakeTransfer(data = {}) {
   return {
     data, effectAllowed: '', dropEffect: '', setData(t, v) { this.data[t] = v; }, getData(t) { return this.data[t] ?? ''; },
+    clearData() { for (const t of Object.keys(this.data)) delete this.data[t]; },
     get types() { return Object.keys(this.data); },
   };
 }
@@ -317,6 +318,17 @@ test('a dragged row carries its ID, and a drop on a folder moves it there', () =
   assert.equal(drop.prevented, true);
   assert.equal(target.classList.has('drop'), false);
   assert.deepEqual(moves, [['x', 'C']]);
+});
+
+test('a dragged row carries only its ID, not the URL of a link it was picked up by', () => {
+  // A drag that starts on the row's name link arrives with the link's URL,
+  // which a browser opens if the drop misses every target.
+  const row = fakeEl();
+  makeDraggable(row, 'x');
+  const dt = fakeTransfer({ 'text/uri-list': '/shared/x', 'text/plain': '/shared/x' });
+  fire(row, 'dragstart', dt);
+  assert.deepEqual(dt.types, ['application/x-cairn-item']);
+  assert.equal(dt.getData('application/x-cairn-item'), 'x');
 });
 
 test('dropping on the top-level breadcrumb moves to null', () => {

@@ -198,6 +198,9 @@ const DRAG_TYPE = 'application/x-cairn-item';
 export function makeDraggable(el, id) {
   el.draggable = true;
   el.addEventListener('dragstart', (event) => {
+    // A drag picked up by the row's name link carries the link's URL, which
+    // a browser opens if the drop misses every target. Carry the ID alone.
+    event.dataTransfer.clearData();
     event.dataTransfer.setData(DRAG_TYPE, id);
     event.dataTransfer.effectAllowed = 'move';
   });
