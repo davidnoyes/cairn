@@ -2333,3 +2333,14 @@ internal/server/web/account.mjs	if (!ext?.enabled) throw new PasskeyUnsupportedE
 internal/server/web/account.mjs	excludeCredentials: existing.map	excludeCredentials: [].map	node --test internal/server/web/account_signin_test.mjs
 internal/server/web/account.mjs	  view.fill(0);	  void 0;	node --test internal/server/web/account_signin_test.mjs
 internal/server/web/account.mjs	      allowCredentials: [],	      allowCredentials: [], userVerification: 'discouraged',	node --test internal/server/web/account_signin_test.mjs
+internal/webauthn/webauthn.go	if cd.Type != "webauthn.get" {	if false {	go test ./internal/webauthn -run 'TestVerifyRefuses/type$'
+internal/webauthn/webauthn.go	subtle.ConstantTimeCompare(got, exp.Challenge) != 1	subtle.ConstantTimeCompare(got, got) != 1	go test ./internal/webauthn -run 'TestVerifyRefuses/challenge$'
+internal/webauthn/webauthn.go	base64.RawURLEncoding.DecodeString(cd.Challenge)	base64.RawURLEncoding.DecodeString(string(bytes.TrimRight([]byte(cd.Challenge), "=")))	go test ./internal/webauthn -run TestVerifyChallengeEncoding
+internal/webauthn/webauthn.go	if cd.Origin != exp.Origin || cd.CrossOrigin {	if cd.CrossOrigin {	go test ./internal/webauthn -run 'TestVerifyRefuses/origin$'
+internal/webauthn/webauthn.go	if cd.Origin != exp.Origin || cd.CrossOrigin {	if cd.Origin != exp.Origin {	go test ./internal/webauthn -run 'TestVerifyRefuses/crossOrigin$'
+internal/webauthn/webauthn.go	if !bytes.Equal(a.AuthenticatorData[:32], rpHash[:]) {	if false && !bytes.Equal(a.AuthenticatorData[:32], rpHash[:]) {	go test ./internal/webauthn -run 'TestVerifyRefuses/rpid$'
+internal/webauthn/webauthn.go	if flags&flagUserPresent == 0 {	if false {	go test ./internal/webauthn -run 'TestVerifyRefuses/user-present$'
+internal/webauthn/webauthn.go	if flags&flagUserVerified == 0 {	if false {	go test ./internal/webauthn -run 'TestVerifyRefuses/user-verified$'
+internal/webauthn/webauthn.go	if !verifySignature(pub, msg, a.Signature) {	if false && !verifySignature(pub, msg, a.Signature) {	go test ./internal/webauthn -run 'TestVerifyRefuses/signature$|TestVerifySignatureAllAlgorithms'
+internal/webauthn/webauthn.go	&& signCount <= cred.SignCount	&& signCount < cred.SignCount	go test ./internal/webauthn -run TestVerifyCounter
+internal/webauthn/webauthn.go	(cred.SignCount != 0 || signCount != 0) &&	true &&	go test ./internal/webauthn -run TestVerifyCounter
