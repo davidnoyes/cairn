@@ -49,7 +49,7 @@ func runRotateKeys(args []string) error {
 			warnings = []string{}
 		}
 		if perr := printJSON(map[string]any{
-			"seq": res.Seq, "recoveryCode": res.RecoveryCode, "epochs": res.Epochs, "links": res.Links, "warnings": warnings, "unconfirmed": res.Unconfirmed,
+			"seq": res.Seq, "recoveryCode": res.RecoveryCode, "epochs": res.Epochs, "links": res.Links, "warnings": warnings, "unreadableEpochs": res.Unreadable, "unconfirmed": res.Unconfirmed,
 		}); perr != nil {
 			return perr
 		}
@@ -96,6 +96,7 @@ func printRotation(res *client.RotateResult, keepEpochs, saved bool) {
 		if link := res.Links[id]; link != "" {
 			fmt.Printf("  new public link, the old one stopped working: %s\n", link)
 		}
+		printUnreadable(res.Unreadable[id])
 	}
 	for _, w := range res.Warnings {
 		fmt.Println("warning: " + w)

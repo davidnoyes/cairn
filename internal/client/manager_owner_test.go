@@ -231,22 +231,72 @@ func TestOwnerApprovalNeedsEveryEpoch(t *testing.T) {
 	}
 }
 
-// Rotating keys seals an estate copy of every epoch, so an epoch the owner
-// cannot read stops it with the clear error, and nothing changes.
+// Rotating keys leaves out an epoch the owner cannot read, wrap and estate
+// copy both, and names it: the wrap stays under the old keys, the epoch keeps
+// no estate copy, and the owner still reads every other epoch, starts a new
+// one, and gets the clear error for the unreadable one.
 func TestRotateKeysNamesAnUnreadableEpoch(t *testing.T) {
-	w := managerWorld(t)
-	if _, err := w.bob.Share(w.artifact, "cat@example.com", "viewer", false); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w.bob.Unshare(w.artifact, "cat@example.com"); err != nil {
-		t.Fatal(err)
-	}
-	ada := ownerKeysRewritten(t, w.ada, w.artifact, 2, func() []byte { return make([]byte, 81) })
-	if _, err := ada.RotateKeys(testPassword, true); !errors.Is(err, ErrEpochUnreadable) {
-		t.Errorf("RotateKeys with an unreadable epoch: %v, want ErrEpochUnreadable", err)
-	}
-	if _, err := w.ada.VerifyArtifact(mustUnlock(t, w.ada), w.artifact, ""); err != nil {
-		t.Errorf("the owner's keys after the refused rotation: %v", err)
+	for _, keepEpochs := range []bool{true, false} {
+		name := "new epoch"
+		if keepEpochs {
+			name = "keep epochs"
+		}
+		t.Run(name, func(t *testing.T) {
+			w := managerWorld(t)
+			if _, err := w.bob.Share(w.artifact, "cat@example.com", "viewer", false); err != nil {
+				t.Fatal(err)
+			}
+			putData(t, w.ada, w.artifact)
+			if _, err := w.bob.Unshare(w.artifact, "cat@example.com"); err != nil {
+				t.Fatal(err)
+			}
+			oldVersion := mustLatestVersion(t, w.bob, w.artifact)
+			ada := ownerKeysRewritten(t, w.ada, w.artifact, 2, func() []byte { return make([]byte, 81) })
+			res, err := ada.RotateKeys(testPassword, keepEpochs)
+			if err != nil {
+				t.Fatalf("RotateKeys with an unreadable epoch: %v", err)
+			}
+			if got := res.Unreadable[w.artifact]; !slices.Equal(got, []int{2}) || len(res.Unreadable) != 1 {
+				t.Errorf("Unreadable = %v, want epoch 2 of the artifact", res.Unreadable)
+			}
+			wantEpoch, wantEstate := 2, []int{1}
+			if !keepEpochs {
+				wantEpoch, wantEstate = 3, []int{1, 3}
+			}
+			if res.Epochs[w.artifact] != wantEpoch {
+				t.Errorf("epoch = %d, want %d", res.Epochs[w.artifact], wantEpoch)
+			}
+			k := mustUnlock(t, ada)
+			keys, err := ada.Keys(w.artifact)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if estate, wraps := keyEpochs(t, ada, w.artifact); !slices.Equal(estate, wantEstate) || !slices.Equal(wraps, []int{2}) {
+				t.Errorf("estate %v, wraps %v, want %v and [2]", estate, wraps, wantEstate)
+			}
+			if len(keys.Wraps) != 1 || keys.Wraps[0].FP == k.FP {
+				t.Errorf("wraps %+v, want epoch 2's wrap left under the old fingerprint, not %s", keys.Wraps, k.FP)
+			}
+
+			// The owner still reads what it can, and starts a new epoch.
+			if _, err := ada.VersionFiles(w.artifact, oldVersion); !errors.Is(err, ErrEpochUnreadable) {
+				t.Errorf("content under epoch 2 after rotating: %v, want ErrEpochUnreadable", err)
+			}
+			unshared, err := ada.Unshare(w.artifact, "bob@example.com")
+			if err != nil {
+				t.Fatalf("the owner removes the manager after rotating: %v", err)
+			}
+			if !unshared.NewEpoch || !slices.Equal(unshared.Unreadable, []int{2}) {
+				t.Errorf("Unshare = new epoch %v, unreadable %v; want true and [2]", unshared.NewEpoch, unshared.Unreadable)
+			}
+			fresh := pushOne(t, ada, w.artifact)
+			if got, err := ada.VersionFiles(w.artifact, fresh); err != nil || string(got["index.html"]) != "<h1>hi</h1>" {
+				t.Errorf("the owner reads the new epoch: %v, %v", got, err)
+			}
+			if _, err := ada.VersionFiles(w.artifact, oldVersion); !errors.Is(err, ErrEpochUnreadable) {
+				t.Errorf("content under epoch 2 after the removal: %v, want ErrEpochUnreadable", err)
+			}
+		})
 	}
 }
 

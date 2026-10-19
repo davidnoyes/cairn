@@ -119,7 +119,8 @@ func TestRotateKeysCommand(t *testing.T) {
 	epochs, _ := res["epochs"].(map[string]any)
 	if res["seq"] != float64(2) || epochs[private.ID] != float64(2) || epochs[public.ID] != float64(2) || len(epochs) != 2 ||
 		res["recoveryCode"] == "" || res["recoveryCode"] == code ||
-		len(res["links"].(map[string]any)) != 0 || len(res["warnings"].([]any)) != 0 || res["unconfirmed"] != false || len(res) != 6 {
+		len(res["links"].(map[string]any)) != 0 || len(res["warnings"].([]any)) != 0 || res["unconfirmed"] != false ||
+		len(res["unreadableEpochs"].(map[string]any)) != 0 || len(res) != 7 {
 		t.Errorf("cairn rotate-keys --keep-epochs --json = %v", res)
 	}
 }

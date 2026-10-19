@@ -29,6 +29,10 @@ type RotateResult struct {
 	// new epoch: the old link stopped working.
 	Links    map[string]string
 	Warnings []string
+	// Unreadable maps each artifact the caller owns to the epochs whose wrap
+	// the caller could not open: RotateKeys left them out, so the wrap stays
+	// under the old keys and the epoch keeps no estate copy.
+	Unreadable map[string][]int
 	// APIKey and Email are the new device key and the account it belongs to,
 	// for the caller to save. The old key and every other one were revoked.
 	APIKey string
@@ -164,7 +168,7 @@ func (c *Client) RotateKeys(password string, keepEpochs bool) (*RotateResult, er
 		return nil, err
 	}
 
-	res := &RotateResult{RecoveryCode: na.RecoveryDisplay, Email: me.Email, Links: map[string]string{}}
+	res := &RotateResult{RecoveryCode: na.RecoveryDisplay, Email: me.Email, Links: map[string]string{}, Unreadable: map[string][]int{}}
 	wraps, estate, records := []map[string]any{}, []map[string]any{}, []map[string]any{}
 	// owned maps each artifact the caller owns to the seq of its last record.
 	owned := map[string]int{}
@@ -240,14 +244,20 @@ func (c *Client) RotateKeys(password string, keepEpochs bool) (*RotateResult, er
 			"artifact": a.ID, "membership": env, "wraps": newWraps, "linkTokenHash": linkHash,
 		})
 		// The owner holds a wrap for each epoch a manager started, until they
-		// are removed: they are wrapped again like any other wrap held.
+		// are removed: they are wrapped again like any other wrap held, unless
+		// it does not open.
 		ownWraps, err := s.rewrapOwned(old, nk, a.ID, aks)
 		if err != nil {
 			return nil, err
 		}
 		wraps = append(wraps, ownWraps...)
-		// Every epoch's estate copy is sealed again under the new EK.
+		// Every epoch's estate copy is sealed again under the new EK. An epoch
+		// the caller cannot read has no copy to seal.
 		for epoch := 1; epoch <= next.Epoch; epoch++ {
+			if aks[epoch] == nil {
+				res.Unreadable[a.ID] = append(res.Unreadable[a.ID], epoch)
+				continue
+			}
 			sealed, err := e2e.Seal(rand.Reader, newEKKey, estateFields(a.ID, epoch), aks[epoch])
 			if err != nil {
 				return nil, err
@@ -429,7 +439,8 @@ func (c *Client) rewrapHeld(old, nk *UnlockedKeys, artifactID, email string) ([]
 // rewrapOwned wraps again, to nk, every wrap the caller holds under their
 // current keys on an artifact they own: the owner's wraps of the epochs a
 // manager started. aks holds the AK of each epoch, which the caller already
-// opened and checked against the chain.
+// opened and checked against the chain. A wrap of an epoch aks leaves out did
+// not open, and stays as it is.
 func (c *Client) rewrapOwned(old, nk *UnlockedKeys, artifactID string, aks map[int][]byte) ([]map[string]any, error) {
 	keys, err := c.Keys(artifactID)
 	if err != nil {
@@ -440,9 +451,9 @@ func (c *Client) rewrapOwned(old, nk *UnlockedKeys, artifactID string, aks map[i
 		if old.FP != w.FP {
 			continue
 		}
-		ak, err := epochKey(aks, w.Epoch)
-		if err != nil {
-			return nil, fmt.Errorf("artifact %s: %w: rotating keys wraps it again", artifactID, err)
+		ak := aks[w.Epoch]
+		if ak == nil {
+			continue
 		}
 		wrapped, err := e2e.Wrap(rand.Reader, e2e.WrapContext{
 			Purpose: "ak", Artifact: artifactID, Epoch: uint64(w.Epoch), RecipientID: nk.UserID, RecipientPub: nk.X25519Pub,

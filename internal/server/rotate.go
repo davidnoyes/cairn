@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"time"
 
@@ -282,6 +283,27 @@ func (s *Server) handleMeRotate(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 
+		// An epoch of an artifact the caller owns that has no estate copy
+		// yet, because a manager started it, may be left out of both wraps
+		// and estate: the caller's wrap of it stays as it is.
+		gaps := map[wrapRef]bool{}
+		for _, id := range owned {
+			at := rt.Artifact(id)
+			a, err := at.Artifact()
+			if err != nil {
+				return err
+			}
+			copies, err := at.Estates()
+			if err != nil {
+				return err
+			}
+			for epoch := 1; epoch <= a.Epoch; epoch++ {
+				if !slices.ContainsFunc(copies, func(e store.Estate) bool { return e.Epoch == epoch }) {
+					gaps[wrapRef{id, epoch}] = true
+				}
+			}
+		}
+
 		// Wraps: one for each the caller can open, which are those made to
 		// their current fingerprint. A wrap under any other fingerprint, left
 		// by a reset, stays as it is.
@@ -306,6 +328,12 @@ func (s *Server) handleMeRotate(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			wrapped, ok := newWraps[ref]
+			if !ok && gaps[ref] {
+				if slices.ContainsFunc(estate[ref.artifact], func(e membership.EstateIn) bool { return e.Epoch == ref.epoch }) {
+					return conflictRotation("wraps: the wrap for artifact %s at epoch %d is left out, but its estate copy is sent; an epoch with no estate copy leaves out both or neither", ref.artifact, ref.epoch)
+				}
+				continue
+			}
 			if !ok {
 				return conflictRotation("wraps: missing the wrap for artifact %s at epoch %d", ref.artifact, ref.epoch)
 			}
@@ -344,8 +372,17 @@ func (s *Server) handleMeRotate(w http.ResponseWriter, r *http.Request) {
 				}
 				seen[e.Epoch] = true
 			}
-			if len(seen) != epoch {
-				return badRotation("estate: artifact %s has %d copies, but wants one for each of epochs 1 to %d", id, len(seen), epoch)
+			for e := 1; e <= epoch; e++ {
+				if seen[e] {
+					continue
+				}
+				ref := wrapRef{id, e}
+				if !gaps[ref] {
+					return badRotation("estate: artifact %s has no copy for epoch %d, but wants one for each of epochs 1 to %d", id, e, epoch)
+				}
+				if _, sent := newWraps[ref]; sent {
+					return conflictRotation("estate: the copy for artifact %s at epoch %d is left out, but its wrap is sent; an epoch with no estate copy leaves out both or neither", id, e)
+				}
 			}
 			if err := at.DeleteEstates(); err != nil {
 				return err

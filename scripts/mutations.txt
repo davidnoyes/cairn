@@ -391,7 +391,7 @@ internal/server/rotate.go	rt.ReplaceHeldWrap(h.ArtifactID, h.Epoch, wrapped, new
 internal/server/rotate.go	if !inWant[id] {	if false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 internal/server/rotate.go	if !inHave[id] {	if false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 internal/server/rotate.go	if err := rt.SetBundle(bundle); err != nil {	if false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
-internal/server/rotate.go	if len(seen) != epoch {	if false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
+internal/server/rotate.go	return badRotation("estate: artifact %s has no copy for epoch	return conflictRotation("estate: artifact %s has no copy for epoch	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 internal/server/rotate.go	e.Epoch < 1 || e.Epoch > epoch || seen[e.Epoch]	false	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 internal/server/rotate.go	return rt.BumpTokenVersion()	return nil	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 internal/server/rotate.go	if err := rt.RevokeAPIKeys(); err != nil {	if false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
@@ -422,7 +422,7 @@ internal/server/rotate.go	writeError(w, http.StatusConflict, err.Error())	writeE
 internal/server/rotate.go	if err := sameSet(stored, owned); err != nil {	if err := sameSet(stored, owned); err != nil && false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 internal/server/rotate.go	if dec.More() {	if false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 internal/server/rotate.go	if errors.As(err, &tooBig) {	if errors.As(err, &tooBig) && false {	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
-internal/server/rotate.go	return conflictRotation("wraps: the wrap for artifact	return badRotation("wraps: the wrap for artifact	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
+internal/server/rotate.go	return conflictRotation("wraps: the wrap for artifact %s at epoch %d is not one	return badRotation("wraps: the wrap for artifact %s at epoch %d is not one	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 internal/server/rotate.go	return conflictRotation("wraps: missing the wrap	return badRotation("wraps: missing the wrap	go test ./internal/server -run 'TestRotat|TestPending|TestMembership'
 
 # Rotation: library follow (7d-1)
@@ -2587,7 +2587,7 @@ internal/client/share.go	ak, err := epochKey(aks, epoch)	ak, err := aks[epoch], 
 internal/client/approve.go	ak, err := epochKey(aks, epoch)	ak, err := aks[epoch], error(nil)	go test ./internal/client -count=1 -run TestOwnerApprovalNeedsEveryEpoch
 internal/client/epoch.go	change.Unreadable = unreadableEpochs(va.Chain, aks)	change.Unreadable = nil	go test ./internal/client -count=1 -run TestOwnerIsNotLockedOutByABadWrap
 internal/client/rotate.go	wraps = append(wraps, ownWraps...)	_ = ownWraps	go test ./internal/client -count=1 -run TestOwnerRotatesAfterAManagersEpoch
-internal/client/rotate.go	ak, err := epochKey(aks, w.Epoch)	ak, err := aks[w.Epoch], error(nil)	go test ./internal/client -count=1 -run TestRotateKeysNamesAnUnreadableEpoch
+internal/client/rotate.go	if ak == nil {	if false {	go test ./internal/client -count=1 -run TestRotateKeysNamesAnUnreadableEpoch
 internal/client/client.go	ak, err := epochKey(aks, epoch)	ak, err := aks[epoch], error(nil)	go test ./internal/client -count=1 -run TestOwnerIsNotLockedOutByABadWrap
 internal/client/meta.go	ak, err := epochKey(aks, epoch)	ak, err := aks[epoch], error(nil)	go test ./internal/client -count=1 -run TestOwnerIsNotLockedOutByABadWrap
 internal/client/public.go	ak, err := epochKey(aks, latest.Epoch)	ak, err := aks[latest.Epoch], error(nil)	go test ./internal/client -count=1 -run TestOwnerIsNotLockedOutByABadWrap
@@ -2607,3 +2607,16 @@ internal/server/web/sharing.mjs	latest.v === 2 ? latest.signer === id	latest.v =
 internal/server/web/sharing.mjs	res.lowered = to < from && !demote;	res.lowered = false;	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	res.demoted = demote;	res.demoted = to < from;	node --test internal/server/web/sharing_test.mjs
 internal/server/web/shell.mjs	if (opened.unreadable?.length) showStatus(	if (false) showStatus(	node --test internal/server/web/shell_page_test.mjs
+internal/server/rotate.go	if !slices.ContainsFunc(copies, func(e store.Estate) bool { return e.Epoch == epoch }) {	if false && !slices.ContainsFunc(copies, func(e store.Estate) bool { return e.Epoch == epoch }) {	go test ./internal/server -count=1 -run 'TestRotateLeavesOut|TestRotateRefusesALone'
+internal/server/rotate.go	if !slices.ContainsFunc(copies, func(e store.Estate) bool { return e.Epoch == epoch }) {	if true || !slices.ContainsFunc(copies, func(e store.Estate) bool { return e.Epoch == epoch }) {	go test ./internal/server -count=1 -run 'TestRotateLeavesOut|TestRotateRefusesALone'
+internal/server/rotate.go	for epoch := 1; epoch <= a.Epoch; epoch++ {	for epoch := 1; epoch < a.Epoch; epoch++ {	go test ./internal/server -count=1 -run 'TestRotateLeavesOut|TestRotateRefusesALone'
+internal/server/rotate.go	if !ok && gaps[ref] {	if !ok && false {	go test ./internal/server -count=1 -run 'TestRotateLeavesOut|TestRotateRefusesALone'
+internal/server/rotate.go	if slices.ContainsFunc(estate[ref.artifact], func(e membership.EstateIn) bool { return e.Epoch == ref.epoch }) {	if false {	go test ./internal/server -count=1 -run 'TestRotateLeavesOut|TestRotateRefusesALone'
+internal/server/rotate.go	return conflictRotation("wraps: the wrap for artifact %s at epoch %d is left out	return badRotation("wraps: the wrap for artifact %s at epoch %d is left out	go test ./internal/server -count=1 -run 'TestRotateLeavesOut|TestRotateRefusesALone'
+internal/server/rotate.go	if !gaps[ref] {	if false {	go test ./internal/server -count=1 -run 'TestRotateLeavesOut|TestRotateRefusesALone'
+internal/server/rotate.go	if _, sent := newWraps[ref]; sent {	if false {	go test ./internal/server -count=1 -run 'TestRotateLeavesOut|TestRotateRefusesALone'
+internal/server/rotate.go	return conflictRotation("estate: the copy for artifact %s at epoch %d is left out	return badRotation("estate: the copy for artifact %s at epoch %d is left out	go test ./internal/server -count=1 -run 'TestRotateLeavesOut|TestRotateRefusesALone'
+internal/client/rotate.go	if aks[epoch] == nil {	if false {	go test ./internal/client -count=1 -run TestRotateKeysNamesAnUnreadableEpoch
+internal/client/rotate.go	res.Unreadable[a.ID] = append(res.Unreadable[a.ID], epoch)	_ = epoch	go test ./internal/client -count=1 -run TestRotateKeysNamesAnUnreadableEpoch
+cmd/cairn/rotate_cmds.go	printUnreadable(res.Unreadable[id])	_ = id	go test ./cmd/cairn -count=1 -run TestRotationReportsAnUnreadableEpoch
+cmd/cairn/rotate_cmds.go	"unreadableEpochs": res.Unreadable, 	"renamed": res.Unreadable, 	go test ./cmd/cairn -count=1 -run TestRotateKeysCommand$

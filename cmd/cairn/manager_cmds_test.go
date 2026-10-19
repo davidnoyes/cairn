@@ -142,6 +142,15 @@ func TestEpochChangeReportsAnUnreadableEpoch(t *testing.T) {
 	}
 }
 
+// A rotation that left an epoch out says so.
+func TestRotationReportsAnUnreadableEpoch(t *testing.T) {
+	res := &client.RotateResult{Seq: 1, Epochs: map[string]int{"art": 2}, Unreadable: map[string][]int{"art": {2}}}
+	out, _ := runQuiet(t, func([]string) error { printRotation(res, true, true); return nil })
+	if !strings.Contains(out, "artifact art: epoch 2") || !strings.Contains(out, "warning: epoch 2 is unreadable to you") {
+		t.Errorf("printRotation printed %q, want a warning naming epoch 2 under the artifact", out)
+	}
+}
+
 func TestOwnerOnlyActionsAreRefusedForAManager(t *testing.T) {
 	w := managerWorld(t)
 	w.as(t, "bob")
