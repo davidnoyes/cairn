@@ -61,8 +61,9 @@ func CheckApproval(cur Current, dir Directory, ch ApprovalChange) (*ApprovalResu
 		return nil, conflict(RuleTeamNone, "the artifact has no membership record, so it has no team to approve into")
 	}
 
-	// 403: the caller is the owner, or an editor listed under their
-	// current fingerprint, as access.Check decided before the lock was held.
+	// 403: the caller is the owner, or an editor or manager listed under
+	// their current fingerprint, as access.Check decided before the lock was
+	// held.
 	caller, err := dir.User(ch.Caller)
 	if err != nil {
 		return nil, err
@@ -74,7 +75,7 @@ func CheckApproval(cur Current, dir Directory, ch ApprovalChange) (*ApprovalResu
 		allowed = true
 	default:
 		for _, m := range latest.Members {
-			if m.User == caller.ID && m.Role == access.RoleEditor {
+			if m.User == caller.ID && (m.Role == access.RoleEditor || m.Role == access.RoleManager) {
 				if m.FP != caller.FP {
 					return nil, statusError(http.StatusForbidden, RuleApprover, "your keys differ from the listed fingerprint")
 				}
@@ -83,7 +84,7 @@ func CheckApproval(cur Current, dir Directory, ch ApprovalChange) (*ApprovalResu
 		}
 	}
 	if !allowed {
-		return nil, statusError(http.StatusForbidden, RuleApprover, "you are not the owner or a listed editor")
+		return nil, statusError(http.StatusForbidden, RuleApprover, "you are not the owner or a listed editor or manager")
 	}
 
 	// 409: the record shares with a team.

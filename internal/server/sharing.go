@@ -444,9 +444,12 @@ func (s *Server) handlePutMembership(w http.ResponseWriter, r *http.Request) {
 type membershipView struct {
 	Records []e2e.Envelope          `json:"records"`
 	Offers  map[string]e2e.Envelope `json:"offers"`
-	Owners  map[string]e2e.KeyPair  `json:"owners"`
-	// Rotations holds the rotation records of every owner the chain names
-	// and every member of the latest record who has any. Successors maps the
+	// Owners maps a fingerprint to the keys of an owner, or of a manager who
+	// signed a record, that the chain names.
+	Owners map[string]e2e.KeyPair `json:"owners"`
+	// Rotations holds the rotation records of every owner and every signing
+	// manager the chain names and every member of the latest record who has
+	// any. Successors maps the
 	// seq of each administrator handover to the previous owner's latest
 	// successor record.
 	Rotations  map[string][]e2e.Envelope `json:"rotations"`
@@ -454,7 +457,8 @@ type membershipView struct {
 	// OwnerChanges maps the seq of each record that sets transfer or
 	// handover to the date the server stored it, YYYY-MM-DD.
 	OwnerChanges map[string]string `json:"ownerChanges"`
-	// Keys is set for link scope only: every listed editor's keys.
+	// Keys is set for link scope only: every listed editor's and manager's
+	// keys.
 	Keys map[string]e2e.KeyPair `json:"keys,omitempty"`
 }
 
@@ -528,6 +532,33 @@ func (s *Server) handleGetMembership(w http.ResponseWriter, r *http.Request) {
 				rotated = append(rotated, id)
 			}
 		}
+		// serveKeys adds to Owners the keys of userID that hash to fp: their
+		// current keys if they do, else a pair from their rotation records
+		// that does. The client ignores a pair that does not hash to its key.
+		serveKeys := func(userID, fp string) error {
+			if _, done := v.Owners[fp]; done {
+				return nil
+			}
+			u, err := tx.UserByID(userID)
+			if errors.Is(err, store.ErrNotFound) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if u.FP == fp {
+				v.Owners[fp] = keyPairOf(u)
+				return nil
+			}
+			rows, err := rotationsOf(userID)
+			if err != nil {
+				return err
+			}
+			if kp, ok := keysInRotations(rows, fp); ok {
+				v.Owners[fp] = kp
+			}
+			return nil
+		}
 		for i, rec := range records {
 			v.Records = append(v.Records, envelopeOf(rec.Envelope))
 			if rec.Transfer != "" || rec.Handover != "" {
@@ -546,29 +577,17 @@ func (s *Server) handleGetMembership(w http.ResponseWriter, r *http.Request) {
 				v.Offers[rec.Transfer] = envelopeOf(*o.Envelope)
 			}
 			note(rec.OwnerID)
-			if _, done := v.Owners[rec.OwnerFp]; done {
-				continue
-			}
-			// The owner's current keys if they hash to this fingerprint,
-			// else a pair from their rotation records that does; the client
-			// ignores a pair that does not hash to its key.
-			u, err := tx.UserByID(rec.OwnerID)
-			if errors.Is(err, store.ErrNotFound) {
-				continue
-			}
-			if err != nil {
+			if err := serveKeys(rec.OwnerID, rec.OwnerFp); err != nil {
 				return err
 			}
-			if u.FP == rec.OwnerFp {
-				v.Owners[rec.OwnerFp] = keyPairOf(u)
-				continue
-			}
-			rows, err := rotationsOf(rec.OwnerID)
-			if err != nil {
-				return err
-			}
-			if kp, ok := keysInRotations(rows, rec.OwnerFp); ok {
-				v.Owners[rec.OwnerFp] = kp
+			// A manager's record names the key that signed it. The client
+			// takes that key from the same map as an owner's.
+			var body e2e.MembershipBody
+			if e2e.DecodeStrict(rec.Envelope.Body, &body) == nil && body.V == 2 {
+				note(body.Signer)
+				if err := serveKeys(body.Signer, body.SignerFP); err != nil {
+					return err
+				}
 			}
 		}
 		for _, m := range members {
@@ -588,7 +607,7 @@ func (s *Server) handleGetMembership(w http.ResponseWriter, r *http.Request) {
 		}
 		v.Keys = map[string]e2e.KeyPair{}
 		for _, m := range members {
-			if m.Role != access.RoleEditor {
+			if m.Role != access.RoleEditor && m.Role != access.RoleManager {
 				continue
 			}
 			u, err := tx.UserByID(m.UserID)
@@ -628,7 +647,8 @@ type keysView struct {
 }
 
 // handleGetKeys returns the caller's own wraps, and for the owner and the
-// owner's released successor the estate copies; the owner has no wraps.
+// owner's released successor the estate copies; the owner has wraps only
+// for the epochs a manager started.
 func (s *Server) handleGetKeys(w http.ResponseWriter, r *http.Request) {
 	a, req := requestArtifact(r), requestAccess(r)
 	v := keysView{Wraps: []keyWrapView{}, Estate: []estateView{}}
@@ -643,15 +663,15 @@ func (s *Server) handleGetKeys(w http.ResponseWriter, r *http.Request) {
 			v.Estate = append(v.Estate, estateView{Epoch: e.Epoch, Sealed: e2e.B64(e.Sealed)})
 		}
 	}
-	if !owner {
-		wraps, err := s.store.WrapsFor(a.ID, req.Caller.UserID)
-		if err != nil {
-			s.writeStoreError(w, err, "keys")
-			return
-		}
-		for _, k := range wraps {
-			v.Wraps = append(v.Wraps, keyWrapView{Epoch: k.Epoch, Wrapped: e2e.B64(k.Wrapped), FP: k.FP})
-		}
+	// The owner holds a wrap only for an epoch a manager started, until
+	// they seal its estate copy from it.
+	wraps, err := s.store.WrapsFor(a.ID, req.Caller.UserID)
+	if err != nil {
+		s.writeStoreError(w, err, "keys")
+		return
+	}
+	for _, k := range wraps {
+		v.Wraps = append(v.Wraps, keyWrapView{Epoch: k.Epoch, Wrapped: e2e.B64(k.Wrapped), FP: k.FP})
 	}
 	writeJSON(w, http.StatusOK, v)
 }

@@ -5,7 +5,7 @@ import "testing"
 // readOnly marks the caller as a viewer account.
 func readOnly(r Request) Request { r.Caller.ReadOnly = true; return r }
 
-var readOnlyWrites = []Action{WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer}
+var readOnlyWrites = []Action{WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer, Estate}
 
 // TestReadOnlyCallerNeverWrites checks every write action at every level for
 // a viewer account: Forbidden whatever the level, owner and public writes

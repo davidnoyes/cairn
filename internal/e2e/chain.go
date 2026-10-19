@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 )
 
@@ -38,8 +39,10 @@ type ChainInput struct {
 	Artifact string
 	// Records are the membership envelopes, oldest first.
 	Records []Envelope
-	// Owners maps a fingerprint to an owner's public keys. A pair that does
-	// not hash to its fingerprint is ignored.
+	// Owners maps a fingerprint to the public keys of an owner or of a
+	// manager who signed a record: one map for both, because a fingerprint
+	// names its keys whoever holds them. A pair that does not hash to its
+	// fingerprint is ignored.
 	Owners map[string]KeyPair
 	// Offers maps a transfer body hash to the offer envelope.
 	Offers map[string]Envelope
@@ -135,19 +138,30 @@ func ownerKeys(pairs map[string]KeyPair) map[string][]byte {
 	return keys
 }
 
-// openRecord verifies one record under the key its ownerFp names, and
-// checks the fields that do not depend on the record before it. The body is
-// decoded strictly before the signature is checked, only to read ownerFp;
-// OpenEnvelope then decodes the same bytes the same way, so the ownerFp it
-// returns is the one whose key verified the record.
+// openRecord verifies one record under the key its ownerFp names, or for a
+// version 2 record the key its signerFp names, and checks the fields that do
+// not depend on the record before it. The body is decoded strictly before
+// the signature is checked, only to read the fingerprint; OpenEnvelope then
+// decodes the same bytes the same way, so the fingerprint it returns is the
+// one whose key verified the record.
 func openRecord(env Envelope, artifact string, owners map[string][]byte) (MembershipBody, error) {
 	var b MembershipBody
 	if err := DecodeStrict(env.Body, &b); err != nil {
 		return b, err
 	}
-	pub, ok := owners[b.OwnerFP]
+	if err := b.checkVersion(); err != nil {
+		return b, err
+	}
+	keyFP, who := b.OwnerFP, "owner"
+	if b.V == 2 {
+		keyFP, who = b.SignerFP, "signer"
+		if env.Signer != b.Signer {
+			return b, fmt.Errorf("%w: the envelope's signer %q is not the body's signer %q", ErrChain, env.Signer, b.Signer)
+		}
+	}
+	pub, ok := owners[keyFP]
 	if !ok {
-		return b, fmt.Errorf("%w: no owner key for ownerFp %s", ErrChain, b.OwnerFP)
+		return b, fmt.Errorf("%w: no %s key for fingerprint %s", ErrChain, who, keyFP)
 	}
 	b = MembershipBody{}
 	if err := OpenEnvelope(env, pub, "membership", &b); err != nil {
@@ -179,7 +193,7 @@ func openRecord(env Envelope, artifact string, owners map[string][]byte) (Member
 		if m.User == b.Owner {
 			return b, fmt.Errorf("%w: the owner is listed as a member", ErrChain)
 		}
-		if m.Role != "viewer" && m.Role != "editor" {
+		if m.Role != "viewer" && m.Role != "editor" && m.Role != "manager" {
 			return b, fmt.Errorf("%w: member %q has role %q", ErrChain, m.User, m.Role)
 		}
 		if !isHex64(m.FP) {
@@ -207,6 +221,8 @@ func isHex64(s string) bool {
 
 func checkFirstRecord(b MembershipBody, anchor string, linked func(user, fromFP, toFP string) bool) error {
 	switch {
+	case b.V != 1:
+		return fmt.Errorf("%w: the first record is version %d, and only an owner signs it", ErrChain, b.V)
 	case b.Seq != 1:
 		return fmt.Errorf("%w: first record has seq %d", ErrChain, b.Seq)
 	case b.Prev != "":
@@ -245,6 +261,9 @@ func checkNextRecord(c *Chain, in ChainInput, owners map[string][]byte, linked f
 		return fmt.Errorf("%w: epoch %d follows %d", ErrChain, b.Epoch, prev.Epoch)
 	}
 
+	if b.V == 2 {
+		return checkManagerRecord(prev, b, linked)
+	}
 	if b.Owner == prev.Owner {
 		if b.Transfer != "" || b.Handover != "" {
 			return fmt.Errorf("%w: transfer or handover set without a change of owner", ErrChain)
@@ -276,8 +295,8 @@ func checkNextRecord(c *Chain, in ChainInput, owners map[string][]byte, linked f
 		}
 		return nil
 	}
-	if listed.Role != "editor" {
-		return fmt.Errorf("%w: the new owner is listed as %q, not editor", ErrChain, listed.Role)
+	if listed.Role != "editor" && listed.Role != "manager" {
+		return fmt.Errorf("%w: the new owner is listed as %q, not editor or manager", ErrChain, listed.Role)
 	}
 	if !linked(b.Owner, listed.FP, b.OwnerFP) {
 		return fmt.Errorf("%w: ownerFp does not follow from the fp the previous record lists for the new owner", ErrChain)
@@ -310,6 +329,52 @@ func checkNextRecord(c *Chain, in ChainInput, owners map[string][]byte, linked f
 		return fmt.Errorf("%w: offer's prev is not the previous record's hash", ErrChain)
 	}
 	return nil
+}
+
+// checkManagerRecord checks a version 2 record b, which a manager signed,
+// against the record before it, prev. openRecord has verified it under the
+// key b.SignerFP names. The manager's key is reached from the fp prev lists
+// for them; the owner is unchanged, and no transfer or handover is set.
+// Every entry with role manager is the same in both records, so a manager
+// adds, removes, and changes none.
+func checkManagerRecord(prev, b MembershipBody, linked func(user, fromFP, toFP string) bool) error {
+	var listed *Member
+	for i := range prev.Members {
+		if prev.Members[i].User == b.Signer && prev.Members[i].Role == "manager" {
+			listed = &prev.Members[i]
+		}
+	}
+	switch {
+	case listed == nil:
+		return fmt.Errorf("%w: the previous record does not list %q as a manager", ErrChain, b.Signer)
+	case !linked(b.Signer, listed.FP, b.SignerFP):
+		return fmt.Errorf("%w: signerFp does not follow from the fp the previous record lists for the manager", ErrChain)
+	case b.Owner != prev.Owner:
+		return fmt.Errorf("%w: a manager's record changes the owner", ErrChain)
+	case !linked(b.Owner, prev.OwnerFP, b.OwnerFP):
+		return fmt.Errorf("%w: ownerFp does not follow from the previous record's", ErrChain)
+	case b.Handover != "" || b.Transfer != "":
+		return fmt.Errorf("%w: a manager's record sets transfer or handover", ErrChain)
+	case !sameManagers(prev.Members, b.Members):
+		return fmt.Errorf("%w: a manager's record adds, removes, or changes a manager", ErrChain)
+	}
+	return nil
+}
+
+// sameManagers reports whether the members with role manager are identical,
+// in user, role, and fp, in a and b. Both lists are sorted by user ID, so the
+// managers come out in the same order.
+func sameManagers(a, b []Member) bool {
+	managers := func(ms []Member) []Member {
+		var out []Member
+		for _, m := range ms {
+			if m.Role == "manager" {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+	return slices.Equal(managers(a), managers(b))
 }
 
 // checkSuccessor checks the successor record served for the handover b: it

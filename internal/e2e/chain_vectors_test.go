@@ -12,18 +12,22 @@ import (
 // in Error. Records, Owners, Offers, and Successors are in the wire form the
 // membership endpoint serves, not hex.
 type chainVec struct {
-	Name           string              `json:"name"`
-	Why            string              `json:"why"`
-	Artifact       string              `json:"artifact"`
-	Records        []Envelope          `json:"records"`
-	Owners         map[string]KeyPair  `json:"owners"`
-	Offers         map[string]Envelope `json:"offers"`
-	Successors     map[string]Envelope `json:"successors"`
-	Anchor         string              `json:"anchor"`
-	CurrentOwnerFP string              `json:"currentOwnerFp"`
-	Pin            *chainPinVec        `json:"pin"`
-	Want           *chainWantVec       `json:"want,omitempty"`
-	Error          string              `json:"error,omitempty"`
+	Name       string              `json:"name"`
+	Why        string              `json:"why"`
+	Artifact   string              `json:"artifact"`
+	Records    []Envelope          `json:"records"`
+	Owners     map[string]KeyPair  `json:"owners"`
+	Offers     map[string]Envelope `json:"offers"`
+	Successors map[string]Envelope `json:"successors"`
+	// Rotations, present only for a case that needs a rotation chain, maps a
+	// user ID to that user's rotation records, as the membership endpoint
+	// serves them. The verifier's Linked hook reads them.
+	Rotations      map[string][]Envelope `json:"rotations,omitempty"`
+	Anchor         string                `json:"anchor"`
+	CurrentOwnerFP string                `json:"currentOwnerFp"`
+	Pin            *chainPinVec          `json:"pin"`
+	Want           *chainWantVec         `json:"want,omitempty"`
+	Error          string                `json:"error,omitempty"`
 }
 
 type chainPinVec struct {
@@ -85,6 +89,9 @@ func chainVectors(t testing.TB) []chainVec {
 		if v.Successors == nil {
 			v.Successors = map[string]Envelope{}
 		}
+		if c.rotations != nil {
+			v.Rotations = c.rotations(t, u)
+		}
 		if in.Pin != nil {
 			v.Pin = &chainPinVec{Epoch: in.Pin.Epoch, Seq: in.Pin.Seq, Head: in.Pin.Head}
 		}
@@ -115,6 +122,9 @@ func checkChainVectors(t *testing.T, vs []chainVec) {
 		in := ChainInput{
 			Artifact: v.Artifact, Records: v.Records, Owners: v.Owners, Offers: v.Offers, Successors: v.Successors,
 			Anchor: v.Anchor, CurrentOwnerFP: v.CurrentOwnerFP,
+		}
+		if v.Rotations != nil {
+			in.Linked = RotationLinker(v.Rotations)
 		}
 		if v.Pin != nil {
 			in.Pin = &EpochPin{Epoch: v.Pin.Epoch, Seq: v.Pin.Seq, Head: v.Pin.Head}

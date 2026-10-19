@@ -220,12 +220,13 @@ func TestCheckRefusals(t *testing.T) {
 		rule   Rule
 		msg    string
 	}{
-		// 1. the owner's current key, and the owner as signer
-		{"signer is not the owner", func(t *testing.T, f *fixture) Change {
+		// 1. the owner's current key, and the owner as signer; a signer who
+		// is not the owner is a listed manager (see manager_test.go)
+		{"signer is not the owner nor a manager", func(t *testing.T, f *fixture) Change {
 			ch := f.change(t, f.next(), nil, nil)
 			ch.Envelope.Signer = f.a.ID
 			return ch
-		}, 400, RuleSigner, "not the owner"},
+		}, 400, RuleSignerRole, "not the owner"},
 		{"signed by another key", func(t *testing.T, f *fixture) Change {
 			raw, _ := json.Marshal(f.next())
 			env, _ := e2e.NewEnvelope(f.a.seed, f.o.ID, "membership", raw)

@@ -39,7 +39,11 @@ type ExcludedEntry struct {
 	Email string `json:"email"`
 }
 
-// MembershipBody is signed by the owner.
+// MembershipBody is signed by the owner, or, as version 2, by a manager:
+// Signer and SignerFP then name the manager and the key that signed. They
+// are the only fields with `omitempty`, because a version 1 body has
+// neither: see checkVersion. An explicit empty value still fails
+// DecodeStrict's round trip.
 type MembershipBody struct {
 	V            int             `json:"v"`
 	Artifact     string          `json:"artifact"`
@@ -56,6 +60,27 @@ type MembershipBody struct {
 	Prev         string          `json:"prev"`
 	Transfer     string          `json:"transfer"`
 	Handover     string          `json:"handover"`
+	Signer       string          `json:"signer,omitempty"`
+	SignerFP     string          `json:"signerFp,omitempty"`
+}
+
+// checkVersion enforces the version rule of a membership body: version 1 has
+// neither signer field, and version 2 has both, non-empty, with a signer who
+// is not the owner. Any other version is refused.
+func (b *MembershipBody) checkVersion() error {
+	switch {
+	case b.V == 1 && (b.Signer != "" || b.SignerFP != ""):
+		return fmt.Errorf("%w: a version 1 membership body has no signer or signerFp", ErrFormat)
+	case b.V == 1:
+		return nil
+	case b.V == 2 && (b.Signer == "" || b.SignerFP == ""):
+		return fmt.Errorf("%w: a version 2 membership body needs signer and signerFp", ErrFormat)
+	case b.V == 2 && b.Signer == b.Owner:
+		return fmt.Errorf("%w: a version 2 membership body is signed by a manager, not the owner", ErrFormat)
+	case b.V == 2:
+		return nil
+	}
+	return fmt.Errorf("%w: body version %d, want 1 or 2", ErrFormat, b.V)
 }
 
 // TransferBody is signed by the current owner.
@@ -380,8 +405,9 @@ func checkNoLoneSurrogates(data []byte) error {
 // signatures verify.
 
 // OpenEnvelope verifies env's signature against pub for purpose, strictly
-// decodes its body into out, and requires the body's "v" field to be 1. It
-// refuses purpose "rotation" with ErrFormat: a rotation also needs newSig,
+// decodes its body into out, and requires the body's "v" field to be 1. A
+// membership body may also be version 2, which checkVersion holds to its
+// own rules. It refuses purpose "rotation" with ErrFormat: a rotation also needs newSig,
 // which only OpenRotation checks.
 func OpenEnvelope(env Envelope, pub ed25519.PublicKey, purpose string, out any) error {
 	if purpose == "rotation" {
@@ -400,6 +426,9 @@ func openEnvelope(env Envelope, pub ed25519.PublicKey, purpose string, out any) 
 	var v bodyVersion
 	if err := json.Unmarshal(env.Body, &v); err != nil {
 		return err
+	}
+	if mb, ok := out.(*MembershipBody); ok && purpose == "membership" {
+		return mb.checkVersion()
 	}
 	if v.V != 1 {
 		return fmt.Errorf("%w: body version %d, want 1", ErrFormat, v.V)

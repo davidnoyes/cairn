@@ -95,6 +95,7 @@ func (s *Server) routes() {
 	handle("POST /api/artifacts/{id}/transfer", s.artifactRoute(access.Transfer, s.handleOfferTransfer))
 	handle("DELETE /api/artifacts/{id}/transfer", s.artifactRoute(access.AnswerTransfer, s.handleCloseTransfer))
 	handle("POST /api/artifacts/{id}/transfer/accept", s.artifactRoute(access.AnswerTransfer, s.handleAcceptTransfer))
+	handle("PUT /api/artifacts/{id}/estate/{epoch}", s.artifactRoute(access.Estate, s.handlePutEstate))
 	handle("GET /api/artifacts/{id}/keys", s.artifactRoute(access.ReadKeys, s.handleGetKeys))
 	handle("POST /api/artifacts/{id}/keys", s.artifactRoute(access.ApproveMember, s.handleApprove))
 	handle("GET /api/artifacts/{id}/pending", s.artifactRoute(access.ListPending, s.handlePending))

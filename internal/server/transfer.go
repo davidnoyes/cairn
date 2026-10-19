@@ -53,7 +53,7 @@ func editorFor(cur membership.Current, dir membership.Directory, to string) (*me
 		return nil, err
 	}
 	if u == nil {
-		return nil, transferRefusal(http.StatusConflict, "only a listed editor can take ownership")
+		return nil, transferRefusal(http.StatusConflict, "only a listed editor or manager can take ownership")
 	}
 	if err := membership.CheckNewOwner(cur, u); err != nil {
 		return nil, err
@@ -367,7 +367,7 @@ func (s *Server) handleAdminUserArtifacts(w http.ResponseWriter, r *http.Request
 				return err
 			}
 			for _, m := range members {
-				if m.Role != access.RoleEditor {
+				if m.Role != access.RoleEditor && m.Role != access.RoleManager {
 					continue
 				}
 				u, err := tx.UserByID(m.UserID)

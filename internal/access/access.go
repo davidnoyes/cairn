@@ -15,12 +15,13 @@ import "net/http"
 type Level string
 
 const (
-	LevelOwner  Level = "owner"
-	LevelEditor Level = "editor"
-	LevelViewer Level = "viewer"
-	LevelTeam   Level = "team"
-	LevelLink   Level = "link"
-	LevelNone   Level = "none"
+	LevelOwner   Level = "owner"
+	LevelManager Level = "manager"
+	LevelEditor  Level = "editor"
+	LevelViewer  Level = "viewer"
+	LevelTeam    Level = "team"
+	LevelLink    Level = "link"
+	LevelNone    Level = "none"
 
 	// LevelSuccessor is a released successor of the artifact's owner. It sits
 	// between team and link in match order.
@@ -29,8 +30,9 @@ const (
 
 // Roles a membership record gives a listed member.
 const (
-	RoleViewer = "viewer"
-	RoleEditor = "editor"
+	RoleViewer  = "viewer"
+	RoleEditor  = "editor"
+	RoleManager = "manager"
 )
 
 // Values of a membership record's team field.
@@ -67,6 +69,7 @@ const (
 	ReviewVersions Action = "review"     // list and vouch for versions
 	Transfer       Action = "transfer"   // offer ownership
 	AnswerTransfer Action = "answer"     // accept, decline, or withdraw an offer
+	Estate         Action = "estate"     // PUT an epoch's estate copy: the owner only
 )
 
 // Decision is the outcome of a check.
@@ -172,6 +175,7 @@ type matches struct {
 	owner, member, team, successor, link bool
 	signedIn                             bool
 	editorPower                          bool
+	managerPower                         bool
 }
 
 func match(r Request) matches {
@@ -190,9 +194,11 @@ func match(r Request) matches {
 	if c.LinkOnly {
 		m.owner, m.member, m.team, m.successor = false, false, false, false
 	}
-	// A listed editor whose current keys differ from the listed fingerprint
-	// can read but not write, until the owner lists the new fingerprint.
-	m.editorPower = m.member && r.Member.Role == RoleEditor && r.Member.FP == c.Fingerprint
+	// A listed editor or manager whose current keys differ from the listed
+	// fingerprint can read but not write, until the owner lists the new
+	// fingerprint.
+	m.managerPower = m.member && r.Member.Role == RoleManager && r.Member.FP == c.Fingerprint
+	m.editorPower = m.managerPower || m.member && r.Member.Role == RoleEditor && r.Member.FP == c.Fingerprint
 	return m
 }
 
@@ -215,6 +221,8 @@ func LevelOf(r Request) Level {
 	switch {
 	case m.owner:
 		return LevelOwner
+	case m.member && r.Member.Role == RoleManager:
+		return LevelManager
 	case m.member && r.Member.Role == RoleEditor:
 		return LevelEditor
 	case m.member && r.Member.Role == RoleViewer:
@@ -275,7 +283,7 @@ func WritesArtifact(act Action) bool { return writesArtifact(act) }
 // ownership offer, are left to the table (accepting is refused by the handler).
 func writesArtifact(act Action) bool {
 	switch act {
-	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer:
+	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer, Estate:
 		return true
 	}
 	return false
@@ -285,7 +293,7 @@ func allowed(m matches, a Artifact, act Action) bool {
 	if m.owner {
 		switch act {
 		case ReadContent, WriteData, PushVersion, Share, Delete, Rename, ReadMembership,
-			ReadKeys, ListPending, ApproveMember, ReviewVersions, Transfer, AnswerTransfer:
+			ReadKeys, ListPending, ApproveMember, ReviewVersions, Transfer, AnswerTransfer, Estate:
 			return true
 		}
 		return false
@@ -317,6 +325,11 @@ func allowed(m matches, a Artifact, act Action) bool {
 		case WriteData, PushVersion, Rename, ListPending, ApproveMember:
 			return true
 		}
+	}
+	// A manager also signs member lists. Delete, Transfer, ReviewVersions,
+	// and Estate stay with the owner.
+	if m.managerPower && act == Share {
+		return true
 	}
 	// A signed-in link holder writes while public writes are on.
 	return m.link && m.signedIn && a.PublicWrites && act == WriteData

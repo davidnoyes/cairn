@@ -118,6 +118,7 @@ func (f *chainFixture) add(signer chainUser, edit func(*MembershipBody)) *chainF
 	b.Seq++
 	b.Prev = BodyHash(f.records[len(f.records)-1].Body)
 	b.Transfer, b.Handover = "", ""
+	b.V, b.Signer, b.SignerFP = 1, "", ""
 	b.Members = slices.Clone(b.Members)
 	b.Excluded = slices.Clone(b.Excluded)
 	if edit != nil {
@@ -125,6 +126,18 @@ func (f *chainFixture) add(signer chainUser, edit func(*MembershipBody)) *chainF
 	}
 	f.sign(signer, b)
 	return f
+}
+
+// addByManager appends the record that follows the latest one, as add does,
+// as a version 2 record that manager signs, after edit.
+func (f *chainFixture) addByManager(manager chainUser, edit func(*MembershipBody)) *chainFixture {
+	f.t.Helper()
+	return f.add(manager, func(b *MembershipBody) {
+		b.V, b.Signer, b.SignerFP = 2, manager.id, manager.fp
+		if edit != nil {
+			edit(b)
+		}
+	})
 }
 
 func (f *chainFixture) sign(signer chainUser, b MembershipBody) {
@@ -238,6 +251,18 @@ type chainCase struct {
 	seq       int
 	epoch     int
 	handovers []int
+	// rotations, when set, are the rotation records the case serves, and
+	// the chain is verified with the Linked hook they make.
+	rotations func(t testing.TB, u chainUsers) map[string][]Envelope
+}
+
+// linkedFor is the Linked hook a case's rotations make, or nil for a case
+// with none.
+func (c chainCase) linkedFor(t testing.TB, u chainUsers) func(user, fromFP, toFP string) bool {
+	if c.rotations == nil {
+		return nil
+	}
+	return RotationLinker(c.rotations(t, u))
 }
 
 func chainCases() []chainCase {
@@ -568,7 +593,7 @@ func chainCases() []chainCase {
 			build: pinned(2, 3, func(f *chainFixture) string { return f.head(3) })},
 		{name: "pin-seq-zero", why: "a pin with seq 0", err: ErrFormat,
 			build: pinned(1, 0, func(f *chainFixture) string { return "" })},
-	}, successorChainCases()...)
+	}, append(successorChainCases(), managerChainCases()...)...)
 }
 
 func TestVerifyChain(t *testing.T) {
@@ -576,6 +601,7 @@ func TestVerifyChain(t *testing.T) {
 	for _, c := range chainCases() {
 		t.Run(c.name, func(t *testing.T) {
 			in := c.build(t, u)
+			in.Linked = c.linkedFor(t, u)
 			got, err := VerifyChain(in)
 			if c.err != nil {
 				if !errors.Is(err, c.err) {

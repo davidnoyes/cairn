@@ -723,13 +723,14 @@ func (t *ArtifactTx) AcceptedOffers() (map[string]*Offer, error) {
 // Vouches
 
 // ReviewVersions returns the versions that need the owner's review: pushed
-// by a user who is neither the owner nor an editor of the latest record, or
-// by a deleted account (no pusher), and with no vouch. Ordered by seq.
+// by a user who is neither the owner, an editor, nor a manager of the latest
+// record, or by a deleted account (no pusher), and with no vouch. Ordered by
+// seq.
 func (t *ArtifactTx) ReviewVersions() ([]*Version, error) {
 	rows, err := t.tx.Query(`SELECT `+versionCols+` FROM versions
 		WHERE artifact_id = ? AND (pushed_by IS NULL
 			OR (pushed_by IS NOT (SELECT owner_id FROM artifacts WHERE id = ?)
-			AND pushed_by NOT IN (SELECT user_id FROM artifact_members WHERE artifact_id = ? AND role = 'editor')))
+			AND pushed_by NOT IN (SELECT user_id FROM artifact_members WHERE artifact_id = ? AND role IN ('editor', 'manager'))))
 		AND id NOT IN (SELECT version_id FROM version_vouches)
 		ORDER BY seq`, t.id, t.id, t.id)
 	if err != nil {

@@ -521,7 +521,7 @@ func TestChangedFingerprintEditorCannotReviewOrTransfer(t *testing.T) {
 
 var allActions = []Action{
 	ReadContent, WriteData, PushVersion, Share, Delete, Rename, ReadMembership,
-	ReadKeys, ListPending, ApproveMember, ReviewVersions, Transfer, AnswerTransfer,
+	ReadKeys, ListPending, ApproveMember, ReviewVersions, Transfer, AnswerTransfer, Estate,
 }
 
 // asSuccessor is a signed-in stranger who is the owner's released successor.

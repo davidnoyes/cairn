@@ -20,8 +20,12 @@ import (
 type Rule string
 
 const (
-	RuleSigner        Rule = "signer"         // the envelope's signer is the owner
-	RuleSignature     Rule = "signature"      // verifies under the owner's current key and parses strictly
+	RuleSigner        Rule = "signer"         // the envelope's signer is the owner, or a manager of a later record
+	RuleSignerRole    Rule = "signer role"    // a signer who is not the owner is listed as a manager
+	RuleVersion       Rule = "version"        // the owner signs version 1, a manager version 2
+	RuleSignerFP      Rule = "signerFp"       // a manager's record names their current fingerprint
+	RuleManagerChange Rule = "manager change" // a manager's record keeps every manager entry
+	RuleSignature     Rule = "signature"      // verifies under the signer's current key and parses strictly
 	RuleArtifact      Rule = "artifact"       // names this artifact
 	RuleOwner         Rule = "owner"          // names the artifact's owner
 	RuleOwnerFP       Rule = "ownerFp"        // the owner's current fingerprint
@@ -34,7 +38,7 @@ const (
 	RuleAKCommit      Rule = "akCommit"       // format, and changes exactly with the epoch
 	RuleEpoch         Rule = "epoch"          // the current epoch or the next
 	RuleNewMember     Rule = "new member"     // a new or changed member is the user's current, unique key
-	RuleViewerAccount Rule = "viewer-account" // a viewer account is not a new editor
+	RuleViewerAccount Rule = "viewer-account" // a viewer account is not a new editor or manager
 	RuleExcludedMatch Rule = "excluded match" // no entry matches the owner or a member
 	RuleSameEpoch     Rule = "same epoch"     // what a same-epoch record cannot do
 	RuleNextEpoch     Rule = "next epoch"     // everyone removed or dropped is excluded
@@ -158,15 +162,19 @@ const (
 	estateSize = 1 + 12 + 32 + 16 // version, nonce, AK, tag
 )
 
+// EstateSize is the length of a sealed estate copy, for the endpoint that
+// adds one later.
+const EstateSize = estateSize
+
 type wrapKey struct {
 	user  string
 	epoch int
 }
 
 // CheckNewOwner refuses u as the artifact's next owner unless u is an active,
-// verified user whom the latest record lists as an editor under their current
-// key. Check applies it to an acceptance; the server also applies it to an
-// offer.
+// verified user whom the latest record lists as an editor or manager under
+// their current key. Check applies it to an acceptance; the server also
+// applies it to an offer.
 func CheckNewOwner(cur Current, u *User) error {
 	var listed *e2e.Member
 	if cur.Latest != nil {
@@ -177,8 +185,8 @@ func CheckNewOwner(cur Current, u *User) error {
 		}
 	}
 	switch {
-	case listed == nil || listed.Role != access.RoleEditor:
-		return conflict(RuleOwner, "only a listed editor can take ownership")
+	case listed == nil || listed.Role != access.RoleEditor && listed.Role != access.RoleManager:
+		return conflict(RuleOwner, "only a listed editor or manager can take ownership")
 	case !u.Active || !u.Verified:
 		return conflict(RuleOwner, "the user is not an active, verified user")
 	case listed.FP != u.FP:
@@ -220,16 +228,33 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 		}
 	}
 
-	// Rules 1 and 2: who signed, under which key, for what.
+	// Rules 1 and 2: who signed, under which key, for what. The owner signs
+	// version 1. Anyone else is a listed manager, whose record is version 2.
+	var manager *User
+	signer := owner
 	if ch.Envelope.Signer != owner.ID {
-		return nil, refuse(RuleSigner, "signer %q is not the owner", ch.Envelope.Signer)
+		var err error
+		if manager, err = checkManagerSigner(cur, dir, ch); err != nil {
+			return nil, err
+		}
+		signer = manager
 	}
 	var body e2e.MembershipBody
-	if err := e2e.OpenEnvelope(ch.Envelope, owner.Ed25519Pub, "membership", &body); err != nil {
+	if err := e2e.OpenEnvelope(ch.Envelope, signer.Ed25519Pub, "membership", &body); err != nil {
 		if errors.Is(err, e2e.ErrDecrypt) {
-			return nil, refuse(RuleSignature, "the record does not verify under the owner's current key")
+			return nil, refuse(RuleSignature, "the record does not verify under the signer's current key")
 		}
 		return nil, refuse(RuleSignature, "the body does not parse: %v", err)
+	}
+	switch {
+	case manager == nil && body.V != 1:
+		return nil, refuse(RuleVersion, "the owner signs a version 1 record, not version %d", body.V)
+	case manager != nil && body.V != 2:
+		return nil, refuse(RuleVersion, "a manager signs a version 2 record, not version %d", body.V)
+	case manager != nil && body.Signer != manager.ID:
+		return nil, refuse(RuleSigner, "the body's signer %q is not the envelope's signer %q", body.Signer, manager.ID)
+	case manager != nil && body.SignerFP != manager.FP:
+		return nil, refuse(RuleSignerFP, "signerFp is not the manager's current fingerprint")
 	}
 	if body.Artifact != cur.ArtifactID {
 		return nil, refuse(RuleArtifact, "artifact %q is not this artifact", body.Artifact)
@@ -294,6 +319,11 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 			prevExcluded[x.User] = x
 		}
 	}
+	if manager != nil {
+		if id := managerChange(prev.Members, body.Members); id != "" {
+			return nil, refuse(RuleManagerChange, "a manager's record adds, removes, or changes manager %s: only the owner does", id)
+		}
+	}
 	listed := map[string]e2e.Member{}
 	users := map[string]*User{}
 	for _, m := range body.Members {
@@ -333,11 +363,17 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 		}
 	}
 
-	// A viewer account is never a new editor. One the previous record already
-	// lists as editor stays, until an owner changes the entry: demoting an
-	// account does not rewrite the member lists that name it.
+	// A viewer account is never a new editor or manager. One the previous
+	// record already lists as editor or manager stays, and a manager may
+	// become an editor, until an owner changes the entry: demoting an account
+	// does not rewrite the member lists that name it.
 	for _, m := range body.Members {
-		if u := users[m.User]; u != nil && u.Role == store.RoleViewer && m.Role == access.RoleEditor && prevMembers[m.User].Role != access.RoleEditor {
+		u := users[m.User]
+		if u == nil || u.Role != store.RoleViewer || m.Role == access.RoleViewer {
+			continue
+		}
+		was := prevMembers[m.User].Role
+		if was != m.Role && !(m.Role == access.RoleEditor && was == access.RoleManager) {
 			return nil, refuse(RuleViewerAccount, "member %s is a viewer account and can only be a viewer", m.User)
 		}
 	}
@@ -385,7 +421,7 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 			return nil, refuse(RuleSameEpoch, "a same-epoch record removes %s", removed[0])
 		}
 		for _, m := range body.Members {
-			if prevMembers[m.User].Role == access.RoleEditor && m.Role == access.RoleViewer {
+			if was := prevMembers[m.User].Role; (was == access.RoleEditor || was == access.RoleManager) && m.Role == access.RoleViewer {
 				return nil, refuse(RuleSameEpoch, "a same-epoch record demotes %s", m.User)
 			}
 		}
@@ -459,6 +495,13 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 			need[wrapKey{m.User, body.Epoch}] = true
 		}
 	}
+	// The owner holds no wraps and reads through an estate copy that only
+	// they can seal. A manager's next epoch has none, so it carries the
+	// owner's wrap instead: the owner counts as a listed member for it.
+	ownerWrap := manager != nil && newEpoch
+	if ownerWrap {
+		need[wrapKey{owner.ID, body.Epoch}] = true
+	}
 	res := &Result{Body: &body, NewEpoch: newEpoch}
 	got := map[wrapKey]bool{}
 	for _, w := range ch.Wraps {
@@ -468,13 +511,17 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 			return nil, refuse(RuleWraps, "the wrap for %s at epoch %d is not %d bytes", w.User, w.Epoch, wrapSize)
 		case got[k]:
 			return nil, refuse(RuleWraps, "the wrap for %s at epoch %d is given twice", w.User, w.Epoch)
-		case listed[w.User].User == "":
+		case listed[w.User].User == "" && !(ownerWrap && w.User == owner.ID):
 			return nil, refuse(RuleWraps, "a wrap for %s, who is not a listed member", w.User)
 		case !need[k]:
 			return nil, refuse(RuleWraps, "the wrap for %s at epoch %d is not needed", w.User, w.Epoch)
 		}
 		got[k] = true
-		res.Wraps = append(res.Wraps, store.Wrap{UserID: w.User, Epoch: w.Epoch, Wrapped: w.Wrapped, FP: users[w.User].FP})
+		recipient := users[w.User]
+		if ownerWrap && w.User == owner.ID {
+			recipient = owner
+		}
+		res.Wraps = append(res.Wraps, store.Wrap{UserID: w.User, Epoch: w.Epoch, Wrapped: w.Wrapped, FP: recipient.FP})
 	}
 	if len(got) != len(need) {
 		var missing []wrapKey
@@ -509,6 +556,10 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 			res.Estate = append(res.Estate, store.Estate{Epoch: e.Epoch, Sealed: e.Sealed})
 		}
 		res.Accepted = true
+	} else if manager != nil {
+		if len(ch.Estate) > 0 {
+			return nil, refuse(RuleEstate, "a manager's record takes no estate copy: only the owner seals one")
+		}
 	} else if newEpoch {
 		if len(ch.Estate) != 1 || ch.Estate[0].Epoch != body.Epoch {
 			return nil, refuse(RuleEstate, "a new epoch needs exactly one estate copy, for epoch %d", body.Epoch)
@@ -564,8 +615,8 @@ func checkShape(b *e2e.MembershipBody, ownerID string) error {
 			return refuse(RuleMembers, "members are not sorted by user ID without duplicates")
 		case m.User == ownerID:
 			return refuse(RuleMembers, "members list the owner")
-		case m.Role != access.RoleViewer && m.Role != access.RoleEditor:
-			return refuse(RuleMembers, "member %s has role %q, want viewer or editor", m.User, m.Role)
+		case m.Role != access.RoleViewer && m.Role != access.RoleEditor && m.Role != access.RoleManager:
+			return refuse(RuleMembers, "member %s has role %q, want viewer, editor or manager", m.User, m.Role)
 		case !isHex64(m.FP):
 			return refuse(RuleMembers, "member %s fp is not 64 lowercase hex", m.User)
 		}
@@ -587,6 +638,62 @@ func checkShape(b *e2e.MembershipBody, ownerID string) error {
 		}
 	}
 	return nil
+}
+
+// checkManagerSigner returns the user who signs a record that is not the
+// owner's, for the rules a manager's record meets before its body is read:
+// the previous record exists and lists them as a manager, and they are a
+// user. An accepting record is signed by the new owner, and the first record
+// by the owner, so a non-owner signer is refused for either.
+func checkManagerSigner(cur Current, dir Directory, ch Change) (*User, error) {
+	id := ch.Envelope.Signer
+	if ch.Accept != nil || cur.Latest == nil {
+		return nil, refuse(RuleSigner, "signer %q is not the owner", id)
+	}
+	isManager := false
+	for _, m := range cur.Latest.Members {
+		if m.User == id && m.Role == access.RoleManager {
+			isManager = true
+		}
+	}
+	if !isManager {
+		return nil, refuse(RuleSignerRole, "signer %q is not the owner, and the latest record does not list them as a manager", id)
+	}
+	u, err := dir.User(id)
+	if err != nil {
+		return nil, err
+	}
+	if u == nil {
+		return nil, refuse(RuleSigner, "signer %q is not a user", id)
+	}
+	return u, nil
+}
+
+// managerChange returns the user ID of the first manager entry that differs
+// between the previous record's members and the next record's, or "" when
+// every entry with role manager is the same, in user, role, and fp, in both.
+func managerChange(prev, next []e2e.Member) string {
+	managers := func(ms []e2e.Member) map[string]e2e.Member {
+		out := map[string]e2e.Member{}
+		for _, m := range ms {
+			if m.Role == access.RoleManager {
+				out[m.User] = m
+			}
+		}
+		return out
+	}
+	was, now := managers(prev), managers(next)
+	for _, m := range next {
+		if m.Role == access.RoleManager && was[m.User] != m {
+			return m.User
+		}
+	}
+	for _, m := range prev {
+		if m.Role == access.RoleManager && now[m.User] != m {
+			return m.User
+		}
+	}
+	return ""
 }
 
 // matches reports whether excluded entry x matches member m by user ID,
@@ -709,7 +816,9 @@ func Apply(tx *store.ArtifactTx, res *Result) error {
 		for i, m := range res.Members {
 			keep[i] = m.UserID
 		}
-		if err := tx.DeleteWrapsExcept(keep); err != nil {
+		// The owner holds a wrap only for an epoch a manager started, until
+		// they seal its estate copy, so a new epoch keeps theirs.
+		if err := tx.DeleteWrapsExcept(append(keep[:len(keep):len(keep)], res.Body.Owner)); err != nil {
 			return err
 		}
 		if err := tx.DeleteApprovalsExcept(keep); err != nil {
