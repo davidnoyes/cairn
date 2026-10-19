@@ -102,9 +102,12 @@ mutations, and Playwright only on `e2e/*` branches and `feat/e2e-trust-model`.
   included. Handlers use `requestArtifact(r)` — never `r.PathValue("id")` — as
   the artifact id for storage paths and queries (`{id}` may be a resource
   reference; 409 on ambiguity).
-- Membership records are signed by the owner and accepted only through
-  `internal/membership`; removing a member starts a new epoch, and clients
-  never accept data from a lower epoch.
+- Membership records are signed by the owner (version 1) or by a listed
+  manager (version 2, naming `signer` and `signerFp`), and accepted only
+  through `internal/membership` and the chain checks in `internal/e2e` and
+  `e2e.mjs`, which must agree (`testdata/vectors.json`). A manager's record
+  never changes the owner, ownership, or any manager entry. Removing a member
+  starts a new epoch, and clients never accept data from a lower epoch.
 - Accounts are self-signup (`--signup-domain`) with emailed verification; the
   password is stretched on the client. No administrator endpoint sets a
   password; they only grant roles, deactivate, delete, or offer an ownership

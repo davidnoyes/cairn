@@ -1,6 +1,7 @@
 # Roles, groups, and folders
 
-Status: **plan, decisions agreed**. Nothing here is built. It extends the
+Status: **plan, decisions agreed; R1 (viewer accounts) and R2 (managers) are
+built**, and the rest is not yet. It extends the
 [trust model](e2e-trust-model.md) and builds on
 [Google sign-in and passkey unlock](google-signin.md).
 

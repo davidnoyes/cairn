@@ -381,8 +381,12 @@ cairn db query --artifact <claude-session-id> "SELECT ..."
 
 ### Sharing
 
-Only the owner shares. Adding a member and promoting a viewer to editor stay
-within the artifact's current epoch. Removing a member, demoting an editor,
+The owner shares, and so does any member the owner makes a **manager**. A
+manager can share, unshare, change roles below manager, approve team members,
+make the artifact public or private, and start a new epoch. Only the owner
+adds, removes, or changes a manager, transfers ownership, or deletes the
+artifact. Adding a member and promoting a viewer to editor stay within the
+artifact's current epoch. Removing a member, demoting an editor,
 making a public artifact private, and ending a team share while an approved
 member holds a key each start a new epoch, with a new key that nobody removed
 ever held.
@@ -391,6 +395,7 @@ ever held.
 cairn share my-app bob@example.com                 # add as viewer
 cairn share my-app bob@example.com --role editor   # or promote
 cairn share my-app bob@example.com --role viewer   # or demote: a new epoch
+cairn share my-app bob@example.com --role manager  # the owner only: bob shares too
 cairn unshare my-app bob@example.com               # remove: a new epoch
 cairn members my-app                               # roles, fingerprints, pin states
 cairn team my-app viewer                           # share with the whole team
