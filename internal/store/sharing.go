@@ -293,9 +293,11 @@ func (t *ArtifactTx) Artifact() (*Artifact, error) {
 	return scanArtifact(t.tx.QueryRow(`SELECT `+artifactCols+` FROM artifacts WHERE id = ?`, t.id))
 }
 
-// SetOwner makes userID the artifact's owner. Nothing else changes.
+// SetOwner makes userID the artifact's owner and moves it to the top level:
+// an item's parent belongs to the same owner, and the new owner cannot read
+// the previous owner's folder. Nothing else changes.
 func (t *ArtifactTx) SetOwner(userID string) error {
-	_, err := t.tx.Exec(`UPDATE artifacts SET owner_id = ? WHERE id = ?`, userID, t.id)
+	_, err := t.tx.Exec(`UPDATE artifacts SET owner_id = ?, parent_id = NULL WHERE id = ?`, userID, t.id)
 	return err
 }
 

@@ -70,14 +70,19 @@ func (s *Server) readable(c access.Caller, id string) (bool, error) {
 	return err == nil && access.LevelOf(req) != access.LevelNone, err
 }
 
-// showParent sets v's parent to the folder a sits in, when c can read that
-// folder, and leaves it null otherwise, so a reader of a shared item does not
-// learn where its owner keeps it.
-func (s *Server) showParent(v *artifactView, a *store.Artifact, c access.Caller) error {
+// readableBy is readable for c, as showParent takes it.
+func (s *Server) readableBy(c access.Caller) func(id string) (bool, error) {
+	return func(id string) (bool, error) { return s.readable(c, id) }
+}
+
+// showParent sets v's parent to the folder a sits in, when readable reports
+// the caller can read that folder, and leaves it null otherwise, so a reader
+// of a shared item does not learn where its owner keeps it.
+func (s *Server) showParent(v *artifactView, a *store.Artifact, readable func(id string) (bool, error)) error {
 	if a.ParentID == "" {
 		return nil
 	}
-	ok, err := s.readable(c, a.ParentID)
+	ok, err := readable(a.ParentID)
 	if ok {
 		v.Parent = &a.ParentID
 	}
@@ -133,7 +138,7 @@ func (s *Server) handlePutParent(w http.ResponseWriter, r *http.Request) {
 	}
 	v, err := s.viewOf(moved, access.LevelOwner)
 	if err == nil {
-		err = s.showParent(v, moved, requestAccess(r).Caller)
+		err = s.showParent(v, moved, s.readableBy(requestAccess(r).Caller))
 	}
 	if err != nil {
 		s.writeStoreError(w, err, "artifact")

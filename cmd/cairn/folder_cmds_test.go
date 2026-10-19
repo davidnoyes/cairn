@@ -330,3 +330,64 @@ func TestFolderDeleteRefusesAnArtifact(t *testing.T) {
 		t.Errorf("the artifact was deleted: %v", err)
 	}
 }
+
+// Two folders called Work: every command that takes a folder by name refuses
+// it, names both IDs, and changes nothing.
+func TestFoldersSharingANameAreRefusedAsAmbiguous(t *testing.T) {
+	c := loggedIn(t)
+	one := runJSON[client.Artifact](t, runFolder, "create", "Work", "--json")
+	two := runJSON[client.Artifact](t, runFolder, "create", "Work", "--json")
+	item := runJSON[client.Artifact](t, runArtifact, "create", "notes", "--json")
+	old := stdinIsTerminal
+	t.Cleanup(func() { stdinIsTerminal = old })
+	stdinIsTerminal = func() bool { return false }
+
+	for name, run := range map[string]func() error{
+		"folder create --in":   func() error { return runFolder([]string{"create", "Plans", "--in", "Work"}) },
+		"artifact create --in": func() error { return runArtifact([]string{"create", "more", "--in", "Work"}) },
+		"folder delete":        func() error { return runFolder([]string{"delete", "Work", "--yes"}) },
+		"move --to":            func() error { return runMove([]string{"notes", "--to", "Work"}) },
+	} {
+		err := run()
+		if err == nil || !strings.Contains(err.Error(), "2 artifacts match") ||
+			!strings.Contains(err.Error(), one.ID) || !strings.Contains(err.Error(), two.ID) {
+			t.Errorf("%s: %v, want an ambiguity error naming %s and %s", name, err, one.ID, two.ID)
+		}
+	}
+	all, err := c.ListArtifacts()
+	if err != nil || len(all) != 3 {
+		t.Fatalf("after the refusals: %d items (%v), want 3", len(all), err)
+	}
+	if got, _ := c.GetArtifact(item.ID); got.ParentID != "" {
+		t.Errorf("the item moved into %q", got.ParentID)
+	}
+	// An ID is never ambiguous.
+	runJSON[client.Artifact](t, runMove, "notes", "--to", one.ID, "--json")
+}
+
+// At a terminal, "y" deletes; any other answer deletes nothing.
+func TestFolderDeletePromptAnswers(t *testing.T) {
+	c := loggedIn(t)
+	f := runJSON[client.Artifact](t, runFolder, "create", "Work", "--json")
+	runJSON[client.Artifact](t, runArtifact, "create", "a", "--in", "Work", "--json")
+	old := stdinIsTerminal
+	t.Cleanup(func() { stdinIsTerminal = old })
+	stdinIsTerminal = func() bool { return true }
+
+	for _, answer := range []string{"\n", "", "n\n", "no\n", "yep\n", "y please\n"} {
+		withStdin(t, answer)
+		if err := runFolder([]string{"delete", "Work"}); err == nil || err.Error() != "not deleted" {
+			t.Errorf("answer %q: %v, want not deleted", answer, err)
+		}
+		if _, err := c.GetArtifact(f.ID); err != nil {
+			t.Fatalf("answer %q deleted the folder: %v", answer, err)
+		}
+	}
+	withStdin(t, "y\n")
+	if out := printed(t, runFolder, "delete", "Work"); !strings.Contains(out, "1 folder and 1 artifact") {
+		t.Errorf("after y: %q", out)
+	}
+	if left, _ := c.ListArtifacts(); len(left) != 0 {
+		t.Errorf("left after y: %+v", left)
+	}
+}

@@ -45,7 +45,12 @@ func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "user")
 		return
 	}
-	out := []*artifactView{}
+	type listed struct {
+		a     *store.Artifact
+		level access.Level
+	}
+	var visible []listed
+	readableIDs := map[string]bool{}
 	for _, a := range as {
 		a, req, err := s.accessRequest(c, a.ID, nil)
 		if errors.Is(err, store.ErrNotFound) {
@@ -59,9 +64,17 @@ func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 		if level == access.LevelNone {
 			continue
 		}
-		v, err := s.viewOf(a, level)
+		visible = append(visible, listed{a, level})
+		readableIDs[a.ID] = true
+	}
+	// The list already holds what the caller can read, so a parent is shown
+	// when it is in it: no access query per item.
+	inList := func(id string) (bool, error) { return readableIDs[id], nil }
+	out := []*artifactView{}
+	for _, l := range visible {
+		v, err := s.viewOf(l.a, l.level)
 		if err == nil {
-			err = s.showParent(v, a, c)
+			err = s.showParent(v, l.a, inList)
 		}
 		if err != nil {
 			s.writeStoreError(w, err, "artifacts")
@@ -76,7 +89,7 @@ func (s *Server) handleGetArtifact(w http.ResponseWriter, r *http.Request) {
 	a, req := requestArtifact(r), requestAccess(r)
 	v, err := s.viewOf(a, access.LevelOf(req))
 	if err == nil {
-		err = s.showParent(v, a, req.Caller)
+		err = s.showParent(v, a, s.readableBy(req.Caller))
 	}
 	if err != nil {
 		s.writeStoreError(w, err, "artifact")
@@ -87,24 +100,17 @@ func (s *Server) handleGetArtifact(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 	a := requestArtifact(r)
+	del := s.store.DeleteArtifact
 	if a.Kind == store.KindFolder {
-		has, err := s.store.FolderHasItems(a.ID)
-		if err != nil {
-			s.writeStoreError(w, err, "artifact")
-			return
-		}
-		if has {
-			writeError(w, http.StatusConflict, "the folder is not empty")
-			return
-		}
+		del = s.store.DeleteFolderIfEmpty
 	}
-	s.deleteArtifact(w, a, requestUser(r).Email, s.store.DeleteArtifact)
+	s.deleteArtifact(w, a, requestUser(r).Email, del)
 }
 
 // deleteArtifact removes a's row with del, then its content, databases, and
 // files, and answers the request. by is who asked, for the log.
 func (s *Server) deleteArtifact(w http.ResponseWriter, a *store.Artifact, by string, del func(id string) error) {
-	if err := del(a.ID); errors.Is(err, store.ErrOwnerActive) {
+	if err := del(a.ID); errors.Is(err, store.ErrOwnerActive) || errors.Is(err, store.ErrFolderNotEmpty) {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	} else if err != nil {

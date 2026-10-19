@@ -12,11 +12,13 @@ import * as e2e from './e2e.mjs';
 import { call, openArtifact, signedInCaller } from './viewer.mjs';
 import { writeMeta } from './meta.mjs';
 
-// FolderError is a refusal the page can show as it is.
+// FolderError is a refusal the page can show as it is. created is true when
+// the folder exists anyway, so the page must not offer to create it again.
 export class FolderError extends Error {
-  constructor(message) {
+  constructor(message, { created = false } = {}) {
     super(message);
     this.name = 'FolderError';
+    this.created = created;
   }
 }
 
@@ -67,7 +69,7 @@ export async function createFolder(deps, { name, parent = null }) {
   try {
     await writeName(deps, id, clean);
   } catch (err) {
-    throw new FolderError(`The folder was created, but writing its name failed: ${err.message}`);
+    throw new FolderError(`The folder was created without a name, and can be renamed. Writing the name failed: ${err.message}`, { created: true });
   }
   return { id };
 }
@@ -212,7 +214,11 @@ export function makeDropTarget(el, target, move) {
     event.dataTransfer.dropEffect = 'move';
     el.classList.add('drop');
   });
-  el.addEventListener('dragleave', () => el.classList.remove('drop'));
+  // dragleave also fires when the pointer crosses into a child of el.
+  el.addEventListener('dragleave', (event) => {
+    if (event.relatedTarget && el.contains(event.relatedTarget)) return;
+    el.classList.remove('drop');
+  });
   el.addEventListener('drop', (event) => {
     el.classList.remove('drop');
     const id = event.dataTransfer?.getData(DRAG_TYPE);

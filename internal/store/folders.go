@@ -28,6 +28,9 @@ var ErrCycle = errors.New("a folder cannot move into itself or a folder inside i
 // MaxFolderDepth.
 var ErrTooDeep = errors.New("folders are nested too deeply")
 
+// ErrFolderNotEmpty is returned when a folder with items in it is deleted.
+var ErrFolderNotEmpty = errors.New("the folder is not empty")
+
 // queryRower is what the placement checks read through: a transaction.
 type queryRower interface {
 	QueryRow(query string, args ...any) *sql.Row
@@ -158,15 +161,35 @@ func (s *Store) MoveItem(id, parent string) error {
 	return tx.Commit()
 }
 
-// FolderHasItems reports whether any item sits in the folder id.
-func (s *Store) FolderHasItems(id string) (bool, error) {
+// DeleteFolderIfEmpty deletes the folder id unless an item sits in it
+// (ErrFolderNotEmpty), checking and deleting under one write lock so an item
+// created or moved in meanwhile is not orphaned. It is ErrNotFound if there
+// is no such artifact.
+func (s *Store) DeleteFolderIfEmpty(id string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// A no-op write takes SQLite's write lock now, before the count.
+	if _, err := tx.Exec(`UPDATE artifacts SET id = id WHERE id = ?`, id); err != nil {
+		return err
+	}
 	var n int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM artifacts WHERE parent_id = ?`, id).Scan(&n)
-	return n > 0, err
-}
-
-// ClearParent moves the artifact to the top level.
-func (t *ArtifactTx) ClearParent() error {
-	_, err := t.tx.Exec(`UPDATE artifacts SET parent_id = NULL WHERE id = ?`, t.id)
-	return err
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM artifacts WHERE parent_id = ?`, id).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return ErrFolderNotEmpty
+	}
+	res, err := tx.Exec(`DELETE FROM artifacts WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNotFound
+	}
+	return tx.Commit()
 }

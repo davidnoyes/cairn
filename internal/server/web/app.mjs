@@ -390,8 +390,12 @@ $('folder-form').addEventListener('submit', async (event) => {
     await reloadArtifacts();
   } catch (err) {
     failIn('artifacts-status')(err);
-    // The folder exists even though its name did not write.
-    if (err instanceof FolderError && /was created/.test(err.message)) await reloadArtifacts();
+    // The folder exists even though its name did not write: clear the name so
+    // a retry does not make a second one.
+    if (err instanceof FolderError && err.created) {
+      name.value = '';
+      await reloadArtifacts();
+    }
   } finally {
     button.disabled = false;
   }

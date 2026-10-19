@@ -240,38 +240,92 @@ func TestDepthLimitOnMove(t *testing.T) {
 	}
 }
 
+// folderRoutes are the /api/artifacts/{id} routes a folder legitimately
+// uses: its view, name, place, owner-only membership, keys, and deletion.
+// Every other route under {id} is content and must refuse a folder. A new
+// route belongs here only if a folder really has the thing it serves.
+var folderRoutes = map[string]bool{
+	"GET /api/artifacts/{id}":                  true,
+	"DELETE /api/artifacts/{id}":               true,
+	"PUT /api/artifacts/{id}/meta/{field}":     true,
+	"PUT /api/artifacts/{id}/parent":           true,
+	"GET /api/artifacts/{id}/membership":       true,
+	"PUT /api/artifacts/{id}/membership":       true,
+	"POST /api/artifacts/{id}/transfer":        true,
+	"DELETE /api/artifacts/{id}/transfer":      true,
+	"POST /api/artifacts/{id}/transfer/accept": true,
+	"PUT /api/artifacts/{id}/estate/{epoch}":   true,
+	"GET /api/artifacts/{id}/keys":             true,
+	"POST /api/artifacts/{id}/keys":            true,
+	"GET /api/artifacts/{id}/pending":          true,
+}
+
+// pathParams fills a route's {name} segments with values that pass the
+// handlers' own shape checks.
+var pathParams = map[string]string{
+	"blob": strings.Repeat("a", 64), "address": strings.Repeat("a", 64), "rev": "1", "field": "title", "epoch": "1",
+}
+
 func TestFolderRefusesEveryContentRoute(t *testing.T) {
-	a, b := folderWorld(t)
+	s, ts := testServer(t)
+	a, b := seedKeyedAccount(t, s, ts.URL, "a@example.com"), seedKeyedAccount(t, s, ts.URL, "b@example.com")
 	f := newItem(t, a, "folder", "")
-	base := "/api/artifacts/" + f.id
-	vid := uuid.NewString()
-	vbase := base + "/versions/" + vid
-	routes := []struct{ method, path string }{
-		{"GET", base + "/versions"}, {"POST", base + "/versions"},
-		{"GET", vbase}, {"PUT", vbase}, {"DELETE", vbase},
-		{"GET", vbase + "/manifest"}, {"GET", vbase + "/blobs/" + strings.Repeat("a", 64)},
-		{"PUT", vbase + "/meta/title"}, {"PUT", vbase + "/vouch"}, {"GET", base + "/review"},
-		{"GET", vbase + "/db"}, {"PUT", vbase + "/db"},
-		{"GET", vbase + "/db/revisions"}, {"GET", vbase + "/db/revisions/1"},
-		{"GET", vbase + "/files"}, {"GET", vbase + "/files/" + strings.Repeat("a", 64)},
-		{"PUT", vbase + "/files/" + strings.Repeat("a", 64)}, {"DELETE", vbase + "/files/" + strings.Repeat("a", 64)},
-		{"POST", base + "/content-token"},
-	}
-	for _, r := range routes {
-		got, msg := status(a.testClient, r.method, r.path, nil)
+	registered := map[string]bool{}
+	checked := 0
+	for _, pattern := range s.patterns {
+		registered[pattern] = true
+		method, path, _ := strings.Cut(pattern, " ")
+		if path != "/api/artifacts/{id}" && !strings.HasPrefix(path, "/api/artifacts/{id}/") || folderRoutes[pattern] {
+			continue
+		}
+		checked++
+		path = strings.ReplaceAll(path, "{id}", f.id)
+		for _, seg := range strings.Split(path, "/") {
+			if name, ok := strings.CutPrefix(seg, "{"); ok {
+				name = strings.TrimSuffix(name, "}")
+				v, ok := pathParams[name]
+				if !ok {
+					v = uuid.NewString()
+				}
+				path = strings.Replace(path, seg, v, 1)
+			}
+		}
+		got, msg := status(a.testClient, method, path, nil)
 		if got != http.StatusConflict || msg != "a folder holds no content" {
-			t.Errorf("%s %s: %d %q, want 409 a folder holds no content", r.method, r.path, got, msg)
+			t.Errorf("%s: %d %q, want 409 a folder holds no content (add refuseFolder, or list it in folderRoutes)", pattern, got, msg)
 		}
 		// Someone with no access learns nothing, not even that it is a folder.
-		if got, _ := status(b.testClient, r.method, r.path, nil); got != http.StatusNotFound {
-			t.Errorf("%s %s as a stranger: %d, want 404", r.method, r.path, got)
+		if got, _ := status(b.testClient, method, path, nil); got != http.StatusNotFound {
+			t.Errorf("%s as a stranger: %d, want 404", pattern, got)
+		}
+	}
+	if checked < 20 {
+		t.Errorf("checked only %d content routes", checked)
+	}
+	for p := range folderRoutes {
+		if !registered[p] {
+			t.Errorf("folderRoutes lists %q, which no route registers", p)
 		}
 	}
 	// What a folder does carry still works: its view, its name.
-	a.mustDo("GET", base, nil, nil, http.StatusOK)
+	a.mustDo("GET", "/api/artifacts/"+f.id, nil, nil, http.StatusOK)
 	newMeta(t, a, f.id, "", "name", 1, "Work").send(t)
 	if r := newMeta(t, a, f.id, "", "name", 1, "Work again").send(t); r.StatusCode != http.StatusOK {
 		t.Errorf("renaming a folder: %d", r.StatusCode)
+	}
+}
+
+func TestFolderTakesNoResources(t *testing.T) {
+	a, _ := folderWorld(t)
+	f := newItem(t, a, "folder", "")
+	base := "/api/artifacts/" + f.id + "/resources"
+	got, msg := status(a.testClient, "POST", base, map[string]string{"type": "claude-session", "value": refOf("s")})
+	if got != http.StatusConflict || msg != "a folder holds no content" {
+		t.Errorf("adding a resource to a folder: %d %q, want 409 a folder holds no content", got, msg)
+	}
+	got, msg = status(a.testClient, "DELETE", base+"/"+uuid.NewString(), nil)
+	if got != http.StatusConflict || msg != "a folder holds no content" {
+		t.Errorf("removing a resource from a folder: %d %q, want 409 a folder holds no content", got, msg)
 	}
 }
 

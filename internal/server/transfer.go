@@ -325,8 +325,7 @@ func (s *Server) handleAcceptTransfer(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		epoch = res.Body.Epoch
-		// The new owner cannot read the previous owner's folder.
-		return tx.ClearParent()
+		return nil
 	})
 	if err != nil {
 		s.writeTransferError(w, err)

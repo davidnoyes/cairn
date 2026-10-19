@@ -131,8 +131,14 @@ test('createFolder trims the name it writes', async () => {
 test('createFolder says the folder exists when its name could not be written', async () => {
   const { server, deps } = await setup();
   server.failMeta = true;
-  await assert.rejects(createFolder(deps, { name: 'Plans' }), (err) => err instanceof FolderError && /was created, but/.test(err.message) && /broken/.test(err.message));
+  await assert.rejects(createFolder(deps, { name: 'Plans' }), (err) => err instanceof FolderError && err.created === true
+    && /created without a name/.test(err.message) && /renamed/.test(err.message) && /broken/.test(err.message));
   assert.equal(server.posts.length, 1);
+});
+
+test('a refusal before the folder exists is not marked created', async () => {
+  const { deps } = await setup();
+  await assert.rejects(createFolder(deps, { name: ' ' }), (err) => err instanceof FolderError && err.created === false);
 });
 
 test('renameFolder writes the name field of the folder', async () => {
@@ -279,6 +285,8 @@ function fakeEl() {
     draggable: false,
     classList: { add: (c) => classes.add(c), remove: (c) => classes.delete(c), has: (c) => classes.has(c) },
     addEventListener(t, f) { this.listeners[t] = f; },
+    children: [],
+    contains(n) { return n === this || this.children.includes(n); },
   };
 }
 function fakeTransfer(data = {}) {
@@ -287,8 +295,8 @@ function fakeTransfer(data = {}) {
     get types() { return Object.keys(this.data); },
   };
 }
-function fire(el, type, dataTransfer) {
-  const ev = { dataTransfer, prevented: false, preventDefault() { this.prevented = true; } };
+function fire(el, type, dataTransfer, extra = {}) {
+  const ev = { dataTransfer, prevented: false, preventDefault() { this.prevented = true; }, ...extra };
   el.listeners[type](ev);
   return ev;
 }
@@ -332,4 +340,19 @@ test('a drop that carries no row of ours moves nothing, and leaving a target cle
   assert.equal(target.classList.has('drop'), false);
   fire(target, 'drop', foreign);
   assert.deepEqual(moves, []);
+});
+
+test('moving onto a child of a drop target keeps its highlight, and leaving it clears it', () => {
+  const target = fakeEl();
+  const child = fakeEl();
+  target.children.push(child);
+  makeDropTarget(target, 'C', () => {});
+  fire(target, 'dragover', fakeTransfer({ 'application/x-cairn-item': 'x' }));
+  fire(target, 'dragleave', fakeTransfer(), { relatedTarget: child });
+  assert.equal(target.classList.has('drop'), true);
+  fire(target, 'dragleave', fakeTransfer(), { relatedTarget: fakeEl() });
+  assert.equal(target.classList.has('drop'), false);
+  fire(target, 'dragover', fakeTransfer({ 'application/x-cairn-item': 'x' }));
+  fire(target, 'dragleave', fakeTransfer(), { relatedTarget: null });
+  assert.equal(target.classList.has('drop'), false);
 });
