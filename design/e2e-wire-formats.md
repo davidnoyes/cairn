@@ -413,8 +413,13 @@ surrogate.
 | `refusal` | The user, with their existing key | `{"v":1,"user","requestedAt"}` |
 | `release` | The release key | `{"v":1,"version","assets":[{"origin","path","sha256"}],"templates":[{"name","source"}]}` |
 
+- Either membership version may also carry `"groups":[{"group","role"}]`
+  after `team`. The key is left out while the list is empty, so every record
+  made before groups keeps its bytes.
 - In a membership record, `role` is `viewer`, `editor`, or `manager`, `team`
-  is `none`, `viewer`, or `editor`, and `prev` is `hex(SHA-256)` of the previous
+  is `none`, `viewer`, or `editor`, each `groups` entry names a group ID (a
+  lowercase UUID) with `role` `viewer` or `editor`, sorted by group ID, unique,
+  and at most 100 entries, and `prev` is `hex(SHA-256)` of the previous
   record's body, or empty for the first. Members are sorted by user ID.
 - A membership record's `seq` is 1 for the first record and goes up by one
   for each record after it. `ownerFp` is the fingerprint of the key that

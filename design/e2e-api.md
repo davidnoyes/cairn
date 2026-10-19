@@ -2606,3 +2606,83 @@ caller's role in each. **New group** creates one. Opening a group shows its
 members, with role, fingerprint state, and email. A manager can add a member
 by email, as member or manager, change a role, remove a member, rename the
 group, and delete it. An administrator can delete any group.
+
+## Sharing with groups
+
+Milestone R3b of the [roles, groups, and folders plan](rbac-folders.md): an
+owner or manager shares an artifact with a group, the way the team share
+works today, and the team share is named **Everyone**. The browser shares
+with groups from R3c; until then it reads such an artifact but refuses to
+change its member list, as it does while a team share is on.
+
+### Groups in a member list
+
+A membership record lists its groups in `groups`, each with a role, `viewer`
+or `editor` (see [Signatures](e2e-wire-formats.md#signatures)). Like the team
+share, a group grants nothing by itself:
+
+- **Newcomers.** A verified, active member of a listed group who is not
+  listed, not excluded, and holds no wrap is pending, as `new`. An owner,
+  manager, or listed editor approves them by name and fingerprint, and their
+  client seals every epoch's key to them, exactly as a team approval does.
+- **Reading.** An unlisted user who holds a wrap at the current epoch reads
+  the artifact while the team share is on, or while they are a member of a
+  listed group in that group's latest record. The server checks this on each
+  request, so it never writes.
+- **Leaving.** A user who leaves every listed group, and is not covered by
+  the team share, stops matching at once: the server answers `404`. They
+  show as `left` in the pending list, still holding the key, and the next
+  epoch must list or exclude them, as for any unlisted holder.
+- **Listing.** At the next epoch an approved user is listed under the highest
+  role among the team share and the listed groups that hold them, from
+  verified group chains. A viewer account is listed as `viewer` whatever that
+  role is. A user who no longer qualifies is excluded instead.
+- **Deleted groups.** A deleted group grants nothing. A record may keep
+  listing it, and the next change made by a client drops it. A record may not
+  add a group that does not exist.
+
+### Server checks for groups in member lists
+
+- The `groups` entries pass the rules in
+  [Signatures](e2e-wire-formats.md#signatures), and every group a record adds
+  exists. A manager's record may change `groups`, as it may change `team`.
+- A same-epoch record may not leave an unlisted holder who qualified before
+  it without a reason to read after it: dropping a group, or lowering the
+  team share to `none`, while that leaves a holder uncovered needs a new
+  epoch. A holder who had already left is not counted, because the record
+  does not change what they can do.
+- A next-epoch record lists or excludes every unlisted holder, as today.
+- `POST /api/artifacts/{id}/keys` approves a user only while the team share
+  is on or the user is a member of a listed group.
+- `GET /api/artifacts/{id}/pending` adds `group`, the IDs of the listed
+  groups that hold each `new` or `approved` user, and the state `left`.
+- The server keeps the latest record's groups in a table, so the access check
+  reads group membership without parsing records.
+
+### Clients for groups in member lists
+
+Before it approves a newcomer or lists an approved user, a client verifies
+the chain of each listed group that holds them, anchored as in
+[Group records](#group-records). The newcomer's fingerprint must equal the
+one their group record lists; a difference is a key-change warning, as for
+any share. A user the server lists under a group whose verified chain does
+not hold them is not approved and not listed.
+
+### Commands for sharing with groups
+
+The second argument of `cairn share` and `cairn unshare` is a user when it
+holds `@`, the team share when it is `everyone`, and otherwise a group ID or
+exact name.
+
+- `cairn share ITEM GROUP --role viewer|editor` lists the group, then
+  approves each of its current members whose checks pass, and names the rest
+  as pending.
+- `cairn unshare ITEM GROUP` drops the group, in a new epoch when someone
+  held the key only through it.
+- `cairn share ITEM everyone --role viewer|editor` and
+  `cairn unshare ITEM everyone` turn the team share on and off. `cairn team`
+  keeps working.
+- `cairn approve ITEM` lists newcomers with the groups that hold them, and
+  users who left with the hint to run `cairn unshare ITEM USER`, which
+  excludes an unlisted holder in a new epoch.
+- `cairn members ITEM` shows the listed groups with their names and roles.
