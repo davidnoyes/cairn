@@ -1426,3 +1426,35 @@ test('manager: a manifest signed by a listed manager is trusted, and a manager c
   assert.deepEqual(w[U.manager.id], [e2e.b64(U.manager.ed.pub)]);
   assert.equal(canWrite((await trustScene({ who: 'manager', members: MANAGER_MEMBERS })).opened), true);
 });
+
+// An approved team or group member holds a wrap of every epoch and is listed
+// only from the next epoch, so the latest record does not name them yet.
+async function holderWraps(world, user) {
+  const wraps = [];
+  for (let e = 1; e <= world.top; e++) {
+    const wrapped = await e2e.wrap({ purpose: 'ak', artifact: ARTIFACT, epoch: e, recipientId: user.id, recipientPub: user.x.pub }, world.aks[e]);
+    wraps.push({ epoch: e, wrapped: e2e.b64(wrapped), fp: user.fp });
+  }
+  return wraps;
+}
+
+test('holder: an approved member the record does not list yet opens from their wraps, and records the chain', async () => {
+  const s = await scene({ who: 'outsider', epoch2: true });
+  s.server.openMembership = true;
+  s.server.openKeys = true;
+  s.server.keysOverride = { wraps: await holderWraps(s.world, U.outsider), estate: [] };
+  const opened = await open(s);
+  assert.equal(opened.mode, 'member');
+  assert.deepEqual([...opened.aks.keys()].sort(), [1, 2]);
+  assert.deepEqual(opened.aks.get(2), s.world.aks[2]);
+  const kr = await readServerKeyring(s.server, U.outsider);
+  assert.equal(kr.epochs[ARTIFACT].seq, s.world.records.length);
+});
+
+test('holder: a wrap missing for one epoch opens nothing', async () => {
+  const s = await scene({ who: 'outsider', epoch2: true });
+  s.server.openMembership = true;
+  s.server.openKeys = true;
+  s.server.keysOverride = { wraps: (await holderWraps(s.world, U.outsider)).slice(0, 1), estate: [] };
+  await assert.rejects(open(s), NoAccessError);
+});

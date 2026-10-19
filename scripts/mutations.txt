@@ -2121,7 +2121,7 @@ internal/server/web/viewer.mjs	if (b.successor !== caller.record.userId) throw	i
 internal/server/web/viewer.mjs	if (b.successorFp !== caller.fp) throw	if (false) throw	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	if (b.action !== 'nominate') throw	if (false) throw	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	    await checkCommit(ak, artifact, e.epoch, commits, 'the estate copy');	    void commits;	node --test internal/server/web/viewer_test.mjs
-internal/server/web/viewer.mjs	    aks = await successorAKs(deps, caller, artifact, chain);	    aks = null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	aks = await successorAKs(deps, caller, artifact, chain) ?? await holderAKs	aks = null ?? await holderAKs	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	    ek.fill(0);	    void ek;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/successor.mjs	if (!e2e.fromHex(u.fp).slice(0, want.length).every((b, i) => b === want[i])) {	if (false) {	node --test internal/server/web/successor_test.mjs
 internal/server/web/successor.mjs	if (u.id === record.userId) throw	if (false) throw	node --test internal/server/web/successor_test.mjs
@@ -3278,3 +3278,5 @@ internal/server/web/sharing.mjs	everyone: latest.team !== 'none' }	everyone: tru
 internal/server/web/sharing.mjs	if (p.state === PENDING_LEFT) res.left.push(row(p));	if (false) res.left.push(row(p));	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/sharing.mjs	return list.filter((p) => p.state === PENDING_NEW).length;	return list.length;	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/groups.mjs	const { chain, keyring } = await openGroup(deps, caller, id, acceptNewKey);	const { chain, keyring } = await openGroup(deps, caller, id, true);	node --test internal/server/web/sharing_groups_test.mjs
+internal/server/web/viewer.mjs	 ?? await holderAKs(deps, caller, artifact, chain);	 ?? null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	    return requireEpochs(await openWraps(caller, artifact, keys.wraps, epochCommits(chain), new Map()), chain);	    return await openWraps(caller, artifact, keys.wraps, epochCommits(chain), new Map());	node --test internal/server/web/viewer_test.mjs

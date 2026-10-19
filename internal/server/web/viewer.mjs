@@ -351,6 +351,28 @@ export async function callerAKs(deps, caller, artifact, chain, unreadable = []) 
   return requireEpochs(await openWraps(caller, artifact, keys.wraps, commits, new Map()), chain);
 }
 
+// holderAKs opens the AKs of an approved team or group member: a caller
+// the latest record does not list yet, because the next epoch lists them,
+// who holds a wrap of every epoch. It returns null for anyone else, and for
+// wraps that do not open, since an unlisted caller has no other claim.
+// Mirrors callerAKs in approve.go, which reads for any holder.
+async function holderAKs(deps, caller, artifact, chain) {
+  let keys;
+  try {
+    keys = await call(deps, null, 'GET', `/api/artifacts/${artifact}/keys`);
+  } catch (err) {
+    // The server serves keys to none but members and approved holders.
+    if (notFound(err) || (err instanceof ApiError && err.status === 403)) return null;
+    throw err;
+  }
+  if (keys.wraps.length === 0) return null;
+  try {
+    return requireEpochs(await openWraps(caller, artifact, keys.wraps, epochCommits(chain), new Map()), chain);
+  } catch {
+    return null;
+  }
+}
+
 // successorAKs opens the AKs for the owner's released successor: a caller
 // the latest record does not list, whom the server serves estate copies and
 // no wraps. It returns null for anyone else. The owner's nomination must
@@ -431,7 +453,8 @@ function listed(latest, userId) {
 // openAsMember reads the keyring, verifies the chain against it, and when the
 // caller is listed in the latest record, records the chain in the keyring and
 // opens the caller's AKs. The owner's released successor opens too, from the
-// estate copies, and reads only: the latest record does not list them. It
+// estate copies, and so does an approved team or group member, from their
+// wraps; both read only, as the latest record does not list them. It
 // returns null when the server will not show the caller the membership, or
 // the caller is neither listed nor the successor. Mirrors VerifyArtifact in
 // keyring.go.
@@ -451,7 +474,7 @@ async function openAsMember(deps, caller, artifact) {
     await recordChain(deps, caller, kr, artifact, chain, creator, newPin);
     aks = await callerAKs(deps, caller, artifact, chain, unreadable);
   } else {
-    aks = await successorAKs(deps, caller, artifact, chain);
+    aks = await successorAKs(deps, caller, artifact, chain) ?? await holderAKs(deps, caller, artifact, chain);
     if (!aks) return null;
     await recordChain(deps, caller, kr, artifact, chain, creator, newPin);
   }

@@ -181,6 +181,7 @@ export function makeServer(world, { who = null, linkTokenB64 = null, keyring } =
     keyring: keyring ?? { rev: 0, keyring: '' },
     membershipOverride: null,
     openMembership: false,
+    openKeys: false,
     keysOverride: null,
     // estatePuts is every PUT .../estate/{epoch} the server took, and
     // failEstate makes it answer 500.
@@ -251,7 +252,9 @@ export function makeServer(world, { who = null, linkTokenB64 = null, keyring } =
         });
       }
       if (rest === 'keys') {
-        if (!member) return json(404, { error: 'not found' });
+        // openKeys stands for an approved team or group member, whom the
+        // server serves keys although the record does not list them yet.
+        if (!member && !server.openKeys) return json(404, { error: 'not found' });
         if (server.keysOverride) return json(200, server.keysOverride);
         if (server.who.id === world.owner.id || heir) return json(200, { wraps: world.wraps[server.who.id] ?? [], estate: world.estate });
         return json(200, { wraps: world.wraps[server.who.id] ?? [], estate: [] });
