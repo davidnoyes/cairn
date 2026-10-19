@@ -118,7 +118,7 @@ export async function writeMeta(deps, opened, versionId, field, value) {
   if (typeof value !== 'string' || !value.isWellFormed()) throw new MetaError('a field value is a string of valid text');
   const plain = encoder.encode(value);
   if (plain.length > MAX_META_PLAINTEXT) throw new MetaError('a field value is at most 16 KiB');
-  if (!mayWriteMeta(opened)) throw new MetaError('only the artifact\'s owner or an editor can change its details');
+  if (!mayWriteMeta(opened)) throw new MetaError('only the artifact\'s owner, an editor, or a manager can change its details');
   const epoch = opened.latest.epoch;
   const ak = opened.aks.get(epoch);
   if (!ak) throw new MetaError(`you hold no key for the artifact's current epoch ${epoch}`);

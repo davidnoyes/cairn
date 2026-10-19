@@ -18,7 +18,7 @@ import (
 var (
 	// ErrNotApprover means the caller is neither the owner nor a listed
 	// editor, so their client never wraps keys.
-	ErrNotApprover = errors.New("only the owner or an editor can approve team members")
+	ErrNotApprover = errors.New("only the owner, an editor, or a manager can approve team members")
 	// ErrNoTeam means the latest record's team is none, so there is no team
 	// to approve into.
 	ErrNoTeam = errors.New("the artifact is not shared with the team; the owner sets it with cairn team")
@@ -124,7 +124,7 @@ func (c *Client) pendingFor(k *UnlockedKeys, artifactID string, va *VerifiedArti
 // the owner is told of rotated, so for anyone else it is keyChanged.
 func (c *Client) checkRotated(k *UnlockedKeys, va *VerifiedArtifact, u DirectoryUser) (string, error) {
 	latest := va.Chain.Latest
-	if latest.Owner != k.UserID {
+	if latest.Owner != k.UserID && !isManager(latest, k) {
 		return PendingKeyChanged, nil
 	}
 	records, err := c.rotationsOf(u.ID, va.Membership.Rotations)

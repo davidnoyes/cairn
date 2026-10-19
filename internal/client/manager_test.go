@@ -416,9 +416,11 @@ func TestManagerApprovesATeamMember(t *testing.T) {
 	if _, err := w.bob.Approve(w.artifact, "cat@example.com", false); err != nil {
 		t.Fatalf("manager approves: %v", err)
 	}
-	// The server shows an approved user to the owner only.
-	wantStates(t, pendingStates(t, w.ada, w.artifact), map[string]string{"cat@example.com": PendingApproved, "dan@example.com": PendingNew})
-	wantStates(t, pendingStates(t, w.bob, w.artifact), map[string]string{"dan@example.com": PendingNew})
+	// The server shows an approved user to whoever signs member lists: the
+	// owner and the manager.
+	for _, c := range []*Client{w.ada, w.bob} {
+		wantStates(t, pendingStates(t, c, w.artifact), map[string]string{"cat@example.com": PendingApproved, "dan@example.com": PendingNew})
+	}
 	// The owner's client lists the member a manager approved: the approval
 	// passes e2e.CheckApproval with a manager as its signer.
 	res, err := w.ada.Team(w.artifact, "viewer")
@@ -430,6 +432,55 @@ func TestManagerApprovesATeamMember(t *testing.T) {
 	}
 	if got := openWraps(t, w.cat, w.artifact); !slices.Equal(got, []int{1}) {
 		t.Errorf("cat opens wraps %v, want [1]", got)
+	}
+}
+
+// A manager's new epoch on a team artifact must list or exclude every
+// approved team member, so the manager's client decides about them as the
+// owner's does: removing dan lists cat, whom an approval admitted.
+func TestManagerEpochListsApprovedTeamMembers(t *testing.T) {
+	w := managerWorld(t)
+	if _, err := w.ada.Team(w.artifact, "viewer"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.bob.Share(w.artifact, "dan@example.com", "viewer", false); err != nil {
+		t.Fatalf("manager shares with dan: %v", err)
+	}
+	if _, err := w.bob.Approve(w.artifact, "cat@example.com", false); err != nil {
+		t.Fatalf("manager approves cat: %v", err)
+	}
+	if _, err := w.bob.Unshare(w.artifact, "dan@example.com"); err != nil {
+		t.Fatalf("manager removes dan in a new epoch: %v", err)
+	}
+	b := latestRecord(t, w.ada, w.artifact)
+	if b.V != 2 || b.Epoch != 2 {
+		t.Fatalf("latest record: v%d epoch %d, want a manager's v2 at epoch 2", b.V, b.Epoch)
+	}
+	rows := memberRows(t, w.ada, w.artifact)
+	if r, ok := rows["cat@example.com"]; !ok || r.Role != "viewer" {
+		t.Errorf("cat's row = %+v (listed %v), want the approved team member listed as viewer", r, ok)
+	}
+	if _, ok := rows["dan@example.com"]; ok {
+		t.Error("dan is still listed after the manager removed him")
+	}
+	// cat opens the new epoch's key, and it matches that epoch's commitment.
+	k := mustUnlock(t, w.cat)
+	keys, err := w.cat.Keys(w.artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(keys.Wraps, func(x KeyWrap) bool { return x.Epoch == 2 })
+	if i < 0 {
+		t.Fatalf("cat holds no wrap for epoch 2: %+v", keys.Wraps)
+	}
+	ak, err := e2e.Unwrap(k.X25519Priv, e2e.WrapContext{
+		Purpose: "ak", Artifact: w.artifact, Epoch: 2, RecipientID: k.UserID, RecipientPub: k.X25519Pub,
+	}, keys.Wraps[i].Wrapped)
+	if err != nil {
+		t.Fatalf("Unwrap epoch 2: %v", err)
+	}
+	if commit, _ := e2e.AKCommit(ak, w.artifact, 2); commit != b.AKCommit {
+		t.Error("cat's epoch 2 key does not match the record's akCommit")
 	}
 }
 
@@ -454,6 +505,39 @@ func TestOwnershipOfferToAManager(t *testing.T) {
 	}
 	if _, err := w.ada.Share(w.artifact, "dan@example.com", "viewer", false); !errors.Is(err, ErrNotOwner) {
 		t.Errorf("the previous owner shares: %v, want ErrNotOwner", err)
+	}
+}
+
+// After a manager starts an epoch, the owner holds a wrap for it. A
+// transfer that keeps the previous owner as an editor wraps every epoch to
+// them; the one they already hold must not stop the accept.
+func TestTransferAfterAManagersEpoch(t *testing.T) {
+	w := managerWorld(t)
+	if _, err := w.bob.Share(w.artifact, "dan@example.com", "viewer", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.bob.Unshare(w.artifact, "dan@example.com"); err != nil {
+		t.Fatalf("manager starts epoch 2: %v", err)
+	}
+	if _, err := w.ada.OfferTransfer(w.artifact, "bob@example.com", false); err != nil {
+		t.Fatalf("offer to the manager: %v", err)
+	}
+	if _, err := w.bob.AcceptTransfer(w.artifact, AcceptTransferOptions{}); err != nil {
+		t.Fatalf("accept after a manager's epoch: %v", err)
+	}
+	rows := memberRows(t, w.bob, w.artifact)
+	if rows["bob@example.com"].Role != "owner" || rows["ada@example.com"].Role != "editor" {
+		t.Errorf("rows after the transfer: bob %+v, ada %+v, want owner and editor", rows["bob@example.com"], rows["ada@example.com"])
+	}
+	// ada, now an editor, still opens every epoch through her wraps.
+	k := mustUnlock(t, w.ada)
+	va, err := w.ada.VerifyArtifact(k, w.artifact, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	aks, err := w.ada.callerAKs(k, w.artifact, va.Chain)
+	if err != nil || len(aks) != 2 {
+		t.Errorf("ada's AKs after the transfer: %d epochs, %v; want 2", len(aks), err)
 	}
 }
 
@@ -591,5 +675,20 @@ func TestRestoreAcceptsARevisionAFormerManagerSigned(t *testing.T) {
 	}
 	if _, err := d.Restore(1); err != nil {
 		t.Errorf("restoring a revision a manager signed: %v", err)
+	}
+}
+
+// A manager's client decides about a listed member who rotated, as the
+// owner's does: the server shows them as rotated, and the manager's client
+// believes it once the rotation chain checks out, so a new epoch keeps them
+// under their new keys.
+func TestManagerSeesARotatedMemberAsRotated(t *testing.T) {
+	w := managerWorld(t)
+	if _, err := w.ada.Share(w.artifact, "dan@example.com", "viewer", false); err != nil {
+		t.Fatal(err)
+	}
+	rotateOK(t, w.dan, false)
+	if got := pendingStates(t, w.bob, w.artifact); got["dan@example.com"] != PendingRotated {
+		t.Fatalf("manager's pending = %v, want dan rotated", got)
 	}
 }

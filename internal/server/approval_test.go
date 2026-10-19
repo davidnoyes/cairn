@@ -683,3 +683,23 @@ func TestApprovalFromAnEditorWhoseKeysChanged(t *testing.T) {
 	// The editor reads, but access.Check already refuses their approval.
 	wantStatus(t, editor.testClient, "POST", w.o.approvePath(), approveReq(t, w.o, editor, w.team1), http.StatusForbidden)
 }
+
+// A manager signs member lists, so their client decides about approved team
+// members as the owner's does: a next epoch must list or exclude every one.
+// GET /pending therefore shows a manager the approved entries too.
+func TestPendingShowsApprovedUsersToAManager(t *testing.T) {
+	w := newApprovalWorld(t)
+	o := w.o
+	manager := seedKeyedAccount(t, w.s, w.base, "manager@example.com")
+	o.share("manager", manager)
+	req := approveReq(t, o, w.editor, w.team1)
+	w.editor.mustDo("POST", o.approvePath(), req, nil, http.StatusOK)
+
+	got := pendingOf(t, manager.testClient, o)
+	wantPending(t, got, w.want(map[string]string{w.team1.id: "approved", w.team2.id: "new", w.team3.id: "new"}))
+	if a := got[w.team1.id].Approval; a == nil || a.Signer != w.editor.id {
+		t.Errorf("the manager's view of the approval: %+v", a)
+	}
+	// An editor still does not see the approved user.
+	wantPending(t, pendingOf(t, w.editor.testClient, o), w.want(map[string]string{w.team2.id: "new", w.team3.id: "new"}))
+}

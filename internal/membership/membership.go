@@ -468,6 +468,12 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 	// not approved.
 	held := map[wrapKey]bool{}
 	for _, w := range cur.Wraps {
+		// An accepted transfer adds the previous owner like any member, for
+		// every epoch: the wraps they held as owner, for epochs a manager
+		// started, are replaced rather than counted.
+		if ch.Accept != nil && w.UserID == prevOwner.ID {
+			continue
+		}
 		if u := users[w.UserID]; u != nil && w.FP == u.FP {
 			held[wrapKey{w.UserID, w.Epoch}] = true
 		}

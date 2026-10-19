@@ -197,7 +197,7 @@ var ErrEpochMoved = errors.New("the artifact moved to a new epoch; run the comma
 
 // ErrCannotPush means the verified chain lists the caller as neither the
 // owner nor an editor, under their current keys.
-var ErrCannotPush = errors.New("only the artifact's owner or an editor can push a version")
+var ErrCannotPush = errors.New("only the artifact's owner, an editor, or a manager can push a version")
 
 // Push seals dir's files and uploads them as a new version, or as a
 // replacement of versionID when non-empty. It verifies the artifact's

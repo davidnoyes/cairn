@@ -22,7 +22,7 @@ import (
 
 // ErrCannotRename means the verified chain lists the caller as neither the
 // owner nor an editor, under their current keys.
-var ErrCannotRename = errors.New("only the artifact's owner or an editor can change its name or description")
+var ErrCannotRename = errors.New("only the artifact's owner, an editor, or a manager can change its name or description")
 
 // ErrNoArtifact means a reference matched no artifact the caller can see, by
 // ID, name, or resource. It is not the answer when names could not be read

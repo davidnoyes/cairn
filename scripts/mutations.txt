@@ -533,7 +533,7 @@ internal/client/share.go	state, _, fork, fetchErr := c.followPin(va.Keyring, u, 
 internal/client/share.go	r.State, r.WasVerified = state, wasVerified(va.Keyring, r.User, state)	r.State, r.WasVerified = state, false	go test ./internal/client -run 'TestMembersShowsARotatedPinAndWritesNothing'
 internal/client/share.go	return prior == e2e.PinRotated && kr.Pins[user].State == e2e.PinVerified	return prior == e2e.PinRotated	go test ./internal/client -run 'TestMembersShowsARotatedPinAndWritesNothing'
 internal/client/approve.go	if err != nil || oldFP == u.FP || res.FP != u.FP {	if false && res.Seq > 0 {	go test ./internal/client -run 'TestPendingShowsARotatedMemberAndChecksTheChain'
-internal/client/approve.go	if latest.Owner != k.UserID {	if false {	go test ./internal/client -run 'TestPendingRotatedFromANonOwnerIsKeyChanged'
+internal/client/approve.go	if latest.Owner != k.UserID && !isManager(latest, k) {	if false && !isManager(latest, k) {	go test ./internal/client -run 'TestPendingRotatedFromANonOwnerIsKeyChanged'
 internal/client/approve.go	oldFP = latest.Members[i].FP	oldFP = u.FP	go test ./internal/client -run 'TestPendingShowsARotatedMemberAndChecksTheChain'
 internal/client/approve.go	oldFP = p.FP	oldFP = ""; _ = p	go test ./internal/client -run 'TestPendingRotatedHolderStartsTheChainAtTheOwnersPin'
 internal/client/approve.go	oldFP = hex.EncodeToString(e2e.Fingerprint(x, ed))	oldFP = ""; _, _, _ = x, ed, hex.EncodeToString	go test ./internal/client -run 'TestAnUnlistedHolderWhoRotatedIsNeitherListedNorExcluded'
@@ -2142,8 +2142,8 @@ internal/server/web/account.mjs	const stretched = await deps.stretch(password, e
 internal/access/access.go	case ReadContent, ReadMembership, ReadKeys, ListPending, AnswerTransfer:	case ReadContent, ReadMembership, ReadKeys, AnswerTransfer:	go test ./internal/server -run TestSuccessorReadsThePendingList
 internal/access/access.go	case ReadContent, ReadMembership, ReadKeys, ListPending, AnswerTransfer:	case ReadContent, ReadMembership, ReadKeys, ListPending, ApproveMember, AnswerTransfer:	go test ./internal/access -run TestSuccessorMayOnlyReadAndAnswer
 internal/access/access.go	case ReadContent, ReadMembership, ReadKeys, ListPending, AnswerTransfer:	case ReadContent, ReadMembership, ReadKeys, ListPending, WriteData, AnswerTransfer:	go test ./internal/access -run TestSuccessorMayOnlyReadAndAnswer
-internal/server/sharing.go	mayDecide := level == access.LevelOwner || level == access.LevelSuccessor	mayDecide := level == access.LevelOwner	go test ./internal/server -run TestSuccessorReadsThePendingList
-internal/server/sharing.go	mayDecide := level == access.LevelOwner || level == access.LevelSuccessor	mayDecide := level != access.LevelNone	go test ./internal/server -run TestPendingStates
+internal/server/sharing.go	mayDecide := level == access.LevelOwner || level == access.LevelManager || level == access.LevelSuccessor	mayDecide := level == access.LevelOwner || level == access.LevelManager	go test ./internal/server -run TestSuccessorReadsThePendingList
+internal/server/sharing.go	mayDecide := level == access.LevelOwner || level == access.LevelManager || level == access.LevelSuccessor	mayDecide := level != access.LevelNone	go test ./internal/server -run TestPendingStates
 internal/client/transfer.go	pending, err := c.pendingFor(k, artifactID, va)	pending, err := []PendingUser(nil), error(nil)	go test ./internal/client -run TestSuccessorAcceptCarriesApprovedTeamMembers
 internal/server/sharing.go	mayDecide = o != nil && o.To == caller.ID	mayDecide = o != nil && false	go test ./internal/client -run TestAdminOfferToAnEditorCarriesApprovedTeamMembers
 internal/server/sharing.go	mayDecide = o != nil && o.To == caller.ID	mayDecide = o != nil	go test ./internal/client -run TestAdminOfferToAnEditorCarriesApprovedTeamMembers
@@ -2574,3 +2574,6 @@ internal/client/transfer.go	latest.Members[i].Role != "editor" && latest.Members
 internal/client/transfer.go	(m.Role == "editor" || m.Role == "manager") })	m.Role == "editor" })	go test ./internal/client -count=1 -run 'TestOwnershipOfferToAManager'
 cmd/cairn/share_cmds.go	if latest.V != 2 {	if latest.V != 99 {	go test ./cmd/cairn -count=1 -run 'TestMembersShowsAManagerAndWhoSignedTheRecord'
 internal/client/share.go	if role != "viewer" && role != "editor" && role != "manager" {	if role != "viewer" && role != "editor" {	go test ./cmd/cairn -count=1 -run 'TestMembersShowsAManagerAndWhoSignedTheRecord'
+internal/server/sharing.go	level == access.LevelOwner || level == access.LevelManager || level == access.LevelSuccessor	level == access.LevelOwner || level == access.LevelSuccessor	go test ./internal/server ./internal/client -count=1 -run 'TestPendingShowsApprovedUsersToAManager|TestManagerEpochListsApprovedTeamMembers'
+internal/client/approve.go	if latest.Owner != k.UserID && !isManager(latest, k) {	if latest.Owner != k.UserID {	go test ./internal/client -count=1 -run 'TestManager'
+internal/membership/membership.go	if ch.Accept != nil && w.UserID == prevOwner.ID {	if false && w.UserID == prevOwner.ID {	go test ./internal/client -count=1 -run TestTransferAfterAManagersEpoch

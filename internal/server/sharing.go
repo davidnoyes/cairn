@@ -700,15 +700,16 @@ const (
 
 // handlePending lists the users the caller's client should ask about: team
 // members waiting, and changed keys. Approved entries, with the stored
-// approval, are for the owner only. A user who matches an excluded entry by
+// approval, are for whoever signs member lists: the owner and managers. A user who matches an excluded entry by
 // user ID, fingerprint, or normalized email never appears.
 func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
 	a, caller := requestArtifact(r), requestUser(r)
 	level := access.LevelOf(requestAccess(r))
-	// The owner's client, a released successor's, and the client of whoever an
-	// open offer names decide about approved and rotated users: the last two
-	// may take the artifact over.
-	mayDecide := level == access.LevelOwner || level == access.LevelSuccessor
+	// The owner's client, a manager's, a released successor's, and the client
+	// of whoever an open offer names decide about approved and rotated users:
+	// a manager signs member lists, and the last two may take the artifact
+	// over.
+	mayDecide := level == access.LevelOwner || level == access.LevelManager || level == access.LevelSuccessor
 	out := []pendingView{}
 	err := s.store.WithArtifact(a.ID, func(tx *store.ArtifactTx) error {
 		if !mayDecide && caller != nil {
