@@ -227,11 +227,21 @@
       <h2 id="share-title" class="name clamp"></h2>
       <button class="btn" type="button" id="share-close">Close</button>
     </div>
-    <div class="list">
+    <p class="hint" id="approve-only-note" hidden>You can approve the people waiting for access to this artifact. Only its owner or a manager changes who else has access.</p>
+    <div class="list" id="share-members-list">
       <table>
         <thead><tr><th>name</th><th>email</th><th>role</th><th>fingerprint</th><th>key</th><th></th></tr></thead>
         <tbody id="members"></tbody>
       </table>
+    </div>
+    <div id="waiting-section" hidden>
+      <h3 class="next" id="waiting-title">Waiting for approval</h3>
+      <div class="list">
+        <table aria-labelledby="waiting-title">
+          <thead><tr><th>name</th><th>email</th><th>fingerprint</th><th>held by</th><th>status</th><th></th></tr></thead>
+          <tbody id="waiting"></tbody>
+        </table>
+      </div>
     </div>
     <div class="warning" id="accept-warning" role="alert" hidden>
       <p id="accept-text"></p>
@@ -241,7 +251,13 @@
       </div>
     </div>
     <form class="bar" id="share-form" method="dialog">
+      <select id="share-kind" aria-label="Share with">
+        <option value="user">a person</option>
+        <option value="group">a group</option>
+        <option value="everyone">Everyone</option>
+      </select>
       <input id="share-email" type="email" placeholder="email" aria-label="Email" autocomplete="off">
+      <select id="share-group" aria-label="Group" hidden></select>
       <select id="share-role" aria-label="Role">
         <option value="viewer">viewer</option>
         <option value="editor">editor</option>
@@ -249,7 +265,7 @@
       </select>
       <button class="btn primary" type="submit">Share</button>
     </form>
-    <div class="public">
+    <div class="public" id="share-public">
       <label><input type="checkbox" id="public"> Public link</label>
       <label><input type="checkbox" id="public-writes"> Public writes</label>
       <button class="btn" type="button" id="copy-link">Copy link</button>

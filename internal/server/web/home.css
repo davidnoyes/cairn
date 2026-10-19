@@ -164,6 +164,7 @@ form.bar input[type=checkbox]{accent-color:var(--accent)}
 /* ------------------------------------------------------- the app page */
 [role=tab][aria-selected=true]{color:var(--text); background:var(--accent-tint); box-shadow:inset 0 -1px 0 var(--accent)}
 h2.next{margin-top:2.2rem}
+h3.next{font-size:17px; font-weight:600; margin:1.6rem 0 .6rem}
 section > h2 + .list, section > h2 + form{margin-top:.8rem}
 /* A name or description is someone else's text: a right-to-left override
    stays inside its own element, and a long one is cut to two lines rather

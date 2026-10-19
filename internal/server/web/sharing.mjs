@@ -15,14 +15,17 @@
 //   origin                 the app origin, location.origin: the host of a public link
 //   newAK()                optional; makes the 32 random bytes of a new epoch's AK
 //
-// Deliberately not ported, because the browser has no approval or team
-// screens yet: team sharing (approve.go, `team` other than "none"), which is
-// refused, a member's rotation as pendingFor reports it, and acknowledging a
-// handover, which is refused until the owner does so with the CLI.
+// Not ported: a member's rotation as pendingFor reports it (relistRotated, and
+// the `rotated` handling in buildNextEpoch and Share: a listed member whose
+// keys rotated is still shared again by name, and a next epoch refuses them
+// until then), and acknowledging a handover, which is refused until the owner
+// does so with the CLI. The team share and groups (approve.go, groupshare.go)
+// are ported.
 import * as e2e from './e2e.mjs';
 import { ApiError } from './account.mjs';
 import { UntrustedVersionError, call, callerAKs, checkArtifact, readKeyring, recordChain, signedInCaller, trustVersionManifest, updateKeyring, writerKeys } from './viewer.mjs';
 import { checkSigned, openEntry } from './data.mjs';
+import { listGroups, verifyGroup } from './groups.mjs';
 import { META_FIELDS, openMetaItem, writeMeta } from './meta.mjs';
 
 const encoder = new TextEncoder();
@@ -31,8 +34,11 @@ const encoder = new TextEncoder();
 // answers it: not-signed-in, bad-role, not-owner, share-self, unshare-owner,
 // unknown-user, directory-duplicate, not-member, member-key-changed,
 // member-deleted, pin-conflict, public-writes-with-off, cannot-reseal,
-// team-unsupported, groups-unsupported, handover-not-acked, no-write-key, read-back, epoch-moved,
-// viewer-account, owner-only, owner-missing.
+// handover-not-acked, no-write-key, read-back, epoch-moved, viewer-account,
+// owner-only, owner-missing, not-approver, no-team, excluded, changed-key,
+// already-listed, already-approved, not-waiting, pending-keys-differ,
+// approval-unverified, not-in-group, group-unverified, unknown-group,
+// not-shared-with-group, bad-team, rotations-unreadable, wrap-key-unknown.
 export class SharingError extends Error {
   constructor(code, message, options) {
     super(message, options);
@@ -271,16 +277,6 @@ function checkHandover(va) {
   }
 }
 
-function checkNoTeam(va) {
-  if (va.latest.team !== 'none') throw new SharingError('team-unsupported', 'This artifact is shared with a team, which the browser cannot change yet. Use the cairn tool.');
-}
-
-// checkNoGroups refuses a member list that lists groups, which the browser
-// cannot change yet: a record it signed would drop them.
-function checkNoGroups(va) {
-  if ((va.latest.groups ?? []).length > 0) throw new SharingError('groups-unsupported', 'This artifact is shared with groups, which the browser cannot change yet. Use the cairn tool.');
-}
-
 // callerRoleOf is how the caller may change the artifact's members: 'owner'
 // when the latest record names them as owner under their current fingerprint,
 // 'manager' when it lists them as manager under it, else ''.
@@ -307,14 +303,12 @@ function checkOwnerOnly(manager, what) {
 
 // adminAction is the start of every member-list change: the caller, the
 // verified artifact, whether the caller is a manager rather than the owner,
-// and the three refusals Share, Unshare and Public make before anything else.
+// and the two refusals Share, Unshare and Public make before anything else.
 async function adminAction(deps, artifactId) {
   const caller = await unlock(deps);
   const va = await verifyArtifact(deps, caller, artifactId);
   checkHandover(va);
   const manager = adminRole(caller, va) === 'manager';
-  checkNoTeam(va);
-  checkNoGroups(va);
   return { caller, va, manager };
 }
 
@@ -330,7 +324,8 @@ const byUser = (a, b) => (a.user < b.user ? -1 : a.user > b.user ? 1 : 0);
 // membershipBody is next as the record after the verified chain's latest,
 // fields in the order of the schema. transfer and handover are never set by
 // these commands. A manager's record is version 2 and names the manager and
-// their key's fingerprint last. Mirrors signNext.
+// their key's fingerprint last. groups follows team, and is left out while it
+// is empty, as Go's omitempty does. Mirrors signNext.
 function membershipBody(va, next, manager) {
   const body = {
     v: manager ? 2 : 1,
@@ -343,6 +338,7 @@ function membershipBody(va, next, manager) {
     members: next.members.map((m) => ({ user: m.user, role: m.role, fp: m.fp })),
     excluded: next.excluded.map((x) => ({ user: x.user, fp: x.fp, email: x.email })),
     team: next.team,
+    ...((next.groups ?? []).length > 0 ? { groups: next.groups.map((g) => ({ group: g.group, role: g.role })) } : {}),
     public: next.public,
     publicWrites: next.publicWrites,
     prev: va.chain.head,
@@ -382,14 +378,18 @@ async function linkTokenHashFor(deps, caller, va, epoch) {
 // public record carries the hash of the epoch's link token, which the server
 // requires of every public record: linkHash for a next epoch, whose estate
 // copy the server does not hold yet, or '' to take it from the epoch's own.
-// Mirrors putRecord.
-async function putRecord(deps, caller, va, next, wraps, estate, linkHash) {
+// It drops each listed group that no longer exists from the record, and
+// returns their IDs. Mirrors putRecord.
+async function putRecord(deps, caller, va, nextIn, wraps, estate, linkHash) {
   const manager = va.latest.owner === caller.record.userId ? null : { user: caller.record.userId, fp: caller.fp };
+  const { kept, dropped } = await liveGroups(deps, nextIn.groups ?? []);
+  const next = { ...nextIn, groups: kept };
   const body = encoder.encode(JSON.stringify(membershipBody(va, next, manager)));
   const membership = await e2e.newEnvelope(caller.record.ed25519, caller.record.userId, 'membership', body);
   let hash = linkHash;
   if (next.public && hash === '') hash = await linkTokenHashFor(deps, caller, va, next.epoch);
   await call(deps, null, 'PUT', `/api/artifacts/${va.artifact}/membership`, { body: { membership, wraps, estate, linkTokenHash: hash } });
+  return dropped;
 }
 
 // readBack verifies the artifact after the server accepted a record, which
@@ -428,6 +428,290 @@ function dropExcluded(excluded, members, dir) {
   return { kept, dropped };
 }
 
+// ---- who is waiting: pending, groups, approving ----
+
+// States of a pending entry, as GET /pending names them.
+const PENDING_NEW = 'new';
+const PENDING_APPROVED = 'approved';
+const PENDING_LEFT = 'left';
+const PENDING_KEY_CHANGED = 'keyChanged';
+const PENDING_ROTATED = 'rotated';
+
+// GroupKeyChangedError means a group's record lists a user under other keys
+// than the directory serves for them now: a key-change warning, which
+// acceptNewKey overrides. A manager of the group saw groupFp for the user, and
+// the directory serves user.fp. Mirrors GroupKeyChangedError.
+export class GroupKeyChangedError extends Error {
+  constructor({ user, group, groupFp }) {
+    super(`The record of group ${group} lists ${user.email} under fingerprint ${formatFp(groupFp)}, but the directory serves ${formatFp(user.fp)} now. Compare the fingerprint with them, then accept the new key.`);
+    this.name = 'GroupKeyChangedError';
+    Object.assign(this, { user, group, groupFp });
+  }
+}
+
+const mayApprove = (caller, latest) => {
+  const id = caller.record.userId;
+  if (latest.owner === id) return latest.ownerFp === caller.fp;
+  return latest.members.some((m) => m.user === id && m.fp === caller.fp && (m.role === 'editor' || m.role === 'manager'));
+};
+
+// errRotationsUnreadable is the refusal for a user the server calls rotated
+// and whose rotation records could not be read: without them it cannot tell
+// which keys their wraps were made for.
+function errRotationsUnreadable(p) {
+  return new SharingError('rotations-unreadable', `Cannot read the rotation records of ${p.user.email} (${p.user.id}): ${p.rotationsErr.message}. Without them it cannot tell which keys their wraps were made for. Try again when the records can be read.`, { cause: p.rotationsErr });
+}
+
+// checkRotated returns PENDING_ROTATED when u's rotation records lead from the
+// fingerprint the latest record lists for them to their current keys, and
+// PENDING_KEY_CHANGED otherwise, which includes records the server fails to
+// serve: they cannot be verified, so the keys count as changed, and fetchErr
+// says why they could not be read. For a user the record does not list, the
+// chain starts at the owner's pin, or with no pin at the first record's old
+// keys: nothing else says which keys they held. Only the owner and a manager
+// are told of rotated. Mirrors checkRotated.
+async function checkRotated(deps, caller, va, u) {
+  const { latest } = va;
+  if (latest.owner !== caller.record.userId && callerRoleOf(caller, va) !== 'manager') return { state: PENDING_KEY_CHANGED, fetchErr: null };
+  let records;
+  try {
+    records = await rotationsOf(deps, u.id, va.membership.rotations);
+  } catch (err) {
+    return { state: PENDING_KEY_CHANGED, fetchErr: err };
+  }
+  let oldFp = '';
+  const listed = latest.members.find((m) => m.user === u.id);
+  if (listed) {
+    oldFp = listed.fp;
+  } else if (hasPin(va.keyring, u.id)) {
+    oldFp = va.keyring.pins[u.id].fp;
+  } else if (records.length > 0) {
+    // The last resort takes the first record's old keys on the server's word,
+    // which is safe: the verdict never writes a pin, it only decides whether
+    // the client wraps to or excludes the user.
+    try {
+      const b = e2e.decodeStrict(e2e.unb64(records[0].body), e2e.BODY_SCHEMAS.rotation);
+      oldFp = e2e.toHex(await e2e.fingerprint(e2e.unb64(b.old.x25519), e2e.unb64(b.old.ed25519)));
+    } catch {
+      // Records that do not parse name no keys.
+    }
+  }
+  try {
+    const res = await e2e.followRotations(u.id, records, { fp: oldFp, rotSeq: 0, rotHead: '' });
+    if (oldFp === u.fp || res.fp !== u.fp) return { state: PENDING_KEY_CHANGED, fetchErr: null };
+  } catch {
+    return { state: PENDING_KEY_CHANGED, fetchErr: null };
+  }
+  return { state: PENDING_ROTATED, fetchErr: null };
+}
+
+// pendingFor lists the users the caller should be asked about, from GET
+// /pending: {user, state, approval, groups, rotationsErr}. The server's word
+// that a user is rotated is not enough: checkRotated decides. Mirrors
+// pendingFor.
+async function pendingFor(deps, caller, va) {
+  const resp = await call(deps, null, 'GET', `/api/artifacts/${va.artifact}/pending`);
+  if (!Array.isArray(resp)) throw new e2e.FormatError('the pending list is not a list');
+  const out = [];
+  for (const w of resp) {
+    const user = directoryUser(w);
+    user.fp = (await e2e.pinState(null, user.x25519Pub, user.ed25519Pub)).fp;
+    let state = w.state;
+    let rotationsErr = null;
+    if (state === PENDING_ROTATED) {
+      ({ state, fetchErr: rotationsErr } = await checkRotated(deps, caller, va, user));
+      if (fatalFetch(rotationsErr)) throw rotationsErr;
+    }
+    out.push({ user, state, approval: w.approval ?? null, groups: w.group ?? [], rotationsErr });
+  }
+  return out;
+}
+
+// ---- groups in a member list ----
+
+// groupChains verifies the chain of each group in ids that have lacks, and
+// adds it. A group the server no longer holds (404) is added as null. A key
+// change in a group's signers is a KeyChangedError as it is for a share.
+// Verifying a group may pin its signers, so va's keyring is read again
+// afterwards: a pin decided later is then based on what is stored.
+async function groupChains(deps, caller, va, ids, have) {
+  let verified = false;
+  for (const id of ids) {
+    if (have.has(id)) continue;
+    try {
+      have.set(id, (await verifyGroup(deps, id)).chain);
+      verified = true;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        have.set(id, null);
+      } else if (err instanceof KeyChangedError || fatalFetch(err)) {
+        throw err;
+      } else {
+        throw new SharingError('group-unverified', `Group ${id}: ${err.message}`, { cause: err });
+      }
+    }
+  }
+  if (verified) va.keyring = await readKeyring(deps, caller);
+}
+
+// listsUser returns the entry a group chain's latest record has for user.
+const listsUser = (chain, user) => chain?.latest.members.find((m) => m.user === user) ?? null;
+
+// holdingGroups returns the groups of rec that the server says hold p.
+const holdingGroups = (rec, p) => (rec.groups ?? []).filter((g) => p.groups.includes(g.group)).map((g) => g.group);
+
+// covers says whether the record gives the user in p a reason to read: the
+// team share is on, or a group it lists holds them, on the server's word.
+const covers = (rec, p) => rec.team !== 'none' || holdingGroups(rec, p).length > 0;
+
+// holdersLose says whether next, a record after latest, leaves an unlisted
+// holder in pending without a reason to read, so the server refuses it at the
+// same epoch. An approved user loses it when next covers them no more. A user
+// whose wrap is for old keys has no group the server names, so they lose it
+// unless the record lists them: erring that way costs only an epoch. Mirrors
+// holdersLose.
+function holdersLose(pending, latest, next) {
+  return pending.some((p) => {
+    if (p.state === PENDING_APPROVED) return !covers(next, p);
+    if (p.state === PENDING_KEY_CHANGED || p.state === PENDING_ROTATED) return !latest.members.some((m) => m.user === p.user.id);
+    return false;
+  });
+}
+
+// grantedRole is the role the record gives the approved user p: the highest of
+// the team share's role and the roles of the listed groups whose verified
+// chains list them. It is '' when the record covers them no more, and
+// not-in-group when a group the server names holds them in no verified chain
+// and nothing else covers them. Mirrors grantedRole.
+async function grantedRole(deps, caller, va, rec, p, chains) {
+  let role = rec.team !== 'none' ? rec.team : '';
+  const ids = holdingGroups(rec, p);
+  await groupChains(deps, caller, va, ids, chains);
+  for (const g of rec.groups ?? []) {
+    if (listsUser(chains.get(g.group), p.user.id) && (role === '' || ROLE_RANK.get(g.role) > ROLE_RANK.get(role))) role = g.role;
+  }
+  if (role === '' && ids.length > 0) throw new SharingError('not-in-group', `The verified record of the group does not list ${p.user.email}.`);
+  return role;
+}
+
+// checkGroupCover is the group check of an approval. When the team share is
+// off, the newcomer must be listed by a verified chain of a listed group that
+// holds them, under the fingerprint the directory serves for them: a
+// difference is a GroupKeyChangedError, which acceptNewKey overrides, and no
+// chain listing them is not-in-group. While the team share is on, it covers
+// them whatever the groups say. Mirrors checkGroupCover.
+async function checkGroupCover(deps, caller, va, latest, p, u, acceptNewKey) {
+  if (latest.team !== 'none') return;
+  const ids = holdingGroups(latest, p);
+  const chains = new Map();
+  await groupChains(deps, caller, va, ids, chains);
+  let differs = null;
+  for (const id of ids) {
+    const m = listsUser(chains.get(id), u.id);
+    if (!m) continue;
+    if (m.fp === u.fp) return;
+    differs ??= new GroupKeyChangedError({ user: u, group: id, groupFp: m.fp });
+  }
+  if (!differs) throw new SharingError('not-in-group', `The verified record of the group does not list ${u.email}.`);
+  if (!acceptNewKey) throw differs;
+}
+
+// liveGroups returns gs without the groups that no longer exist, as kept, and
+// the IDs it dropped. A client builds every record this way: a deleted group
+// grants nothing, and the record that keeps listing it only clutters the
+// list. Nothing is asked when gs is empty. Mirrors liveGroups.
+async function liveGroups(deps, gs) {
+  if (gs.length === 0) return { kept: gs, dropped: [] };
+  const all = await listGroups(deps);
+  const kept = gs.filter((g) => all.some((s) => s.id === g.group));
+  return { kept, dropped: gs.filter((g) => !kept.includes(g)).map((g) => g.group) };
+}
+
+// ---- listing and approving ----
+
+// checkApproved runs the four checks of e2e.checkApproval on the approval in
+// the pending entry p, and requires the directory to list the same keys for
+// the user as the pending entry does, so the approval's fingerprint is the
+// directory's. rotations are the rotation records the membership GET served,
+// which let a signer's approval pass across a rotation. It does not look at
+// the owner's pin. Mirrors checkApproved.
+async function checkApproved(caller, latest, rotations, dir, p) {
+  const keysOfUser = (u) => ({ x25519: e2e.b64(u.x25519Pub), ed25519: e2e.b64(u.ed25519Pub) });
+  const approvalUser = (u) => ({ id: u.id, email: u.email, keys: keysOfUser(u) });
+  const own = { x25519: e2e.b64(caller.record.x25519.publicKey), ed25519: e2e.b64(caller.record.ed25519Pub) };
+  const keysOf = (id) => {
+    if (id === caller.record.userId) return own;
+    const d = dir.find((x) => x.id === id);
+    return d ? keysOfUser(d) : null;
+  };
+  const served = keysOf(p.user.id);
+  const mine = keysOfUser(p.user);
+  if (served && (served.x25519 !== mine.x25519 || served.ed25519 !== mine.ed25519)) {
+    throw new SharingError('pending-keys-differ', `The server serves different keys for ${p.user.email} in the directory and in the pending list.`);
+  }
+  let signerKeys = null;
+  if (p.approval) {
+    signerKeys = keysOf(p.approval.signer);
+    if (!signerKeys) throw new e2e.ApprovalSignerError(`the directory does not list the signer ${p.approval.signer}`);
+  }
+  await e2e.checkApproval({ artifact: latest.artifact, latest, approval: p.approval, signerKeys, user: approvalUser(p.user), directory: dir.map(approvalUser), rotations });
+}
+
+// listApproved decides, for each approved user the server reports, whether
+// the client may list them without asking, under the role rec gives them: the
+// highest of its team share and its groups that hold them, from the groups'
+// verified chains (grantedRole). It lists them only when the approval passes
+// all four checks of e2e.checkApproval, the directory lists the keys the
+// pending entry does, and the keys do not contradict the pin. A user failing a
+// check, or whom a group holds in the server's word only, is reported as
+// unlisted, never listed. A user rec gives no role is left for the caller to
+// exclude. skip names users already in the record being built. Returns
+// {members, listed, unlisted, pins}: pins maps a user to the {pin, basedOn} to
+// store once the server accepts the record. An error is a failure that ends
+// the command, never a user to leave unlisted. Mirrors listApproved.
+async function listApproved(deps, caller, va, dir, pending, rec, skip) {
+  const out = { members: [], listed: [], unlisted: [], pins: new Map() };
+  const chains = new Map();
+  for (const p of pending) {
+    if (p.state !== PENDING_APPROVED || skip(p.user.id)) continue;
+    let role;
+    try {
+      role = await grantedRole(deps, caller, va, rec, p, chains);
+    } catch (err) {
+      if (err.code !== 'not-in-group') throw err;
+      out.unlisted.push({ user: p.user, error: err });
+      continue;
+    }
+    if (role === '') continue;
+    // A viewer account is listed as a viewer, whatever role it is granted.
+    if (dir.find((d) => d.id === p.user.id)?.role === 'viewer') role = 'viewer';
+    let pin = null;
+    try {
+      await checkApproved(caller, va.latest, va.membership.rotations, dir, p);
+      ({ pin } = await checkPin(deps, va.keyring, p.user, false, va.membership.rotations));
+    } catch (err) {
+      if (fatalFetch(err)) throw err;
+      out.unlisted.push({ user: p.user, error: err });
+      continue;
+    }
+    out.members.push({ user: p.user.id, role, fp: p.user.fp });
+    out.listed.push(p.user);
+    if (pin) out.pins.set(p.user.id, { pin, basedOn: pinOf(va.keyring, p.user.id)?.fp ?? '' });
+  }
+  return out;
+}
+
+// storePins stores the pins a record decided once the server accepted it.
+async function storePins(deps, caller, pins) {
+  for (const [id, d] of pins) {
+    try {
+      await storePin(deps, caller, id, d.pin, d.basedOn);
+    } catch (err) {
+      throw new SharingError(err.code ?? 'pin', `The server accepted the new membership record, but pinning ${id} failed: ${err.message}`, { cause: err });
+    }
+  }
+}
+
 // ---- members, share, unshare ----
 
 // memberControls says what the share dialog offers the caller for the member
@@ -449,8 +733,11 @@ export function memberControls(callerRole, m) {
 // rotation records fork or roll back. currentFp is the fingerprint of the
 // keys the directory serves now, which differs from fp once they change, or
 // empty for a user it no longer lists. wasVerified says a rotation dropped a
-// verified pin. callerRole is owner, manager, or '' for the caller. Mirrors
-// Members.
+// verified pin. callerRole is owner, manager, or '' for the caller. team is
+// the record's team share (none, viewer, or editor), groups the listed groups
+// with their roles and the names the server holds for them, and canApprove
+// says whether the caller may approve newcomers: the owner, a manager, or an
+// editor. Mirrors Members and ListedGroups.
 export async function members(deps, artifactId) {
   const caller = await unlock(deps);
   const va = await verifyArtifact(deps, caller, artifactId);
@@ -483,7 +770,22 @@ export async function members(deps, artifactId) {
       r.email = u.email;
     }
   }
-  return { artifact: artifactId, epoch: latest.epoch, seq: latest.seq, public: latest.public, publicWrites: latest.publicWrites, callerRole: callerRoleOf(caller, va), members: rows };
+  return {
+    artifact: artifactId, epoch: latest.epoch, seq: latest.seq, public: latest.public, publicWrites: latest.publicWrites,
+    callerRole: callerRoleOf(caller, va), canApprove: mayApprove(caller, latest), team: latest.team, groups: await listedGroups(deps, latest.groups ?? []), members: rows,
+  };
+}
+
+// listedGroups is the groups of a record, in its order, with the names the
+// server holds for them: {id, name, role, deleted}. A group the server no
+// longer holds has no name. Mirrors ListedGroups.
+async function listedGroups(deps, gs) {
+  if (gs.length === 0) return [];
+  const all = await listGroups(deps);
+  return gs.map((g) => {
+    const found = all.find((s) => s.id === g.group);
+    return { id: g.group, name: found?.name ?? '', role: g.role, deleted: !found };
+  });
 }
 
 // share adds who, an email or a user ID, to an artifact at its current epoch
@@ -501,8 +803,10 @@ export async function members(deps, artifactId) {
 // akCommit. Returns {epoch, reseal}, with reseal the result of re-sealing
 // when a new epoch started, else null, and more besides: user, prior, role,
 // promoted, lowered (manager to editor), demoted (to viewer, in a new epoch),
-// unchanged, dropped, wasVerified, and for a new epoch
-// excluded and link. Mirrors Share.
+// unchanged, dropped, wasVerified, listed and unlisted (approved team and
+// group members the record also lists, and those whose approval failed a
+// check), droppedGroups, and for a new epoch excluded and link. A user who is
+// approved or left holds their wraps already, so they get none. Mirrors Share.
 export async function share(deps, artifactId, who, role, { acceptNewKey = false } = {}) {
   if (!ROLE_RANK.has(role)) throw new SharingError('bad-role', `The role must be viewer, editor, or manager, not ${JSON.stringify(role)}.`);
   const { caller, va, manager } = await adminAction(deps, artifactId);
@@ -514,7 +818,21 @@ export async function share(deps, artifactId, who, role, { acceptNewKey = false 
   const res = {
     user: u, prior, wasVerified: wasVerified(va.keyring, u.id, prior), role, epoch: latest.epoch, reseal: null,
     promoted: false, lowered: false, demoted: false, unchanged: false, dropped: [], excluded: [], link: '',
+    listed: [], unlisted: [], droppedGroups: [],
   };
+  const pending = await pendingFor(deps, caller, va);
+  // An approved user holds their wraps already, so the client takes the
+  // server's word for it only after the check below. A user who left every
+  // group holds their wraps still, and the owner who lists them by name decides
+  // about them as for any share: there is no approval to check.
+  const holder = pending.find((p) => p.user.id === u.id && (p.state === PENDING_APPROVED || p.state === PENDING_LEFT));
+  if (holder && holder.state !== PENDING_LEFT) {
+    try {
+      await checkApproved(caller, latest, va.membership.rotations, dir, holder);
+    } catch (err) {
+      throw new SharingError('approval-unverified', `The approval of ${u.email} does not check out, so Cairn will not share with them: ${err.message}. Remove them to start a new epoch that excludes them.`, { cause: err });
+    }
+  }
 
   const list = latest.members.map((m) => ({ ...m }));
   const i = list.findIndex((m) => m.user === u.id);
@@ -531,6 +849,7 @@ export async function share(deps, artifactId, who, role, { acceptNewKey = false 
   let demote = false;
   if (i < 0) {
     list.push({ user: u.id, role, fp: u.fp });
+    needsWraps = !holder;
   } else {
     const from = ROLE_RANK.get(list[i].role);
     const to = ROLE_RANK.get(role);
@@ -544,11 +863,14 @@ export async function share(deps, artifactId, who, role, { acceptNewKey = false 
     list[i] = { user: u.id, role, fp: u.fp };
   }
   const basedOn = pinOf(va.keyring, u.id)?.fp ?? '';
-  if (demote) return shareNextEpoch(deps, caller, va, dir, list, u, decided, basedOn, res, manager);
+  if (demote) return shareNextEpoch(deps, caller, va, dir, pending, list, u, decided, basedOn, res, manager);
   if (res.unchanged) {
     if (decided) await storePin(deps, caller, u.id, decided, basedOn);
     return res;
   }
+  const lst = await listApproved(deps, caller, va, dir, pending, latest, (id) => list.some((m) => m.user === id));
+  list.push(...lst.members);
+  Object.assign(res, { listed: lst.listed, unlisted: lst.unlisted });
   list.sort(byUser);
 
   const wraps = [];
@@ -563,7 +885,8 @@ export async function share(deps, artifactId, who, role, { acceptNewKey = false 
   // Only the owner lists someone anyone removed again.
   if (dropped.length > 0) checkOwnerOnly(manager, 'share again with someone removed from the artifact');
   res.dropped = dropped;
-  await putRecord(deps, caller, va, { ...latest, members: list, excluded: kept }, wraps, [], '');
+  res.droppedGroups = await putRecord(deps, caller, va, { ...latest, members: list, excluded: kept }, wraps, [], '');
+  await storePins(deps, caller, lst.pins);
   if (decided) {
     try {
       await storePin(deps, caller, u.id, decided, basedOn);
@@ -577,9 +900,10 @@ export async function share(deps, artifactId, who, role, { acceptNewKey = false 
 
 // shareNextEpoch is share when the change demotes an editor or manager: the
 // demoted user stays listed as a viewer and the record starts a new epoch.
-async function shareNextEpoch(deps, caller, va, dir, list, u, decided, basedOn, res, manager) {
-  const change = await putNextEpoch(deps, caller, va, dir, { ...va.latest, members: list }, { decided: u.id, manager });
+async function shareNextEpoch(deps, caller, va, dir, pending, list, u, decided, basedOn, res, manager) {
+  const change = await putNextEpoch(deps, caller, va, dir, pending, { ...va.latest, members: list }, { decided: u.id, manager });
   res.epoch = va.latest.epoch + 1;
+  Object.assign(res, { listed: change.listed, droppedGroups: change.dropped });
   if (decided) {
     try {
       await storePin(deps, caller, u.id, decided, basedOn);
@@ -593,21 +917,30 @@ async function shareNextEpoch(deps, caller, va, dir, list, u, decided, basedOn, 
 }
 
 // buildNextEpoch builds a next-epoch record from next, the record to write
-// with the members and public switches the change wants, and sends nothing. It
-// makes the new AK, wraps it to every listed member, seals the estate copy,
-// and excludes every member the record removes. r.decided is a member whose
-// pin the caller already decided; r.exclude is a user the caller removes;
-// r.manager says the caller is a manager, not the owner.
-// Mirrors buildNextEpoch, less teams and approvals.
-async function buildNextEpoch(deps, caller, va, dir, nextIn, r) {
+// with the members, team, groups, and public switches the change wants, and
+// sends nothing. It makes the new AK, wraps it to every listed member, seals
+// the estate copy, and excludes every user the record removes or drops, and
+// every team or group member who holds a wrap and cannot be listed: the server
+// refuses a record that leaves any of them out of both lists, so a member whose
+// approval fails a check is excluded, and the owner lists them again by name
+// with share. r.decided is a member whose pin the caller already decided;
+// r.exclude is a user the caller removes, listed or holding a wrap; r.manager
+// says the caller is a manager, not the owner. Returns, besides the record,
+// listed: the approved users the record lists, with the role they are granted.
+// Mirrors buildNextEpoch, less transfers and rotated members.
+async function buildNextEpoch(deps, caller, va, dir, pending, nextIn, r) {
   const { artifact, latest } = va;
   const epoch = latest.epoch + 1;
   // Defense in depth behind verifyChain's epoch pin, which already refuses a
   // stale epoch.
   e2e.checkEncryptEpoch(epochPinOf(va.keyring, artifact), epoch);
-  const next = { ...nextIn, members: [...nextIn.members].sort(byUser) };
+  const next = { ...nextIn, members: [...nextIn.members] };
   const byId = new Map(dir.map((u) => [u.id, u]));
   const inMembers = (id) => next.members.some((m) => m.user === id);
+
+  // Team and group members who hold a wrap are listed or excluded.
+  const lst = await listApproved(deps, caller, va, dir, pending, next, (id) => inMembers(id) || id === r.exclude);
+  next.members = [...next.members, ...lst.members].sort(byUser);
 
   const excludes = new Map();
   const excluded = [];
@@ -625,10 +958,39 @@ async function buildNextEpoch(deps, caller, va, dir, nextIn, r) {
     if (!u) exclude1({ id: m.user, email: '', fp: m.fp }, m.fp, 'removed; their account was deleted');
     else exclude1(u, m.fp, 'removed');
   }
+  for (const p of pending) {
+    if (excludes.has(p.user.id) || inMembers(p.user.id)) continue;
+    if (p.state === PENDING_KEY_CHANGED && p.rotationsErr) {
+      // The server says they rotated, and without their records no pin says
+      // which key their wraps were made for.
+      throw errRotationsUnreadable(p);
+    } else if (p.state === PENDING_KEY_CHANGED) {
+      // Not listed, so a wrap they hold was made for a key other than their
+      // current one. The server accepts only a fingerprint it can account for,
+      // which the client knows from its pin.
+      const pinned = pinOf(va.keyring, p.user.id);
+      if (!pinned || pinned.fp === p.user.fp) {
+        throw new SharingError('wrap-key-unknown', `${p.user.email} holds a wrap made for a key that is no longer theirs, and Cairn does not know which. Share with them again and accept the new key, then remove them.`);
+      }
+      exclude1(p.user, pinned.fp, p.user.id === r.exclude ? 'removed' : 'their keys changed after they were wrapped to');
+    } else if (p.user.id === r.exclude) {
+      exclude1(p.user, p.user.fp, 'removed');
+    } else if (p.state === PENDING_APPROVED || p.state === PENDING_ROTATED || p.state === PENDING_LEFT) {
+      // A rotated user who is not listed holds wraps under their new keys and
+      // an approval for their old ones, which no record can list.
+      let reason = 'team sharing ended while they held a wrap';
+      if (p.state === PENDING_ROTATED) reason = 'their keys rotated after they were approved, so the approval no longer checks out';
+      else if (p.state === PENDING_LEFT) reason = 'left the group';
+      else if (latest.team === 'none' || next.team !== 'none') reason = 'no group they belong to is shared with the artifact any more';
+      const unlisted = lst.unlisted.find((x) => x.user.id === p.user.id);
+      if (unlisted) reason = `their approval does not check out: ${unlisted.error.message}`;
+      exclude1(p.user, p.user.fp, reason);
+    }
+  }
 
   // Every member is listed under their current keys, and a pinned key that
   // differs from them is the owner's to decide about.
-  const pins = new Map();
+  const pins = lst.pins;
   for (const m of next.members) {
     const u = byId.get(m.user);
     if (!u) {
@@ -659,11 +1021,13 @@ async function buildNextEpoch(deps, caller, va, dir, nextIn, r) {
   aks.set(epoch, ak);
 
   // The new epoch for every listed member, and every earlier epoch for one the
-  // record adds: not listed under this fingerprint before.
+  // record adds: not listed under this fingerprint before, and holding no wrap
+  // through an approval.
   const wraps = [];
   for (const m of next.members) {
     const u = byId.get(m.user);
-    const held = latest.members.some((l) => l.user === m.user && l.fp === m.fp);
+    const held = latest.members.some((l) => l.user === m.user && l.fp === m.fp)
+      || pending.some((p) => p.user.id === m.user && p.state === PENDING_APPROVED && p.user.fp === m.fp);
     const epochs = held ? [epoch] : Array.from({ length: epoch }, (_, k) => k + 1);
     for (const e of epochs) wraps.push(await wrapTo(u, artifact, e, needAK(aks, e, `share with ${u.email}, who needs it`)));
   }
@@ -694,29 +1058,38 @@ async function buildNextEpoch(deps, caller, va, dir, nextIn, r) {
     link = e2e.publicLink(deps.origin, artifact, ak, epoch, va.chain.bodies[0].ownerFp);
     linkHash = await e2e.linkTokenHash(await e2e.linkToken(ak, artifact, epoch));
   }
-  return { next, wraps, estate, linkHash, link, excluded, pins };
+  return { next, wraps, estate, linkHash, link, excluded, pins, listed: lst.listed };
 }
 
 // putNextEpoch signs and PUTs a next-epoch record built as buildNextEpoch
 // makes it, then stores the pins the build decided. It returns {excluded,
-// link}. Mirrors putNextEpoch.
-async function putNextEpoch(deps, caller, va, dir, next, r) {
-  const b = await buildNextEpoch(deps, caller, va, dir, next, r);
-  await putRecord(deps, caller, va, b.next, b.wraps, b.estate, b.linkHash);
-  for (const [id, d] of b.pins) {
-    try {
-      await storePin(deps, caller, id, d.pin, d.basedOn);
-    } catch (err) {
-      throw new SharingError(err.code ?? 'pin', `The server accepted the new membership record, but pinning ${id} failed: ${err.message}`, { cause: err });
-    }
-  }
-  return { excluded: b.excluded, link: b.link };
+// link, listed, dropped}: dropped are the groups the record dropped because
+// they no longer exist. Mirrors putNextEpoch.
+async function putNextEpoch(deps, caller, va, dir, pending, next, r) {
+  const b = await buildNextEpoch(deps, caller, va, dir, pending, next, r);
+  const dropped = await putRecord(deps, caller, va, b.next, b.wraps, b.estate, b.linkHash);
+  await storePins(deps, caller, b.pins);
+  return { excluded: b.excluded, link: b.link, listed: b.listed, dropped };
+}
+
+// coverEndsNextEpoch is a change to the team share or the groups that leaves
+// an unlisted holder of a wrap without a reason to read: a next-epoch record,
+// next, that excludes each of them, and lists the ones another group or the
+// team still covers. It reads the artifact back and re-seals. Returns what
+// putNextEpoch does, with reseal.
+async function coverEndsNextEpoch(deps, caller, va, pending, next, manager) {
+  const dir = await directory(deps);
+  const change = await putNextEpoch(deps, caller, va, dir, pending, next, { manager });
+  await readBack(deps, caller, va, change.link);
+  return { ...change, reseal: await resealInto(deps, caller, va.artifact) };
 }
 
 // unshare removes who, a member's email or user ID, from an artifact in a
 // next-epoch record: the new epoch's AK is wrapped to every member who stays,
-// and who is excluded is listed in the result. The caller must be the owner.
-// Returns {epoch, reseal, user, excluded, link}. Mirrors Unshare.
+// and who is excluded is listed in the result. who may also be a team or group
+// member who holds a wrap and is not listed, as a user who left every group
+// is. The caller must be the owner or a manager. Returns {epoch, reseal, user,
+// excluded, link, listed, droppedGroups}. Mirrors Unshare.
 export async function unshare(deps, artifactId, who) {
   const { caller, va, manager } = await adminAction(deps, artifactId);
   const latest = va.latest;
@@ -731,12 +1104,246 @@ export async function unshare(deps, artifactId, who) {
     u = { id: who, email: '', fp: m.fp };
   }
   if (u.id === latest.owner) throw new SharingError('unshare-owner', 'The owner cannot be removed from the artifact.');
+  const pending = await pendingFor(deps, caller, va);
   const kept = latest.members.filter((m) => m.user !== u.id);
-  if (kept.length === latest.members.length) throw new SharingError('not-member', `The user is not a member of the artifact: ${u.email || u.id}`);
+  const holds = pending.some((p) => p.user.id === u.id && [PENDING_APPROVED, PENDING_LEFT, PENDING_KEY_CHANGED, PENDING_ROTATED].includes(p.state));
+  if (kept.length === latest.members.length && !holds) throw new SharingError('not-member', `The user is not a member of the artifact: ${u.email || u.id}`);
   if (latest.members.some((m) => m.user === u.id && m.role === 'manager')) checkOwnerOnly(manager, 'remove a manager');
-  const change = await putNextEpoch(deps, caller, va, dir, { ...latest, members: kept }, { exclude: u.id, manager });
+  // Excluded whether listed or not, so a server that still reports a listed
+  // user approved cannot get them listed again by the team.
+  const change = await putNextEpoch(deps, caller, va, dir, pending, { ...latest, members: kept }, { exclude: u.id, manager });
   await readBack(deps, caller, va, change.link);
-  return { epoch: latest.epoch + 1, user: u, excluded: change.excluded, link: change.link, reseal: await resealInto(deps, caller, artifactId) };
+  return { epoch: latest.epoch + 1, user: u, excluded: change.excluded, link: change.link, listed: change.listed, droppedGroups: change.dropped, reseal: await resealInto(deps, caller, artifactId) };
+}
+
+// ---- approving, groups, and the team share ----
+
+// approve approves who, a team or group member waiting for access, at the
+// artifact's current epoch: it wraps the AK of every epoch to them and signs an
+// approval of their name and fingerprint. The caller must be the owner or a
+// listed editor or manager. It refuses, before asking the server, a user the
+// chain excludes, a directory in which two user IDs share an email or a
+// fingerprint, a user who is listed, already approved, or whose key changed
+// after they were wrapped to, and a user whose pinned key changed, unless
+// acceptNewKey. While the team share is off, the user must be listed by the
+// verified chain of a listed group that holds them, under the fingerprint the
+// directory serves for them: a difference is a GroupKeyChangedError, which
+// acceptNewKey overrides too. The pin is stored once the server accepts the
+// approval. Returns {user, prior, wasVerified, epoch}. Mirrors Approve.
+export async function approve(deps, artifactId, who, { acceptNewKey = false } = {}) {
+  const caller = await unlock(deps);
+  const va = await verifyArtifact(deps, caller, artifactId);
+  checkHandover(va);
+  const latest = va.latest;
+  if (!mayApprove(caller, latest)) throw new SharingError('not-approver', 'Only the artifact\'s owner, an editor, or a manager can approve people.');
+  if (latest.team === 'none' && (latest.groups ?? []).length === 0) throw new SharingError('no-team', 'The artifact is not shared with Everyone or a group, so there is no one to approve.');
+  const dir = await directory(deps);
+  const u = findUser(dir, who);
+  const x = e2e.excludedMatch(latest.excluded, u.id, u.fp, u.email);
+  if (x) throw new SharingError('excluded', `${u.email} matches the excluded entry for ${x.email} (${x.user}).`);
+  const pending = await pendingFor(deps, caller, va);
+  const p = pending.find((e) => e.user.id === u.id) ?? null;
+  const listed = latest.members.some((m) => m.user === u.id);
+  // A listed member whose key changed is pending as keyChanged, so this check
+  // comes before already-listed. A user who holds a wrap and rotated is listed
+  // by the owner, by sharing with them again.
+  if (p && (p.state === PENDING_KEY_CHANGED || (p.state === PENDING_ROTATED && !listed))) {
+    throw new SharingError('changed-key', `The keys of ${u.email} changed after they were wrapped to or listed. The owner shares with them again.`);
+  }
+  if (u.id === latest.owner || listed) throw new SharingError('already-listed', `${u.email} is already a member of the artifact.`);
+  if (!p || p.state === PENDING_LEFT) throw new SharingError('not-waiting', `${u.email} is not waiting for approval on this artifact.`);
+  if (p.state === PENDING_APPROVED) throw new SharingError('already-approved', `${u.email} is already approved; the owner lists them in the next record.`);
+  if (p.user.fp !== u.fp) throw new SharingError('pending-keys-differ', `The server serves different keys for ${u.email} in the directory and in the pending list.`);
+  await checkGroupCover(deps, caller, va, latest, p, u, acceptNewKey);
+  const { prior, pin: decided } = await checkPin(deps, va.keyring, u, acceptNewKey, va.membership.rotations);
+  // Defense in depth behind verifyChain's epoch pin, which already refuses a
+  // stale epoch.
+  e2e.checkEncryptEpoch(epochPinOf(va.keyring, artifactId), latest.epoch);
+  const { aks } = await akSet(deps, caller, va);
+  const wraps = [];
+  for (let epoch = 1; epoch <= latest.epoch; epoch++) {
+    const w = await wrapTo(u, artifactId, epoch, needAK(aks, epoch, `approve ${u.email}, who needs it`));
+    wraps.push({ epoch, wrapped: w.wrapped });
+  }
+  const approval = await e2e.signApproval(caller.record.ed25519, caller.record.userId, { artifact: artifactId, epoch: latest.epoch, user: u.id, fp: u.fp });
+  const basedOn = pinOf(va.keyring, u.id)?.fp ?? '';
+  await call(deps, null, 'POST', `/api/artifacts/${artifactId}/keys`, { body: { user: u.id, fp: u.fp, approval, wraps } });
+  if (decided) {
+    try {
+      await storePin(deps, caller, u.id, decided, basedOn);
+    } catch (err) {
+      throw new SharingError(err.code ?? 'pin', `The server accepted the approval, but pinning ${u.email} failed: ${err.message}`, { cause: err });
+    }
+  }
+  return { user: u, prior, wasVerified: wasVerified(va.keyring, u.id, prior), epoch: latest.epoch };
+}
+
+// byGroup sorts group shares by group ID, as a record lists them.
+const byGroup = (a, b) => (a.group < b.group ? -1 : a.group > b.group ? 1 : 0);
+
+// shareGroup lists the group groupId in the artifact's member list with role,
+// viewer or editor, in a same-epoch record, or changes the role it is listed
+// under. It then approves each current member of the group's verified chain
+// who is waiting: the keys the directory serves for them must be the ones the
+// group record lists, and the pin checks of approve must pass. The others stay
+// pending, with a reason. The record also lists each approved member whose
+// approval passes the four checks. The caller must be the owner or a manager.
+// Returns {group: {id, name}, role, epoch, unchanged, approved, pending,
+// listed, unlisted, droppedGroups}: approved are users, pending and unlisted
+// are {user, error}. Mirrors ShareGroup.
+export async function shareGroup(deps, artifactId, groupId, role, { acceptNewKey = false } = {}) {
+  const { caller, va } = await adminAction(deps, artifactId);
+  const latest = va.latest;
+  if (!(await listGroups(deps)).some((g) => g.id === groupId)) throw new SharingError('unknown-group', `There is no group with the ID ${groupId}.`);
+  if (role !== 'viewer' && role !== 'editor') throw new SharingError('bad-role', `A group is shared as viewer or editor, not ${JSON.stringify(role)}.`);
+  const vg = await verifyGroup(deps, groupId, { acceptNewKey });
+  va.keyring = await readKeyring(deps, caller);
+  const res = { group: { id: groupId, name: vg.chain.latest.name }, role, epoch: latest.epoch, unchanged: false, approved: [], pending: [], listed: [], unlisted: [], droppedGroups: [] };
+  const pending = await pendingFor(deps, caller, va);
+  const dir = await directory(deps);
+  const next = { ...latest, groups: (latest.groups ?? []).map((g) => ({ ...g })) };
+  const at = next.groups.findIndex((g) => g.group === groupId);
+  if (at >= 0) next.groups[at].role = role;
+  else next.groups = [...next.groups, { group: groupId, role }].sort(byGroup);
+  next.members = latest.members.map((m) => ({ ...m }));
+  const lst = await listApproved(deps, caller, va, dir, pending, next, (id) => next.members.some((m) => m.user === id));
+  Object.assign(res, { listed: lst.listed, unlisted: lst.unlisted });
+  if (JSON.stringify(latest.groups ?? []) === JSON.stringify(next.groups) && lst.members.length === 0) {
+    res.unchanged = true;
+  } else {
+    next.members = [...next.members, ...lst.members].sort(byUser);
+    res.droppedGroups = await putRecord(deps, caller, va, next, [], [], '');
+    await storePins(deps, caller, lst.pins);
+    await readBack(deps, caller, va, '');
+  }
+  await approveGroupMembers(deps, artifactId, vg.chain, acceptNewKey, res);
+  return res;
+}
+
+// approveGroupMembers approves each member of chain who waits as new, and
+// records the outcome in res: approved, or pending with the reason. A member
+// whose directory key differs from the chain's is left pending without a
+// request, as is any whose approval fails a check; only a failure that ends
+// the command, as fatalFetch says, is an error. The artifact is verified again
+// first: the record that lists the group has landed. Mirrors
+// approveGroupMembers.
+async function approveGroupMembers(deps, artifactId, chain, acceptNewKey, res) {
+  const caller = await unlock(deps);
+  const va = await verifyArtifact(deps, caller, artifactId);
+  const pending = await pendingFor(deps, caller, va);
+  for (const m of chain.latest.members) {
+    const p = pending.find((e) => e.user.id === m.user && e.state === PENDING_NEW);
+    if (!p) continue;
+    const u = p.user;
+    if (u.fp !== m.fp) {
+      res.pending.push({ user: u, error: new GroupKeyChangedError({ user: u, group: chain.latest.group, groupFp: m.fp }) });
+      continue;
+    }
+    try {
+      await approve(deps, artifactId, u.id, { acceptNewKey });
+    } catch (refused) {
+      if (fatalFetch(refused)) throw refused;
+      res.pending.push({ user: u, error: refused });
+      continue;
+    }
+    res.approved.push(u);
+  }
+}
+
+// unshareGroup drops the group groupId, the ID of a listed group, which may be
+// deleted, from the artifact's member list. When someone read the artifact
+// only through that group, a next-epoch record drops it and excludes them.
+// Otherwise a same-epoch record does. The caller must be the owner or a
+// manager. Returns {group: {id, name}, epoch, reseal, excluded, link, listed,
+// droppedGroups}: reseal is null for a same-epoch record. Mirrors
+// UnshareGroup.
+export async function unshareGroup(deps, artifactId, groupId) {
+  const { caller, va, manager } = await adminAction(deps, artifactId);
+  const latest = va.latest;
+  if (!(latest.groups ?? []).some((g) => g.group === groupId)) throw new SharingError('not-shared-with-group', `The artifact is not shared with the group ${groupId}.`);
+  let name = '';
+  try {
+    name = (await listGroups(deps)).find((s) => s.id === groupId)?.name ?? '';
+  } catch (err) {
+    if (fatalFetch(err)) throw err;
+  }
+  const pending = await pendingFor(deps, caller, va);
+  const next = { ...latest, groups: latest.groups.filter((g) => g.group !== groupId) };
+  const res = { group: { id: groupId, name }, epoch: latest.epoch, reseal: null, excluded: [], link: '', listed: [], droppedGroups: [] };
+  if (holdersLose(pending, latest, next)) {
+    const change = await coverEndsNextEpoch(deps, caller, va, pending, next, manager);
+    return { ...res, epoch: latest.epoch + 1, reseal: change.reseal, excluded: change.excluded, link: change.link, listed: change.listed, droppedGroups: change.dropped };
+  }
+  res.droppedGroups = await putRecord(deps, caller, va, next, [], [], '');
+  await readBack(deps, caller, va, '');
+  return res;
+}
+
+// setTeam sets whom the artifact is shared with as Everyone (none, viewer, or
+// editor) in a same-epoch record, and lists each approved team member whose
+// approval passes the four checks, under the role the team grants. Setting none
+// while a team member holds a wrap, and no listed group covers them, starts a
+// new epoch, which excludes every such member. The caller must be the owner or
+// a manager. Returns {team, epoch, unchanged, listed, unlisted, reseal,
+// excluded, link, droppedGroups}. Mirrors Team.
+export async function setTeam(deps, artifactId, team) {
+  if (team !== 'none' && team !== 'viewer' && team !== 'editor') throw new SharingError('bad-team', `Everyone is none, viewer, or editor, not ${JSON.stringify(team)}.`);
+  const { caller, va, manager } = await adminAction(deps, artifactId);
+  const latest = va.latest;
+  const pending = await pendingFor(deps, caller, va);
+  const res = { team, epoch: latest.epoch, unchanged: false, listed: [], unlisted: [], reseal: null, excluded: [], link: '', droppedGroups: [] };
+  const next = { ...latest, team };
+  if (team === 'none' && holdersLose(pending, latest, next)) {
+    // A team member holds a wrap while they are approved, or while a wrap they
+    // hold is for keys that are no longer theirs. A listed group still covers
+    // the approved ones it holds.
+    const change = await coverEndsNextEpoch(deps, caller, va, pending, next, manager);
+    return { ...res, epoch: latest.epoch + 1, reseal: change.reseal, excluded: change.excluded, link: change.link, listed: change.listed, droppedGroups: change.dropped };
+  }
+  const dir = await directory(deps);
+  const lst = await listApproved(deps, caller, va, dir, pending, next, (id) => latest.members.some((m) => m.user === id));
+  Object.assign(res, { listed: lst.listed, unlisted: lst.unlisted });
+  if (latest.team === team && lst.members.length === 0) return { ...res, unchanged: true };
+  next.members = [...latest.members, ...lst.members].sort(byUser);
+  res.droppedGroups = await putRecord(deps, caller, va, next, [], [], '');
+  await storePins(deps, caller, lst.pins);
+  await readBack(deps, caller, va, '');
+  return res;
+}
+
+// waiting is what the share dialog shows an approver: the newcomers waiting
+// for approval, each with their fingerprint and the groups that hold them (or
+// Everyone, which holds them all while the team share is on), and the users
+// who left every group but still hold the key. An editor sees newcomers
+// only. canApprove is false for anyone who may approve nobody. The server
+// names the groups; each is verified when someone is approved.
+// Returns {canApprove, team, newcomers, left}: a newcomer is {user, name,
+// email, fp, groups: [{id, name}], everyone}, a user who left {user, name,
+// email, fp}.
+export async function waiting(deps, artifactId) {
+  const caller = await unlock(deps);
+  const va = await verifyArtifact(deps, caller, artifactId);
+  const latest = va.latest;
+  const res = { canApprove: mayApprove(caller, latest), team: latest.team, newcomers: [], left: [] };
+  if (!res.canApprove) return res;
+  const pending = await pendingFor(deps, caller, va);
+  const held = pending.filter((p) => p.state === PENDING_NEW && p.groups.length > 0);
+  const names = held.length > 0 ? new Map((await listGroups(deps)).map((g) => [g.id, g.name])) : new Map();
+  const row = (p) => ({ user: p.user.id, name: p.user.name, email: p.user.email, fp: p.user.fp });
+  for (const p of pending) {
+    if (p.state === PENDING_NEW) res.newcomers.push({ ...row(p), groups: p.groups.map((id) => ({ id, name: names.get(id) ?? '' })), everyone: latest.team !== 'none' });
+    if (p.state === PENDING_LEFT) res.left.push(row(p));
+  }
+  return res;
+}
+
+// approvableCount is how many newcomers the server says wait on an artifact:
+// a hint for the Artifacts tab, a single request that checks nothing. The
+// dialog verifies the artifact, and approve checks everything before it wraps.
+export async function approvableCount(deps, artifactId) {
+  const list = await call(deps, null, 'GET', `/api/artifacts/${artifactId}/pending`);
+  if (!Array.isArray(list)) throw new e2e.FormatError('the list of people waiting is not a list');
+  return list.filter((p) => p.state === PENDING_NEW).length;
 }
 
 // ---- public links ----
@@ -749,12 +1356,13 @@ export async function unshare(deps, artifactId, who) {
 // private one writes nothing. The link is built before any record is written,
 // so a host the link format refuses leaves the artifact unchanged. Returns
 // {link, epoch, reseal}: link is the public link when on, else null. Also
-// public, publicWrites, unchanged, newEpoch, and excluded. Mirrors Public.
+// public, publicWrites, unchanged, newEpoch, excluded, listed (approved users
+// a new epoch lists), and droppedGroups. Mirrors Public.
 export async function setPublic(deps, artifactId, on, { writes } = {}) {
   if (!on && writes !== undefined) throw new SharingError('public-writes-with-off', 'Public writes set who can write through a public link, so they go with on, not off.');
   const { caller, va, manager } = await adminAction(deps, artifactId);
   const latest = va.latest;
-  const res = { link: null, epoch: latest.epoch, reseal: null, public: false, publicWrites: false, unchanged: false, newEpoch: false, excluded: [] };
+  const res = { link: null, epoch: latest.epoch, reseal: null, public: false, publicWrites: false, unchanged: false, newEpoch: false, excluded: [], listed: [], droppedGroups: [] };
   if (!on) {
     if (!latest.public) return { ...res, unchanged: true };
     return publicOffNextEpoch(deps, caller, va, res, manager);
@@ -765,7 +1373,7 @@ export async function setPublic(deps, artifactId, on, { writes } = {}) {
   // record is written, or the artifact is public with no link.
   res.link = await linkOf(deps, caller, va);
   if (latest.public && next.publicWrites === latest.publicWrites) return { ...res, unchanged: true };
-  await putRecord(deps, caller, va, next, [], [], '');
+  res.droppedGroups = await putRecord(deps, caller, va, next, [], [], '');
   await readBack(deps, caller, va, '');
   return res;
 }
@@ -785,9 +1393,10 @@ async function linkOf(deps, caller, va) {
 // publicOffNextEpoch makes a public artifact private in a next-epoch record.
 async function publicOffNextEpoch(deps, caller, va, res, manager) {
   const dir = await directory(deps);
-  const change = await putNextEpoch(deps, caller, va, dir, { ...va.latest, public: false, publicWrites: false }, { manager });
+  const pending = await pendingFor(deps, caller, va);
+  const change = await putNextEpoch(deps, caller, va, dir, pending, { ...va.latest, public: false, publicWrites: false }, { manager });
   await readBack(deps, caller, va, '');
-  return { ...res, epoch: va.latest.epoch + 1, newEpoch: true, excluded: change.excluded, reseal: await resealInto(deps, caller, va.artifact) };
+  return { ...res, epoch: va.latest.epoch + 1, newEpoch: true, excluded: change.excluded, listed: change.listed, droppedGroups: change.dropped, reseal: await resealInto(deps, caller, va.artifact) };
 }
 
 // publicLinkFor is the artifact's current public link, rebuilt from the

@@ -7,8 +7,9 @@ import { changePassword, createApiKey, enrollPasskey, listPasskeys, newRecoveryC
 import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { createGroupsTab } from './groups-tab.mjs';
 import { FolderError, breadcrumb, childrenOf, createFolder, deleteTree, makeDraggable, makeDropTarget, moveItem, moveTargets, renameFolder, subtree } from './folders.mjs';
+import { listGroups } from './groups.mjs';
 import { describeArtifact } from './meta.mjs';
-import { KeyChangedError, memberControls, members, pin, publicLinkFor, setPublic, share, unshare } from './sharing.mjs';
+import { GroupKeyChangedError, KeyChangedError, approvableCount, approve, memberControls, members, pin, publicLinkFor, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
 import { bannerView, myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions, who } from './successor.mjs';
 import { confirmRecoveryCode, describeError, describePasskeyError, pageDeps, watchStrength } from './ui.mjs';
 
@@ -174,6 +175,9 @@ async function listArtifacts({ me }) {
       sharing.name = got.name;
       $('share-title').textContent = got.name;
     }
+    // How many newcomers the caller can approve, where they may: one request
+    // each, in turn, like the names.
+    if (!row.folder && APPROVERS.includes(a.access)) await showWaiting(row);
   }
   // Names sort the tree, so it is laid out again once they are all read.
   renderOwn();
@@ -201,9 +205,30 @@ function loadArtifacts(ctx) {
   return run;
 }
 
+// APPROVERS are the access levels that may approve people the artifact is
+// shared with through Everyone or a group.
+const APPROVERS = ['owner', 'manager', 'editor'];
+
+// showWaiting marks a row with the newcomers waiting for the caller to approve,
+// and gives an editor, who has no Share, a button for them. It is a hint: a
+// failed request marks nothing.
+async function showWaiting(row) {
+  let n = 0;
+  try {
+    n = await approvableCount(deps, row.id);
+  } catch (err) {
+    if (err instanceof UnauthenticatedError) return;
+  }
+  row.waitingPill.textContent = `${n} waiting for approval`;
+  row.waitingPill.hidden = n === 0;
+  if (row.approveButton) row.approveButton.hidden = n === 0;
+}
+
 function artifactRow(a, mine) {
   const folder = a.kind === 'folder';
   const row = { id: a.id, folder, name: a.id, nameText: el(folder ? 'button' : 'a', 'clamp', a.id), descText: el('div', 'clamp', ''), actions: el('div', 'actions') };
+  row.waitingPill = pill('', 'waiting');
+  row.waitingPill.hidden = true;
   const tr = el('tr');
   tr.dataset.id = a.id;
   if (folder) {
@@ -220,7 +245,7 @@ function artifactRow(a, mine) {
   row.reasonText = el('div', 'unreadable', '');
   const nameCell = td(row.nameText, 'name');
   if (folder) nameCell.prepend(pill('folder'), ' ');
-  nameCell.appendChild(row.reasonText);
+  nameCell.append(row.reasonText, row.waitingPill);
   tr.append(
     nameCell,
     td(row.descText, 'desc'),
@@ -234,6 +259,11 @@ function artifactRow(a, mine) {
   } else if (a.access === 'manager') {
     // A manager shares too, and the dialog verifies they are one.
     row.actions.append(btn('Share', '', () => openShare(a.id, row.name)));
+  } else if (a.access === 'editor') {
+    // An editor approves the people waiting, and changes nothing else.
+    row.approveButton = btn('Approve', '', () => openShare(a.id, row.name, { approveOnly: true }));
+    row.approveButton.hidden = true;
+    row.actions.append(row.approveButton);
   }
   tr.appendChild(td(row.actions));
   row.tr = tr;
@@ -419,11 +449,19 @@ $('folder-form').addEventListener('submit', async (event) => {
 // artifact's key, so it lives only in this variable until the owner copies it.
 let sharing = null;
 
-async function openShare(id, name) {
-  sharing = { id, name, link: null, changed: false };
+// openShare opens the dialog on an artifact. approveOnly is the editor's: the
+// waiting newcomers and Approve, and nothing else.
+async function openShare(id, name, { approveOnly = false } = {}) {
+  sharing = { id, name, link: null, changed: false, approveOnly, callerRole: '', hasGroups: false };
   $('share-title').textContent = name;
   status('share-status', '');
   $('accept-warning').hidden = true;
+  $('approve-only-note').hidden = !approveOnly;
+  for (const part of ['share-members-list', 'share-form', 'share-public']) $(part).hidden = approveOnly;
+  $('waiting-section').hidden = true;
+  $('waiting').replaceChildren();
+  $('share-kind').value = 'user';
+  syncShareForm();
   $('share').showModal();
   await act(() => 'Loading the members…', async () => null);
 }
@@ -453,7 +491,7 @@ async function act(working, change, retry) {
     }
     return;
   }
-  if (failed instanceof KeyChangedError && retry) {
+  if ((failed instanceof KeyChangedError || failed instanceof GroupKeyChangedError) && retry) {
     warnKeyChanged(failed.message, retry);
     status('share-status', '');
   } else if (failed && !(failed instanceof UnauthenticatedError)) {
@@ -492,17 +530,142 @@ $('accept-confirm').addEventListener('click', () => {
 });
 $('accept-cancel').addEventListener('click', () => { $('accept-warning').hidden = true; accept = null; });
 
-async function listMembers(s) {
-  const res = await members(deps, s.id);
-  if (s !== sharing) return;
-  $('public').checked = res.public;
-  $('public-writes').checked = res.publicWrites;
-  s.callerRole = res.callerRole;
-  // Only the owner makes a manager.
+// syncShareForm shows the field the kind of share needs, and the roles it may
+// take: only the owner makes a manager, and only of a person.
+function syncShareForm() {
+  const kind = $('share-kind').value;
+  $('share-email').hidden = kind !== 'user';
+  $('share-group').hidden = kind !== 'group';
   const manager = $('share-role').querySelector('option[value=manager]');
-  manager.hidden = manager.disabled = res.callerRole !== 'owner';
+  manager.hidden = manager.disabled = kind !== 'user' || sharing?.callerRole !== 'owner';
   if (manager.disabled && $('share-role').value === 'manager') $('share-role').value = 'viewer';
-  $('members').replaceChildren(...res.members.map((m) => memberRow(s, m)));
+}
+
+async function listMembers(s) {
+  if (!s.approveOnly) {
+    const res = await members(deps, s.id);
+    if (s !== sharing) return;
+    $('public').checked = res.public;
+    $('public-writes').checked = res.publicWrites;
+    s.callerRole = res.callerRole;
+    s.hasGroups = res.groups.length > 0;
+    syncShareForm();
+    $('members').replaceChildren(...res.members.map((m) => memberRow(s, m)), ...res.groups.map((g) => groupRow(s, g)), ...(res.team === 'none' ? [] : [everyoneRow(s, res.team)]));
+  }
+  await listWaiting(s);
+}
+
+// listWaiting shows the newcomers waiting for approval, and the users who left
+// every group but still hold the key. An owner or manager sees both, an editor
+// the newcomers. The section is left out when nobody could be waiting.
+async function listWaiting(s) {
+  const w = await waiting(deps, s.id);
+  if (s !== sharing) return;
+  const rows = [...w.newcomers.map((n) => waitingRow(s, n)), ...w.left.map((l) => leftRow(s, l))];
+  $('waiting-section').hidden = !w.canApprove || (rows.length === 0 && !s.approveOnly && w.team === 'none' && !s.hasGroups);
+  if (rows.length === 0) emptyRow($('waiting'), 6, 'Nobody is waiting for approval.'); else $('waiting').replaceChildren(...rows);
+}
+
+// waitingRow is a newcomer: Approve checks them and gives them the keys.
+function waitingRow(s, n) {
+  const tr = el('tr');
+  tr.dataset.email = n.email;
+  tr.dataset.state = 'new';
+  const heldBy = [...(n.everyone ? ['Everyone'] : []), ...n.groups.map((g) => g.name || g.id)].join(', ');
+  tr.append(td(n.name, 'name'), td(n.email, 'email'), td(n.fp, 'fp mono'), td(heldBy, 'held'), td('waiting', 'pin'));
+  const approveUser = (acceptNewKey) => act(() => 'Approving…', async () => {
+    await approve(deps, s.id, n.user, { acceptNewKey });
+    return `Approved ${n.email}.`;
+  }, acceptNewKey ? undefined : () => approveUser(true));
+  const actions = el('div', 'actions');
+  actions.appendChild(btn('Approve', '', () => approveUser(false)));
+  tr.appendChild(td(actions));
+  return tr;
+}
+
+// leftRow is a user who left every group they were held by, and still holds
+// the key until a new epoch: Remove starts one that excludes them.
+function leftRow(s, l) {
+  const tr = el('tr');
+  tr.dataset.email = l.email;
+  tr.dataset.state = 'left';
+  tr.append(td(l.name, 'name'), td(l.email, 'email'), td(l.fp, 'fp mono'), td('', 'held'), td('left the group, still holds the key', 'pin'));
+  const actions = el('div', 'actions');
+  actions.appendChild(btn('Remove', 'danger', () => act(() => 'Removing the user and re-sealing…', async () => {
+    const res = await unshare(deps, s.id, l.user);
+    return `Removed ${l.email}.` + epochNote(res);
+  })));
+  tr.appendChild(td(actions));
+  return tr;
+}
+
+// roleSelect is the role of a group or Everyone, which is viewer or editor.
+function roleSelect(label, current, change) {
+  const role = el('select', 'role');
+  role.setAttribute('aria-label', label);
+  for (const r of ['viewer', 'editor']) {
+    const o = el('option', '', r);
+    o.value = r;
+    o.selected = r === current;
+    role.appendChild(o);
+  }
+  role.addEventListener('change', () => change(role.value));
+  return role;
+}
+
+// groupRow is a group the artifact is shared with. A deleted group has no
+// name, and grants nothing: Remove drops it from the list.
+function groupRow(s, g) {
+  const label = g.deleted ? g.id : g.name;
+  const tr = el('tr');
+  tr.dataset.group = g.id;
+  const name = td(g.deleted ? '(deleted group)' : g.name, 'name');
+  name.append(' ', pill('group'));
+  const roleCell = td(g.role, 'role');
+  if (!g.deleted) {
+    const setRole = (role, acceptNewKey) => act(() => 'Changing the role…', async () => {
+      const res = await shareGroup(deps, s.id, g.id, role, { acceptNewKey });
+      return `${g.name} is now shared as ${role}.` + groupNote(res) + epochNote(res);
+    }, acceptNewKey ? undefined : () => setRole(role, true));
+    roleCell.replaceChildren(roleSelect('Role of group ' + label, g.role, (role) => setRole(role, false)));
+  }
+  tr.append(name, td(g.deleted ? g.id : '', 'email mono'), roleCell, td('', 'fp mono'), td('', 'pin'));
+  const actions = el('div', 'actions');
+  actions.appendChild(btn('Remove', 'danger', () => act(() => 'Removing the group…', async () => {
+    const res = await unshareGroup(deps, s.id, g.id);
+    return `Removed the group ${g.deleted ? g.id : g.name}.` + epochNote(res);
+  })));
+  tr.appendChild(td(actions));
+  return tr;
+}
+
+// everyoneRow is the team share, which gives every user a way in once someone
+// approves them.
+function everyoneRow(s, team) {
+  const tr = el('tr');
+  tr.dataset.everyone = 'true';
+  const name = td('Everyone', 'name');
+  name.append(' ', pill('team'));
+  const setRole = (role) => act(() => 'Changing the role…', async () => {
+    const res = await setTeam(deps, s.id, role);
+    return `Everyone is now ${role}.` + epochNote(res);
+  });
+  tr.append(name, td('', 'email'), td(roleSelect('Role of Everyone', team, setRole), 'role'), td('', 'fp mono'), td('', 'pin'));
+  const actions = el('div', 'actions');
+  actions.appendChild(btn('Remove', 'danger', () => act(() => 'Removing Everyone…', async () => {
+    const res = await setTeam(deps, s.id, 'none');
+    return 'Everyone no longer has a way in.' + epochNote(res);
+  })));
+  tr.appendChild(td(actions));
+  return tr;
+}
+
+// groupNote says whom sharing with a group approved, and who still waits and why.
+function groupNote(res) {
+  let note = '';
+  if (res.approved.length > 0) note += ` Approved ${plural(res.approved.length, 'person', 'people')}: ${res.approved.map((u) => u.email).join(', ')}.`;
+  if (res.pending.length > 0) note += ` ${res.pending.length} waiting: ${res.pending.map((p) => `${p.user.email} (${describeError(p.error)})`).join('; ')}.`;
+  return note;
 }
 
 function memberRow(s, m) {
@@ -568,23 +731,81 @@ function memberRow(s, m) {
   return tr;
 }
 
-// epochNote says what a change that started a new epoch re-sealed, and what
-// it left alone and why.
+// epochNote says what a change did beyond what the caller reports: which
+// approved people the record listed or left out, which deleted groups it
+// dropped, who it excluded besides the user removed, and, for a new epoch, what
+// it re-sealed and what it left alone and why.
 function epochNote(res) {
-  if (!res.reseal) return '';
+  let note = '';
+  if (res.listed?.length > 0) note += ` Listed ${plural(res.listed.length, 'approved person', 'approved people')}: ${res.listed.map((u) => u.email).join(', ')}.`;
+  if (res.unlisted?.length > 0) note += ` Not listed, because their approval does not check out: ${res.unlisted.map((x) => `${x.user.email} (${describeError(x.error)})`).join('; ')}.`;
+  if (res.droppedGroups?.length > 0) note += ` Dropped ${plural(res.droppedGroups.length, 'deleted group', 'deleted groups')}: ${res.droppedGroups.join(', ')}.`;
+  const others = (res.excluded ?? []).filter((x) => x.reason !== 'removed');
+  if (others.length > 0) note += ` Excluded: ${others.map((x) => `${x.user.email || x.user.id} (${x.reason})`).join('; ')}.`;
+  if (!res.reseal) return note;
   const { resealed = [], skipped = [], error } = res.reseal;
-  let note = ` Started key epoch ${res.epoch}; re-sealed ${resealed.length} item${resealed.length === 1 ? '' : 's'}.`;
+  note += ` Started key epoch ${res.epoch}; re-sealed ${resealed.length} item${resealed.length === 1 ? '' : 's'}.`;
   if (skipped.length > 0) note += ' Left alone: ' + skipped.map((x) => `${x.what} (${x.reason})`).join('; ') + '.';
   if (error) note += ' Re-sealing stopped: ' + describeError(error) + ' Run cairn reseal to finish.';
   return note;
 }
 
+// loadGroupOptions lists the groups the server holds, by name. Two groups of
+// one name tell apart by the start of their IDs. Sharing verifies the group.
+async function loadGroupOptions(s) {
+  let groups;
+  try {
+    groups = await listGroups(deps);
+  } catch (err) {
+    failIn('share-status')(err);
+    return;
+  }
+  if (s !== sharing) return;
+  const options = groups.map((g) => {
+    const o = el('option', '', groups.filter((x) => x.name === g.name).length > 1 ? `${g.name} (${g.id.slice(0, 8)})` : g.name);
+    o.value = g.id;
+    return o;
+  });
+  if (options.length === 0) {
+    const none = el('option', '', 'No groups yet');
+    none.value = '';
+    none.disabled = true;
+    options.push(none);
+  }
+  $('share-group').replaceChildren(...options);
+}
+
+$('share-kind').addEventListener('change', () => {
+  syncShareForm();
+  if ($('share-kind').value === 'group') loadGroupOptions(sharing);
+});
+
 $('share-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const email = $('share-email');
   const s = sharing;
+  const kind = $('share-kind').value;
+  const role = $('share-role').value;
+  if (kind === 'everyone') {
+    act(() => 'Sharing with Everyone…', async () => {
+      const res = await setTeam(deps, s.id, role);
+      return (res.unchanged ? `Everyone is already ${role}.` : `Shared with Everyone as ${role}: anyone who is waiting can be approved.`) + epochNote(res);
+    });
+    return;
+  }
+  if (kind === 'group') {
+    const group = $('share-group').value;
+    if (!group) { status('share-status', 'Choose a group.', true); return; }
+    const sendGroup = (acceptNewKey) => act(() => 'Sharing with the group…', async () => {
+      const res = await shareGroup(deps, s.id, group, role, { acceptNewKey });
+      const name = res.group.name;
+      return (res.unchanged ? `The group ${name} is already shared as ${role}.` : `Shared with the group ${name} as ${role}.`) + groupNote(res) + epochNote(res);
+    }, acceptNewKey ? undefined : () => sendGroup(true));
+    sendGroup(false);
+    return;
+  }
   const send = (acceptNewKey) => act(() => 'Sharing…', async () => {
-    const res = await share(deps, s.id, email.value, $('share-role').value, { acceptNewKey });
+    const res = await share(deps, s.id, email.value, role, { acceptNewKey });
     const said = `Shared with ${res.user.email} as ${res.role}.` + epochNote(res);
     if (s === sharing) email.value = '';
     return said;
@@ -631,6 +852,7 @@ $('share').addEventListener('close', () => {
   const changed = sharing?.changed;
   sharing = null;
   $('members').replaceChildren();
+  $('waiting').replaceChildren();
   if (changed) reloadArtifacts();
 });
 

@@ -5,6 +5,7 @@
 // databases, files, versions, and metadata are real, built with e2e.mjs.
 import * as e2e from './e2e.mjs';
 import { ARTIFACT, ORIGIN, enc, fakeKeyStore, fakeStorage, keyStoreRecord, makeUser } from './viewer_fixture.mjs';
+import { bodyOf, groupRecord, makeGroupServer } from './groups_fixture.mjs';
 
 export { ARTIFACT, ORIGIN };
 
@@ -29,7 +30,13 @@ function wireUser(u) {
 // directory users beyond the owner and the world's members. Fields a test may
 // change or read: directory, rotations, owners, keyring, puts (every write the server
 // accepted, by kind), failPut (a function (kind) => Response|null that fails
-// a write), onKeyringGet.
+// a write), onKeyringGet, approvals (a user's stored approval), approves (every
+// POST .../keys the server accepted), groups (the group records, by group ID,
+// served as groups_fixture.mjs serves them) and groupServer (whose own directory
+// serves the keys of a group's signers). The server answers GET .../pending
+// as the server's pendingState does, and refuses a record that leaves an
+// unlisted holder without a reason to read, or a next epoch that neither lists
+// nor excludes one.
 export function makeShareServer(world, { who, users = [] }) {
   const s = {
     world,
@@ -52,9 +59,61 @@ export function makeShareServer(world, { who, users = [] }) {
     manifests: new Map(),
     puts: { membership: [], meta: [], db: [], file: [], version: [], estate: [] },
     deleted: [],
+    approvals: new Map(),
+    approves: [],
   };
   for (const u of [world.owner, ...world.members.map((m) => m.user), ...users]) s.directory.set(u.id, wireUser(u));
   const userById = new Map([[world.owner.id, world.owner], ...world.members.map((m) => [m.user.id, m.user]), ...users.map((u) => [u.id, u])]);
+  // The groups routes are groups_fixture.mjs's, for the same users, keys and
+  // rotation records, and whoever is signed in here.
+  const groupServer = makeGroupServer({ who, users: [...userById.values()] });
+  Object.defineProperty(groupServer, 'who', { get: () => s.who });
+  groupServer.rotations = s.rotations;
+  s.groupServer = groupServer;
+  s.groups = groupServer.groups;
+  const latestBody = () => bodyOf(s.records.at(-1));
+  const inGroup = (group, user) => {
+    const rec = s.groups.get(group);
+    return Boolean(rec) && bodyOf(rec.at(-1)).members.some((m) => m.user === user);
+  };
+  // coveredBy says whether a record gives user a reason to read.
+  const coveredBy = (body, user) => body.team !== 'none' || (body.groups ?? []).some((g) => inGroup(g.group, user));
+  const fpOfWire = async (w) => e2e.toHex(await e2e.fingerprint(e2e.unb64(w.x25519Pub), e2e.unb64(w.ed25519Pub)));
+  // levelOf is how the signed-in user stands in the latest record.
+  const levelOf = (latest) => (s.who.id === latest.owner ? 'owner' : latest.members.find((m) => m.user === s.who.id)?.role ?? '');
+  // pendingState is the server's: see pendingState in internal/server/sharing.go.
+  const pendingState = async (latest, w, fp, covered) => {
+    const explained = (oldFp) => e2e.rotationLinker({ [w.id]: s.rotations[w.id] ?? [] })(w.id, oldFp, fp);
+    const changed = async (oldFp) => ((await explained(oldFp)) ? 'rotated' : 'keyChanged');
+    const listed = latest.members.find((m) => m.user === w.id);
+    const wraps = s.wraps[w.id] ?? [];
+    const approval = s.approvals.get(w.id);
+    if (listed && listed.fp !== fp) return changed(listed.fp);
+    for (const wr of wraps) if (wr.fp !== fp) return changed(wr.fp);
+    if (listed) return '';
+    if (approval && approval.fp !== fp) return changed(approval.fp);
+    if (wraps.some((wr) => wr.epoch === latest.epoch)) return covered ? 'approved' : 'left';
+    return covered ? 'new' : '';
+  };
+  // checkRecord is the server's rule for a record after the latest: a same
+  // epoch record may not leave an unlisted holder who qualified before it
+  // without a reason to read, and a next epoch lists or excludes every unlisted
+  // holder. It answers a Response to refuse with, or null.
+  const checkRecord = async (next) => {
+    const latest = latestBody();
+    for (const g of next.groups ?? []) {
+      if (!s.groups.has(g.group) && !(latest.groups ?? []).some((x) => x.group === g.group)) return jsonResponse(400, { error: `group ${g.group} does not exist` });
+    }
+    for (const w of s.directory.values()) {
+      if (w.id === latest.owner || latest.members.some((m) => m.user === w.id)) continue;
+      const wrap = (s.wraps[w.id] ?? []).find((x) => x.epoch === latest.epoch);
+      if (!wrap || wrap.fp !== (await fpOfWire(w))) continue;
+      const listed = next.members.some((m) => m.user === w.id);
+      if (next.epoch === latest.epoch && coveredBy(latest, w.id) && !coveredBy(next, w.id) && !listed) return jsonResponse(409, { error: `${w.email} would lose the reason to read` });
+      if (next.epoch > latest.epoch && !listed && !next.excluded.some((x) => x.user === w.id)) return jsonResponse(409, { error: `${w.email} holds a wrap and is neither listed nor excluded` });
+    }
+    return null;
+  };
 
   const formOf = async (init) => init.body;
   const bytesOf = async (blob) => new Uint8Array(await blob.arrayBuffer());
@@ -76,6 +135,7 @@ export function makeShareServer(world, { who, users = [] }) {
       return jsonResponse(200, {});
     }
     if (p === '/api/users') return jsonResponse(200, [...s.directory.values()]);
+    if (p === '/api/groups' || p.startsWith('/api/groups/')) return groupServer.fetch(path, init);
     const rot = /^\/api\/users\/([^/]+)\/rotations$/.exec(p);
     if (rot) return jsonResponse(200, { records: s.rotations[rot[1]] ?? [] });
     const usr = /^\/api\/users\/([^/]+)$/.exec(p);
@@ -93,16 +153,58 @@ export function makeShareServer(world, { who, users = [] }) {
       const failed = fail('membership');
       if (failed) return failed;
       const body = JSON.parse(init.body);
+      const signed = JSON.parse(new TextDecoder().decode(e2e.unb64(body.membership.body)));
+      const refused = await checkRecord(signed);
+      if (refused) return refused;
       s.puts.membership.push(body);
       s.records.push(body.membership);
       // The server serves the key of whoever signed, a manager included.
-      const signed = JSON.parse(new TextDecoder().decode(e2e.unb64(body.membership.body)));
       if (signed.signerFp) s.owners[signed.signerFp] = { x25519: s.directory.get(signed.signer).x25519Pub, ed25519: s.directory.get(signed.signer).ed25519Pub };
       for (const w of body.wraps) {
         const fp = e2e.toHex(await e2e.fingerprint(e2e.unb64(s.directory.get(w.user).x25519Pub), e2e.unb64(s.directory.get(w.user).ed25519Pub)));
         s.wraps[w.user] = [...(s.wraps[w.user] ?? []).filter((x) => x.epoch !== w.epoch), { epoch: w.epoch, wrapped: w.wrapped, fp }];
       }
       s.estate.push(...body.estate);
+      return jsonResponse(200, {});
+    }
+    if (rest === 'pending' && method === 'GET') {
+      const latest = latestBody();
+      const level = levelOf(latest);
+      if (!['owner', 'manager', 'editor'].includes(level)) return jsonResponse(403, { error: 'forbidden' });
+      const mayDecide = level === 'owner' || level === 'manager';
+      const out = [];
+      for (const w of s.directory.values()) {
+        const fp = await fpOfWire(w);
+        if (w.id === latest.owner || e2e.excludedMatch(latest.excluded, w.id, fp, w.email)) continue;
+        const holding = (latest.groups ?? []).filter((g) => inGroup(g.group, w.id)).map((g) => g.group);
+        const state = await pendingState(latest, w, fp, latest.team !== 'none' || holding.length > 0);
+        if (state === '' || (['approved', 'left', 'rotated'].includes(state) && !mayDecide)) continue;
+        const view = { id: w.id, name: w.name, email: w.email, x25519Pub: w.x25519Pub, ed25519Pub: w.ed25519Pub, state, group: [] };
+        if (state === 'new' || state === 'approved') view.group = holding;
+        if (state === 'approved') view.approval = s.approvals.get(w.id).envelope;
+        out.push(view);
+      }
+      return jsonResponse(200, out);
+    }
+    if (rest === 'keys' && method === 'POST') {
+      const failed = fail('approve');
+      if (failed) return failed;
+      const latest = latestBody();
+      if (!['owner', 'manager', 'editor'].includes(levelOf(latest))) return jsonResponse(403, { error: 'forbidden' });
+      const body = JSON.parse(init.body);
+      const w = s.directory.get(body.user);
+      if (!w) return jsonResponse(404, { error: 'user not found' });
+      const fp = await fpOfWire(w);
+      if (!coveredBy(latest, w.id)) return jsonResponse(409, { error: 'the artifact is not shared with a team or a group that holds them' });
+      if (latest.members.some((m) => m.user === w.id) || (s.wraps[w.id] ?? []).some((x) => x.epoch === latest.epoch)) return jsonResponse(409, { error: 'the user holds a wrap or is listed' });
+      if (e2e.excludedMatch(latest.excluded, w.id, fp, w.email)) return jsonResponse(409, { error: 'the user is excluded' });
+      if (body.fp !== fp) return jsonResponse(409, { error: 'fp is not the current fingerprint' });
+      const signed = JSON.parse(new TextDecoder().decode(e2e.unb64(body.approval.body)));
+      if (body.approval.signer !== s.who.id || signed.artifact !== ARTIFACT || signed.epoch !== latest.epoch || signed.user !== w.id || signed.fp !== fp) return jsonResponse(400, { error: 'the approval does not match' });
+      if (JSON.stringify(body.wraps.map((x) => x.epoch).sort()) !== JSON.stringify(Array.from({ length: latest.epoch }, (_, k) => k + 1))) return jsonResponse(400, { error: 'wraps must cover every epoch' });
+      s.approves.push(body);
+      s.approvals.set(w.id, { fp, envelope: body.approval });
+      for (const x of body.wraps) s.wraps[w.id] = [...(s.wraps[w.id] ?? []).filter((y) => y.epoch !== x.epoch), { epoch: x.epoch, wrapped: x.wrapped, fp }];
       return jsonResponse(200, {});
     }
     if (rest === 'keys') {
@@ -218,6 +320,24 @@ export function depsFor(server, record, extra = {}) {
 }
 
 export { keyStoreRecord };
+
+// seedGroup stores a group at seq 1, signed by manager (who is its one manager,
+// with members listed besides: {user, role}). Extend it with changeGroup.
+export async function seedGroup(s, { id, name = 'Team', manager = s.world.owner, members = [] }) {
+  const record = await groupRecord(manager, { group: id, name, members: [{ user: manager.id, fp: manager.fp, role: 'manager' }, ...members.map((m) => ({ user: m.user.id, fp: m.fp ?? m.user.fp, role: m.role ?? 'member' }))] });
+  s.groups.set(id, [record]);
+}
+
+// changeGroup appends the record after a group's latest, signed by signer
+// (default: the owner, whom seedGroup makes the manager): the members the group
+// has now, less the users in drop, plus add, as {user, role, fp}.
+export async function changeGroup(s, id, { signer = s.world.owner, drop = [], add = [], name } = {}) {
+  const records = s.groups.get(id);
+  const latest = bodyOf(records.at(-1));
+  const gone = new Set(drop.map((u) => u.id));
+  const members = [...latest.members.filter((m) => !gone.has(m.user)), ...add.map((m) => ({ user: m.user.id, fp: m.fp ?? m.user.fp, role: m.role ?? 'member' }))];
+  records.push(await groupRecord(signer, { group: id, seq: latest.seq + 1, prev: await e2e.bodyHash(e2e.unb64(records.at(-1).body)), name: name ?? latest.name, members }));
+}
 
 const sha256 = (bytes) => e2e.bodyHash(bytes);
 

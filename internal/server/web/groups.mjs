@@ -195,6 +195,16 @@ async function openGroup(deps, caller, id, acceptNewKey) {
   }
 }
 
+// verifyGroup reads a group and accepts its chain, as a member list's client
+// does before it relies on the group: it returns {chain, keyring}, and throws
+// what acceptGroup does for a chain that does not verify. A group the server no
+// longer holds is an ApiError with status 404. Mirrors VerifyGroup.
+export async function verifyGroup(deps, id, { acceptNewKey = false } = {}) {
+  const caller = await unlock(deps);
+  const { chain, keyring } = await openGroup(deps, caller, id, acceptNewKey);
+  return { chain, keyring };
+}
+
 // callerRole is the role the latest record lists the caller under, or ''.
 const callerRole = (caller, latest) => latest.members.find((m) => m.user === caller.record.userId)?.role ?? '';
 
