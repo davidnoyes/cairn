@@ -34,6 +34,8 @@ type PublicResult struct {
 	// Resealed and ResealErr are as in EpochChange.
 	Resealed  *ResealResult
 	ResealErr error
+	// Unreadable is as in EpochChange.
+	Unreadable []int
 }
 
 // Public makes the artifact public, or sets whether a signed-in link holder
@@ -81,7 +83,11 @@ func (c *Client) Public(artifactID string, on bool, writes *bool) (*PublicResult
 	if err != nil {
 		return nil, err
 	}
-	res.Link, err = e2e.PublicLink(c.Host, artifactID, aks[latest.Epoch], latest.Epoch, va.Chain.Bodies[0].OwnerFP)
+	ak, err := epochKey(aks, latest.Epoch)
+	if err != nil {
+		return nil, err
+	}
+	res.Link, err = e2e.PublicLink(c.Host, artifactID, ak, latest.Epoch, va.Chain.Bodies[0].OwnerFP)
 	if err != nil {
 		return nil, fmt.Errorf("cannot make a link for host %s: %w", c.Host, err)
 	}
@@ -137,7 +143,7 @@ func (c *Client) publicOffNextEpoch(k *UnlockedKeys, artifactID string, va *Veri
 	}
 	c.resealInto(k, artifactID, change)
 	return &PublicResult{Epoch: va.Chain.Latest.Epoch + 1, NewEpoch: true, Excluded: change.Excluded, Listed: listed,
-		Resealed: change.Resealed, ResealErr: change.ResealErr}, nil
+		Resealed: change.Resealed, ResealErr: change.ResealErr, Unreadable: change.Unreadable}, nil
 }
 
 // linkTokenHashFor is the hash of the epoch's link token the server stores

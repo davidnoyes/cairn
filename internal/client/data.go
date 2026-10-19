@@ -158,7 +158,7 @@ func (d *dataChecker) akFor(named, epoch int) ([]byte, error) {
 	}
 	ak := d.aks[epoch]
 	if ak == nil {
-		return nil, unverified("no key for epoch %d", epoch)
+		return nil, fmt.Errorf("%w: no key for epoch %d: %w", ErrUnverified, epoch, ErrEpochUnreadable)
 	}
 	return ak, nil
 }
@@ -646,7 +646,7 @@ const maxRestoreTries = 5
 
 // Restore uploads revision n's plaintext as a new revision, signed by the
 // caller. It accepts a revision signed by anyone the chain has ever listed as
-// owner or editor, under any epoch the caller holds the AK of, and returns the
+// owner, editor, or manager, under any epoch the caller holds the AK of, and returns the
 // new revision's number.
 func (d *Data) Restore(n int) (int, error) {
 	writers, err := d.c.everWriterKeys(d.k, d.va.Membership, d.va.Chain)

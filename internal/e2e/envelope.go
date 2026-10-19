@@ -93,7 +93,7 @@ type TransferBody struct {
 	Prev     string `json:"prev"`
 }
 
-// ApprovalBody is signed by the approving owner or editor.
+// ApprovalBody is signed by the approving owner, editor, or manager.
 type ApprovalBody struct {
 	V        int    `json:"v"`
 	Artifact string `json:"artifact"`
@@ -406,9 +406,9 @@ func checkNoLoneSurrogates(data []byte) error {
 
 // OpenEnvelope verifies env's signature against pub for purpose, strictly
 // decodes its body into out, and requires the body's "v" field to be 1. A
-// membership body may also be version 2, which checkVersion holds to its
-// own rules. It refuses purpose "rotation" with ErrFormat: a rotation also needs newSig,
-// which only OpenRotation checks.
+// membership body may also be version 2, which checkVersion holds to its own
+// rules. It refuses purpose "rotation" with ErrFormat: a rotation also needs
+// newSig, which only OpenRotation checks.
 func OpenEnvelope(env Envelope, pub ed25519.PublicKey, purpose string, out any) error {
 	if purpose == "rotation" {
 		return fmt.Errorf("%w: open a rotation envelope with OpenRotation", ErrFormat)

@@ -18,7 +18,7 @@ import (
 )
 
 // ErrCannotReseal means the verified chain lists the caller as neither the
-// owner nor an editor, under their current keys.
+// owner, an editor, nor a manager, under their current keys.
 var ErrCannotReseal = errors.New("only the artifact's owner, an editor, or a manager can re-seal its data")
 
 // ResealResult is what a re-seal did. Skipped says what it left alone, and why.
@@ -252,8 +252,8 @@ func (d *Data) resealFiles(chk *dataChecker, res *ResealResult) error {
 // highest Seq, with the same files sealed under the current epoch and signed
 // by the caller, under the same version ID. It does so only when the version's
 // manifest and every blob verify under its own epoch and its signer is still
-// the owner or an editor in the latest record; otherwise the version is left
-// as it is and noted in Skipped, for the owner's review.
+// the owner, an editor, or a manager in the latest record; otherwise the
+// version is left as it is and noted in Skipped, for the owner's review.
 func (c *Client) resealVersion(k *UnlockedKeys, va *VerifiedArtifact, artifactID string, aks map[int][]byte, versions []*store.Version, res *ResealResult) error {
 	var v *store.Version
 	for _, x := range versions {

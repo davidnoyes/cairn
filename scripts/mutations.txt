@@ -982,7 +982,7 @@ internal/client/client.go	return errorFromResponse(method, path, resp)	return &A
 internal/client/review.go	if len(listed) == 0 {	if false {	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
 internal/client/review.go	if listed[hex.EncodeToString(e2e.Fingerprint(kp.x25519, kp.ed25519))] {	if true || listed[hex.EncodeToString(e2e.Fingerprint(kp.x25519, kp.ed25519))] {	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
 internal/client/review.go	if body.Artifact != artifactID || body.Version != v.ID || body.Epoch != v.Epoch {	if false {	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
-internal/client/review.go	return "", e2e.ManifestBody{}, fmt.Errorf("%w: no key for epoch %d", ErrVouchManifest, v.Epoch)	_ = v.Epoch	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
+internal/client/review.go	return "", e2e.ManifestBody{}, fmt.Errorf("%w: no key for epoch %d: %w", ErrVouchManifest, v.Epoch, ErrEpochUnreadable)	_ = v.Epoch	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
 internal/client/review.go	if !verified {	if !verified && false {	go test ./internal/client -run TestVouchRefusesAManifestThatDoesNotBelong
 internal/client/review.go	records, err := c.Rotations(signer)	var records []e2e.Envelope; var err error	go test ./internal/client -run 'TestVouchOpensARotatedEditorsManifest|TestVouchOpensTheOwnersManifestAfterTheyRotated'
 internal/client/review.go	if len(data) > maxManifestBytes {	if false {	go test ./internal/client -run TestGetBytesRefusesABodyOverTheCap
@@ -1389,7 +1389,7 @@ internal/client/data.go	if artifact != d.artifact {	if false && artifact != d.ar
 internal/client/data.go	if version != d.version {	if false && version != d.version {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
 internal/client/data.go	if epoch != named {	if false && epoch != named {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
 internal/client/data.go	if epoch < d.versionEpoch && !d.earlierEpochs {	if false && epoch < d.versionEpoch {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
-internal/client/data.go	return nil, unverified("no key for epoch %d", epoch)	return nil, nil	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
+internal/client/data.go	return nil, fmt.Errorf("%w: no key for epoch %d: %w", ErrUnverified, epoch, ErrEpochUnreadable)	return nil, nil	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
 internal/client/data.go	if b.Revision != revision {	if false && b.Revision != revision {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
 internal/client/data.go	if b.Kind != kind {	if false && b.Kind != kind {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
 internal/client/data.go	if b.Name != name {	if false && b.Name != name {	go test ./internal/client -run 'TestRevisionReadRefusals|TestFileListRefusals|TestFileReadRefusals|TestRevisionBelowTheVersionsEpochIsRefused|TestRevisionSignerMustOwnTheKey'
@@ -2560,7 +2560,7 @@ internal/client/manager.go	i := slices.IndexFunc(keys.Wraps, func(w KeyWrap) boo
 internal/client/manager.go	aks[epoch] = ak	_ = ak	go test ./internal/client -count=1 -run 'TestManagerStartsANewEpochAndTheOwnerCatchesUp'
 internal/client/manager.go	http.MethodPut,	http.MethodPost,	go test ./internal/client -count=1 -run 'TestManagerStartsANewEpochAndTheOwnerCatchesUp|TestFailedCatchUpDoesNotStopTheOwnerReading'
 internal/client/manager.go	if want, ok := commits[w.Epoch]; !ok || commit != want {	if want, ok := commits[w.Epoch]; !ok || commit != want && false {	go test ./internal/client -count=1 -run 'TestApproveRefusesAWrapThatMissesTheCommit'
-internal/client/share.go	if err := c.catchUpEstate(k, artifactID, chain, keys, aks); err != nil {	if err := error(nil); err != nil {	go test ./internal/client -count=1 -run 'TestManagerStartsANewEpochAndTheOwnerCatchesUp'
+internal/client/share.go	unreadable, err := c.catchUpEstate(k, artifactID, chain, keys, aks)	unreadable, err := []int(nil), error(nil)	go test ./internal/client -count=1 -run 'TestManagerStartsANewEpochAndTheOwnerCatchesUp'
 internal/client/share.go	aks, err := c.callerAKs(k, artifactID, va.Chain)	aks, err := c.epochAKs(k, artifactID, va.Chain)	go test ./internal/client -count=1 -run 'TestManagerSharesAndChangesRoles'
 internal/client/public.go	aks, err := c.callerAKs(k, artifactID, chain)	aks, err := c.epochAKs(k, artifactID, chain)	go test ./internal/client -count=1 -run 'TestManagerSetsTeamAndPublic'
 internal/e2e/approval.go	(m.Role == "editor" || m.Role == "manager")	m.Role == "editor"	go test ./internal/e2e -count=1 -run 'TestCheckApproval|TestVectors'
@@ -2576,4 +2576,22 @@ cmd/cairn/share_cmds.go	if latest.V != 2 {	if latest.V != 99 {	go test ./cmd/cai
 internal/client/share.go	if role != "viewer" && role != "editor" && role != "manager" {	if role != "viewer" && role != "editor" {	go test ./cmd/cairn -count=1 -run 'TestMembersShowsAManagerAndWhoSignedTheRecord'
 internal/server/sharing.go	level == access.LevelOwner || level == access.LevelManager || level == access.LevelSuccessor	level == access.LevelOwner || level == access.LevelSuccessor	go test ./internal/server ./internal/client -count=1 -run 'TestPendingShowsApprovedUsersToAManager|TestManagerEpochListsApprovedTeamMembers'
 internal/client/approve.go	if latest.Owner != k.UserID && !isManager(latest, k) {	if latest.Owner != k.UserID {	go test ./internal/client -count=1 -run 'TestManager'
-internal/membership/membership.go	if ch.Accept != nil && w.UserID == prevOwner.ID {	if false && w.UserID == prevOwner.ID {	go test ./internal/client -count=1 -run TestTransferAfterAManagersEpoch
+internal/membership/membership.go	if ch.Accept != nil && w.UserID == prevOwner.ID {	if false && w.UserID == prevOwner.ID {	go test ./internal/membership ./internal/client -count=1 -run 'TestCheckAcceptWrapsEveryEpoch|TestTransferAfterAManagersEpoch'
+internal/e2e/chain.go	if !slices.ContainsFunc(b.Excluded, func(y ExcludedEntry) bool { return y.User == x.User }) {	if false {	go test ./internal/e2e -count=1 -run 'TestVerifyChain$/manager-drops'
+internal/membership/membership.go	if !kept[x.User] {	if false {	go test ./internal/membership -count=1 -run TestManagerRefusals
+internal/client/share.go	if !isOwner(latest, k) && ExcludedMatch(latest.Excluded, u) != nil {	if false {	go test ./internal/client -count=1 -run TestManagerCannotReShareAnExcludedUser
+internal/client/manager.go	unreadable = append(unreadable, epoch)	return nil, err	go test ./internal/client -count=1 -run TestOwnerIsNotLockedOutByABadWrap
+internal/client/share.go	if aks[epoch] == nil && !slices.Contains(unreadable, epoch) {	if aks[epoch] == nil {	go test ./internal/client -count=1 -run TestOwnerIsNotLockedOutByABadWrap
+internal/client/manager.go	if aks[epoch] == nil {	if false {	go test ./internal/client -count=1 -run TestOwnerIsNotLockedOutByABadWrap
+internal/client/share.go	ak, err := epochKey(aks, epoch)	ak, err := aks[epoch], error(nil)	go test ./internal/client -count=1 -run TestOwnerIsNotLockedOutByABadWrap
+internal/client/approve.go	ak, err := epochKey(aks, epoch)	ak, err := aks[epoch], error(nil)	go test ./internal/client -count=1 -run TestOwnerApprovalNeedsEveryEpoch
+internal/client/epoch.go	change.Unreadable = unreadableEpochs(va.Chain, aks)	change.Unreadable = nil	go test ./internal/client -count=1 -run TestOwnerIsNotLockedOutByABadWrap
+internal/client/rotate.go	wraps = append(wraps, ownWraps...)	_ = ownWraps	go test ./internal/client -count=1 -run TestOwnerRotatesAfterAManagersEpoch
+internal/client/rotate.go	ak, err := epochKey(aks, w.Epoch)	ak, err := aks[w.Epoch], error(nil)	go test ./internal/client -count=1 -run TestRotateKeysNamesAnUnreadableEpoch
+internal/client/client.go	ak, err := epochKey(aks, epoch)	ak, err := aks[epoch], error(nil)	go test ./internal/client -count=1 -run TestOwnerIsNotLockedOutByABadWrap
+internal/client/meta.go	ak, err := epochKey(aks, epoch)	ak, err := aks[epoch], error(nil)	go test ./internal/client -count=1 -run TestOwnerIsNotLockedOutByABadWrap
+internal/client/public.go	ak, err := epochKey(aks, latest.Epoch)	ak, err := aks[latest.Epoch], error(nil)	go test ./internal/client -count=1 -run TestOwnerIsNotLockedOutByABadWrap
+internal/client/review.go	fmt.Errorf("%w: no key for epoch %d: %w", ErrVouchManifest, v.Epoch, ErrEpochUnreadable)	fmt.Errorf("%w: no key for epoch %d", ErrVouchManifest, v.Epoch)	go test ./internal/client -count=1 -run TestOwnerIsNotLockedOutByABadWrap
+internal/client/public.go	Resealed: change.Resealed, ResealErr: change.ResealErr, Unreadable: change.Unreadable}, nil	Resealed: change.Resealed, ResealErr: change.ResealErr}, nil	go test ./internal/client -count=1 -run TestOwnerMakingPrivateReportsAnUnreadableEpoch
+cmd/cairn/share_cmds.go	printUnreadable(ch.Unreadable)	_ = printUnreadable	go test ./cmd/cairn -count=1 -run TestEpochChangeReportsAnUnreadableEpoch
+cmd/cairn/share_cmds.go	out["unreadableEpochs"] = append([]int{}, ch.Unreadable...)	out["unreadableEpochs"] = []int{}	go test ./cmd/cairn -count=1 -run TestEpochChangeReportsAnUnreadableEpoch

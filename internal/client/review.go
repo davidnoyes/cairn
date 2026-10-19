@@ -18,7 +18,7 @@ import (
 
 var (
 	// ErrReviewInconsistent means the server lists a version for review
-	// whose pusher the verified chain says is the owner or a listed editor.
+	// whose pusher the verified chain says is the owner or a listed editor or manager.
 	ErrReviewInconsistent = errors.New("the server's review list contradicts the verified membership chain")
 	// ErrVouchNotOwner means the caller is not the owner the verified chain
 	// names, under their current keys, so their client does not vouch.
@@ -26,7 +26,7 @@ var (
 )
 
 // ReviewVersion is one entry of GET /api/artifacts/{id}/review: a version
-// whose pusher is not the owner or a listed editor and that has no vouch.
+// whose pusher is not the owner or a listed editor or manager and that has no vouch.
 // PushedBy is empty for a version whose pusher's account is gone.
 type ReviewVersion struct {
 	ID        string
@@ -44,7 +44,7 @@ type reviewWire struct {
 
 // Review lists the versions the owner should review. It verifies the
 // artifact's chain and checks each entry the server lists against the
-// latest verified record: an entry pushed by the owner or a listed editor is
+// latest verified record: an entry pushed by the owner or a listed editor or manager is
 // ErrReviewInconsistent, and nothing is dropped.
 func (c *Client) Review(artifactID string) ([]ReviewVersion, error) {
 	k, err := c.Unlock()
@@ -95,7 +95,7 @@ const maxManifestBytes = e2e.MaxManifestBytes
 // checkManifest fetches v's manifest, opens it under the owner's AK for v's
 // epoch, and verifies it: the envelope's signature must verify under a key
 // of its signer, who must be a user the verified chain has ever listed (the
-// owner or an editor, possibly since removed, which is why a version needs a
+// owner, an editor, or a manager, possibly since removed, which is why a version needs a
 // vouch). A key counts when its fingerprint is one the chain lists for the
 // signer, whether it is their current key or one an earlier rotation left
 // behind (see manifestSignerKeys). The body must name this artifact,
@@ -114,7 +114,7 @@ func (c *Client) verifyManifest(k *UnlockedKeys, chain *e2e.Chain, artifactID st
 	}
 	ak := aks[v.Epoch]
 	if ak == nil {
-		return "", e2e.ManifestBody{}, fmt.Errorf("%w: no key for epoch %d", ErrVouchManifest, v.Epoch)
+		return "", e2e.ManifestBody{}, fmt.Errorf("%w: no key for epoch %d: %w", ErrVouchManifest, v.Epoch, ErrEpochUnreadable)
 	}
 	sealed, err := c.getBytes("/api/artifacts/" + artifactID + "/versions/" + v.ID + "/manifest")
 	if err != nil {
@@ -314,7 +314,7 @@ func (c *Client) VersionFiles(artifactID, versionID string) (map[string][]byte, 
 	}
 	ak := aks[v.Epoch]
 	if ak == nil {
-		return nil, fmt.Errorf("version %s: no key for epoch %d", v.ID, v.Epoch)
+		return nil, fmt.Errorf("version %s: no key for epoch %d: %w", v.ID, v.Epoch, ErrEpochUnreadable)
 	}
 	return c.openBlobs(artifactID, v, ak, manifest)
 }

@@ -236,7 +236,10 @@ func (c *Client) Push(artifactID, versionID, dir, name, changelog string) (*Vers
 	if err != nil {
 		return nil, err
 	}
-	ak := aks[epoch]
+	ak, err := epochKey(aks, epoch)
+	if err != nil {
+		return nil, err
+	}
 
 	replace := versionID != ""
 	if !replace {

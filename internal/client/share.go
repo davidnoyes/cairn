@@ -479,6 +479,11 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	if err := checkManagerEntry(latest, k, u.ID); err != nil {
 		return nil, err
 	}
+	// Only the owner lists again a user the record excludes: the server
+	// refuses a manager's record that drops an excluded entry.
+	if !isOwner(latest, k) && ExcludedMatch(latest.Excluded, u) != nil {
+		return nil, ErrExcludedOwnerOnly
+	}
 	// A viewer account can only be a viewer, except that an editor or manager
 	// whose account became a viewer account keeps the entry until changed, and
 	// a manager may become an editor, as the server's membership check allows.
@@ -572,10 +577,14 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 			return nil, err
 		}
 		for epoch := 1; epoch <= latest.Epoch; epoch++ {
+			ak, err := epochKey(aks, epoch)
+			if err != nil {
+				return nil, err
+			}
 			w, err := e2e.Wrap(rand.Reader, e2e.WrapContext{
 				Purpose: "ak", Artifact: artifactID, Epoch: uint64(epoch),
 				RecipientID: u.ID, RecipientPub: u.X25519Pub,
-			}, aks[epoch])
+			}, ak)
 			if err != nil {
 				return nil, err
 			}
@@ -723,7 +732,8 @@ func epochCommits(chain *e2e.Chain) map[int]string {
 // epochAKs opens the owner's estate copy of each epoch's AK and checks it
 // against the akCommit the verified chain lists for that epoch. An epoch a
 // manager started has none yet: the owner reads it from their own wrap, and
-// stores the estate copy for it.
+// stores the estate copy for it. An epoch whose wrap does not open is left
+// out of the result, and the other epochs read as usual (see catchUpEstate).
 func (c *Client) epochAKs(k *UnlockedKeys, artifactID string, chain *e2e.Chain) (map[int][]byte, error) {
 	keys, err := c.Keys(artifactID)
 	if err != nil {
@@ -733,10 +743,11 @@ func (c *Client) epochAKs(k *UnlockedKeys, artifactID string, chain *e2e.Chain) 
 	if err != nil {
 		return nil, err
 	}
-	if err := c.catchUpEstate(k, artifactID, chain, keys, aks); err != nil {
+	unreadable, err := c.catchUpEstate(k, artifactID, chain, keys, aks)
+	if err != nil {
 		return nil, err
 	}
-	return completeAKs(chain, aks)
+	return completeAKs(chain, aks, unreadable)
 }
 
 // estateAKs is epochAKs for the estate copies in keys, which ek seals: the
@@ -746,7 +757,7 @@ func estateAKs(ek []byte, artifactID string, chain *e2e.Chain, keys *ArtifactKey
 	if err != nil {
 		return nil, err
 	}
-	return completeAKs(chain, aks)
+	return completeAKs(chain, aks, nil)
 }
 
 // openEstate opens each estate copy in keys under ek and checks it against
@@ -776,10 +787,10 @@ func openEstate(ek []byte, artifactID string, chain *e2e.Chain, keys *ArtifactKe
 }
 
 // completeAKs returns aks when it holds the AK of every epoch up to the
-// chain's latest.
-func completeAKs(chain *e2e.Chain, aks map[int][]byte) (map[int][]byte, error) {
+// chain's latest, except the epochs in unreadable.
+func completeAKs(chain *e2e.Chain, aks map[int][]byte, unreadable []int) (map[int][]byte, error) {
 	for epoch := 1; epoch <= chain.Latest.Epoch; epoch++ {
-		if aks[epoch] == nil {
+		if aks[epoch] == nil && !slices.Contains(unreadable, epoch) {
 			return nil, fmt.Errorf("the server holds no estate copy of epoch %d", epoch)
 		}
 	}

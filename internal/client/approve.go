@@ -73,7 +73,7 @@ type pendingWire struct {
 	Approval *e2e.Envelope `json:"approval"`
 }
 
-// Pending lists the users the caller, an owner or an editor, should be
+// Pending lists the users the caller, an owner, an editor, or a manager, should be
 // asked about. It verifies the artifact's chain first, for pendingFor.
 func (c *Client) Pending(artifactID string) ([]PendingUser, error) {
 	k, err := c.Unlock()
@@ -201,7 +201,7 @@ type ApproveResult struct {
 // Approve approves who, a team member waiting for access, at the
 // artifact's current epoch: it wraps the AK of every epoch to them and
 // signs an approval of their name and fingerprint. The caller must be the
-// owner or a listed editor. It refuses, before asking the server, a user
+// owner or a listed editor or manager. It refuses, before asking the server, a user
 // the chain excludes, a directory in which two user IDs share an email or a
 // fingerprint, a user who is listed, already approved, or whose key changed
 // after they were wrapped to, and a user whose pinned key changed, unless
@@ -274,10 +274,14 @@ func (c *Client) Approve(artifactID, who string, acceptNewKey bool) (*ApproveRes
 	}
 	var wraps []map[string]any
 	for epoch := 1; epoch <= latest.Epoch; epoch++ {
+		ak, err := epochKey(aks, epoch)
+		if err != nil {
+			return nil, err
+		}
 		w, err := e2e.Wrap(rand.Reader, e2e.WrapContext{
 			Purpose: "ak", Artifact: artifactID, Epoch: uint64(epoch),
 			RecipientID: u.ID, RecipientPub: u.X25519Pub,
-		}, aks[epoch])
+		}, ak)
 		if err != nil {
 			return nil, err
 		}

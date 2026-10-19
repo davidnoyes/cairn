@@ -239,6 +239,13 @@ func (c *Client) RotateKeys(password string, keepEpochs bool) (*RotateResult, er
 		records = append(records, map[string]any{
 			"artifact": a.ID, "membership": env, "wraps": newWraps, "linkTokenHash": linkHash,
 		})
+		// The owner holds a wrap for each epoch a manager started, until they
+		// are removed: they are wrapped again like any other wrap held.
+		ownWraps, err := s.rewrapOwned(old, nk, a.ID, aks)
+		if err != nil {
+			return nil, err
+		}
+		wraps = append(wraps, ownWraps...)
 		// Every epoch's estate copy is sealed again under the new EK.
 		for epoch := 1; epoch <= next.Epoch; epoch++ {
 			sealed, err := e2e.Seal(rand.Reader, newEKKey, estateFields(a.ID, epoch), aks[epoch])
@@ -417,6 +424,35 @@ func (c *Client) rewrapHeld(old, nk *UnlockedKeys, artifactID, email string) ([]
 		epochs = append(epochs, w.Epoch)
 	}
 	return out, epochs, nil
+}
+
+// rewrapOwned wraps again, to nk, every wrap the caller holds under their
+// current keys on an artifact they own: the owner's wraps of the epochs a
+// manager started. aks holds the AK of each epoch, which the caller already
+// opened and checked against the chain.
+func (c *Client) rewrapOwned(old, nk *UnlockedKeys, artifactID string, aks map[int][]byte) ([]map[string]any, error) {
+	keys, err := c.Keys(artifactID)
+	if err != nil {
+		return nil, err
+	}
+	var out []map[string]any
+	for _, w := range keys.Wraps {
+		if old.FP != w.FP {
+			continue
+		}
+		ak, err := epochKey(aks, w.Epoch)
+		if err != nil {
+			return nil, fmt.Errorf("artifact %s: %w: rotating keys wraps it again", artifactID, err)
+		}
+		wrapped, err := e2e.Wrap(rand.Reader, e2e.WrapContext{
+			Purpose: "ak", Artifact: artifactID, Epoch: uint64(w.Epoch), RecipientID: nk.UserID, RecipientPub: nk.X25519Pub,
+		}, ak)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, map[string]any{"artifact": artifactID, "epoch": w.Epoch, "wrapped": e2e.B64(wrapped)})
+	}
+	return out, nil
 }
 
 // heldMoved reads again the wraps the caller holds on an artifact they do not

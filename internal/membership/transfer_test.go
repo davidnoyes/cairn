@@ -70,6 +70,21 @@ func TestCheckAcceptKeepsThePreviousOwnerAsEditor(t *testing.T) {
 	}
 }
 
+// A manager's epoch gives the owner a wrap for it. The record that accepts
+// a transfer wraps every epoch to the previous owner, now an editor, so the
+// wrap they held as owner is replaced and not counted as already held.
+func TestCheckAcceptWrapsEveryEpochToAPreviousOwnerWhoHoldsOne(t *testing.T) {
+	f := newFixture(t)
+	f.cur.Wraps = append(f.cur.Wraps, store.Wrap{UserID: f.o.ID, Epoch: 2, Wrapped: make([]byte, 81), FP: f.o.FP})
+	res, err := Check(f.cur, f.dir, f.accepting(t, f.takeOver(), wrapsFor(f.o, 1, 2), estates(2)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Accepted || len(res.Wraps) != 2 {
+		t.Errorf("Accepted %v with %d wraps, want true and 2", res.Accepted, len(res.Wraps))
+	}
+}
+
 func TestCheckAcceptExcludesThePreviousOwnerAtTheNextEpoch(t *testing.T) {
 	f := newFixture(t)
 	res, err := Check(f.cur, f.dir, f.accepting(t, f.takeOverExcluding(), wrapsFor(f.b, 3), estates(3)))

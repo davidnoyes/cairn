@@ -3,6 +3,8 @@ package e2e
 import (
 	"encoding/json"
 	"errors"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -59,6 +61,17 @@ func managerChainCases() []chainCase {
 				body = rewrite(body)
 			}
 			return f.addRaw(signer(u), body).input()
+		}
+	}
+	// afterExclusion is a chain in which alice removes carol at epoch 2 and
+	// excludes her, then bob signs the same-epoch record that edit makes.
+	afterExclusion := func(edit func(u chainUsers, b *MembershipBody)) func(t testing.TB, u chainUsers) ChainInput {
+		return func(t testing.TB, u chainUsers) ChainInput {
+			return base(t, u).add(u.alice, func(b *MembershipBody) {
+				bump(t)(b)
+				b.Members = []Member{manager(u.bob), viewer(u.dave)}
+				b.Excluded = []ExcludedEntry{{User: u.carol.id, FP: u.carol.fp, Email: "carol@example.com"}}
+			}).addByManager(u.bob, func(b *MembershipBody) { edit(u, b) }).input()
 		}
 	}
 	bob := func(u chainUsers) chainUser { return u.bob }
@@ -218,6 +231,18 @@ func managerChainCases() []chainCase {
 			}},
 		{name: "v-unknown", why: "bob signs a record with v 3 and both signer fields", err: ErrFormat,
 			build: raw(bob, func(u chainUsers, b *MembershipBody) { b.V = 3 }, nil)},
+
+		// A manager keeps every excluded entry.
+		{name: "manager-keeps-excluded", why: "alice removed carol and excluded her at epoch 2; bob's same-epoch record keeps carol's entry", seq: 3, epoch: 2,
+			build: afterExclusion(func(u chainUsers, b *MembershipBody) { b.Team = "viewer" })},
+		{name: "manager-drops-excluded-and-lists", why: "bob lists carol again, as a viewer, and drops her excluded entry: only the owner re-shares an excluded user", err: ErrChain,
+			build: afterExclusion(func(u chainUsers, b *MembershipBody) {
+				b.Members = append(b.Members, viewer(u.carol))
+				slices.SortFunc(b.Members, func(x, y Member) int { return strings.Compare(x.User, y.User) })
+				b.Excluded = []ExcludedEntry{}
+			})},
+		{name: "manager-drops-excluded", why: "bob drops carol's excluded entry and does not list her", err: ErrChain,
+			build: afterExclusion(func(u chainUsers, b *MembershipBody) { b.Excluded = []ExcludedEntry{} })},
 	}
 }
 

@@ -25,6 +25,7 @@ const (
 	RuleVersion       Rule = "version"        // the owner signs version 1, a manager version 2
 	RuleSignerFP      Rule = "signerFp"       // a manager's record names their current fingerprint
 	RuleManagerChange Rule = "manager change" // a manager's record keeps every manager entry
+	RuleKeepExcluded  Rule = "keep excluded"  // a manager's record keeps every excluded entry
 	RuleSignature     Rule = "signature"      // verifies under the signer's current key and parses strictly
 	RuleArtifact      Rule = "artifact"       // names this artifact
 	RuleOwner         Rule = "owner"          // names the artifact's owner
@@ -322,6 +323,17 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 	if manager != nil {
 		if id := managerChange(prev.Members, body.Members); id != "" {
 			return nil, refuse(RuleManagerChange, "a manager's record adds, removes, or changes manager %s: only the owner does", id)
+		}
+	}
+	if manager != nil {
+		kept := map[string]bool{}
+		for _, x := range body.Excluded {
+			kept[x.User] = true
+		}
+		for _, x := range prev.Excluded {
+			if !kept[x.User] {
+				return nil, refuse(RuleKeepExcluded, "a manager's record drops the excluded entry for %s: only the owner re-shares an excluded user", x.User)
+			}
 		}
 	}
 	listed := map[string]e2e.Member{}

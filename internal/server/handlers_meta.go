@@ -78,7 +78,7 @@ func (s *Server) putMeta(w http.ResponseWriter, r *http.Request, vid string) {
 		writeError(w, http.StatusBadRequest, "unknown field "+field)
 		return
 	}
-	u := requestUser(r) // not nil: access.Rename is for the owner and editors
+	u := requestUser(r) // not nil: access.Rename is for the owner, editors, and managers
 	pub, err := s.callerKey(u)
 	if err != nil {
 		s.writeStoreError(w, err, "key bundle")

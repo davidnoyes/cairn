@@ -13,7 +13,7 @@ import (
 // The rules a refused approval broke, following "Team approval" in
 // design/e2e-api.md.
 const (
-	RuleApprover         Rule = "approver"          // the caller is the owner or a listed editor (403)
+	RuleApprover         Rule = "approver"          // the caller is the owner or a listed editor or manager (403)
 	RuleApprovalUser     Rule = "approval user"     // the user is a verified, active account (404)
 	RuleTeamNone         Rule = "team none"         // the record shares with a team (409)
 	RuleHolds            Rule = "holds"             // the user holds no wrap and is not listed (409)

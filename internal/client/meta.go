@@ -170,7 +170,7 @@ func (c *Client) ListVersions(artifactID string) ([]*Version, error) {
 // metaChecker holds what reading an artifact's fields is checked against: the
 // record that lists its writers now, and every AK the caller holds. A field
 // is checked as a stored file's record is, except that publicWrites does not
-// widen it: only the owner and the editors write metadata.
+// widen it: only the owner, the editors, and the managers write metadata.
 func (c *Client) metaChecker(k *UnlockedKeys, artifactID string) (*dataChecker, error) {
 	va, err := c.VerifyArtifact(k, artifactID, "")
 	if err != nil {
@@ -328,7 +328,7 @@ func (c *Client) putMeta(k *UnlockedKeys, artifactID, vid, field string, epoch i
 
 // UpdateArtifact writes the artifact's name or description, whichever fields
 // holds ("name", "description"). It verifies the artifact's chain first and
-// refuses a caller the chain does not list as owner or editor.
+// refuses a caller the chain does not list as owner, editor, or manager.
 func (c *Client) UpdateArtifact(id string, fields map[string]string) error {
 	k, err := c.Unlock()
 	if err != nil {
@@ -350,12 +350,16 @@ func (c *Client) UpdateArtifact(id string, fields map[string]string) error {
 	if err != nil {
 		return err
 	}
+	ak, err := epochKey(aks, epoch)
+	if err != nil {
+		return err
+	}
 	for _, field := range []string{"name", "description"} {
 		text, ok := fields[field]
 		if !ok {
 			continue
 		}
-		if err := c.putMeta(k, id, "", field, epoch, aks[epoch], text); err != nil {
+		if err := c.putMeta(k, id, "", field, epoch, ak, text); err != nil {
 			return err
 		}
 	}

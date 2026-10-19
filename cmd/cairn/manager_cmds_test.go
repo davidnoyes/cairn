@@ -125,6 +125,23 @@ func TestManagerRunsTheMemberCommands(t *testing.T) {
 	}
 }
 
+// A change that left an epoch unreadable says so, in text and in JSON.
+func TestEpochChangeReportsAnUnreadableEpoch(t *testing.T) {
+	ch := client.EpochChange{NewEpoch: true, Unreadable: []int{2}}
+	// The review hint at the end needs a server, and a failed lookup there is
+	// not an error, so a client with none will do.
+	c := client.New("http://127.0.0.1:1", "")
+	out, _ := runQuiet(t, func([]string) error { printEpochChange(c, "art", 3, ch); return nil })
+	if !strings.Contains(out, "warning: epoch 2 is unreadable to you") {
+		t.Errorf("printEpochChange printed %q, want a warning naming epoch 2", out)
+	}
+	got := map[string]any{}
+	epochChangeJSON(got, ch)
+	if u, _ := got["unreadableEpochs"].([]int); len(u) != 1 || u[0] != 2 {
+		t.Errorf("unreadableEpochs = %v, want [2]", got["unreadableEpochs"])
+	}
+}
+
 func TestOwnerOnlyActionsAreRefusedForAManager(t *testing.T) {
 	w := managerWorld(t)
 	w.as(t, "bob")

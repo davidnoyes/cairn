@@ -317,6 +317,7 @@ func epochChangeJSON(out map[string]any, ch client.EpochChange) {
 	out["newEpoch"], out["excluded"], out["link"] = ch.NewEpoch, excluded, ch.Link
 	if ch.NewEpoch {
 		out["resealed"] = resealJSON(ch.Resealed, ch.ResealErr)
+		out["unreadableEpochs"] = append([]int{}, ch.Unreadable...)
 	}
 }
 
@@ -363,6 +364,14 @@ func excludedLabel(u client.DirectoryUser) string {
 	return fmt.Sprintf("%s (%s)", u.Email, u.Name)
 }
 
+// printUnreadable warns about each epoch the owner could not read: the wrap a
+// manager made for them did not open or did not match the chain.
+func printUnreadable(epochs []int) {
+	for _, e := range epochs {
+		fmt.Printf("warning: epoch %d is unreadable to you: the wrap a manager made for you does not open or does not match the chain, so content sealed under it stays unreadable\n", e)
+	}
+}
+
 // printEpochChange says that a new epoch started, who it excluded and why,
 // the new public link if there is one, and how many versions now need review
 // because their pusher is no longer an editor. It prints nothing when ch did
@@ -381,6 +390,7 @@ func printEpochChange(c *client.Client, artifact string, epoch int, ch client.Ep
 	if ch.Link != "" {
 		fmt.Printf("\nthe public link changed, and the old link no longer works. The new link is:\n\n%s\n\n", ch.Link)
 	}
+	printUnreadable(ch.Unreadable)
 	printReseal(artifact, ch.Resealed, ch.ResealErr)
 	// Only a hint: the record is already in, so a failed lookup is not an error.
 	switch list, _ := c.Review(artifact); len(list) {
@@ -796,13 +806,13 @@ func runPublic(args []string) error {
 			"link": res.Link, "unchanged": res.Unchanged,
 		}
 		out["listed"], _ = listingJSON(res.Listed, nil)
-		epochChangeJSON(out, client.EpochChange{NewEpoch: res.NewEpoch, Excluded: res.Excluded, Link: res.Link, Resealed: res.Resealed, ResealErr: res.ResealErr})
+		epochChangeJSON(out, client.EpochChange{NewEpoch: res.NewEpoch, Excluded: res.Excluded, Link: res.Link, Resealed: res.Resealed, ResealErr: res.ResealErr, Unreadable: res.Unreadable})
 		return printArtifactJSON(a.ID, out)
 	}
 	if !res.Public {
 		if res.NewEpoch {
 			fmt.Printf("%s is private\n", a.Name)
-			printEpochChange(c, a.ID, res.Epoch, client.EpochChange{NewEpoch: true, Excluded: res.Excluded, Resealed: res.Resealed, ResealErr: res.ResealErr})
+			printEpochChange(c, a.ID, res.Epoch, client.EpochChange{NewEpoch: true, Excluded: res.Excluded, Resealed: res.Resealed, ResealErr: res.ResealErr, Unreadable: res.Unreadable})
 			printListing(a.ID, "", res.Listed, nil)
 		} else {
 			fmt.Printf("%s is already private; nothing changed\n", a.Name)

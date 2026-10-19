@@ -253,6 +253,17 @@ func TestManagerRefusals(t *testing.T) {
 			b.Members[2].FP = commit(9)
 			return f.byManager(t, m, b, nil, nil)
 		}, 400, RuleManagerChange, "u-m"},
+		{"manager lists an excluded user again", func(t *testing.T, f *fixture, m *tUser) Change {
+			b := f.next()
+			addMember(b, f.x, "viewer")
+			b.Excluded = []e2e.ExcludedEntry{}
+			return f.byManager(t, m, b, wrapsFor(f.x, 1, 2), nil)
+		}, 400, RuleKeepExcluded, "u-x"},
+		{"manager drops an excluded entry without listing the user", func(t *testing.T, f *fixture, m *tUser) Change {
+			b := f.next()
+			b.Excluded = []e2e.ExcludedEntry{}
+			return f.byManager(t, m, b, nil, nil)
+		}, 400, RuleKeepExcluded, "u-x"},
 		{"manager's next epoch without the owner's wrap", func(t *testing.T, f *fixture, m *tUser) Change {
 			b, wraps := managerNextEpoch(f, m)
 			return f.byManager(t, m, b, wraps[:3], nil)

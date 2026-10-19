@@ -20,6 +20,13 @@ var (
 	ErrManagerOwnerOnly = errors.New("only the artifact's owner can add or change a manager")
 	// ErrDeleteNotOwner means a manager tried to delete the artifact.
 	ErrDeleteNotOwner = errors.New("only the artifact's owner can delete it")
+	// ErrExcludedOwnerOnly means a manager tried to share with a user the
+	// record excludes, whom only the owner re-shares.
+	ErrExcludedOwnerOnly = errors.New("only the artifact's owner can share with a user who was removed from it")
+	// ErrEpochUnreadable means the action needs the AK of an epoch the owner
+	// cannot read: a manager started it, and the wrap for the owner does not
+	// open or does not match the chain.
+	ErrEpochUnreadable = errors.New("the key of an epoch is unreadable")
 )
 
 // isOwner reports whether the keys in k are the owner's under the record.
@@ -123,17 +130,41 @@ func openWrap(k *UnlockedKeys, artifactID string, commits map[int]string, w KeyW
 	return ak, nil
 }
 
+// epochKey is the AK of epoch in aks, or ErrEpochUnreadable when the owner's
+// client left the epoch out because its wrap did not open.
+func epochKey(aks map[int][]byte, epoch int) ([]byte, error) {
+	if ak := aks[epoch]; ak != nil {
+		return ak, nil
+	}
+	return nil, fmt.Errorf("%w: epoch %d", ErrEpochUnreadable, epoch)
+}
+
+// unreadableEpochs lists the epochs up to the chain's latest that aks leaves
+// out.
+func unreadableEpochs(chain *e2e.Chain, aks map[int][]byte) []int {
+	var out []int
+	for epoch := 1; epoch <= chain.Latest.Epoch; epoch++ {
+		if aks[epoch] == nil {
+			out = append(out, epoch)
+		}
+	}
+	return out
+}
+
 // catchUpEstate fills, in aks, each epoch up to the chain's latest that has no
 // estate copy, from the owner's own wrap of it, which a manager's next-epoch
 // record carries, and stores the estate copy for it. The owner reads through
 // the wrap either way: a copy that fails to store is left for the next time,
-// and the client has no place to report it.
-func (c *Client) catchUpEstate(k *UnlockedKeys, artifactID string, chain *e2e.Chain, keys *ArtifactKeys, aks map[int][]byte) error {
+// and the client has no place to report it. A wrap that does not open, or
+// whose AK does not match the chain, is skipped, so one bad wrap does not
+// lock the owner out: it returns those epochs, which aks leaves out.
+func (c *Client) catchUpEstate(k *UnlockedKeys, artifactID string, chain *e2e.Chain, keys *ArtifactKeys, aks map[int][]byte) ([]int, error) {
 	commits := epochCommits(chain)
 	ekKey, err := e2e.EKSealKey(k.EK)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var unreadable []int
 	for epoch := 1; epoch <= chain.Latest.Epoch; epoch++ {
 		if aks[epoch] != nil {
 			continue
@@ -144,16 +175,17 @@ func (c *Client) catchUpEstate(k *UnlockedKeys, artifactID string, chain *e2e.Ch
 		}
 		ak, err := openWrap(k, artifactID, commits, keys.Wraps[i])
 		if err != nil {
-			return err
+			unreadable = append(unreadable, epoch)
+			continue
 		}
 		aks[epoch] = ak
 		sealed, err := e2e.Seal(rand.Reader, ekKey, estateFields(artifactID, epoch), ak)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// A failure, or a copy another device stored first, changes nothing
 		// about what this command reads.
 		_ = c.doJSON(http.MethodPut, "/api/artifacts/"+artifactID+"/estate/"+strconv.Itoa(epoch), map[string]any{"sealed": e2e.B64(sealed)}, nil)
 	}
-	return nil
+	return unreadable, nil
 }

@@ -49,6 +49,10 @@ type EpochChange struct {
 	Link      string
 	Resealed  *ResealResult
 	ResealErr error
+	// Unreadable are the epochs the owner could not read when they made the
+	// change, because the wrap a manager made for them did not open: their
+	// content stays unreadable.
+	Unreadable []int
 }
 
 // nextEpochRecord is what putNextEpoch needs to know about the change.
@@ -288,11 +292,13 @@ func (c *Client) buildNextEpoch(k *UnlockedKeys, artifactID string, va *Verified
 	slices.SortFunc(next.Excluded, func(a, b e2e.ExcludedEntry) int { return strings.Compare(a.User, b.User) })
 
 	// The new epoch's key, which no earlier epoch used. The caller is the
-	// owner, or the editor about to become one.
+	// owner, or the editor about to become one. An epoch the owner cannot read
+	// is left out, and the change reports it.
 	aks, err := c.callerAKs(k, artifactID, va.Chain)
 	if err != nil {
 		return nil, err
 	}
+	change.Unreadable = unreadableEpochs(va.Chain, aks)
 	ak, err := newAK()
 	if err != nil {
 		return nil, err

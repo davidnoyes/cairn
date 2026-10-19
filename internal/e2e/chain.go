@@ -336,7 +336,8 @@ func checkNextRecord(c *Chain, in ChainInput, owners map[string][]byte, linked f
 // key b.SignerFP names. The manager's key is reached from the fp prev lists
 // for them; the owner is unchanged, and no transfer or handover is set.
 // Every entry with role manager is the same in both records, so a manager
-// adds, removes, and changes none.
+// adds, removes, and changes none, and every excluded entry of prev, by user
+// ID, is still in b, so a manager cannot re-share anyone who was removed.
 func checkManagerRecord(prev, b MembershipBody, linked func(user, fromFP, toFP string) bool) error {
 	var listed *Member
 	for i := range prev.Members {
@@ -357,6 +358,11 @@ func checkManagerRecord(prev, b MembershipBody, linked func(user, fromFP, toFP s
 		return fmt.Errorf("%w: a manager's record sets transfer or handover", ErrChain)
 	case !sameManagers(prev.Members, b.Members):
 		return fmt.Errorf("%w: a manager's record adds, removes, or changes a manager", ErrChain)
+	}
+	for _, x := range prev.Excluded {
+		if !slices.ContainsFunc(b.Excluded, func(y ExcludedEntry) bool { return y.User == x.User }) {
+			return fmt.Errorf("%w: a manager's record drops the excluded entry for %q", ErrChain, x.User)
+		}
 	}
 	return nil
 }
