@@ -4,24 +4,9 @@
 // manager signs and wraps to the owner. The reader loses access, the manager
 // reads the new epoch, and the owner's page reads it through its own wrap and
 // adds the estate copy.
-import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { test, expect } from './test.mjs';
-import { MARKER, cli, cliJson, contentFrame, loadState, logSize, mailedLink, runCli, signIn } from './helpers.mjs';
-
-// freshUser signs up, verifies, and signs in with the command-line tool.
-async function freshUser(local, domain) {
-  const s = loadState();
-  const email = `${local}@${domain}`;
-  const password = `e2e-${local}-password-Qm47vz`;
-  const config = path.join(s.tmp, 'config', local, 'config.json');
-  mkdirSync(path.dirname(config), { recursive: true });
-  const before = logSize();
-  runCli(s.bin, config, ['signup', '--host', s.appOrigin, '--email', email, '--password-stdin'], { input: `${password}\n` });
-  runCli(s.bin, config, ['confirm-email', await mailedLink(new RegExp(`${s.appOrigin}/verify#token=[A-Za-z0-9_-]+`), before)]);
-  runCli(s.bin, config, ['login', '--host', s.appOrigin, '--email', email, '--password-stdin'], { input: `${password}\n` });
-  return { email, password };
-}
+import { MARKER, cli, cliJson, contentFrame, freshUser, loadState, signIn } from './helpers.mjs';
 
 // openDialog opens the share dialog for id from the given list, #own or
 // #shared.

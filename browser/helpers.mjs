@@ -1,7 +1,7 @@
 // Shared by the global setup and the specs. Imports nothing from Playwright so
 // the setup can use it too.
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
 export const MARKER = 'CAIRN-PLAINTEXT-MARKER-7f3a';
@@ -177,4 +177,18 @@ export async function mailedLink(re, after, timeout = 20_000) {
 
 export function logSize() {
   return readFileSync(loadState().logPath, 'utf8').length;
+}
+
+// freshUser signs up, verifies, and signs in with the command-line tool.
+export async function freshUser(local, domain) {
+  const s = loadState();
+  const email = `${local}@${domain}`;
+  const password = `e2e-${local}-password-Qm47vz`;
+  const config = path.join(s.tmp, 'config', local, 'config.json');
+  mkdirSync(path.dirname(config), { recursive: true });
+  const before = logSize();
+  runCli(s.bin, config, ['signup', '--host', s.appOrigin, '--email', email, '--password-stdin'], { input: `${password}\n` });
+  runCli(s.bin, config, ['confirm-email', await mailedLink(new RegExp(`${s.appOrigin}/verify#token=[A-Za-z0-9_-]+`), before)]);
+  runCli(s.bin, config, ['login', '--host', s.appOrigin, '--email', email, '--password-stdin'], { input: `${password}\n` });
+  return { email, password };
 }
