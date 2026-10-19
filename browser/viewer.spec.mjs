@@ -65,9 +65,11 @@ test('viewer: a demoted editor still listed as editor reads but cannot write, in
   const table = `viewer_${browserName}`;
   user.run(['db', 'query', '--artifact', id, '--version', version, `CREATE TABLE IF NOT EXISTS ${table} (k TEXT)`]);
 
-  // The administrator makes them a viewer account on the Admin tab.
+  // The administrator makes them a viewer account on the Admin tab, where
+  // their own row offers no role change.
   await ownerPage.goto(`${s.appOrigin}/app`);
   await ownerPage.getByRole('tab', { name: 'Admin' }).click();
+  await expect(ownerPage.getByLabel(`Account of ${s.users.owner.email}`)).toBeDisabled();
   const row = ownerPage.locator('#users tr[data-user]').filter({ hasText: user.email });
   await row.getByLabel(`Account of ${user.email}`).selectOption('viewer');
   await expect(row.locator('.pill', { hasText: 'viewer account' })).toBeVisible();
@@ -81,8 +83,25 @@ test('viewer: a demoted editor still listed as editor reads but cannot write, in
   expect(cliError(user.run, ['db', 'query', '--artifact', id, '--version', version, `INSERT INTO ${table} VALUES ('from the tool')`])).toContain('a viewer account cannot change anything');
   expect(JSON.parse(cli('owner', ['db', 'query', '--artifact', id, '--version', version, '--json', `SELECT COUNT(*) FROM ${table}`])).rows).toEqual([[0]]);
 
-  // Made a member again, they write once more.
+  // The owner's share dialog marks the stale editor entry and offers to make
+  // it match.
+  await ownerPage.goto(`${s.appOrigin}/app`);
+  await ownerPage.getByRole('tab', { name: 'Artifacts' }).click();
+  await ownerPage.locator(`#own tr[data-id="${id}"]`).getByRole('button', { name: 'Share' }).click();
+  const member = ownerPage.locator('dialog#share #members tr').filter({ hasText: user.email });
+  await expect(member.locator('.pill', { hasText: 'viewer account' })).toBeVisible();
+  await member.getByRole('button', { name: 'Make viewer' }).click();
+  await expect(ownerPage.locator('#share-status')).toContainText(`${user.email} is now viewer.`, { timeout: 60_000 });
+  await expect(member.getByRole('button', { name: 'Make viewer' })).toHaveCount(0);
+  await expect(member.getByLabel(`Role of ${user.email}`).locator('option')).toHaveText(['viewer']);
+  await ownerPage.locator('dialog#share').getByRole('button', { name: 'Close' }).click();
+
+  // Made a member again, they read as before, and an owner can list them as
+  // editor once more.
+  await ownerPage.goto(`${s.appOrigin}/app`);
+  await ownerPage.getByRole('tab', { name: 'Admin' }).click();
   await row.getByLabel(`Account of ${user.email}`).selectOption('member');
   await expect(row.locator('.pill', { hasText: 'viewer account' })).toHaveCount(0);
+  cli('owner', ['share', 'data-doc', user.email, '--role', 'editor']);
   user.run(['db', 'query', '--artifact', id, '--version', version, `INSERT INTO ${table} VALUES ('back')`]);
 });

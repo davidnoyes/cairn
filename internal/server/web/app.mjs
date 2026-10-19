@@ -323,6 +323,14 @@ function memberRow(s, m) {
     }, acceptNewKey ? undefined : () => setRole(true));
     role.addEventListener('change', () => setRole(false));
     actions.appendChild(role);
+    if (m.account === 'viewer' && m.role === 'editor') {
+      // Their account became a viewer account, so the entry promises writes
+      // the server refuses. Offer to make it match.
+      actions.appendChild(btn('Make viewer', '', () => {
+        role.value = 'viewer';
+        setRole(false);
+      }));
+    }
     if (m.state === 'changed') {
       // share with the same role lists their new keys; without acceptNewKey
       // it refuses, and the refusal is the warning.

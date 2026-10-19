@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 var (
@@ -466,7 +467,10 @@ func (c *Client) Share(artifactID, who, role string, acceptNewKey bool) (*ShareR
 	if u.ID == k.UserID {
 		return nil, ErrShareSelf
 	}
-	if u.Role == "viewer" && role == "editor" {
+	// A viewer account can only be a viewer, except that an editor whose
+	// account became a viewer account keeps the entry until changed, as the
+	// server's membership check allows.
+	if u.Role == store.RoleViewer && role == "editor" && !listedAsEditor(latest.Members, u.ID) {
 		return nil, fmt.Errorf("%s %w", u.Email, ErrViewerAccount)
 	}
 	prior, pin, err := c.checkPin(va.Keyring, u, acceptNewKey, va.Membership.Rotations)
@@ -736,4 +740,14 @@ func estateAKs(ek []byte, artifactID string, chain *e2e.Chain, keys *ArtifactKey
 		}
 	}
 	return aks, nil
+}
+
+// listedAsEditor reports whether members lists user as editor.
+func listedAsEditor(members []e2e.Member, user string) bool {
+	for _, m := range members {
+		if m.User == user && m.Role == "editor" {
+			return true
+		}
+	}
+	return false
 }

@@ -81,3 +81,43 @@ func TestViewerAccountThroughTheClient(t *testing.T) {
 		t.Errorf("a viewer account creating: %v, want 403 and the viewer-account message", err)
 	}
 }
+
+// An editor whose account an administrator made a viewer account stays listed
+// as editor until the owner changes the entry, as the server's membership
+// check allows. Re-sharing them as editor keeps the entry, rather than
+// refusing; making them a viewer still works.
+func TestShareKeepsADemotedEditorListed(t *testing.T) {
+	host, m := newTestServer(t)
+	clients := map[string]*Client{}
+	for _, email := range []string{"admin@example.com", "ada@example.com", "bob@example.com"} {
+		signupVerify(t, host, m, email, testPassword)
+		out, err := New(host, "").Login(email, testPassword)
+		if err != nil {
+			t.Fatal(err)
+		}
+		clients[email] = keyedFor(t, host, out.APIKey)
+	}
+	admin, ada := clients["admin@example.com"], clients["ada@example.com"]
+	a, err := ada.CreateArtifact("shared", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ada.Share(a.ID, "bob@example.com", "editor", false); err != nil {
+		t.Fatalf("share as editor: %v", err)
+	}
+	bob := memberRows(t, ada, a.ID)["bob@example.com"]
+	if err := admin.doJSON("PATCH", "/api/admin/users/"+bob.User, map[string]string{"role": "viewer"}, nil); err != nil {
+		t.Fatalf("demote: %v", err)
+	}
+
+	res, err := ada.Share(a.ID, "bob@example.com", "editor", false)
+	if err != nil || !res.Unchanged {
+		t.Fatalf("re-share a demoted editor as editor: %+v, %v; want unchanged", res, err)
+	}
+	if _, err := ada.Share(a.ID, "bob@example.com", "viewer", false); err != nil {
+		t.Fatalf("make the demoted editor a viewer: %v", err)
+	}
+	if _, err := ada.Share(a.ID, "bob@example.com", "editor", false); !errors.Is(err, ErrViewerAccount) {
+		t.Fatalf("promote the viewer account back to editor: %v, want ErrViewerAccount", err)
+	}
+}

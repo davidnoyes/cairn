@@ -57,6 +57,16 @@ func wantViewerRefusal(t *testing.T, who actor, what string, m *metaRequest) {
 	}
 }
 
+// wantViewerRefused sends a request and checks it was refused with 403 for
+// being a viewer account.
+func wantViewerRefused(t *testing.T, who actor, method, path string, body any) {
+	t.Helper()
+	code, out := jsonOf(who.testClient, method, path, body)
+	if msg, _ := out["error"].(string); code != http.StatusForbidden || msg != errViewerAccount {
+		t.Errorf("%s %s: %d %q, want 403 %q", method, path, code, msg, errViewerAccount)
+	}
+}
+
 // refusedEveryWrite checks who may read the artifact in w and is refused
 // every write to it, whatever way they sign in.
 func refusedEveryWrite(t *testing.T, w *contentWorld, who actor) {
@@ -75,17 +85,20 @@ func refusedEveryWrite(t *testing.T, w *contentWorld, who actor) {
 
 	wantForbidden(t, "write db", who.writeDB(t, aid, vid))
 	wantForbidden(t, "put file", who.writeFile(t, aid, vid, "x.txt", "x"))
-	wantStatus(t, who.testClient, "DELETE", vbase+"/files/"+w.addr, nil, http.StatusForbidden)
+	wantViewerRefused(t, who, "DELETE", vbase+"/files/"+w.addr, nil)
 	wantForbidden(t, "push", who.upload("POST", base+"/versions", map[string]string{"index.html": "v2"}))
 	wantForbidden(t, "replace", who.upload("PUT", vbase, map[string]string{"index.html": "v2"}))
 	wantViewerRefusal(t, who, "artifact meta", newMeta(t, who, aid, "", "name", 1, "x"))
 	wantViewerRefusal(t, who, "version meta", newMeta(t, who, aid, vid, "name", 1, "x"))
-	wantStatus(t, who.testClient, "POST", base+"/resources", map[string]any{"type": "t", "value": refOf("v")}, http.StatusForbidden)
-	wantStatus(t, who.testClient, "GET", base+"/review", nil, http.StatusForbidden)
-	wantStatus(t, who.testClient, "PUT", base+"/membership", w.art.change(w.art.next()), http.StatusForbidden)
-	wantStatus(t, who.testClient, "POST", base+"/transfer", map[string]any{"to": w.outside.id}, http.StatusForbidden)
-	wantStatus(t, who.testClient, "DELETE", vbase, nil, http.StatusForbidden)
-	wantStatus(t, who.testClient, "DELETE", base, nil, http.StatusForbidden)
+	wantViewerRefused(t, who, "POST", base+"/resources", map[string]any{"type": "t", "value": refOf("v")})
+	wantViewerRefused(t, who, "GET", base+"/review", nil)
+	wantViewerRefused(t, who, "PUT", base+"/membership", w.art.change(w.art.next()))
+	wantViewerRefused(t, who, "POST", base+"/transfer", map[string]any{"to": w.outside.id})
+	wantViewerRefused(t, who, "DELETE", vbase, nil)
+	wantViewerRefused(t, who, "DELETE", base, nil)
+	wantViewerRefused(t, who, "POST", base+"/keys", map[string]any{"user": w.outside.id})
+	wantViewerRefused(t, who, "PUT", vbase+"/vouch", map[string]any{})
+	wantViewerRefused(t, who, "DELETE", base+"/resources/r1", nil)
 }
 
 // TestViewerAccountReadsAndNeverWrites demotes a listed editor to a viewer
@@ -212,6 +225,20 @@ func TestViewerAccountCannotAcceptOwnership(t *testing.T) {
 	w.ed.mustDo("DELETE", w.transferPath(""), nil, nil, http.StatusOK)
 	if got := w.viewOf(w.owner.testClient); got.Transfer != nil {
 		t.Errorf("the offer is still open after the viewer account declined: %+v", got.Transfer)
+	}
+}
+
+// TestNoOwnershipOfferToAViewerAccount: a viewer account could never accept,
+// so an offer to one is refused outright rather than left open.
+func TestNoOwnershipOfferToAViewerAccount(t *testing.T) {
+	w := newTransferWorld(t)
+	setRole(t, w.s, w.ed.id, store.RoleViewer)
+	code, msg := status(w.owner.testClient, "POST", w.transferPath(""), w.offerReq(w.ed, w.offerFor(w.ed)))
+	if code != http.StatusConflict || msg != w.ed.email+" is a viewer account and cannot own an artifact" {
+		t.Fatalf("offer to a viewer account: %d %q, want 409 and the viewer-account message", code, msg)
+	}
+	if got := w.viewOf(w.owner.testClient); got.Transfer != nil {
+		t.Errorf("an offer is open after the refusal: %+v", got.Transfer)
 	}
 }
 

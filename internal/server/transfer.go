@@ -58,7 +58,20 @@ func editorFor(cur membership.Current, dir membership.Directory, to string) (*me
 	if err := membership.CheckNewOwner(cur, u); err != nil {
 		return nil, err
 	}
+	if err := notViewerAccount(u); err != nil {
+		return nil, err
+	}
 	return u, nil
+}
+
+// notViewerAccount refuses u as an artifact's next owner when u is a viewer
+// account: it could never accept, so an offer would only sit open and block
+// every other transfer.
+func notViewerAccount(u *membership.User) error {
+	if u.Role == store.RoleViewer {
+		return transferRefusal(http.StatusConflict, "%s is a viewer account and cannot own an artifact", u.Email)
+	}
+	return nil
 }
 
 // releasedSuccessorFor returns the user to as the next owner when to is the
@@ -104,6 +117,9 @@ func (s *Server) newOwnerFor(tx *store.ArtifactTx, cur membership.Current, dir m
 		return nil, false, err
 	}
 	if err := membership.CheckSuccessorOwner(su); err != nil {
+		return nil, false, err
+	}
+	if err := notViewerAccount(su); err != nil {
 		return nil, false, err
 	}
 	return su, true, nil

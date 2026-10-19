@@ -224,9 +224,10 @@ parameters, so raising the defaults raises them for fake responses too.
 
 #### Signed-in account
 
-- `GET /api/me` returns `{"id", "email", "name", "isAdmin", "createdAt",
-  "resetAt"}`. `resetAt` is empty unless a reset without the recovery code
-  happened.
+- `GET /api/me` returns `{"id", "email", "name", "role", "isAdmin",
+  "createdAt", "resetAt"}`. `role` is `admin`, `member`, or `viewer`, and
+  `isAdmin` is true exactly when it is `admin`. `resetAt` is empty unless a
+  reset without the recovery code happened.
 - `GET /api/me/bundle` returns the bundle. With an API key it adds
   `"apiKey": {"id", "mk"}`, where `mk` is that key's sealed `MK`.
 - `PUT /api/me/password` takes `{"authKey", "newAuthKey", "kdf",
@@ -259,12 +260,21 @@ The bearer for later requests is `cairn_<keyId>_<authSecret>`.
 #### Directory and administration
 
 - `GET /api/users` lists verified, active users as `{"id", "name", "email",
-  "x25519Pub", "ed25519Pub", "resetAt"}`. Clients compute fingerprints.
+  "role", "x25519Pub", "ed25519Pub", "resetAt"}`. Clients compute
+  fingerprints, and offer a viewer account only the viewer role.
 - `GET /api/admin/users` adds `isAdmin`, `disabled`, `verified`, and
   `createdAt`, and includes unverified accounts.
-- `PATCH /api/admin/users/{id}` takes `{"isAdmin": bool, "disabled": bool}`,
-  either optional. Deactivating increases the token version, which signs the
-  user out everywhere, and blocks their API keys.
+- `PATCH /api/admin/users/{id}` takes `{"role": "admin"|"member"|"viewer",
+  "disabled": bool}`, either optional. The older `"isAdmin": bool` still works
+  (true makes an administrator, false a member), but not together with
+  `role`. An administrator cannot remove their own administrator role.
+  Deactivating increases the token version, which signs the user out
+  everywhere, and blocks their API keys.
+- A viewer account is refused every artifact write with `403 {"error": "a
+  viewer account cannot change anything"}`, and so are creating an artifact
+  and accepting ownership. An ownership offer to one is a `409`. Its own
+  account upkeep works as for anyone: password, recovery code, keyring, key
+  rotation, successor, API keys, and passkeys.
 
 ### Pages
 

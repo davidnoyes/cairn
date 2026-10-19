@@ -2408,8 +2408,10 @@ internal/server/handlers_users.go	if req.Role != nil && req.IsAdmin != nil {	if 
 internal/server/handlers_users.go	if req.Role != nil && !validRole(*req.Role) {	if false {	go test ./internal/server -count=1 -run TestAdminSetsRole
 internal/server/handlers_users.go	case req.IsAdmin != nil && !*req.IsAdmin && u.IsAdmin:	case req.IsAdmin != nil && !*req.IsAdmin:	go test ./internal/server -count=1 -run TestAdminSetsRole
 internal/store/migrations/013_roles.sql	UPDATE users SET role = 'admin' WHERE is_admin = 1;	UPDATE users SET role = 'member' WHERE is_admin = 1;	go test ./internal/store -count=1 -run TestMigration013RolesFromAdminFlag
-internal/client/share.go	if u.Role == "viewer" && role == "editor" {	if false {	go test ./internal/client -count=1 -run TestViewerAccountThroughTheClient
+internal/client/share.go	if u.Role == store.RoleViewer && role == "editor" &&	if u.Role == store.RoleAdmin && role == "editor" &&	go test ./internal/client -count=1 -run TestViewerAccountThroughTheClient
 cmd/cairn/client_cmds.go	me.Email, me.Name, me.Role, c.Host)	me.Email, me.Name, "user", c.Host)	go test ./cmd/cairn -count=1 -run TestWhoamiShowsTheServerRole
 cmd/cairn/serve.go	ViewerDomains: []string(viewerDomains),	ViewerDomains: nil,	go test ./cmd/cairn -count=1 -run TestRunServeViewerDomains
 cmd/cairn/serve.go	envOr("CAIRN_VIEWER_DOMAINS", "")	envOr("CAIRN_VIEWER_DOMAINS_X", "")	go test ./cmd/cairn -count=1 -run TestRunServeViewerDomains
 internal/server/sharing.go	if d == access.Forbidden && req.Caller.ReadOnly && access.WritesArtifact(act) {	if false && req.Caller.ReadOnly {	go test ./internal/server -count=1 -run TestViewerAccountReadsAndNeverWrites
+internal/server/transfer.go	return transferRefusal(http.StatusConflict, "%s is a viewer account and cannot own an artifact", u.Email)	return nil	go test ./internal/server -count=1 -run TestNoOwnershipOfferToAViewerAccount
+internal/client/share.go	&& !listedAsEditor(latest.Members, u.ID) {	{	go test ./internal/client -count=1 -run TestShareKeepsADemotedEditorListed

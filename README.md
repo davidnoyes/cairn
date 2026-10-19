@@ -170,6 +170,9 @@ writes from inside an artifact too.
 - A viewer account can only be shared with as a viewer. Someone listed as
   editor before their account changed stays listed until the owner changes the
   entry, but cannot write.
+- A viewer account still looks after its own account: password, recovery
+  code, key rotation, API keys, and passkeys. It can decline or withdraw an
+  ownership offer but not accept one, and nobody can offer it ownership.
 
 ### Push your first artifact
 
