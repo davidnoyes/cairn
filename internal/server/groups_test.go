@@ -593,3 +593,78 @@ func TestGroupRoutesAreNotForContentTokens(t *testing.T) {
 		}
 	}
 }
+
+// gotSigners is the signers of a group as the endpoints answer.
+type gotSigners struct {
+	Signers map[string]struct {
+		X25519    string         `json:"x25519"`
+		Ed25519   string         `json:"ed25519"`
+		Rotations []e2e.Envelope `json:"rotations"`
+	} `json:"signers"`
+}
+
+// The group view carries the current keys and rotation records of everyone who
+// signed a record, a deactivated account too, and of no one else.
+func TestGroupServesItsSignersKeys(t *testing.T) {
+	w := newGroupWorld(t)
+	g := newGroup(t, w.alice, "Reviewers", gm(w.alice, "manager"), gm(w.bob, "manager"), gm(w.carol, "member"))
+	r := newRotation(t, w.s, w.alice.base, w.bob)
+	w.bob.mustDo("POST", "/api/me/rotate", r.request(), nil, http.StatusOK)
+	bob2 := r.asNew()
+	g.apply(bob2, func(b *e2e.GroupBody) { b.Name = "Release reviewers" })
+	bobRotations := rotations(t, w.alice.testClient, w.bob.id)
+	if len(bobRotations) != 1 {
+		t.Fatalf("bob has %d rotation records, want 1", len(bobRotations))
+	}
+	if err := w.s.store.SetUserDisabled(w.bob.id, true); err != nil {
+		t.Fatal(err)
+	}
+
+	check := func(what string, got gotSigners) {
+		t.Helper()
+		if len(got.Signers) != 2 {
+			t.Fatalf("%s: signers = %+v, want alice and bob only", what, got.Signers)
+		}
+		a, ok := got.Signers[w.alice.id]
+		if !ok || a.X25519 != w.alice.keys.pair().X25519 || a.Ed25519 != w.alice.keys.pair().Ed25519 || len(a.Rotations) != 0 {
+			t.Errorf("%s: alice's entry = %+v", what, a)
+		}
+		b, ok := got.Signers[w.bob.id]
+		if !ok || b.X25519 != bob2.keys.pair().X25519 || b.Ed25519 != bob2.keys.pair().Ed25519 {
+			t.Errorf("%s: bob's entry = %+v, want his current keys", what, b)
+		}
+		if len(b.Rotations) != 1 || e2e.BodyHash(b.Rotations[0].Body) != e2e.BodyHash(bobRotations[0].Body) {
+			t.Errorf("%s: bob's rotations = %+v, want his one record", what, b.Rotations)
+		}
+	}
+	var got gotSigners
+	w.alice.mustDo("GET", "/api/groups/"+g.id, nil, &got, http.StatusOK)
+	check("GET", got)
+	// A signer with no rotation records has an empty list, not null.
+	var raw struct {
+		Signers map[string]map[string]json.RawMessage `json:"signers"`
+	}
+	w.alice.mustDo("GET", "/api/groups/"+g.id, nil, &raw, http.StatusOK)
+	if got := string(raw.Signers[w.alice.id]["rotations"]); got != "[]" {
+		t.Errorf("alice's rotations = %s, want []", got)
+	}
+
+	// POST and PUT answer with the same view; the list does not carry it.
+	var put gotSigners
+	env := signGroup(t, w.alice, g.next(w.alice, nil))
+	w.alice.mustDo("PUT", "/api/groups/"+g.id, map[string]any{"record": env}, &put, http.StatusOK)
+	check("PUT", put)
+	var created gotSigners
+	other := firstGroupBody(w.alice, "Other", gm(w.alice, "manager"))
+	w.alice.mustDo("POST", "/api/groups", map[string]any{"record": signGroup(t, w.alice, other)}, &created, http.StatusCreated)
+	if len(created.Signers) != 1 || created.Signers[w.alice.id].Ed25519 != w.alice.keys.pair().Ed25519 {
+		t.Errorf("POST: signers = %+v, want alice", created.Signers)
+	}
+	var list []map[string]json.RawMessage
+	w.alice.mustDo("GET", "/api/groups", nil, &list, http.StatusOK)
+	for _, g := range list {
+		if _, ok := g["signers"]; ok {
+			t.Errorf("the list carries signers: %v", g)
+		}
+	}
+}

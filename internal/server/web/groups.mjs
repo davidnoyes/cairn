@@ -9,9 +9,11 @@
 //   keyStore               {load()}, see keystore.mjs: the signed-in user's keys
 //   storage                localStorage, which holds the keyring anchor
 //
-// The group view the server serves has no keys, so a signer's key comes from
-// the directory, or from the rotation records that name it, and rotationLinker
-// connects the fingerprint a record lists to the one that signed.
+// The group view carries each signer's current keys and rotation records, a
+// deactivated account's too. They are the server's word, so each is anchored at
+// the keyring's pin for that user before it is used, as a share anchors a
+// member, and rotationLinker connects the fingerprint a record lists to the one
+// that signed.
 import * as e2e from './e2e.mjs';
 import { ApiError } from './account.mjs';
 import { call, readKeyring, signedInCaller, updateKeyring } from './viewer.mjs';
@@ -62,60 +64,98 @@ export async function listGroups(deps) {
   return groups.sort((a, b) => notMine(a) - notMine(b) || compare(a.name, b.name) || compare(a.id, b.id));
 }
 
-// rotationsOfUser is user's rotation records as the server serves them, none
-// for a user it has no record of.
-async function rotationsOfUser(deps, user) {
-  try {
-    return (await call(deps, null, 'GET', `/api/users/${user}/rotations`)).records ?? [];
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 404) return [];
-    throw err;
-  }
-}
-
 async function fpOf(pair) {
   return e2e.toHex(await e2e.fingerprint(e2e.unb64(pair.x25519), e2e.unb64(pair.ed25519)));
 }
 
-// signerKeys is the fingerprint-to-key map verifyGroupChain reads, and the
-// rotation records by user, for every user who signed a record: the
-// directory's current key pair of each, and both pairs of each rotation
-// record they have. verifyGroupChain keeps only a pair that hashes to its
-// fingerprint, and a record's signer must reach the fingerprint a record lists
-// through the rotation records themselves, which rotationLinker verifies.
-async function signerKeys(deps, dir, records) {
-  const keys = {};
-  const rotations = {};
-  const signers = new Set();
-  for (const env of records) signers.add(e2e.decodeStrict(e2e.unb64(env.body), e2e.BODY_SCHEMAS.group).signer);
-  for (const id of signers) {
-    const u = dir.find((d) => d.id === id);
-    if (u) keys[u.fp] = { x25519: e2e.b64(u.x25519Pub), ed25519: e2e.b64(u.ed25519Pub) };
-    rotations[id] = await rotationsOfUser(deps, id);
-    for (const env of rotations[id]) {
+// anchorSigners anchors the keys the group view serves for the users who
+// signed a record. A signer's current key must be the keyring's pin for them,
+// or follow from it by their rotation records: else it is a KeyChangedError
+// unless acceptNewKey, and a signer not pinned yet is pinned unverified. The
+// caller's own key is their own. It returns {keys, mayBe, rotations, pins}:
+// keys maps a fingerprint to the pair that may have signed a record, mayBe a
+// user ID to the fingerprints that user may have signed under, rotations the
+// records by user, and pins the pins to store once the chain verifies. A
+// record may be signed by a signer's current key, or by an earlier one their
+// rotation records link to it, and by no other: a key the server serves that
+// nothing anchors is not one. Mirrors anchorSigners in groups.go.
+async function anchorSigners(deps, caller, kr, dir, id, view, acceptNewKey) {
+  const out = { keys: {}, mayBe: new Map(), rotations: {}, pins: new Map() };
+  for (const user of new Set(view.records.map((env) => env.signer))) {
+    const served = Object.hasOwn(view.signers ?? {}, user) ? view.signers[user] : null;
+    if (!served) throw new e2e.ChainError(`the server did not serve the keys of ${user}, who signed a record of group ${id}`);
+    out.rotations[user] = served.rotations ?? [];
+    const own = user === caller.record.userId;
+    const cur = own
+      ? { x25519: e2e.b64(caller.record.x25519.publicKey), ed25519: e2e.b64(caller.record.ed25519Pub) }
+      : { x25519: served.x25519, ed25519: served.ed25519 };
+    let x25519Pub;
+    let ed25519Pub;
+    try {
+      x25519Pub = e2e.unb64(cur.x25519);
+      ed25519Pub = e2e.unb64(cur.ed25519);
+    } catch (err) {
+      throw new e2e.FormatError(`the keys the server served for ${user} are not base64`, { cause: err });
+    }
+    if (x25519Pub.length !== 32 || ed25519Pub.length !== 32) throw new e2e.FormatError(`the keys the server served for ${user} are not 32 bytes each`);
+    const curFp = await fpOf(cur);
+    if (!own) {
+      const listed = dir.find((d) => d.id === user);
+      const u = { id: user, email: listed?.email ?? user, resetAt: listed?.resetAt ?? '', x25519Pub, ed25519Pub, fp: curFp };
+      const { pin } = await checkPin(deps, kr, u, acceptNewKey, out.rotations);
+      if (pin) out.pins.set(user, pin);
+    }
+    const linked = e2e.rotationLinker(out.rotations);
+    out.mayBe.set(user, new Set([curFp]));
+    out.keys[curFp] = cur;
+    for (const env of out.rotations[user]) {
       let b;
       try {
         b = e2e.decodeStrict(e2e.unb64(env.body), e2e.BODY_SCHEMAS.rotation);
-        for (const pair of [b.old, b.new]) keys[await fpOf(pair)] = pair;
       } catch {
-        // A rotation record that does not parse links nothing.
+        continue; // A rotation record that does not parse links nothing.
+      }
+      for (const pair of [b.old, b.new]) {
+        let fp;
+        try {
+          fp = await fpOf(pair);
+        } catch {
+          continue;
+        }
+        if (await linked(user, fp, curFp)) {
+          out.mayBe.get(user).add(fp);
+          out.keys[fp] = pair;
+        }
       }
     }
   }
-  return { keys, rotations };
+  return out;
 }
 
-// acceptGroup verifies a group's records against the keyring's groups entry,
-// and stores the new seq and head there. It returns {chain, rotations, dir,
-// keyring}. A chain shorter than the stored seq, or forked at it, is refused
-// and nothing is stored.
-async function acceptGroup(deps, caller, id, records) {
+// acceptGroup verifies the records of a group view against the keyring's
+// groups entry, with each signer's keys anchored by anchorSigners, and stores
+// the new seq and head there, and the pins of signers seen for the first time
+// or whose keys rotated. It returns {chain, rotations, dir, keyring}. A chain
+// shorter than the stored seq, or forked at it, is refused and nothing is
+// stored.
+async function acceptGroup(deps, caller, id, view, acceptNewKey) {
+  const records = view.records;
   if (!Array.isArray(records) || records.length === 0) throw new e2e.ChainError('no records');
-  const kr = await readKeyring(deps, caller);
+  let kr = await readKeyring(deps, caller);
   const dir = await directory(deps);
-  const { keys, rotations } = await signerKeys(deps, dir, records);
+  const signers = await anchorSigners(deps, caller, kr, dir, id, view, acceptNewKey);
+  const { keys, rotations } = signers;
   const pin = Object.hasOwn(kr.groups ?? {}, id) ? kr.groups[id] : null;
   const chain = await e2e.verifyGroupChain({ group: id, records, keys, pin, linked: e2e.rotationLinker(rotations) });
+  chain.bodies.forEach((b, i) => {
+    if (!signers.mayBe.get(b.signer)?.has(b.signerFp)) {
+      throw new e2e.ChainError(`record ${i + 1} is signed under a key that ${b.signer}'s pinned key does not lead to`);
+    }
+  });
+  for (const [user, decided] of signers.pins) {
+    await storePin(deps, caller, user, decided, Object.hasOwn(kr.pins, user) ? kr.pins[user].fp : '');
+  }
+  if (signers.pins.size > 0) kr = await readKeyring(deps, caller);
   let keyring = kr;
   if (!pin || pin.seq < chain.seq) {
     keyring = await updateKeyring(deps, caller, (k) => {
@@ -131,9 +171,9 @@ async function acceptGroup(deps, caller, id, records) {
 }
 
 // openGroup reads a group and accepts its chain.
-async function openGroup(deps, caller, id) {
+async function openGroup(deps, caller, id, acceptNewKey) {
   const view = await call(deps, null, 'GET', `/api/groups/${id}`);
-  return { view, ...(await acceptGroup(deps, caller, id, view.records)) };
+  return { view, ...(await acceptGroup(deps, caller, id, view, acceptNewKey)) };
 }
 
 // callerRole is the role the latest record lists the caller under, or ''.
@@ -145,10 +185,11 @@ const callerRole = (caller, latest) => latest.members.find((m) => m.user === cal
 // for a user it no longer lists), their account role (a viewer account is
 // never a manager), and a pin state: self for the caller, - for
 // a user the directory no longer lists, a pin state otherwise, and conflict
-// when their rotation records fork or roll back.
-export async function groupMembers(deps, id) {
+// when their rotation records fork or roll back. A signer whose key changed
+// is a KeyChangedError unless acceptNewKey.
+export async function groupMembers(deps, id, { acceptNewKey = false } = {}) {
   const caller = await unlock(deps);
-  const { chain, rotations, dir, keyring } = await openGroup(deps, caller, id);
+  const { chain, rotations, dir, keyring } = await openGroup(deps, caller, id, acceptNewKey);
   const latest = chain.latest;
   const byId = new Map(dir.map((u) => [u.id, u]));
   const rows = [];
@@ -199,7 +240,7 @@ async function putRecord(deps, caller, id, chain, { name, members }) {
 // record must be the one this client signed.
 async function readBack(deps, caller, id, view, seq) {
   try {
-    const { chain } = await acceptGroup(deps, caller, id, view.records);
+    const { chain } = await acceptGroup(deps, caller, id, view, false);
     if (chain.seq !== seq || chain.latest.signer !== caller.record.userId || chain.latest.signerFp !== caller.fp) {
       throw new Error('the latest record is not the one this client signed');
     }
@@ -210,9 +251,9 @@ async function readBack(deps, caller, id, view, seq) {
 
 // managerAction is the start of every change: the caller, the accepted chain,
 // and the refusal when the latest record does not list the caller as manager.
-async function managerAction(deps, id) {
+async function managerAction(deps, id, acceptNewKey) {
   const caller = await unlock(deps);
-  const opened = await openGroup(deps, caller, id);
+  const opened = await openGroup(deps, caller, id, acceptNewKey);
   if (callerRole(caller, opened.chain.latest) !== 'manager') throw new GroupError('not-manager', 'Only a manager of the group can change it.');
   return { caller, chain: opened.chain, keyring: opened.keyring };
 }
@@ -240,10 +281,11 @@ export async function createGroup(deps, name) {
 // directory and is checked against the caller's pin as sharing does: a user
 // whose keys changed is a KeyChangedError unless acceptNewKey, and one seen
 // for the first time is pinned unverified. A viewer account is never a
-// manager. Returns {user, role, unchanged, wasVerified}.
+// manager. acceptNewKey accepts a changed key of a signer of the group too.
+// Returns {user, role, unchanged, wasVerified}.
 export async function addMember(deps, id, who, role, { acceptNewKey = false } = {}) {
   if (role !== 'member' && role !== 'manager') throw new GroupError('bad-role', `The role must be member or manager, not ${JSON.stringify(role)}.`);
-  const { caller, chain, keyring } = await managerAction(deps, id);
+  const { caller, chain, keyring } = await managerAction(deps, id, acceptNewKey);
   const dir = await directory(deps);
   const u = findUser(dir, who);
   if (role === 'manager' && u.role === 'viewer') throw new GroupError('viewer-account', `${u.email} is a viewer account and cannot be a manager.`);
@@ -272,8 +314,8 @@ export async function addMember(deps, id, who, role, { acceptNewKey = false } = 
 
 // removeMember takes who, an email or a user ID, out of the group. The last
 // manager is not removed, nor is anyone the group does not list.
-export async function removeMember(deps, id, who) {
-  const { caller, chain } = await managerAction(deps, id);
+export async function removeMember(deps, id, who, { acceptNewKey = false } = {}) {
+  const { caller, chain } = await managerAction(deps, id, acceptNewKey);
   const dir = await directory(deps);
   const u = findUser(dir, who);
   const members = chain.latest.members;
@@ -286,9 +328,9 @@ export async function removeMember(deps, id, who) {
 }
 
 // renameGroup gives the group another name.
-export async function renameGroup(deps, id, name) {
+export async function renameGroup(deps, id, name, { acceptNewKey = false } = {}) {
   checkName(name);
-  const { caller, chain } = await managerAction(deps, id);
+  const { caller, chain } = await managerAction(deps, id, acceptNewKey);
   await putRecord(deps, caller, id, chain, { name, members: chain.latest.members });
   return { name };
 }

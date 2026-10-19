@@ -40,8 +40,11 @@ export function groupRecord(signer, { group, seq = 1, prev = '', name = 'Team', 
 // makeGroupServer serves the groups with `who` signed in, in a directory of
 // users. roles maps a user's name to an account role other than member.
 // Fields a test may read or change: groups (id to its records), directory,
-// rotations, keyring, calls, deleted, failPut (a function returning a
-// Response, or null), onKeyringGet.
+// deactivated (the wire users the directory no longer lists), rotations,
+// keyring, calls, deleted, failPut (a function returning a Response, or
+// null), onKeyringGet. signersOf(records) is the signers a group view serves
+// for records: each signer's keys, from the directory or else the deactivated
+// accounts, and their rotation records.
 export function makeGroupServer({ who, users, roles = {}, isAdmin = false }) {
   const s = {
     who,
@@ -49,6 +52,7 @@ export function makeGroupServer({ who, users, roles = {}, isAdmin = false }) {
     calls: [],
     groups: new Map(),
     directory: new Map(users.map((u) => [u.id, wireUser(u, roles[u.name] ?? 'member')])),
+    deactivated: new Map(),
     rotations: {},
     keyring: { rev: 0, keyring: '' },
     deleted: [],
@@ -56,10 +60,19 @@ export function makeGroupServer({ who, users, roles = {}, isAdmin = false }) {
     onKeyringGet: null,
   };
   const latest = (id) => bodyOf(s.groups.get(id).at(-1));
+  s.signersOf = (records) => {
+    const out = {};
+    for (const env of records) {
+      const w = s.directory.get(env.signer) ?? s.deactivated.get(env.signer);
+      out[env.signer] = { x25519: w.x25519Pub, ed25519: w.ed25519Pub, rotations: s.rotations[env.signer] ?? [] };
+    }
+    return out;
+  };
   const view = (id, withRecords) => {
     const b = latest(id);
     const mine = b.members.find((m) => m.user === s.who.id);
-    return { id, name: b.name, seq: b.seq, members: b.members.length, role: mine?.role ?? '', ...(withRecords ? { records: s.groups.get(id) } : {}) };
+    const records = s.groups.get(id);
+    return { id, name: b.name, seq: b.seq, members: b.members.length, role: mine?.role ?? '', ...(withRecords ? { records, signers: s.signersOf(records) } : {}) };
   };
 
   s.fetch = async (path, init = {}) => {

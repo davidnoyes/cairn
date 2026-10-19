@@ -15,15 +15,24 @@ import (
 
 // groupView is a group as the endpoints answer: the latest record's name,
 // its seq, the number of members, and the caller's role, empty when they are
-// not a member. Records, oldest first, are present only in the answers that
-// carry them.
+// not a member. Records, oldest first, and Signers are present only in the
+// answers that carry them.
 type groupView struct {
-	ID      string         `json:"id"`
-	Name    string         `json:"name"`
-	Seq     int            `json:"seq"`
-	Members int            `json:"members"`
-	Role    string         `json:"role"`
-	Records []e2e.Envelope `json:"records,omitempty"`
+	ID      string                 `json:"id"`
+	Name    string                 `json:"name"`
+	Seq     int                    `json:"seq"`
+	Members int                    `json:"members"`
+	Role    string                 `json:"role"`
+	Records []e2e.Envelope         `json:"records,omitempty"`
+	Signers map[string]groupSigner `json:"signers,omitempty"`
+}
+
+// groupSigner is a signer of a group record: their current public keys and
+// their rotation records, oldest first.
+type groupSigner struct {
+	X25519    string         `json:"x25519"`
+	Ed25519   string         `json:"ed25519"`
+	Rotations []e2e.Envelope `json:"rotations"`
 }
 
 // groupRecordRequest is the body of POST /api/groups and PUT
@@ -66,6 +75,49 @@ func (s *Server) loadGroup(id string) (*groupLatest, error) {
 	}
 	g.Hash = e2e.BodyHash(last.Body)
 	return g, nil
+}
+
+// signers reads the keys and rotation records of everyone who signed a record
+// of g, from the store, so a deactivated account is served too.
+func (s *Server) signers(g *groupLatest) (map[string]groupSigner, error) {
+	out := map[string]groupSigner{}
+	for _, r := range g.Records {
+		if _, ok := out[r.Signer]; ok {
+			continue
+		}
+		u, err := s.store.KeyedUserByID(r.Signer)
+		if err != nil {
+			return nil, fmt.Errorf("group %s: the signer %s of a record: %w", g.Body.Group, r.Signer, err)
+		}
+		rows, err := s.store.Rotations(u.ID)
+		if err != nil {
+			return nil, err
+		}
+		rotations := []e2e.Envelope{}
+		for _, row := range rows {
+			rotations = append(rotations, rotationEnvelope(row))
+		}
+		out[u.ID] = groupSigner{X25519: e2e.B64(u.X25519Pub), Ed25519: e2e.B64(u.Ed25519Pub), Rotations: rotations}
+	}
+	return out, nil
+}
+
+// fullView is g.view with every record and the keys of the signers.
+func (s *Server) fullView(g *groupLatest, caller string) (groupView, error) {
+	v := g.view(caller, true)
+	var err error
+	v.Signers, err = s.signers(g)
+	return v, err
+}
+
+// writeGroup answers status with g as fullView gives it.
+func (s *Server) writeGroup(w http.ResponseWriter, status int, g *groupLatest, caller string) {
+	v, err := s.fullView(g, caller)
+	if err != nil {
+		s.writeStoreError(w, err, "group")
+		return
+	}
+	writeJSON(w, status, v)
 }
 
 // view is g as the endpoints answer it to caller. withRecords adds every
@@ -141,7 +193,7 @@ func (s *Server) handleGetGroup(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err, "group")
 		return
 	}
-	writeJSON(w, http.StatusOK, g.view(requestUser(r).ID, true))
+	s.writeGroup(w, http.StatusOK, g, requestUser(r).ID)
 }
 
 func (s *Server) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +210,7 @@ func (s *Server) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 		s.writeGroupError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, g.view(caller.ID, true))
+	s.writeGroup(w, http.StatusCreated, g, caller.ID)
 }
 
 func (s *Server) handlePutGroup(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +233,7 @@ func (s *Server) handlePutGroup(w http.ResponseWriter, r *http.Request) {
 		s.writeGroupError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, g.view(caller.ID, true))
+	s.writeGroup(w, http.StatusOK, g, caller.ID)
 }
 
 func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {

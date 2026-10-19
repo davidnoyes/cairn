@@ -8,6 +8,7 @@ import * as e2e from './e2e.mjs';
 import { ApiError } from './account.mjs';
 import { rotationRecord } from './viewer_fixture.mjs';
 import { KeyChangedError } from './sharing.mjs';
+import { signedInCaller, updateKeyring } from './viewer.mjs';
 import { addMember, createGroup, deleteGroup, groupMembers, listGroups, removeMember, renameGroup } from './groups.mjs';
 import { bodyOf, depsFor, extraUser, groupRecord, keyStoreRecord, makeGroupServer, makeUser, readKeyring, seedKeyring } from './groups_fixture.mjs';
 
@@ -344,7 +345,7 @@ test('another failure of a write is passed on as it is', async () => {
 
 test('a write the server answers with the old chain is a read-back failure', async () => {
   const s = await scene();
-  s.server.failPut = () => json(200, { id: GROUP, records: s.server.groups.get(GROUP) });
+  s.server.failPut = () => json(200, { id: GROUP, records: s.server.groups.get(GROUP), signers: s.server.signersOf(s.server.groups.get(GROUP)) });
   await assert.rejects(renameGroup(s.deps, GROUP, 'New'), (err) => err.code === 'read-back' && /not the one this client signed/.test(err.message));
 });
 
@@ -353,14 +354,14 @@ test('a write the server answers with a record another manager signed is a read-
   const members = [entry(U.owner, 'manager'), entry(U.editor, 'manager')];
   const first = s.server.groups.get(GROUP)[0];
   const theirs = await groupRecord(U.editor, { group: GROUP, seq: 2, prev: await headOf(first), members, name: 'Theirs' });
-  s.server.failPut = () => json(200, { id: GROUP, records: [first, theirs] });
+  s.server.failPut = () => json(200, { id: GROUP, records: [first, theirs], signers: s.server.signersOf([first, theirs]) });
   await assert.rejects(renameGroup(s.deps, GROUP, 'New'), (err) => err.code === 'read-back' && /not the one this client signed/.test(err.message));
 });
 
 test('a write the server answers with a chain it forged is a read-back failure', async () => {
   const s = await scene();
   const forged = await groupRecord(U.outsider, { group: GROUP, seq: 2, prev: await headOf(s.server.groups.get(GROUP)[0]), over: { signer: U.owner.id, signerFp: U.owner.fp } });
-  s.server.failPut = () => json(200, { id: GROUP, records: [s.server.groups.get(GROUP)[0], forged] });
+  s.server.failPut = () => json(200, { id: GROUP, records: [s.server.groups.get(GROUP)[0], forged], signers: s.server.signersOf([s.server.groups.get(GROUP)[0], forged]) });
   await assert.rejects(renameGroup(s.deps, GROUP, 'New'), (err) => err.code === 'read-back' && err.cause instanceof e2e.DecryptError);
 });
 
@@ -413,4 +414,176 @@ test('a signer whose key changed with no rotation records links nothing, and the
   const deps = depsFor(s.server, await keyStoreRecord(rotated));
   await assert.rejects(renameGroup(deps, GROUP, 'No rotation'), e2e.ChainError);
   assert.deepEqual(puts(s), []);
+});
+
+// ---- the signers' keys ----
+
+// moveKeys makes the directory serve `user` under the keys of `as`, the way a
+// server that made keys for a real user ID would.
+function moveKeys(server, user, as) {
+  server.directory.set(user.id, { ...server.directory.get(user.id), x25519Pub: as.pair.x25519, ed25519Pub: as.pair.ed25519 });
+}
+
+test('a group whose manager was deactivated is still read, from the keys the group serves', async () => {
+  const s = await scene({ members: [entry(U.editor, 'manager')] });
+  s.server.who = U.editor;
+  await renameGroup(depsFor(s.server, records.editor), GROUP, 'Editor was here');
+  s.server.deactivated.set(U.editor.id, s.server.directory.get(U.editor.id));
+  s.server.directory.delete(U.editor.id);
+  for (const who of ['owner', 'outsider']) {
+    s.server.who = U[who];
+    s.server.keyring = { rev: 0, keyring: '' };
+    const res = await groupMembers(depsFor(s.server, records[who]), GROUP);
+    assert.equal(res.name, 'Editor was here', who);
+    assert.equal(res.members.find((m) => m.user === U.editor.id).state, '-', 'the directory no longer lists them');
+  }
+  assert.ok(!s.server.calls.some((c) => c.path.endsWith('/rotations')), 'the rotation records came with the group');
+});
+
+test('a signer not pinned yet is pinned unverified, once the chain verifies', async () => {
+  const s = await scene({ who: 'editor', members: [entry(U.editor)] });
+  const res = await groupMembers(s.deps, GROUP);
+  const kr = await readKeyring(s.server, U.editor);
+  assert.deepEqual(kr.pins[U.owner.id], { fp: U.owner.fp, state: 'unverified', rotSeq: 0, rotHead: '' });
+  assert.equal(res.members.find((m) => m.user === U.owner.id).state, 'unverified', 'the members are shown against the pins as they are now');
+  assert.equal(kr.pins[U.editor.id], undefined, 'the caller does not pin themselves');
+  // With the chain already in the keyring, a signer pinned in the meantime is
+  // still shown by the pin.
+  await updateKeyring(s.deps, await signedInCaller(s.deps), (k) => { delete k.pins[U.owner.id]; });
+  const again = await groupMembers(s.deps, GROUP);
+  assert.equal(again.members.find((m) => m.user === U.owner.id).state, 'unverified');
+  assert.deepEqual(kr.groups[GROUP].seq, 1);
+});
+
+test('nothing is pinned when the chain does not verify', async () => {
+  const s = await scene({ who: 'editor' });
+  s.server.groups.set(GROUP, [await groupRecord(U.outsider, { group: GROUP, over: { signer: U.owner.id, signerFp: U.owner.fp } })]);
+  await assert.rejects(groupMembers(s.deps, GROUP), e2e.DecryptError);
+  assert.equal(s.server.keyring.rev, 0);
+});
+
+test('a signer\'s served key that differs from the pin with no rotation is refused, naming them, until accepted', async () => {
+  const s = await scene({ who: 'editor', members: [entry(U.editor)] });
+  const k = e2e.newKeyring();
+  k.pins[U.owner.id] = { fp: 'a'.repeat(64), state: 'verified', rotSeq: 0, rotHead: '' };
+  await seedKeyring(s.server, U.editor, k);
+  await assert.rejects(groupMembers(s.deps, GROUP), (err) => err instanceof KeyChangedError && err.user === U.owner.id && err.email === 'owner@example.com' && err.fp === U.owner.fp);
+  assert.equal((await readKeyring(s.server, U.editor)).pins[U.owner.id].fp, 'a'.repeat(64), 'the pin stands');
+  await groupMembers(s.deps, GROUP, { acceptNewKey: true });
+  assert.deepEqual((await readKeyring(s.server, U.editor)).pins[U.owner.id], { fp: U.owner.fp, state: 'unverified', rotSeq: 0, rotHead: '' });
+  await groupMembers(s.deps, GROUP);
+});
+
+test('every function that reads a chain refuses a changed signer key, and accepts it when asked', async () => {
+  for (const [name, call] of [
+    ['groupMembers', (d, o) => groupMembers(d, GROUP, o)],
+    ['addMember', (d, o) => addMember(d, GROUP, 'viewer@example.com', 'member', o)],
+    ['removeMember', (d, o) => removeMember(d, GROUP, 'viewer@example.com', o)],
+    ['renameGroup', (d, o) => renameGroup(d, GROUP, 'Other', o)],
+  ]) {
+    const s = await scene({ who: 'editor', members: [entry(U.editor, 'manager'), entry(U.viewer)] });
+    const k = e2e.newKeyring();
+    k.pins[U.owner.id] = { fp: 'a'.repeat(64), state: 'verified', rotSeq: 0, rotHead: '' };
+    await seedKeyring(s.server, U.editor, k);
+    await assert.rejects(call(s.deps, {}), KeyChangedError, name);
+    assert.deepEqual(puts(s), [], `${name} signed nothing`);
+    await call(s.deps, { acceptNewKey: true });
+  }
+});
+
+test('a signer whose key rotated from the pinned one is accepted, and the pin follows', async () => {
+  const s = await scene({ who: 'editor', members: [entry(U.editor)] });
+  const rotated = await makeUser('owner');
+  rotated.mk = U.owner.mk;
+  rotated.ek = U.owner.ek;
+  s.server.rotations[U.owner.id] = [await rotationRecord(U.owner, rotated)];
+  moveKeys(s.server, U.owner, rotated);
+  s.server.who = U.owner;
+  await renameGroup(depsFor(s.server, await keyStoreRecord(rotated)), GROUP, 'After rotation');
+  s.server.who = U.editor;
+  s.server.keyring = { rev: 0, keyring: '' };
+  const k = e2e.newKeyring();
+  k.pins[U.owner.id] = { fp: U.owner.fp, state: 'verified', rotSeq: 0, rotHead: '' };
+  await seedKeyring(s.server, U.editor, k);
+  const res = await groupMembers(s.deps, GROUP);
+  assert.equal(res.name, 'After rotation');
+  const pin = (await readKeyring(s.server, U.editor)).pins[U.owner.id];
+  assert.deepEqual([pin.fp, pin.state, pin.rotSeq], [rotated.fp, 'unverified', 1]);
+});
+
+test('a chain a server signed with keys it made for a pinned user is refused', async () => {
+  const s = await scene({ who: 'editor' });
+  const k = e2e.newKeyring();
+  k.pins[U.owner.id] = { fp: U.owner.fp, state: 'verified', rotSeq: 0, rotHead: '' };
+  await seedKeyring(s.server, U.editor, k);
+  moveKeys(s.server, U.owner, U.outsider);
+  const rev = s.server.keyring.rev;
+  s.server.groups.set(GROUP, [await groupRecord(U.outsider, {
+    group: GROUP, members: [{ user: U.owner.id, fp: U.outsider.fp, role: 'manager' }], over: { signer: U.owner.id },
+  })]);
+  await assert.rejects(groupMembers(s.deps, GROUP), (err) => err instanceof KeyChangedError && err.user === U.owner.id);
+  assert.equal(s.server.keyring.rev, rev, 'the keyring is as it was seeded');
+});
+
+test('a record is signed by its signer\'s keys and no one else\'s', async () => {
+  // The first record claims the owner as its signer but was signed by the
+  // editor's key, which the editor's own later record puts among the keys.
+  const s = await scene({ who: 'outsider', members: [] });
+  const first = await groupRecord(U.editor, {
+    group: GROUP, members: [{ user: U.owner.id, fp: U.editor.fp, role: 'manager' }, entry(U.editor, 'manager')],
+    over: { signer: U.owner.id },
+  });
+  const second = await groupRecord(U.editor, {
+    group: GROUP, seq: 2, prev: await headOf(first), members: [{ user: U.owner.id, fp: U.editor.fp, role: 'manager' }, entry(U.editor, 'manager')],
+  });
+  s.server.groups.set(GROUP, [first, second]);
+  await assert.rejects(groupMembers(s.deps, GROUP), (err) => err instanceof e2e.ChainError && /does not lead to/.test(err.message));
+});
+
+test('a group view with no keys for a signer is refused', async () => {
+  const s = await scene();
+  s.deps.fetch = async (path, init) => {
+    const resp = await s.server.fetch(path, init);
+    if (path !== `/api/groups/${GROUP}`) return resp;
+    const { signers, ...rest } = await resp.json();
+    assert.ok(signers);
+    return json(200, rest);
+  };
+  await assert.rejects(groupMembers(s.deps, GROUP), (err) => err instanceof e2e.ChainError && /did not serve the keys/.test(err.message));
+});
+
+test('the caller\'s own entry in the signers is ignored for their own key', async () => {
+  const s = await scene();
+  s.deps.fetch = async (path, init) => {
+    const resp = await s.server.fetch(path, init);
+    if (path !== `/api/groups/${GROUP}`) return resp;
+    const view = await resp.json();
+    view.signers[U.owner.id] = { ...view.signers[U.owner.id], x25519: U.outsider.pair.x25519, ed25519: U.outsider.pair.ed25519 };
+    return json(200, view);
+  };
+  assert.equal((await groupMembers(s.deps, GROUP)).name, 'Team');
+});
+
+test('keys served that are not 32 bytes are a format error', async () => {
+  const s = await scene({ who: 'editor', members: [entry(U.editor)] });
+  s.deps.fetch = async (path, init) => {
+    const resp = await s.server.fetch(path, init);
+    if (path !== `/api/groups/${GROUP}`) return resp;
+    const view = await resp.json();
+    view.signers[U.owner.id].ed25519 = e2e.b64(new Uint8Array(31));
+    return json(200, view);
+  };
+  await assert.rejects(groupMembers(s.deps, GROUP), e2e.FormatError);
+});
+
+test('rotation records that do not lead to a signer\'s current key make none of their keys signing keys', async () => {
+  // The first record is signed under a key that only rotation records of
+  // another user name. Were it trusted, the chain would verify.
+  const s = await scene({ who: 'editor', members: [entry(U.editor)] });
+  s.server.rotations[U.owner.id] = [await rotationRecord(U.outsider, U.other)];
+  const first = await groupRecord(U.outsider, {
+    group: GROUP, members: [{ user: U.owner.id, fp: U.outsider.fp, role: 'manager' }, entry(U.editor)], over: { signer: U.owner.id },
+  });
+  s.server.groups.set(GROUP, [first]);
+  await assert.rejects(groupMembers(s.deps, GROUP), (err) => err instanceof e2e.ChainError && /no signer key/.test(err.message));
 });

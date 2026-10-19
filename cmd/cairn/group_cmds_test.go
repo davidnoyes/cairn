@@ -198,3 +198,62 @@ func TestGroupAddRefusesAChangedKeyUntilAccepted(t *testing.T) {
 		t.Errorf("group add --accept-new-key --json = %v", add)
 	}
 }
+
+// A command that reads a group's chain refuses a signer whose key changed from
+// the caller's pin, and --accept-new-key takes it.
+func TestGroupCommandsAcceptANewSignerKey(t *testing.T) {
+	w := newTeamWorld(t)
+	w.as(t, "ada")
+	g := runJSON[groupOut](t, runGroup, "create", "Reviewers", "--member", "cat@example.com", "--json")
+	if _, err := runQuiet(t, runGroup, "add", g.ID, "cat@example.com", "--manager"); err != nil {
+		t.Fatal(err)
+	}
+	w.as(t, "cat")
+	if _, err := runQuiet(t, runGroup, "rename", g.ID, "Cats"); err != nil {
+		t.Fatal(err)
+	}
+	w.as(t, "ada")
+	c, err := apiClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, err := c.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := c.Directory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cat, err := client.FindUser(dir, "cat@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// moved has ada pin cat at keys that are not hers, as if hers had changed.
+	moved := func() {
+		t.Helper()
+		if _, err := c.UpdateKeyring(k, func(kr *e2e.Keyring) error {
+			kr.Pins[cat.ID] = e2e.Pin{FP: strings.Repeat("a", 64), State: e2e.PinVerified}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{
+		{"show", g.ID},
+		{"rename", g.ID, "Cats rule"},
+		{"add", g.ID, "dan@example.com"},
+		{"remove", g.ID, "dan@example.com"},
+	} {
+		moved()
+		_, err := runQuiet(t, runGroup, args...)
+		var changed *client.KeyChangedError
+		if !errors.As(err, &changed) || changed.User != cat.ID || !strings.Contains(explainRefusal(c, err).Error(), "--accept-new-key") {
+			t.Errorf("group %v with cat's key changed: %v, want a key-change refusal naming --accept-new-key", args, err)
+			continue
+		}
+		if _, err := runQuiet(t, runGroup, append(args, "--accept-new-key")...); err != nil {
+			t.Errorf("group %v --accept-new-key: %v", args, err)
+		}
+	}
+}

@@ -41,12 +41,21 @@ type GroupSummary struct {
 }
 
 type groupWire struct {
-	ID      string         `json:"id"`
-	Name    string         `json:"name"`
-	Seq     int            `json:"seq"`
-	Members int            `json:"members"`
-	Role    string         `json:"role"`
-	Records []e2e.Envelope `json:"records"`
+	ID      string                     `json:"id"`
+	Name    string                     `json:"name"`
+	Seq     int                        `json:"seq"`
+	Members int                        `json:"members"`
+	Role    string                     `json:"role"`
+	Records []e2e.Envelope             `json:"records"`
+	Signers map[string]groupSignerWire `json:"signers"`
+}
+
+// groupSignerWire is the keys the server serves for a signer of a record:
+// their current public keys and their rotation records, oldest first.
+type groupSignerWire struct {
+	X25519    string         `json:"x25519"`
+	Ed25519   string         `json:"ed25519"`
+	Rotations []e2e.Envelope `json:"rotations"`
 }
 
 func (w groupWire) summary() GroupSummary {
@@ -108,55 +117,100 @@ type VerifiedGroup struct {
 	Rotations map[string][]e2e.Envelope
 }
 
-// signerKeys gathers the keys that may have signed the records, by
-// fingerprint: each signer's current keys from the directory and every key
-// pair their rotation records name. Both are served by the server and so
-// unverified: the chain check keeps only keys that hash to the fingerprint a
-// record names, and a rotation chain that links it to the one listed. A
-// signer the directory no longer lists, as an administrator deactivated them,
-// has none, and a record of theirs fails the chain.
-func (c *Client) signerKeys(records []e2e.Envelope) (map[string]e2e.KeyPair, map[string][]e2e.Envelope, error) {
-	keys := map[string]e2e.KeyPair{}
-	rotations := map[string][]e2e.Envelope{}
-	add := func(kp e2e.KeyPair) {
-		x, errX := e2e.UnB64(kp.X25519)
-		ed, errEd := e2e.UnB64(kp.Ed25519)
-		if errX == nil && errEd == nil {
-			keys[hex.EncodeToString(e2e.Fingerprint(x, ed))] = kp
-		}
-	}
-	for _, env := range records {
-		user := env.Signer
-		if _, ok := rotations[user]; ok {
-			continue
-		}
-		recs, err := c.Rotations(user)
-		if err != nil && !isNotFound(err) {
-			return nil, nil, err
-		}
-		rotations[user] = recs
-		for _, r := range recs {
-			var b e2e.RotationBody
-			if json.Unmarshal(r.Body, &b) == nil {
-				add(b.Old)
-				add(b.New)
-			}
-		}
-		u, err := c.DirectoryUser(user)
-		if err != nil && !isNotFound(err) {
-			return nil, nil, err
-		}
-		if err == nil {
-			add(e2e.KeyPair{X25519: e2e.B64(u.X25519Pub), Ed25519: e2e.B64(u.Ed25519Pub)})
-		}
-	}
-	return keys, rotations, nil
+// groupSigners is what anchorSigners makes of the keys a group's answer
+// serves for the users who signed its records.
+type groupSigners struct {
+	// keys holds, by fingerprint, the keys that may have signed a record.
+	keys map[string]e2e.KeyPair
+	// mayBe is, by user ID, the fingerprints that user may have signed under.
+	mayBe map[string]map[string]bool
+	// rotations are each signer's rotation records, by user ID.
+	rotations map[string][]e2e.Envelope
+	// pins are the pins to store for signers once the chain verifies.
+	pins map[string]e2e.Pin
 }
 
-// VerifyGroup reads a group's chain and verifies it. The keyring's groups
-// entry is the pin, so a chain shorter than the stored seq, or forked at it,
-// is refused. After success the keyring stores the chain's seq and head.
-func (c *Client) VerifyGroup(k *UnlockedKeys, groupID string) (*VerifiedGroup, error) {
+// anchorSigners anchors each signer's key as a share anchors a member's: the
+// current key the answer serves for them must be the keyring's pin or follow
+// from it by their rotation records, else it is a *KeyChangedError unless
+// acceptNewKey, and a signer not pinned yet is pinned unverified. The caller's
+// own key is k's. A record may be signed by that current key or by an earlier
+// one their rotation records link to it, and by no other: a key the server
+// serves that nothing anchors is not one.
+func (c *Client) anchorSigners(k *UnlockedKeys, kr *e2e.Keyring, w groupWire, acceptNewKey bool) (*groupSigners, error) {
+	out := &groupSigners{
+		keys: map[string]e2e.KeyPair{}, mayBe: map[string]map[string]bool{},
+		rotations: map[string][]e2e.Envelope{}, pins: map[string]e2e.Pin{},
+	}
+	for _, env := range w.Records {
+		id := env.Signer
+		if _, ok := out.mayBe[id]; ok {
+			continue
+		}
+		served, ok := w.Signers[id]
+		if !ok {
+			return nil, fmt.Errorf("the server did not serve the keys of %s, who signed a record of group %s", id, w.ID)
+		}
+		out.rotations[id] = served.Rotations
+		cur := e2e.KeyPair{X25519: served.X25519, Ed25519: served.Ed25519}
+		if id == k.UserID {
+			cur = e2e.KeyPair{X25519: e2e.B64(k.X25519Pub), Ed25519: e2e.B64(k.Ed25519Pub)}
+		}
+		x, errX := e2e.UnB64(cur.X25519)
+		ed, errEd := e2e.UnB64(cur.Ed25519)
+		if errX != nil || errEd != nil || len(x) != 32 || len(ed) != 32 {
+			return nil, fmt.Errorf("the keys the server served for %s are not 32 bytes of base64 each", id)
+		}
+		curFP := hex.EncodeToString(e2e.Fingerprint(x, ed))
+		if id != k.UserID {
+			u := DirectoryUser{ID: id, X25519Pub: x, Ed25519Pub: ed, FP: curFP}
+			_, pin, err := c.checkPin(kr, u, acceptNewKey, out.rotations)
+			if err != nil {
+				var changed *KeyChangedError
+				if errors.As(err, &changed) {
+					changed.Email = id
+					if d, derr := c.DirectoryUser(id); derr == nil {
+						changed.Email = d.Email
+					}
+				}
+				return nil, err
+			}
+			if pin != nil {
+				out.pins[id] = *pin
+			}
+		}
+		linked := e2e.RotationLinker(out.rotations)
+		out.mayBe[id] = map[string]bool{curFP: true}
+		out.keys[curFP] = cur
+		for _, r := range served.Rotations {
+			var b e2e.RotationBody
+			if json.Unmarshal(r.Body, &b) != nil {
+				continue
+			}
+			for _, kp := range []e2e.KeyPair{b.Old, b.New} {
+				x, errX := e2e.UnB64(kp.X25519)
+				ed, errEd := e2e.UnB64(kp.Ed25519)
+				if errX != nil || errEd != nil {
+					continue
+				}
+				fp := hex.EncodeToString(e2e.Fingerprint(x, ed))
+				if linked(id, fp, curFP) {
+					out.mayBe[id][fp] = true
+					out.keys[fp] = kp
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+// VerifyGroup reads a group's chain and verifies it. Each signer's keys come
+// with the group and are anchored at the keyring's pin for them, as
+// anchorSigners describes. The keyring's groups entry is the pin, so a chain
+// shorter than the stored seq, or forked at it, is refused. After success the
+// keyring stores the chain's seq and head, and the pins of signers seen for
+// the first time or whose keys rotated.
+func (c *Client) VerifyGroup(k *UnlockedKeys, groupID string, acceptNewKey bool) (*VerifiedGroup, error) {
 	kr, err := c.ReadKeyring(k)
 	if err != nil {
 		return nil, err
@@ -165,18 +219,33 @@ func (c *Client) VerifyGroup(k *UnlockedKeys, groupID string) (*VerifiedGroup, e
 	if err := c.doJSON("GET", "/api/groups/"+groupID, nil, &w); err != nil {
 		return nil, err
 	}
-	keys, rotations, err := c.signerKeys(w.Records)
+	signers, err := c.anchorSigners(k, kr, w, acceptNewKey)
 	if err != nil {
 		return nil, err
 	}
 	chain, err := e2e.VerifyGroupChain(e2e.GroupInput{
-		Group: groupID, Records: w.Records, Keys: keys, Pin: kr.GroupPin(groupID),
-		Linked: e2e.RotationLinker(rotations),
+		Group: groupID, Records: w.Records, Keys: signers.keys, Pin: kr.GroupPin(groupID),
+		Linked: e2e.RotationLinker(signers.rotations),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("the records of group %s do not verify: %w", groupID, err)
 	}
-	vg := &VerifiedGroup{ID: groupID, Chain: chain, Keyring: kr, Rotations: rotations}
+	for i, b := range chain.Bodies {
+		if !signers.mayBe[b.Signer][b.SignerFP] {
+			return nil, fmt.Errorf("the records of group %s do not verify: %w: record %d is signed under a key that %s's pinned key does not lead to", groupID, e2e.ErrChain, i+1, b.Signer)
+		}
+	}
+	for id, pin := range signers.pins {
+		if err := c.storePin(k, id, pin, kr.Pins[id].FP); err != nil {
+			return nil, fmt.Errorf("pinning the signer %s of group %s failed: %w", id, groupID, err)
+		}
+	}
+	if len(signers.pins) > 0 {
+		if kr, err = c.ReadKeyring(k); err != nil {
+			return nil, err
+		}
+	}
+	vg := &VerifiedGroup{ID: groupID, Chain: chain, Keyring: kr, Rotations: signers.rotations}
 	if vg.Keyring, err = c.recordGroup(k, kr, groupID, chain); err != nil {
 		return nil, err
 	}
@@ -228,13 +297,14 @@ type GroupView struct {
 }
 
 // ShowGroup verifies a group's chain and lists its members, each with the
-// pin state of their current keys.
-func (c *Client) ShowGroup(groupID string) (*GroupView, error) {
+// pin state of their current keys. acceptNewKey accepts a signer's changed
+// key, as VerifyGroup does.
+func (c *Client) ShowGroup(groupID string, acceptNewKey bool) (*GroupView, error) {
 	k, err := c.Unlock()
 	if err != nil {
 		return nil, err
 	}
-	vg, err := c.VerifyGroup(k, groupID)
+	vg, err := c.VerifyGroup(k, groupID, acceptNewKey)
 	if err != nil {
 		return nil, err
 	}
@@ -301,21 +371,21 @@ func (c *Client) putGroupRecord(k *UnlockedKeys, vg *VerifiedGroup, next e2e.Gro
 	if err := c.doJSON("PUT", "/api/groups/"+vg.ID, map[string]any{"record": env}, nil); err != nil {
 		return err
 	}
-	if _, err := c.VerifyGroup(k, vg.ID); err != nil {
+	if _, err := c.VerifyGroup(k, vg.ID, false); err != nil {
 		return fmt.Errorf("the server accepted the new group record, but reading it back failed: %w", err)
 	}
 	return nil
 }
 
-// managerOf verifies group groupID and returns it with the caller's keys, or
-// ErrNotGroupManager when the latest record does not list the caller as a
-// manager.
-func (c *Client) managerOf(groupID string) (*UnlockedKeys, *VerifiedGroup, error) {
+// managerOf verifies group groupID, as VerifyGroup does with acceptNewKey, and
+// returns it with the caller's keys, or ErrNotGroupManager when the latest
+// record does not list the caller as a manager.
+func (c *Client) managerOf(groupID string, acceptNewKey bool) (*UnlockedKeys, *VerifiedGroup, error) {
 	k, err := c.Unlock()
 	if err != nil {
 		return nil, nil, err
 	}
-	vg, err := c.VerifyGroup(k, groupID)
+	vg, err := c.VerifyGroup(k, groupID, acceptNewKey)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -394,7 +464,7 @@ func (c *Client) CreateGroup(name string, members []string) (*GroupView, error) 
 			return nil, fmt.Errorf("the server accepted the group, but pinning %s failed: %w", p.user.Email, err)
 		}
 	}
-	return c.ShowGroup(first.Group)
+	return c.ShowGroup(first.Group, false)
 }
 
 // GroupAddResult is what AddGroupMember did.
@@ -416,7 +486,7 @@ type GroupAddResult struct {
 // refused unless acceptNewKey, and one seen for the first time is pinned
 // unverified. A viewer account is never made a manager.
 func (c *Client) AddGroupMember(groupID, who string, manager, acceptNewKey bool) (*GroupAddResult, error) {
-	k, vg, err := c.managerOf(groupID)
+	k, vg, err := c.managerOf(groupID, acceptNewKey)
 	if err != nil {
 		return nil, err
 	}
@@ -468,8 +538,8 @@ func (c *Client) AddGroupMember(groupID, who string, manager, acceptNewKey bool)
 // RemoveGroupMember removes who, a user ID or an email, from a group. Only a
 // manager signs it, and a manager may remove themselves while another
 // remains. It returns the user ID removed.
-func (c *Client) RemoveGroupMember(groupID, who string) (string, error) {
-	k, vg, err := c.managerOf(groupID)
+func (c *Client) RemoveGroupMember(groupID, who string, acceptNewKey bool) (string, error) {
+	k, vg, err := c.managerOf(groupID, acceptNewKey)
 	if err != nil {
 		return "", err
 	}
@@ -500,8 +570,8 @@ func (c *Client) RemoveGroupMember(groupID, who string) (string, error) {
 }
 
 // RenameGroup gives a group a new name. Only a manager signs it.
-func (c *Client) RenameGroup(groupID, name string) error {
-	k, vg, err := c.managerOf(groupID)
+func (c *Client) RenameGroup(groupID, name string, acceptNewKey bool) error {
+	k, vg, err := c.managerOf(groupID, acceptNewKey)
 	if err != nil {
 		return err
 	}

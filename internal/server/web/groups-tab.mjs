@@ -148,16 +148,21 @@ export function createGroupsTab({ doc, deps }) {
   $('group-close').addEventListener('click', closeGroup);
 
   // refreshDetail lists the open group's members from its accepted chain. A
-  // chain that is refused shows no members and no controls, and says why.
-  async function refreshDetail(s) {
+  // chain that is refused shows no members and no controls, and says why. A
+  // signer whose key changed gets the warning, and accepting reads the group
+  // again with acceptNewKey.
+  async function refreshDetail(s, acceptNewKey = false) {
     let res;
     try {
-      res = await groupMembers(deps, s.id);
+      res = await groupMembers(deps, s.id, { acceptNewKey });
     } catch (err) {
       if (s !== open) return;
       s.callerRole = '';
       $('group-members').replaceChildren();
       showControls(s);
+      if (err instanceof KeyChangedError && !acceptNewKey && $('group-accept').hidden) {
+        warnKeyChanged(err.message, () => act(() => 'Reading the group…', async () => null, undefined, true));
+      }
       throw err;
     }
     if (s !== open) return;
@@ -195,7 +200,8 @@ export function createGroupsTab({ doc, deps }) {
   // act runs one change with the detail's controls disabled, shows what it
   // did, and lists the members again. A member whose keys changed gets the
   // warning first; accepting runs the same change again with acceptNewKey.
-  async function act(working, change, retry) {
+  // acceptRead is that for the list of members the change ends in.
+  async function act(working, change, retry, acceptRead = false) {
     const s = open;
     const controls = [...$('group-detail').querySelectorAll('button, input, select')].filter((c) => c.id !== 'group-close');
     for (const c of controls) c.disabled = true;
@@ -221,7 +227,7 @@ export function createGroupsTab({ doc, deps }) {
       status('group-status', describeError(failed), true);
     }
     try {
-      await refreshDetail(s);
+      await refreshDetail(s, acceptRead);
       if (!failed && s === open) status('group-status', said ?? '');
     } catch (err) {
       if (!failed && s === open) {
@@ -269,10 +275,11 @@ export function createGroupsTab({ doc, deps }) {
         return `${who} is now ${res.role}.`;
       }, acceptNewKey ? undefined : () => setRole(true));
       role.addEventListener('change', () => setRole(false));
-      actions.append(role, btn('Remove', 'danger', () => act(() => 'Removing the member…', async () => {
-        await removeMember(deps, s.id, who);
+      const remove = (acceptNewKey) => act(() => 'Removing the member…', async () => {
+        await removeMember(deps, s.id, who, { acceptNewKey });
         return `Removed ${who}.`;
-      })));
+      }, acceptNewKey ? undefined : () => remove(true));
+      actions.append(role, btn('Remove', 'danger', () => remove(false)));
     }
     tr.appendChild(td(actions));
     return tr;
@@ -282,10 +289,11 @@ export function createGroupsTab({ doc, deps }) {
     event.preventDefault();
     const s = open;
     const name = $('group-rename').value;
-    act(() => 'Renaming the group…', async () => {
-      await renameGroup(deps, s.id, name);
+    const rename = (acceptNewKey) => act(() => 'Renaming the group…', async () => {
+      await renameGroup(deps, s.id, name, { acceptNewKey });
       return `Renamed the group to ${name}.`;
-    });
+    }, acceptNewKey ? undefined : () => rename(true));
+    rename(false);
   });
 
   $('group-add-form').addEventListener('submit', (event) => {

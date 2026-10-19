@@ -2477,6 +2477,7 @@ async function openGroupRecord(env, group, keys) {
   if (!keys.has(pre.signerFp)) throw new ChainError(`no signer key for fingerprint ${pre.signerFp}`);
   const b = await openEnvelope(env, keys.get(pre.signerFp), 'group');
   if (env.signer !== b.signer) throw new ChainError(`the envelope's signer ${env.signer} is not the body's signer ${b.signer}`);
+  if (!UUID_RE.test(b.group)) throw new ChainError(`group ${b.group} is not a lowercase UUID`);
   if (b.group !== group) throw new ChainError(`record for group ${b.group}`);
   checkGroupName(b.name);
   if (b.members === null) throw new ChainError('members must be an array');
@@ -2490,6 +2491,7 @@ async function openGroupRecord(env, group, keys) {
   }
   for (const m of b.members) {
     if (m.role !== 'member' && m.role !== 'manager') throw new ChainError(`member ${m.user} has role ${m.role}`);
+    if (!isHex64(m.fp)) throw new ChainError(`group member ${m.user} fp is not 64 lowercase hex digits`);
   }
   if (!b.members.some((m) => m.role === 'manager')) throw new ChainError('no manager listed');
   return b;

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as e2e from './e2e.mjs';
 import { createGroupsTab } from './groups-tab.mjs';
+import { signedInCaller, updateKeyring } from './viewer.mjs';
 import { depsFor, extraUser, groupRecord, keyStoreRecord, makeGroupServer, makeUser, seedKeyring } from './groups_fixture.mjs';
 
 const HTML = readFileSync(new URL('./app.html', import.meta.url), 'utf8');
@@ -538,4 +539,50 @@ test('the tab builds its elements with textContent only', async () => {
   p.server.groups.set(GROUP, [hostile]);
   await p.tab.load({ me: p.me });
   assert.equal(cells(groupRow(p))[0], '<img src=x onerror=alert(1)>');
+});
+
+// ---- a signer's key changed ----
+
+// ownerPinChanged has the editor's keyring pin the owner at keys the owner
+// does not have, through the page's own deps, so the page's anchor follows.
+async function ownerPinChanged(p) {
+  await updateKeyring(p.deps, await signedInCaller(p.deps), (k) => {
+    k.pins[U.owner.id] = { fp: 'a'.repeat(64), state: 'verified', rotSeq: 0, rotHead: '' };
+  });
+}
+
+test('opening a group whose signer\'s key changed warns, shows no members, and Accept reads it', async () => {
+  const p = await page({ who: 'editor', members: [entry(U.editor)] });
+  await ownerPinChanged(p);
+  await openFirst(p);
+  await until(() => p.$('group-accept').hidden === false, 'the warning');
+  assert.match(text(p.$('group-accept-text')), /keys of owner@example.com .* changed/);
+  assert.equal(rowsOf(p, 'group-members').length, 0);
+  await p.$('group-accept-confirm').fire('click');
+  await until(() => rowsOf(p, 'group-members').length === 2, 'the members');
+  assert.equal(p.$('group-accept').hidden, true);
+});
+
+test('a rename whose signer\'s key changed warns once, and Accept renames the group', async () => {
+  const p = await page({ who: 'editor', members: [entry(U.editor, 'manager')] });
+  await openFirst(p);
+  await ownerPinChanged(p);
+  p.$('group-rename').value = 'Renamed';
+  await submit(p.$('group-rename-form'), null);
+  await until(() => p.$('group-accept').hidden === false, 'the warning');
+  assert.equal(serverRecords(p).length, 1, 'nothing is signed before it is accepted');
+  await p.$('group-accept-confirm').fire('click');
+  await until(() => serverRecords(p).length === 2, 'the record');
+  await until(() => text(p.$('group-status')) === 'Renamed the group to Renamed.', 'the status');
+});
+
+test('Remove whose signer\'s key changed warns, and Accept removes the member', async () => {
+  const p = await page({ who: 'editor', members: [entry(U.editor, 'manager'), entry(U.viewer)] });
+  await openFirst(p);
+  await ownerPinChanged(p);
+  await press(button(memberRowOf(p, U.viewer), 'Remove'));
+  await until(() => p.$('group-accept').hidden === false, 'the warning');
+  assert.equal(serverRecords(p).length, 1);
+  await p.$('group-accept-confirm').fire('click');
+  await until(() => serverRecords(p).length === 2, 'the record');
 });

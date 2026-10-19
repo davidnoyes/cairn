@@ -12,12 +12,13 @@ import (
 const groupUsage = `usage: cairn group <subcommand>
   cairn group create NAME [--member USER]... [--json]            Create a group, with you as its manager
   cairn group list [--json]                                      List every group, with your role in it
-  cairn group show GROUP [--json]                                Show a group's members, with role, fingerprint, and pin state
+  cairn group show GROUP [--accept-new-key] [--json]             Show a group's members, with role, fingerprint, and pin state
   cairn group add GROUP USER [--manager] [--accept-new-key] [--json]  Add a member, or change a role
-  cairn group remove GROUP USER [--json]                         Remove a member
-  cairn group rename GROUP NAME [--json]                         Rename a group
+  cairn group remove GROUP USER [--accept-new-key] [--json]      Remove a member
+  cairn group rename GROUP NAME [--accept-new-key] [--json]      Rename a group
   cairn group delete GROUP [--json]                              Delete a group (a manager, or an administrator)
-GROUP is a group ID or an exact name`
+GROUP is a group ID or an exact name; --accept-new-key accepts a signer's
+changed key, which a group's records are checked against`
 
 func runGroup(args []string) error {
 	if len(args) == 0 {
@@ -163,8 +164,9 @@ func groupList(args []string) error {
 }
 
 func groupShow(args []string) error {
-	const usage = "cairn group show GROUP [--json]"
+	const usage = "cairn group show GROUP [--accept-new-key] [--json]"
 	fs := flag.NewFlagSet("group show", flag.ExitOnError)
+	acceptNewKey := fs.Bool("accept-new-key", false, "accept a signer's key that changed since it was pinned")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	pos, err := parsePositional(fs, args, 1, usage)
 	if err != nil {
@@ -178,7 +180,7 @@ func groupShow(args []string) error {
 	if err != nil {
 		return err
 	}
-	v, err := c.ShowGroup(g.ID)
+	v, err := c.ShowGroup(g.ID, *acceptNewKey)
 	if err != nil {
 		return explainRefusal(c, err)
 	}
@@ -193,7 +195,7 @@ func groupAdd(args []string) error {
 	const usage = "cairn group add GROUP USER [--manager] [--accept-new-key] [--json]"
 	fs := flag.NewFlagSet("group add", flag.ExitOnError)
 	manager := fs.Bool("manager", false, "add the user as a manager, not a member")
-	acceptNewKey := fs.Bool("accept-new-key", false, "add the user even though their fingerprint changed since it was pinned")
+	acceptNewKey := fs.Bool("accept-new-key", false, "accept the user's, or a signer's, key that changed since it was pinned")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	pos, err := parsePositional(fs, args, 2, usage)
 	if err != nil {
@@ -230,8 +232,9 @@ func groupAdd(args []string) error {
 }
 
 func groupRemove(args []string) error {
-	const usage = "cairn group remove GROUP USER [--json]"
+	const usage = "cairn group remove GROUP USER [--accept-new-key] [--json]"
 	fs := flag.NewFlagSet("group remove", flag.ExitOnError)
+	acceptNewKey := fs.Bool("accept-new-key", false, "accept a signer's key that changed since it was pinned")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	pos, err := parsePositional(fs, args, 2, usage)
 	if err != nil {
@@ -245,7 +248,7 @@ func groupRemove(args []string) error {
 	if err != nil {
 		return err
 	}
-	user, err := c.RemoveGroupMember(g.ID, pos[1])
+	user, err := c.RemoveGroupMember(g.ID, pos[1], *acceptNewKey)
 	if err != nil {
 		return explainRefusal(c, err)
 	}
@@ -257,8 +260,9 @@ func groupRemove(args []string) error {
 }
 
 func groupRename(args []string) error {
-	const usage = "cairn group rename GROUP NAME [--json]"
+	const usage = "cairn group rename GROUP NAME [--accept-new-key] [--json]"
 	fs := flag.NewFlagSet("group rename", flag.ExitOnError)
+	acceptNewKey := fs.Bool("accept-new-key", false, "accept a signer's key that changed since it was pinned")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	pos, err := parsePositional(fs, args, 2, usage)
 	if err != nil {
@@ -272,7 +276,7 @@ func groupRename(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := c.RenameGroup(g.ID, pos[1]); err != nil {
+	if err := c.RenameGroup(g.ID, pos[1], *acceptNewKey); err != nil {
 		return explainRefusal(c, err)
 	}
 	if *jsonOut {
