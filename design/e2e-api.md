@@ -2502,6 +2502,15 @@ A group record is a `group` envelope, with the body in
 - A manager may add and remove members and managers, change roles, rename
   the group, and remove themselves while another manager remains.
 
+Each signer's key is anchored the way a member's key is in a share. The
+client takes the signer's current key from the directory and follows it from
+its pin for that user: the pinned key, or one the signer's rotation chain
+links forward from it. A changed key that no rotation explains is refused
+until the person at the client accepts it, and an unpinned signer is pinned
+as unverified. The key that signed a record is that current key, or an
+earlier one the signer's rotation chain links to it. Without this, a server
+could serve a whole chain signed by keys it made for real user IDs.
+
 A client accepts a group's chain only when every record passes these rules
 and each signature verifies. It then checks the chain against the keyring's
 `groups` entry, refusing one that is shorter or forked, and stores the new

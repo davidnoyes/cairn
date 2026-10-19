@@ -429,7 +429,8 @@ surrogate.
   in a record that changes the owner.
 - A `group` record's `group` is the group's ID, a random UUID that never
   changes. `seq` and `prev` work as in a membership record. `name` is 1 to
-  100 Unicode code points with no control characters. `members` is sorted by
+  100 Unicode code points, none in the control category `Cc`, which
+  includes `U+007F`. `members` is sorted by
   user ID, holds at most 1000 entries and at least one with `role`
   `manager`, and each other entry has `role` `member`. Each `fp` is the
   fingerprint the signer saw for that user. `signer` is the envelope's
