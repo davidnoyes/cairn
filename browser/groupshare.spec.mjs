@@ -95,3 +95,56 @@ test('group share: approve the members, approve a joiner, remove one who left, a
   await everyone.getByRole('button', { name: 'Remove' }).click();
   await expect(everyone).toHaveCount(0, { timeout: 60_000 });
 });
+
+test('group share: the owner sees who waits, an editor approves from the approve-only dialog, and a deleted group shows as deleted', async ({ browser, ownerPage, browserName }) => {
+  const s = loadState();
+  const domain = s.users.owner.email.split('@')[1];
+  const stamp = `${browserName}-${Date.now()}`;
+  const editor = await freshUser(`gse-${stamp}`, domain);
+  const joiner = await freshUser(`gsj-${stamp}`, domain);
+  const group = `Joiners ${stamp}`;
+  cli('owner', ['group', 'create', group]);
+  const id = JSON.parse(cli('owner', ['push', path.join(s.fixturesDir, 'marker'), '--artifact', `gse-doc-${stamp}`, '--create', '--json'])).artifact.id;
+  cli('owner', ['share', id, editor.email, '--role', 'editor']);
+  cli('owner', ['share', id, group, '--role', 'viewer']);
+  cli('owner', ['group', 'add', group, joiner.email]);
+
+  // The owner's row says someone waits; the name cell holds the name alone.
+  await ownerPage.goto(`${s.appOrigin}/app`);
+  await ownerPage.getByRole('tab', { name: 'Artifacts' }).click();
+  const ownerRow = ownerPage.locator(`#own tr[data-id="${id}"]`);
+  await expect(ownerRow.locator('span.pill.waiting')).toHaveText('1 waiting for approval', { timeout: 60_000 });
+  await expect(ownerRow.locator('td.name')).toHaveText(`gse-doc-${stamp}`);
+
+  // The editor approves from the approve-only dialog, which shows nothing else.
+  const ctx = await browser.newContext();
+  try {
+    const page = await ctx.newPage();
+    await signIn(page, editor.email, editor.password);
+    await page.getByRole('tab', { name: 'Artifacts' }).click();
+    const row = page.locator(`#shared tr[data-id="${id}"]`);
+    await expect(row.locator('span.pill.waiting')).toHaveText('1 waiting for approval', { timeout: 60_000 });
+    await row.getByRole('button', { name: 'Approve' }).click();
+    const dialog = page.locator('dialog#share');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('#approve-only-note')).toBeVisible();
+    await expect(dialog.locator('#share-form')).toBeHidden();
+    const waiting = dialog.locator(`#waiting tr[data-state="new"][data-email="${joiner.email}"]`);
+    await waiting.getByRole('button', { name: 'Approve' }).click();
+    await expect(waiting).toHaveCount(0, { timeout: 60_000 });
+  } finally {
+    await ctx.close();
+  }
+  await reads(browser, joiner, id, true);
+  await ownerPage.reload();
+  await ownerPage.getByRole('tab', { name: 'Artifacts' }).click();
+  await expect(ownerPage.locator('#own')).not.toHaveAttribute('aria-busy', 'true', { timeout: 60_000 });
+  await expect(ownerRow.locator('span.pill.waiting')).toBeHidden();
+
+  // A deleted group shows as deleted, with nothing to change.
+  cli('owner', ['group', 'delete', group]);
+  const dialog = await openDialog(ownerPage, id);
+  const gone = dialog.locator('#members tr[data-group]');
+  await expect(gone).toContainText('(deleted group)', { timeout: 30_000 });
+  await expect(gone.locator('select')).toHaveCount(0);
+});

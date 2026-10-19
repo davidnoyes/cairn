@@ -550,8 +550,10 @@ each client checks the chain before it shows them.
 Sharing an artifact with a group works like sharing with everyone. Each
 member is approved by name, with their fingerprint checked against the
 group's signed records, and someone who leaves the group loses access at
-once and is excluded at the next epoch. The browser shares with groups from
-the next release; until then, use the command-line tool.
+once and is excluded at the next epoch. In the app, the share dialog adds a
+group or Everyone, lists who is waiting with **Approve**, and lists anyone who
+left the group with **Remove**. An editor can approve too, from the
+**Approve** button on the artifact's row.
 
 ```sh
 cairn group create Design --member bob@example.com
