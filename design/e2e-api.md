@@ -2419,7 +2419,7 @@ answers with the item's view.
 - **Cycles.** A folder cannot move into itself or into a folder inside it:
   `409`.
 - **No content.** A folder refuses every version, push, database, file,
-  manifest, blob, review, and content-token route with `409` and
+  manifest, blob, review, resource, and content-token route with `409` and
   `a folder holds no content`.
 - **Private in F1.** A membership record for a folder must list no members,
   keep `team` at `none`, and keep `public` and `publicWrites` off. Otherwise
