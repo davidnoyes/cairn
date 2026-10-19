@@ -2636,6 +2636,10 @@ share, a group grants nothing by itself:
   the team share, stops matching at once: the server answers `404`. They
   show as `left` in the pending list, still holding the key, and the next
   epoch must list or exclude them, as for any unlisted holder.
+- **Consent goes with the key.** An approval seals the epoch's key to a
+  user, and that key stays with them until the next epoch. A user who left
+  and is added back to a listed group before then reads again without a new
+  approval, because they still hold the key an approver gave them.
 - **Listing.** At the next epoch an approved user is listed under the highest
   role among the team share and the listed groups that hold them, from
   verified group chains. A viewer account is listed as `viewer` whatever that
@@ -2674,8 +2678,12 @@ not hold them is not approved and not listed.
 ### Commands for sharing with groups
 
 The second argument of `cairn share` and `cairn unshare` is a user when it
-holds `@`, the team share when it is `everyone`, and otherwise a group ID or
-exact name.
+holds `@`, and the team share when it is `everyone`. An argument shaped like
+an ID matches a group by its ID only, and otherwise a user ID; any other
+argument is a group's exact name. A group's name is chosen by its managers,
+so a name never stands in for an ID: a group named after someone's user ID
+cannot take a share meant for that user. The command names the group it
+resolved before it acts.
 
 - `cairn share ITEM GROUP --role viewer|editor` lists the group, then
   approves each of its current members whose checks pass, and names the rest
