@@ -2480,3 +2480,101 @@ elsewhere.
 - A folder row has **Rename** and **Delete**. Delete states how many folders
   and artifacts it removes, and shows progress.
 - **Shared with you** stays a flat list in F1.
+
+## Groups
+
+Milestone R3a of the [roles, groups, and folders plan](rbac-folders.md): a
+group is a named set of users, kept as a signed chain of group records. This
+milestone builds the records, their checks, and managing groups. Sharing an
+artifact with a group arrives with R3b, and in the browser with R3c.
+
+### Group records
+
+A group record is a `group` envelope, with the body in
+[Signatures](e2e-wire-formats.md#signatures):
+
+- The creator signs the first record: `seq` 1, `prev` empty, and the creator
+  listed as `manager` under `signerFp`.
+- Each later record is signed by a user listed as `manager` in the previous
+  record. The key that signed it is the one listed for them there, or one
+  their rotation chain links to it, as for a manager's membership record.
+- Every record keeps the same `group`, and lists at least one manager.
+- A manager may add and remove members and managers, change roles, rename
+  the group, and remove themselves while another manager remains.
+
+A client accepts a group's chain only when every record passes these rules
+and each signature verifies. It then checks the chain against the keyring's
+`groups` entry, refusing one that is shorter or forked, and stores the new
+`seq` and `head`. It does this before it shows a group's members, and before
+it adds a member or signs a record. The Go client in `internal/e2e` and the
+browser in `e2e.mjs` check the same vectors, in a `group` section of
+`vectors.json`.
+
+### Endpoints for groups
+
+| Method and path | Access | Purpose |
+| --- | --- | --- |
+| `GET /api/groups` | Any | Every group, with its name, its latest `seq`, its number of members, and the caller's role in it |
+| `POST /api/groups` | Any, not a viewer account | Create a group with its first record |
+| `GET /api/groups/{id}` | Any | The group, with every record, oldest first |
+| `PUT /api/groups/{id}` | A manager of the group | Add the next record |
+| `DELETE /api/groups/{id}` | A manager, or an administrator | Delete the group |
+
+A group's name and members are visible to every signed-in user, like the
+directory, so any caller reads every group. `POST` and `PUT` take
+`{"record": envelope}` and answer with the group. The group view is
+`{"id", "name", "seq", "members", "role", "records"}`: `members` is the
+count, `role` is the caller's role or empty, and `records` is present only
+in `GET /api/groups/{id}` and the answers to `POST` and `PUT`.
+
+### Server checks for groups
+
+- The envelope's signer is the caller, its signature verifies under the
+  caller's current key, and `signerFp` is the caller's current fingerprint. A
+  viewer account signs no group record: `403`.
+- **First record.** `group` is a random lowercase UUID not already used,
+  `seq` is 1, `prev` is empty, and the caller is listed as `manager`.
+- **Later record.** `seq` is one more than the stored latest, `prev` is the
+  hash of its body, and the caller is listed as `manager` in it, under their
+  current fingerprint or one their rotation records link to it. A record
+  that lost a race answers `409`, so the client reads the group again.
+- Every user a record adds, or whose entry changes, is a verified and active
+  account, listed under their current fingerprint. A record may not make a
+  viewer account a manager. An entry carried over unchanged is not checked
+  again, so a deactivated member stays listed until a manager removes them.
+- The body passes the rules in
+  [Signatures](e2e-wire-formats.md#signatures): its keys, the sorted unique
+  members, the size limits, the name, and at least one manager.
+- Deleting a group removes its records. An artifact shared with it loses
+  that share at once, from R3b on.
+
+### Clients for groups
+
+- Adding a member uses their fingerprint from the directory, checked against
+  the caller's pin as a share does: a changed key is refused until the
+  person at the client accepts it.
+- A command or page shows a group's members only from a chain it accepted,
+  with each member's fingerprint and pin state.
+- A `GROUP` argument is a group ID or an exact name. Names need not be
+  unique, so a name two groups share is refused as ambiguous.
+
+### Commands for groups
+
+All take `--json`.
+
+- `cairn group create NAME [--member USER]...`
+- `cairn group list`
+- `cairn group show GROUP`, with each member's role, fingerprint, and pin
+  state
+- `cairn group add GROUP USER [--manager] [--accept-new-key]`
+- `cairn group remove GROUP USER`
+- `cairn group rename GROUP NAME`
+- `cairn group delete GROUP`
+
+### A tab for groups
+
+A **Groups** tab lists every group, the caller's own first, with the
+caller's role in each. **New group** creates one. Opening a group shows its
+members, with role, fingerprint state, and email. A manager can add a member
+by email, as member or manager, change a role, remove a member, rename the
+group, and delete it. An administrator can delete any group.

@@ -195,7 +195,7 @@ older copy, which would drop a pin and turn a changed key into one that looks
 new. The keyring therefore carries a revision:
 
 ```json
-{"v": 1, "rev": 12, "pins": {}, "epochs": {}}
+{"v": 1, "rev": 12, "pins": {}, "epochs": {}, "groups": {}}
 ```
 
 - `rev` is an integer that goes up by one on every write.
@@ -234,6 +234,11 @@ new. The keyring therefore carries a revision:
   never encrypts under an older epoch. It refuses a membership chain shorter
   than the stored `seq`, and a chain whose record at that `seq` hashes to
   anything but `head`, because that is a fork.
+- `groups` maps a group ID to `{"seq", "head"}`: the `seq` of the latest
+  group record accepted, and `hex(SHA-256)` of its body. A client refuses a
+  group chain shorter than the stored `seq`, and one whose record at that
+  `seq` hashes to anything but `head`. The key is left out while it is
+  empty, so a keyring that has never seen a group parses as before.
 
 ## Blobs
 
@@ -396,6 +401,7 @@ surrogate.
 | `membership` | The owner | `{"v":1,"artifact","epoch","seq","owner","ownerFp","akCommit","members":[{"user","role","fp"}],"excluded":[{"user","fp","email"}],"team","public","publicWrites","prev","transfer","handover"}` |
 | `membership` (v2) | A manager | The version 1 body with `"v":2` and two more keys, `"signer"` and `"signerFp"` |
 | `transfer` | The current owner | `{"v":1,"artifact","from","to","toFp","prev"}` |
+| `group` | A manager of the group | `{"v":1,"group","seq","prev","name","members":[{"user","fp","role"}],"signer","signerFp"}` |
 | `approval` | The approving owner or editor | `{"v":1,"artifact","epoch","user","fp"}` |
 | `manifest` | Whoever pushed | `{"v":1,"artifact","version","epoch","files":[{"path","blob","size","sha256"}]}` |
 | `revision` | Whoever wrote the database | `{"v":1,"artifact","version","revision","epoch","sha256"}` |
@@ -421,6 +427,13 @@ surrogate.
   that the record accepts. `handover` is empty, or `admin` when the record
   accepts an administrator's offer. At most one of the two is set, and only
   in a record that changes the owner.
+- A `group` record's `group` is the group's ID, a random UUID that never
+  changes. `seq` and `prev` work as in a membership record. `name` is 1 to
+  100 Unicode code points with no control characters. `members` is sorted by
+  user ID, holds at most 1000 entries and at least one with `role`
+  `manager`, and each other entry has `role` `member`. Each `fp` is the
+  fingerprint the signer saw for that user. `signer` is the envelope's
+  signer, and `signerFp` is the fingerprint of the key that signed.
 - A `transfer` offer names the current owner as `from` and an editor as `to`.
   `toFp` is the `fp` listed for that editor, and `prev` is `hex(SHA-256)` of
   the latest membership record's body, so the offer is valid against that
