@@ -10,6 +10,7 @@
 //   stretch(password, email, params)   Argon2id, off the UI thread in a page
 //   strength(password, userInputs)     -> {score, feedback}, like zxcvbn
 //   keyStore                           {save(record), clear()}, see keystore.mjs
+//   credentials                        like navigator.credentials, for passkeys
 import * as e2e from './e2e.mjs';
 import { wrapX25519 } from './keystore.mjs';
 
@@ -38,6 +39,15 @@ export class IncompleteLinkError extends Error {
   }
 }
 
+// PasskeyUnsupportedError is an authenticator or browser that cannot
+// evaluate the PRF extension, so the passkey cannot unlock the account's keys.
+export class PasskeyUnsupportedError extends Error {
+  constructor() {
+    super('This passkey cannot unlock Cairn: it does not support the PRF extension. Use another passkey or password manager, or sign in with your password.');
+    this.name = 'PasskeyUnsupportedError';
+  }
+}
+
 export class WeakPasswordError extends Error {
   constructor(feedback) {
     super('That password is too weak. Use a longer, less predictable passphrase, and leave out your name and email.');
@@ -63,6 +73,20 @@ async function send(deps, method, path, body) {
 
 function post(deps, path, body) {
   return send(deps, 'POST', path, body);
+}
+
+// sendStatus is send that also returns the HTTP status, for an answer whose
+// meaning depends on it.
+async function sendStatus(deps, method, path, body) {
+  const options = { method };
+  if (body !== undefined) {
+    options.headers = { 'Content-Type': 'application/json' };
+    options.body = JSON.stringify(body);
+  }
+  const resp = await deps.fetch(path, options);
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new ApiError(data.error || `request failed (${resp.status})`, resp.status);
+  return { status: resp.status, data };
 }
 
 // checkNewPassword enforces the same rules as the CLI's CheckNewPassword:
@@ -130,8 +154,10 @@ export async function signUp(deps, { email, name, password, confirm }) {
   email = e2e.normalizeEmail(email);
   checkNewPassword(deps, password, confirm, [email, name]);
   const { authKey, bundle, recoveryCode } = await generateAccount(deps, email, password);
-  await post(deps, '/api/auth/signup', { email, name, authKey, bundle });
-  return { recoveryCode };
+  const { status } = await sendStatus(deps, 'POST', '/api/auth/signup', { email, name, authKey, bundle });
+  // A Google sign-up is verified by the Google sign-in, so the server
+  // answers 201 and the account is active at once; otherwise it mails a link.
+  return { recoveryCode, active: status === 201 };
 }
 
 // parseKdf turns the wire form of the Argon2id parameters into what the
@@ -176,7 +202,12 @@ export async function signIn(deps, { email, password }) {
 // X25519 key is also wrapped, for a browser that will not store it as a
 // CryptoKey (see keystore.mjs).
 async function openBundle(user, bundle, kek) {
-  const mk = await e2e.openKey(kek, ['mk'], e2e.unb64(bundle.mkPassword));
+  return openBundleWithMK(user, bundle, await e2e.openKey(kek, ['mk'], e2e.unb64(bundle.mkPassword)));
+}
+
+// openBundleWithMK opens the rest of the bundle once MK is open, whichever
+// key opened it: the password's kek or a passkey's.
+async function openBundleWithMK(user, bundle, mk) {
   const mkSeal = await e2e.mkSealCryptoKey(mk);
   let x25519Raw, ed25519Raw;
   try {
@@ -197,6 +228,148 @@ async function openBundle(user, bundle, kek) {
     x25519Raw?.fill(0);
     ed25519Raw?.fill(0);
   }
+}
+
+const bytes = (buf) => new Uint8Array(buf);
+const PASSKEY_ALGS = [-8, -7, -257];
+
+// prfOutput copies a credential's PRF result out of its extension results,
+// and zeroes the original. Without one the authenticator cannot unlock the
+// account.
+function prfOutput(cred) {
+  const first = cred.getClientExtensionResults()?.prf?.results?.first;
+  if (!first) throw new PasskeyUnsupportedError();
+  const view = bytes(first);
+  const out = view.slice();
+  view.fill(0);
+  return out;
+}
+
+// signInWithPasskey signs in with a passkey in place of the password: the
+// server checks the assertion and starts a session, and the passkey's PRF
+// output opens that credential's sealed copy of MK. The PRF result is read
+// before the assertion is sent, so a passkey that cannot unlock never starts
+// a session. On a Google server the session also needs the Google proof
+// cookie, which the browser sends with the request.
+export async function signInWithPasskey(deps) {
+  const { challenge, rpId } = await post(deps, '/api/auth/passkey/begin', {});
+  const cred = await deps.credentials.get({
+    publicKey: {
+      challenge: e2e.unb64(challenge),
+      rpId,
+      userVerification: 'required',
+      allowCredentials: [],
+      extensions: { prf: { eval: { first: e2e.PASSKEY_PRF_INPUT } } },
+    },
+  });
+  const prf = prfOutput(cred);
+  try {
+    const credentialId = e2e.b64(bytes(cred.rawId));
+    const { user, bundle, passkeyMk } = await post(deps, '/api/auth/passkey/finish', {
+      credentialId,
+      clientDataJSON: e2e.b64(bytes(cred.response.clientDataJSON)),
+      authenticatorData: e2e.b64(bytes(cred.response.authenticatorData)),
+      signature: e2e.b64(bytes(cred.response.signature)),
+      userHandle: e2e.b64(bytes(cred.response.userHandle ?? new ArrayBuffer(0))),
+    });
+    try {
+      const kek = await e2e.passkeyKekCryptoKey(prf, user.id, credentialId, 'open');
+      const mk = await e2e.openKey(kek, ['mk', credentialId], e2e.unb64(passkeyMk));
+      await deps.keyStore.save(await openBundleWithMK(user, bundle, mk));
+    } catch (err) {
+      await post(deps, '/api/auth/logout', {}).catch(() => {});
+      throw err;
+    }
+    return user;
+  } finally {
+    prf.fill(0);
+  }
+}
+
+// enrollPasskey adds a passkey that can unlock the account. It needs MK, so
+// it asks for the password first, before touching the authenticator. The
+// credential must support PRF; one that does not is refused and nothing is
+// stored. Some authenticators return no PRF output when creating, so the
+// output then comes from one assertion with the new credential.
+export async function enrollPasskey(deps, { name, password }) {
+  name = (name ?? '').trim() || 'passkey';
+  const { me, authKey, mk } = await unlock(deps, password);
+  let prf;
+  try {
+    const existing = await send(deps, 'GET', '/api/me/passkeys');
+    const cred = await deps.credentials.create({
+      publicKey: {
+        rp: { name: 'Cairn' },
+        user: { id: enc.encode(me.id), name: me.email, displayName: me.name || me.email },
+        challenge: randomBytes(32),
+        pubKeyCredParams: PASSKEY_ALGS.map((alg) => ({ type: 'public-key', alg })),
+        authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'required' },
+        attestation: 'none',
+        excludeCredentials: existing.map((p) => ({ type: 'public-key', id: e2e.unb64(p.id) })),
+        extensions: { prf: { eval: { first: e2e.PASSKEY_PRF_INPUT } } },
+      },
+    });
+    const ext = cred.getClientExtensionResults()?.prf;
+    if (!ext?.enabled) throw new PasskeyUnsupportedError();
+    const credentialId = e2e.b64(bytes(cred.rawId));
+    if (ext.results?.first) {
+      prf = prfOutput(cred);
+    } else {
+      prf = prfOutput(await deps.credentials.get({
+        publicKey: {
+          challenge: randomBytes(32),
+          userVerification: 'required',
+          allowCredentials: [{ type: 'public-key', id: bytes(cred.rawId) }],
+          extensions: { prf: { eval: { first: e2e.PASSKEY_PRF_INPUT } } },
+        },
+      }));
+    }
+    const publicKey = cred.response.getPublicKey();
+    if (!publicKey) throw new PasskeyUnsupportedError();
+    const kek = await e2e.passkeyKekCryptoKey(prf, me.id, credentialId, 'seal');
+    const sealed = await e2e.seal(kek, ['mk', credentialId], mk);
+    return await post(deps, '/api/me/passkeys', {
+      authKey,
+      id: credentialId,
+      name,
+      publicKey: e2e.b64(bytes(publicKey)),
+      alg: cred.response.getPublicKeyAlgorithm(),
+      mk: e2e.b64(sealed),
+    });
+  } finally {
+    mk.fill(0);
+    prf?.fill(0);
+  }
+}
+
+// listPasskeys returns the account's enrolled passkeys.
+export function listPasskeys(deps) {
+  return send(deps, 'GET', '/api/me/passkeys');
+}
+
+// removePasskey removes one passkey and its copy of MK from the server. The
+// credential stays in the authenticator until the user deletes it there.
+export function removePasskey(deps, id) {
+  return send(deps, 'DELETE', '/api/me/passkeys/' + encodeURIComponent(id));
+}
+
+// googleIdentity returns the address and name of this browser's Google
+// sign-in, or null when it has none, has used it, or let it expire.
+export async function googleIdentity(deps) {
+  try {
+    return await send(deps, 'GET', '/api/auth/google');
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return null;
+    throw err;
+  }
+}
+
+// forgotWithGoogle starts a reset on a Google server: the Google sign-in
+// stands in for the emailed link, so the server answers with the link's
+// token for the page to carry on to /reset.
+export async function forgotWithGoogle(deps) {
+  const { token } = await post(deps, '/api/auth/forgot', {});
+  return token;
 }
 
 // afterSignIn is where the sign-in page sends a person: next, which the

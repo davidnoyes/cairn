@@ -2329,3 +2329,7 @@ internal/server/middleware.go	if !requestUser(r).IsAdmin {	if false {	go test ./
 internal/server/web/meta.mjs	if (values.name?.trim()) Object.assign	if (values.name) Object.assign	node --test internal/server/web/meta_test.mjs
 internal/server/web/mermaid-boot.js	doc.querySelectorAll(".mermaid")	doc.querySelectorAll("pre.mermaid")	node --test internal/server/web/mermaid-boot_test.mjs
 internal/server/web/mermaid-boot.js	if (global.mermaid) global.mermaid.startOnLoad = false;	if (global.mermaid && !global.__cairnMermaidBooted) global.mermaid.startOnLoad = false;	node --test internal/server/web/mermaid-boot_test.mjs
+internal/server/web/account.mjs	if (!ext?.enabled) throw new PasskeyUnsupportedError();	void 0;	node --test internal/server/web/account_signin_test.mjs
+internal/server/web/account.mjs	excludeCredentials: existing.map	excludeCredentials: [].map	node --test internal/server/web/account_signin_test.mjs
+internal/server/web/account.mjs	  view.fill(0);	  void 0;	node --test internal/server/web/account_signin_test.mjs
+internal/server/web/account.mjs	      allowCredentials: [],	      allowCredentials: [], userVerification: 'discouraged',	node --test internal/server/web/account_signin_test.mjs
