@@ -384,10 +384,26 @@ func (c *Client) AddResource(artifactID, typ, value string) error {
 // caller's artifacts, else a resource reference the caller added, such as a
 // Claude session ID, and returns the artifact with its name and description
 // opened. A name or a reference that several artifacts share is an error
-// naming their IDs.
+// naming their IDs. A folder resolves like an artifact.
 func (c *Client) ResolveArtifact(ref string) (*Artifact, error) {
+	return c.resolve(ref, "")
+}
+
+// ResolveFolder is ResolveArtifact among the folders only: a name that an
+// artifact and a folder share names the folder, and an ID or a reference that
+// names an artifact is an error.
+func (c *Client) ResolveFolder(ref string) (*Artifact, error) {
+	return c.resolve(ref, store.KindFolder)
+}
+
+// resolve implements ResolveArtifact, and ResolveFolder when kind is set: only
+// an artifact of that kind matches.
+func (c *Client) resolve(ref, kind string) (*Artifact, error) {
 	a, err := c.GetArtifact(ref)
 	if err == nil {
+		if kind != "" && a.Kind != kind {
+			return nil, fmt.Errorf("%s is not a %s", ref, kind)
+		}
 		return a, nil
 	}
 	var apiErr *APIError
@@ -399,6 +415,9 @@ func (c *Client) ResolveArtifact(ref string) (*Artifact, error) {
 	all, err := c.listArtifacts()
 	if err != nil {
 		return nil, err
+	}
+	if kind != "" {
+		all = slices.DeleteFunc(all, func(a *Artifact) bool { return a.Kind != kind })
 	}
 	openErr := c.OpenNames(all...)
 	var matches []*Artifact

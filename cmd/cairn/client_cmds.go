@@ -469,12 +469,20 @@ func artifactList(args []string) error {
 	if *jsonOut {
 		return printJSON(as)
 	}
+	paths := client.FolderPaths(as)
 	for _, a := range as {
 		vis := "private"
 		if a.Public {
 			vis = "public"
 		}
-		fmt.Printf("%s  %-24s  %-7s  %s\n", a.ID, a.Title(), vis, a.Description)
+		title := a.Title()
+		if a.Kind == "folder" {
+			vis, title = "folder", title+"/"
+		}
+		if paths[a.ID] != "" {
+			title = paths[a.ID] + "/" + title
+		}
+		fmt.Printf("%s  %-24s  %-7s  %s\n", a.ID, title, vis, a.Description)
 	}
 	return nil
 }
@@ -484,6 +492,7 @@ func artifactCreate(args []string) error {
 	nameFlag := fs.String("name", "", "artifact name (same as the NAME argument)")
 	description := fs.String("description", "", "artifact description")
 	resource := fs.String("resource", "", "associated resource as type=value (e.g. claude-session=abc)")
+	in := fs.String("in", "", "folder to create it in (an ID or a name)")
 	jsonOut := fs.Bool("json", false, "JSON output")
 	lead, rest := splitLeadingArg(args)
 	if err := fs.Parse(rest); err != nil {
@@ -497,13 +506,17 @@ func artifactCreate(args []string) error {
 		name = *nameFlag
 	}
 	if name == "" {
-		return fmt.Errorf("usage: cairn artifact create NAME [--description D] [--resource type=value] [--json]")
+		return fmt.Errorf("usage: cairn artifact create NAME [--description D] [--resource type=value] [--in FOLDER] [--json]")
 	}
 	c, err := apiClient()
 	if err != nil {
 		return err
 	}
-	a, err := c.CreateArtifact(name, *description)
+	parent, err := parentFolder(c, *in)
+	if err != nil {
+		return err
+	}
+	a, err := c.CreateArtifact(name, *description, client.InFolder(parent))
 	if err != nil {
 		return err
 	}
@@ -542,9 +555,13 @@ func artifactShow(args []string) error {
 	if err != nil {
 		return err
 	}
-	versions, err := c.ListVersions(a.ID)
-	if err != nil {
-		return err
+	// A folder holds no content, so it has no versions to list.
+	isFolder := a.Kind == "folder"
+	versions := []*client.Version{}
+	if !isFolder {
+		if versions, err = c.ListVersions(a.ID); err != nil {
+			return err
+		}
 	}
 	if *jsonOut {
 		return printJSON(map[string]any{"artifact": a, "versions": versions})
@@ -552,6 +569,10 @@ func artifactShow(args []string) error {
 	vis := "private"
 	if a.Public {
 		vis = "public"
+	}
+	if isFolder {
+		fmt.Printf("%s (%s, folder)\n%s\n", a.Title(), a.ID, a.Description)
+		return nil
 	}
 	fmt.Printf("%s (%s, %s)\n%s\n", a.Title(), a.ID, vis, a.Description)
 	// The server holds a resource's blind index only, so its value cannot be
@@ -641,6 +662,7 @@ func runPush(args []string) error {
 	accept := acceptNewOwnerFlag(fs)
 	artifact := fs.String("artifact", "", "target artifact id or name (required)")
 	create := fs.Bool("create", false, "create the artifact when it does not exist")
+	in := fs.String("in", "", "with --create, the folder to create it in (an ID or a name)")
 	name := fs.String("name", "", "version name")
 	changelog := fs.String("changelog", "", "version changelog")
 	overwrite := fs.String("overwrite", "", "replace this version id ('latest' targets the newest) instead of creating a new version")
@@ -650,8 +672,11 @@ func runPush(args []string) error {
 		return err
 	}
 	dir := leadOrArg(lead, fs)
+	if *in != "" && !*create {
+		return fmt.Errorf("--in needs --create: it names the folder a new artifact goes in")
+	}
 	if dir == "" || *artifact == "" {
-		return fmt.Errorf("usage: cairn push <dir> --artifact <id|name> [--create] [--name v1] [--changelog ...] [--overwrite <vid|latest>] [--accept-new-owner]")
+		return fmt.Errorf("usage: cairn push <dir> --artifact <id|name> [--create [--in FOLDER]] [--name v1] [--changelog ...] [--overwrite <vid|latest>] [--accept-new-owner]")
 	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		return fmt.Errorf("%s is not a directory", dir)
@@ -677,10 +702,16 @@ func runPush(args []string) error {
 		if !errors.Is(err, client.ErrNoArtifact) {
 			return err
 		}
-		a, err = c.CreateArtifact(*artifact, "")
+		parent, err := parentFolder(c, *in)
 		if err != nil {
 			return err
 		}
+		if a, err = c.CreateArtifact(*artifact, "", client.InFolder(parent)); err != nil {
+			return err
+		}
+	}
+	if a.Kind != "artifact" {
+		return fmt.Errorf("%s is a folder, which holds no content; push to an artifact inside it", a.Title())
 	}
 	versionID := ""
 	if *overwrite == "latest" {

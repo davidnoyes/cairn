@@ -60,6 +60,9 @@ func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		v, err := s.viewOf(a, level)
+		if err == nil {
+			err = s.showParent(v, a, c)
+		}
 		if err != nil {
 			s.writeStoreError(w, err, "artifacts")
 			return
@@ -70,7 +73,11 @@ func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetArtifact(w http.ResponseWriter, r *http.Request) {
-	v, err := s.viewOf(requestArtifact(r), access.LevelOf(requestAccess(r)))
+	a, req := requestArtifact(r), requestAccess(r)
+	v, err := s.viewOf(a, access.LevelOf(req))
+	if err == nil {
+		err = s.showParent(v, a, req.Caller)
+	}
 	if err != nil {
 		s.writeStoreError(w, err, "artifact")
 		return
@@ -79,7 +86,19 @@ func (s *Server) handleGetArtifact(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
-	s.deleteArtifact(w, requestArtifact(r), requestUser(r).Email, s.store.DeleteArtifact)
+	a := requestArtifact(r)
+	if a.Kind == store.KindFolder {
+		has, err := s.store.FolderHasItems(a.ID)
+		if err != nil {
+			s.writeStoreError(w, err, "artifact")
+			return
+		}
+		if has {
+			writeError(w, http.StatusConflict, "the folder is not empty")
+			return
+		}
+	}
+	s.deleteArtifact(w, a, requestUser(r).Email, s.store.DeleteArtifact)
 }
 
 // deleteArtifact removes a's row with del, then its content, databases, and

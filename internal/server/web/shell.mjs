@@ -106,6 +106,19 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
     if (opened.unreadable?.length) showStatus(unreadableMessage(opened.unreadable));
     const verify = (versionId) => prepareVersion(deps, opened, versionId);
     const info = await apiGet(deps, opened, `/api/artifacts/${artifact}`);
+    // A folder holds no content, and the server refuses its versions. It is
+    // shown by name, with the way to the Artifacts tab, where it opens.
+    if (info.kind === 'folder') {
+      const { values: fields } = await readMeta(deps, opened, info.meta);
+      $('name').textContent = fields.name || artifact;
+      document.title = fields.name || artifact;
+      const tab = document.createElement('a');
+      tab.href = '/app';
+      tab.textContent = 'Open it on the Artifacts tab';
+      showStatus('This is a folder, so it has nothing to show here. ');
+      status.appendChild(tab);
+      return;
+    }
     const versions = (await listVersions(deps, opened)).filter((v) => UUID_RE.test(v.id));
 
     // The name and description are sealed fields: one that fails a check,

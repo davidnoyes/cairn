@@ -473,6 +473,25 @@ test('an artifact with no versions says so and is not framed', async () => {
   assert.match(p.status().textContent, /no versions/);
 });
 
+test('a folder says so, links to the Artifacts tab, and asks for no versions', async () => {
+  const p = await page({
+    who: 'owner',
+    build: async ({ world, server }) => {
+      server.artifact = { id: ARTIFACT, kind: 'folder', parent: null, meta: { name: await metaItem({ world }, { field: 'name', value: 'Plans' }) } };
+    },
+  });
+  assert.equal(p.frame(), undefined);
+  assert.equal(p.dom.els.name.textContent, 'Plans');
+  assert.equal(p.status().hidden, false);
+  assert.match(p.status().textContent, /folder/);
+  const [link] = p.status().children;
+  assert.equal(link.tag, 'a');
+  assert.equal(link.href, '/app');
+  assert.match(link.textContent, /Artifacts tab/);
+  assert.equal(p.server.calls.some((c) => c.path.includes('/versions')), false);
+  assert.deepEqual(p.dom.violations, []);
+});
+
 test('a visitor with a public link opens it, and the link leaves the address bar first', async () => {
   const p = await page({ isPublic: true, members: [], noRun: true });
   p.window.location.hash = `#k=${e2e.b64(p.world.aks[1])}&e=1&o=${U.owner.fp}`;

@@ -139,6 +139,10 @@ type offerTransferRequest struct {
 // in one transaction.
 func (s *Server) handleOfferTransfer(w http.ResponseWriter, r *http.Request) {
 	a := requestArtifact(r)
+	if a.Kind == store.KindFolder {
+		writeError(w, http.StatusConflict, errFolderShared)
+		return
+	}
 	var req offerTransferRequest
 	if !readJSON(w, r, &req) {
 		return
@@ -321,7 +325,8 @@ func (s *Server) handleAcceptTransfer(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		epoch = res.Body.Epoch
-		return nil
+		// The new owner cannot read the previous owner's folder.
+		return tx.ClearParent()
 	})
 	if err != nil {
 		s.writeTransferError(w, err)
@@ -404,6 +409,10 @@ func (s *Server) handleAdminOfferTransfer(w http.ResponseWriter, r *http.Request
 	}
 	var req adminOfferRequest
 	if !readJSON(w, r, &req) {
+		return
+	}
+	if a.Kind != store.KindArtifact {
+		writeError(w, http.StatusConflict, errFolderShared)
 		return
 	}
 	var view *transferView

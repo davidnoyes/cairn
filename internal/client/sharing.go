@@ -13,6 +13,7 @@ import (
 	"strconv"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
+	"github.com/aloisdeniel/cairn/internal/store"
 	"github.com/google/uuid"
 )
 
@@ -119,8 +120,13 @@ func estateFields(artifact string, epoch int) [][]byte {
 // membership record, seals the estate copy of the AK under EK, and once the
 // server accepts it reads the chain back and verifies it, anchored at the
 // caller's own fingerprint. It then writes the artifact's name, and its
-// description unless that is empty, as encrypted fields.
-func (c *Client) CreateArtifact(name, description string) (*Artifact, error) {
+// description unless that is empty, as encrypted fields. Options make it a
+// folder (AsFolder) or put it in one (InFolder).
+func (c *Client) CreateArtifact(name, description string, opts ...CreateOption) (*Artifact, error) {
+	var o createOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	k, err := c.Unlock()
 	if err != nil {
 		return nil, err
@@ -153,12 +159,19 @@ func (c *Client) CreateArtifact(name, description string) (*Artifact, error) {
 	if err != nil {
 		return nil, err
 	}
-	var out artifactWire
-	if err := c.doJSON("POST", "/api/artifacts", map[string]any{
+	req := map[string]any{
 		"id": id, "membership": env,
 		"wraps":  []any{},
 		"estate": []map[string]any{{"epoch": 1, "sealed": e2e.B64(sealed)}},
-	}, &out); err != nil {
+	}
+	if o.folder {
+		req["kind"] = store.KindFolder
+	}
+	if o.parent != "" {
+		req["parent"] = o.parent
+	}
+	var out artifactWire
+	if err := c.doJSON("POST", "/api/artifacts", req, &out); err != nil {
 		return nil, err
 	}
 

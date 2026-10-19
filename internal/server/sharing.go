@@ -249,7 +249,11 @@ func viewOfOffer(o *store.Offer) *transferView {
 // artifactView is an artifact as GET /api/artifacts/{id} and each entry of
 // GET /api/artifacts return it. Resources are kept from milestone 2.
 type artifactView struct {
-	ID           string            `json:"id"`
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	// Parent is the ID of the folder the item sits in, when the caller can
+	// read that folder, and null otherwise.
+	Parent       *string           `json:"parent"`
 	Owner        string            `json:"owner"`
 	Access       access.Level      `json:"access"`
 	Epoch        int               `json:"epoch"`
@@ -266,7 +270,7 @@ type artifactView struct {
 }
 
 func (s *Server) viewOf(a *store.Artifact, level access.Level) (*artifactView, error) {
-	v := &artifactView{ID: a.ID, Owner: a.OwnerID, Access: level,
+	v := &artifactView{ID: a.ID, Kind: a.Kind, Owner: a.OwnerID, Access: level,
 		Epoch: a.Epoch, Team: a.Team, Public: a.Public, PublicWrites: a.PublicWrites,
 		CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
 	o, err := s.store.OpenOffer(a.ID)
@@ -355,6 +359,10 @@ type createArtifactRequest struct {
 	Membership e2e.Envelope `json:"membership"`
 	Wraps      []wrapWire   `json:"wraps"`
 	Estate     []estateWire `json:"estate"`
+	// Kind is "artifact" (the default) or "folder". Parent is the ID of a
+	// folder to put the item in, empty for the top level.
+	Kind   string `json:"kind"`
+	Parent string `json:"parent"`
 }
 
 // isRandomUUID reports whether id is a version 4, RFC 4122 UUID in its
@@ -382,13 +390,39 @@ func (s *Server) handleCreateArtifact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	switch req.Kind {
+	case "":
+		req.Kind = store.KindArtifact
+	case store.KindArtifact, store.KindFolder:
+	default:
+		writeError(w, http.StatusBadRequest, "kind must be artifact or folder")
+		return
+	}
 	u := requestUser(r)
-	a, err := s.store.CreateOwnedArtifact(req.ID, u.ID, func(tx *store.ArtifactTx) error {
+	if req.Parent != "" {
+		c, err := s.callerFor(u, requestAPIKey(r), requestTokenScope(r))
+		if err == nil {
+			var status int
+			var msg string
+			if status, msg, err = s.parentRefusal(c, req.Parent); status != 0 {
+				writeError(w, status, msg)
+				return
+			}
+		}
+		if err != nil {
+			s.writeStoreError(w, err, "folder")
+			return
+		}
+	}
+	a, err := s.store.CreateOwnedItem(req.ID, u.ID, req.Kind, req.Parent, func(tx *store.ArtifactTx) error {
 		_, err := applyChange(tx, ch)
 		return err
 	})
 	if errors.Is(err, store.ErrExists) {
 		writeError(w, http.StatusConflict, "artifact id already in use")
+		return
+	}
+	if s.writePlacementError(w, err) {
 		return
 	}
 	if err != nil {
@@ -399,6 +433,9 @@ func (s *Server) handleCreateArtifact(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeStoreError(w, err, "artifact")
 		return
+	}
+	if a.ParentID != "" {
+		v.Parent = &a.ParentID
 	}
 	s.log.Info("artifact created", "id", a.ID, "by", u.Email)
 	writeJSON(w, http.StatusCreated, v)

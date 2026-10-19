@@ -270,6 +270,7 @@ var appAssets = map[string]string{
 	"/app-init.mjs":      "app-init.mjs",
 	"/data.mjs":          "data.mjs",
 	"/meta.mjs":          "meta.mjs",
+	"/folders.mjs":       "folders.mjs",
 	"/sharing.mjs":       "sharing.mjs",
 	"/groups.mjs":        "groups.mjs",
 	"/groups-tab.mjs":    "groups-tab.mjs",

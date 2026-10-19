@@ -49,6 +49,7 @@ const (
 	RuleStaleFP       Rule = "stale fp"       // a next epoch lists every member under their current fp
 	RuleEstate        Rule = "estate"         // the new epoch's estate copy
 	RuleLinkToken     Rule = "linkTokenHash"  // with a public record, and only then
+	RuleFolder        Rule = "folder"         // a folder lists no members and is not shared (409)
 )
 
 // Error is a refused record: the HTTP status to answer with, and the rule.
@@ -128,6 +129,8 @@ type Change struct {
 // first record. Wraps is every wrap on the artifact.
 type Current struct {
 	ArtifactID string
+	// Kind is store.KindArtifact or store.KindFolder.
+	Kind       string
 	Owner      *User
 	Latest     *e2e.MembershipBody
 	LatestHash string
@@ -295,6 +298,11 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 	// Rule 4: shapes.
 	if err := checkShape(&body, owner.ID); err != nil {
 		return nil, err
+	}
+
+	// A folder is private to its owner until folders can be shared.
+	if cur.Kind == store.KindFolder && (len(body.Members) > 0 || body.Team != access.TeamNone || body.Public || body.PublicWrites) {
+		return nil, conflict(RuleFolder, "folders cannot be shared yet")
 	}
 
 	// Rule 7.
@@ -880,7 +888,7 @@ func Load(tx *store.ArtifactTx, dir Directory) (Current, error) {
 	if err != nil {
 		return Current{}, err
 	}
-	cur := Current{ArtifactID: tx.ArtifactID(), Owner: owner}
+	cur := Current{ArtifactID: tx.ArtifactID(), Kind: a.Kind, Owner: owner}
 	rec, err := tx.LatestRecord()
 	switch {
 	case errors.Is(err, store.ErrNotFound):

@@ -298,8 +298,8 @@ internal/server/review.go	case body.Artifact != artifact:	case false:	go test ./
 internal/server/review.go	case body.Version != ver.ID:	case false:	go test ./internal/server -run 'TestVouchRefusals'
 internal/server/review.go	if env.Signer != owner.ID {	if false {	go test ./internal/server -run 'TestVouchRefusals'
 internal/server/review.go	e2e.OpenEnvelope(env, owner.Ed25519Pub, "vouch", &body)	e2e.OpenEnvelope(env, owner.Ed25519Pub, "approval", &body)	go test ./internal/server -run 'TestVouchRefusals|TestVouchIsStored'
-internal/server/routes.go	s.artifactRoute(access.ReviewVersions, s.handleVouch)	s.artifactRoute(access.ReadContent, s.handleVouch)	go test ./internal/server -run 'TestReviewAndVouchAreOwnerOnly'
-internal/server/routes.go	s.artifactRoute(access.ReviewVersions, s.handleReview)	s.artifactRoute(access.ReadContent, s.handleReview)	go test ./internal/server -run 'TestReviewAndVouchAreOwnerOnly'
+internal/server/routes.go	s.artifactRoute(access.ReviewVersions, refuseFolder(s.handleVouch))	s.artifactRoute(access.ReadContent, refuseFolder(s.handleVouch))	go test ./internal/server -run 'TestReviewAndVouchAreOwnerOnly'
+internal/server/routes.go	s.artifactRoute(access.ReviewVersions, refuseFolder(s.handleReview))	s.artifactRoute(access.ReadContent, refuseFolder(s.handleReview))	go test ./internal/server -run 'TestReviewAndVouchAreOwnerOnly'
 internal/store/sharing.go	pushed_by IS NOT (SELECT owner_id FROM artifacts WHERE id = ?)	? IS NOT NULL	go test ./internal/server -run 'TestReviewListsOnly'
 internal/store/sharing.go	FROM artifact_members WHERE artifact_id = ? AND role IN ('editor', 'manager'))	FROM artifact_members WHERE artifact_id = ? AND role IN ('zzz', 'manager'))	go test ./internal/server -run 'TestReviewListsOnly'
 internal/store/sharing.go	AND id NOT IN (SELECT version_id FROM version_vouches)	AND id NOT IN (SELECT version_id FROM version_vouches WHERE 0)	go test ./internal/server -run 'TestReviewListsOnly'
@@ -677,7 +677,7 @@ internal/store/artifacts.go	return ErrOwnerActive	return nil	go test ./internal/
 internal/server/transfer.go	if m.Role != access.RoleEditor && m.Role != access.RoleManager {	if false {	go test ./internal/server -run 'TestAdminUserArtifacts'
 internal/server/transfer.go	s.deliverMail(prevOwnerEmail,	s.deliverMail("x"+prevOwnerEmail,	go test ./internal/server -run 'TestTransferKeepingThePreviousOwner'
 internal/access/access.go	if m.member && act == AnswerTransfer {	if act == AnswerTransfer {	go test ./internal/access
-internal/access/access.go	ReviewVersions, Transfer, AnswerTransfer, Estate:	ReviewVersions, Transfer, Estate:	go test ./internal/access
+internal/access/access.go	ReviewVersions, Transfer, AnswerTransfer, Estate, Move:	ReviewVersions, Transfer, Estate, Move:	go test ./internal/access
 internal/server/routes.go	s.artifactRoute(access.AnswerTransfer, s.handleCloseTransfer)	s.artifactRoute(access.ReadContent, s.handleCloseTransfer)	go test ./internal/server -run 'TestAnsweringAnOfferNeedsAListedMember'
 internal/server/routes.go	s.artifactRoute(access.AnswerTransfer, s.handleAcceptTransfer)	s.artifactRoute(access.ReadContent, s.handleAcceptTransfer)	go test ./internal/server -run 'TestAnsweringAnOfferNeedsAListedMember'
 internal/membership/membership.go	err := CheckNewOwner(cur, owner)	err := CheckNewOwner(cur, owner); err = nil	go test ./internal/membership -run 'TestCheckAcceptRefusals'
@@ -897,8 +897,8 @@ internal/server/contentorigin.go	w.Header().Set("X-Content-Type-Options", "nosni
 internal/server/contentorigin.go	case read && (r.URL.Path == "/_cairn/boot" || acceptsHTML(r)):	case (r.URL.Path == "/_cairn/boot" || acceptsHTML(r)):	go test ./internal/server -run TestContentOriginBootPage
 internal/server/contentorigin.go	case read && (r.URL.Path == "/_cairn/boot" || acceptsHTML(r)):	case r.Method == http.MethodGet && (r.URL.Path == "/_cairn/boot" || acceptsHTML(r)):	go test ./internal/server -run TestContentOriginHead
 internal/server/contentorigin.go	sw.headers = map[string]string{"Service-Worker-Allowed": "/"}	sw.headers = map[string]string{"Service-Worker-Allowed": "/x"}	go test ./internal/server -run TestContentOriginAssets
-internal/server/routes.go	s.requireSession(s.artifactRoute(access.ReadContent, s.handleContentToken))	s.requireAuth(s.artifactRoute(access.ReadContent, s.handleContentToken))	go test ./internal/server -run TestMintContentTokenRefusals
-internal/server/routes.go	access.ReadContent, s.handleContentToken	access.Rename, s.handleContentToken	go test ./internal/server -run 'TestMintContentToken$'
+internal/server/routes.go	s.requireSession(s.artifactRoute(access.ReadContent, refuseFolder(s.handleContentToken)))	s.requireAuth(s.artifactRoute(access.ReadContent, refuseFolder(s.handleContentToken)))	go test ./internal/server -run TestMintContentTokenRefusals
+internal/server/routes.go	access.ReadContent, refuseFolder(s.handleContentToken)	access.Rename, refuseFolder(s.handleContentToken)	go test ./internal/server -run 'TestMintContentToken$'
 internal/server/content_token.go	const contentTokenTTL = 10 * time.Minute	const contentTokenTTL = 24 * time.Hour	go test ./internal/server -run 'TestMintContentToken$'
 internal/server/content_token.go	Artifact:     a.ID,	Artifact:     a.ID + "x",	go test ./internal/server -run 'TestMintContentToken$'
 internal/server/content_token.go	Link:         access.LevelOf(withoutLink) == access.LevelNone,	Link:         false,	go test ./internal/server -run TestMintContentTokenLinkScope
@@ -930,9 +930,9 @@ internal/server/upload.go	if p.ID != v.ID {	if false {	go test ./internal/server
 internal/server/upload.go	if !blobIDPattern.MatchString(r.PathValue("blob")) {	if false {	go test ./internal/server -run TestReadStoredBlobs
 internal/server/upload.go	w.Header().Set("Cache-Control", "no-store")	w.Header().Set("Cache-Control", "no-cache")	go test ./internal/server -run TestReadStoredBlobs
 internal/server/upload.go	w.Header().Set("Content-Type", "application/octet-stream")	w.Header().Set("Content-Type", "text/html")	go test ./internal/server -run TestReadStoredBlobs
-internal/server/routes.go	s.artifactRoute(access.ReadContent, s.handleGetManifest)	s.artifactRoute(access.PushVersion, s.handleGetManifest)	go test ./internal/server -run TestReadStoredBlobs
-internal/server/routes.go	s.artifactRoute(access.ReadContent, s.handleGetBlob)	s.artifactRoute(access.PushVersion, s.handleGetBlob)	go test ./internal/server -run TestReadStoredBlobs
-internal/server/routes.go	s.artifactRoute(access.PushVersion, s.handleUploadVersion)	s.artifactRoute(access.ReadContent, s.handleUploadVersion)	go test ./internal/server -run TestViewerAndEditorPowers
+internal/server/routes.go	s.artifactRoute(access.ReadContent, refuseFolder(s.handleGetManifest))	s.artifactRoute(access.PushVersion, refuseFolder(s.handleGetManifest))	go test ./internal/server -run TestReadStoredBlobs
+internal/server/routes.go	s.artifactRoute(access.ReadContent, refuseFolder(s.handleGetBlob))	s.artifactRoute(access.PushVersion, refuseFolder(s.handleGetBlob))	go test ./internal/server -run TestReadStoredBlobs
+internal/server/routes.go	s.artifactRoute(access.PushVersion, refuseFolder(s.handleUploadVersion))	s.artifactRoute(access.ReadContent, refuseFolder(s.handleUploadVersion))	go test ./internal/server -run TestViewerAndEditorPowers
 internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/manifest":           true,	"GET /api/artifacts/{id}/versions/{vid}/manifest":           false,	go test ./internal/server -run TestContentTokenRouteTable
 internal/server/content_token.go	"GET /api/artifacts/{id}/versions/{vid}/blobs/{blob}":       true,	"GET /api/artifacts/{id}/versions/{vid}/blobs/{blob}":       false,	go test ./internal/server -run TestContentTokenRouteTable
 internal/server/review.go	case body.Manifest != ver.ManifestHash:	case false:	go test ./internal/server -run TestVouchRefusals
@@ -1353,9 +1353,9 @@ internal/server/handlers_db.go	return refuse(http.StatusBadRequest, "unexpected 
 internal/server/handlers_db.go	Record: recordJSON, SignerKey: pub, WrittenBy: u.ID,	Record: recordJSON, SignerKey: nil, WrittenBy: u.ID,	go test ./internal/server -run 'TestDBRevisionRoundTrip|TestDBPutSignedByAnOldKey'
 internal/server/handlers_db.go	SignerKey: pub, WrittenBy: u.ID,	SignerKey: pub, WrittenBy: "",	go test ./internal/server -run TestDBRevisionRoundTrip
 internal/server/handlers_files.go	MetaRecord: metaRecordJSON, SignerKey: pub,	MetaRecord: metaRecordJSON, SignerKey: nil,	go test ./internal/server -run TestStoredFileRoundTrip
-internal/server/routes.go	s.artifactRoute(access.WriteData, s.handlePutDB)	s.artifactRoute(access.ReadContent, s.handlePutDB)	go test ./internal/server -run 'TestDataWriteAccess|TestPublicLinkReadsDataButCannotWrite'
-internal/server/routes.go	s.artifactRoute(access.WriteData, s.handleFilePut)	s.artifactRoute(access.ReadContent, s.handleFilePut)	go test ./internal/server -run 'TestDataWriteAccess|TestPublicLinkReadsDataButCannotWrite'
-internal/server/routes.go	s.artifactRoute(access.WriteData, s.handleFileDelete)	s.artifactRoute(access.ReadContent, s.handleFileDelete)	go test ./internal/server -run 'TestDataWriteAccess|TestPublicLinkReadsDataButCannotWrite'
+internal/server/routes.go	s.artifactRoute(access.WriteData, refuseFolder(s.handlePutDB))	s.artifactRoute(access.ReadContent, refuseFolder(s.handlePutDB))	go test ./internal/server -run 'TestDataWriteAccess|TestPublicLinkReadsDataButCannotWrite'
+internal/server/routes.go	s.artifactRoute(access.WriteData, refuseFolder(s.handleFilePut))	s.artifactRoute(access.ReadContent, refuseFolder(s.handleFilePut))	go test ./internal/server -run 'TestDataWriteAccess|TestPublicLinkReadsDataButCannotWrite'
+internal/server/routes.go	s.artifactRoute(access.WriteData, refuseFolder(s.handleFileDelete))	s.artifactRoute(access.ReadContent, refuseFolder(s.handleFileDelete))	go test ./internal/server -run 'TestDataWriteAccess|TestPublicLinkReadsDataButCannotWrite'
 internal/server/handlers_artifacts.go	os.RemoveAll(s.layout.VersionDBDir(v.ArtifactID, v.ID))	_ = v.ID	go test ./internal/server -run TestDeletingAVersionRemovesItsData
 internal/server/handlers_artifacts.go	os.RemoveAll(s.layout.VersionFilesDir(v.ArtifactID, v.ID))	_ = v.ID	go test ./internal/server -run TestDeletingAVersionRemovesItsData
 internal/server/handlers_artifacts.go	os.RemoveAll(s.layout.ArtifactDBRoot(a.ID))	_ = a.ID	go test ./internal/server -run TestDeletingAVersionRemovesItsData
@@ -1981,7 +1981,7 @@ internal/server/handlers_meta.go	case body.SHA256 != e2e.BodyHash(blob):	case fa
 internal/server/handlers_meta.go	err = s.store.UnderEpoch(aid, body.Epoch, func() {	err = func(_ string, _ int, write func()) error { write(); return nil }(aid, body.Epoch, func() {	go test ./internal/server -run 'TestMetaWriteChecksTheEpochAfterAChange|TestMetaWriteRefusals'
 internal/server/handlers_meta.go	dec.DisallowUnknownFields()	_ = dec	go test ./internal/server -run 'TestMetaWriteRefusals'
 internal/server/routes.go	s.artifactRoute(access.Rename, s.handlePutArtifactMeta)	s.artifactRoute(access.ReadContent, s.handlePutArtifactMeta)	go test ./internal/server -run 'TestMetaWriteOnlyForOwnerAndEditor'
-internal/server/routes.go	s.artifactRoute(access.Rename, s.handlePutVersionMeta)	s.artifactRoute(access.ReadContent, s.handlePutVersionMeta)	go test ./internal/server -run 'TestMetaWriteOnlyForOwnerAndEditor'
+internal/server/routes.go	s.artifactRoute(access.Rename, refuseFolder(s.handlePutVersionMeta))	s.artifactRoute(access.ReadContent, refuseFolder(s.handlePutVersionMeta))	go test ./internal/server -run 'TestMetaWriteOnlyForOwnerAndEditor'
 internal/server/review.go	view := &versionView{Version: v, Meta: meta[v.ID]}	view := &versionView{Version: v}	go test ./internal/server -run 'TestMetaWriteAppearsInViews'
 internal/server/sharing.go	v.Meta, _ = metaViews(fields)	v.Meta, _ = metaViews(fields[:0])	go test ./internal/server -run 'TestMetaWriteAppearsInViews'
 internal/server/handlers_artifacts.go	if !blindIndexPattern.MatchString(req.Value) {	if req.Value == "" {	go test ./internal/server -run 'TestResourceValueMustBeABlindIndex'
@@ -2387,7 +2387,7 @@ internal/server/google.go	http.Redirect(w, r, safeNext(st.Next), http.StatusFoun
 internal/client/client.go	errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound	errors.As(err, &apiErr) && apiErr.Status == -1	go test ./internal/client -count=1 -run TestGoogleSignInTreatsAMissingConfigAsOff
 internal/client/account.go	googleProof != "" && errors.As(err, &apiErr) && apiErr.Status == http.StatusForbidden	googleProof != "" && errors.As(err, &apiErr) && apiErr.Status == http.StatusTeapot	go test ./internal/client -count=1 -run TestLoginWithGoogleExplainsARefusedProof
 internal/access/access.go	if r.Caller.ReadOnly && writesArtifact(act) {	if false && writesArtifact(act) {	go test ./internal/access -count=1 -run TestReadOnlyCallerNeverWrites
-internal/access/access.go	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer, Estate:	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Estate:	go test ./internal/access -count=1 -run TestReadOnlyCallerNeverWrites
+internal/access/access.go	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer, Estate, Move:	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Estate, Move:	go test ./internal/access -count=1 -run TestReadOnlyCallerNeverWrites
 internal/access/access.go	if r.Caller.ReadOnly && writesArtifact(act) {	if writesArtifact(act) && r.Caller.ReadOnly && act != Transfer {	go test ./internal/access -count=1 -run TestReadOnlyCallerNeverWrites
 internal/server/sharing.go	ReadOnly: u.Role == store.RoleViewer}	ReadOnly: false}	go test ./internal/server -count=1 -run 'TestViewerAccountReadsAndNeverWrites/session'
 internal/server/sharing.go	c.Kind = access.APIKey	c.Kind = access.APIKey; c.ReadOnly = false	go test ./internal/server -count=1 -run 'TestViewerAccountReadsAndNeverWrites/API_key'
@@ -2457,8 +2457,8 @@ internal/access/access.go	if m.managerPower && act == Share {	if m.member && act
 internal/access/access.go	if m.managerPower && act == Share {	if m.managerPower && (act == Share || act == Estate) {	go test ./internal/access -count=1
 internal/access/access.go	case m.member && r.Member.Role == RoleManager:	case false:	go test ./internal/access -count=1
 internal/access/access.go	case WriteData, PushVersion, Rename, ListPending, ApproveMember:	case WriteData, PushVersion, Rename, ListPending, ApproveMember, Estate:	go test ./internal/access -count=1
-internal/access/access.go	ReviewVersions, Transfer, AnswerTransfer, Estate:	ReviewVersions, Transfer, AnswerTransfer:	go test ./internal/access -count=1
-internal/access/access.go	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer, Estate:	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer:	go test ./internal/access -count=1 -run TestReadOnlyCallerNeverWrites
+internal/access/access.go	ReviewVersions, Transfer, AnswerTransfer, Estate, Move:	ReviewVersions, Transfer, AnswerTransfer, Move:	go test ./internal/access -count=1
+internal/access/access.go	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer, Estate, Move:	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer, Move:	go test ./internal/access -count=1 -run TestReadOnlyCallerNeverWrites
 internal/server/routes.go	s.artifactRoute(access.Estate, s.handlePutEstate)	s.artifactRoute(access.Share, s.handlePutEstate)	go test ./internal/server -count=1 -run 'TestManagerStartsAnEpoch'
 internal/server/estate.go	if e.Epoch == epoch {	if false && e.Epoch == epoch {	go test ./internal/server -count=1 -run 'TestManagerStartsAnEpoch'
 internal/server/estate.go	if epoch > cur.Epoch {	if false && epoch > cur.Epoch {	go test ./internal/server -count=1 -run 'TestManagerStartsAnEpoch'
@@ -2819,3 +2819,140 @@ internal/server/web/groups-tab.mjs	if (!b.classList.contains('armed')) {	if (fal
 internal/server/web/groups-tab.mjs	if (groups.length === 0) {	if (false) {	node --test internal/server/web/groups-tab_test.mjs
 internal/server/web/groups-tab.mjs	if (open?.id === g.id) closeGroup();	void g;	node --test internal/server/web/groups-tab_test.mjs
 internal/server/web/groups-tab.mjs	if (s === open) closeGroup();	void s;	node --test internal/server/web/groups-tab_test.mjs
+internal/store/folders.go	MaxFolderDepth = 16	MaxFolderDepth = 17	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/folders.go	(kind != KindFolder || parentOwner != owner)	(parentOwner != owner)	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/folders.go	(kind != KindFolder || parentOwner != owner)	(kind != KindFolder)	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/folders.go	movingID != "" && cyclic == 1	movingID != "" && cyclic == 2	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/folders.go	depth+height > MaxFolderDepth	depth+height > MaxFolderDepth+1	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/folders.go	height = 1	height = 0	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/folders.go	down.n + 1	down.n	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/folders.go	WHERE parent_id = ?`, id).Scan(&n)	WHERE id = ?`, id).Scan(&n)	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/folders.go	SET parent_id = NULL WHERE id = ?	SET parent_id = parent_id WHERE id = ?	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/folders.go	SET parent_id = NULLIF(?, '') WHERE id = ?	SET parent_id = ? WHERE id = ?	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/folders.go	id, ownerID, kind, parentID, t, t); err != nil {	id, ownerID, KindArtifact, parentID, t, t); err != nil {	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/folders.go	id, ownerID, kind, parentID, t, t); err != nil {	id, ownerID, kind, "", t, t); err != nil {	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/folders.go	checkParent(tx, id, owner, parent, height)	checkParent(tx, id, owner, parent, 0)	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/migrations/015_folders.sql	ON DELETE SET NULL	ON DELETE CASCADE	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/migrations/015_folders.sql	CHECK (kind IN ('artifact', 'folder'))	CHECK (kind IN ('artifact', 'folder', 'drawer'))	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/artifacts.go	kind, COALESCE(parent_id, '')`	'artifact', COALESCE(parent_id, '')`	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/store/artifacts.go	&a.Kind, &a.ParentID); err	&a.Kind, &a.Kind); err	go test ./internal/store -count=1 -run 'TestFolder|TestMoveItem|TestCreateItem|TestKindCheck|TestDeletingAFolderRow|TestSetParent'
+internal/membership/membership.go	cur.Kind == store.KindFolder && (	false && (	go test ./internal/server -count=1 -run 'TestFolderIsPrivateInF1'
+internal/membership/membership.go	len(body.Members) > 0 ||	false ||	go test ./internal/server -count=1 -run 'TestFolderIsPrivateInF1'
+internal/membership/membership.go	body.Team != access.TeamNone || body.Public || body.PublicWrites)	body.Public || body.PublicWrites)	go test ./internal/server -count=1 -run 'TestFolderIsPrivateInF1'
+internal/membership/membership.go	body.Team != access.TeamNone || body.Public || body.PublicWrites)	body.Team != access.TeamNone || body.PublicWrites)	go test ./internal/server -count=1 -run 'TestFolderIsPrivateInF1'
+internal/membership/membership.go	body.Team != access.TeamNone || body.Public || body.PublicWrites)	body.Team != access.TeamNone || body.Public)	go test ./internal/server -count=1 -run 'TestFolderIsPrivateInF1'
+internal/membership/membership.go	Kind: a.Kind, Owner: owner}	Owner: owner}	go test ./internal/server -count=1 -run 'TestFolderIsPrivateInF1'
+internal/membership/membership.go	return nil, conflict(RuleFolder,	return nil, refuse(RuleFolder,	go test ./internal/server -count=1 -run 'TestFolderIsPrivateInF1'
+internal/server/routes.go	s.artifactRoute(access.ReadContent, refuseFolder(s.handleContentToken))	s.artifactRoute(access.ReadContent, s.handleContentToken)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.ReviewVersions, refuseFolder(s.handleReview))	s.artifactRoute(access.ReviewVersions, s.handleReview)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.ReviewVersions, refuseFolder(s.handleVouch))	s.artifactRoute(access.ReviewVersions, s.handleVouch)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.ReadContent, refuseFolder(s.handleListVersions))	s.artifactRoute(access.ReadContent, s.handleListVersions)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.PushVersion, refuseFolder(s.handleUploadVersion))	s.artifactRoute(access.PushVersion, s.handleUploadVersion)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.ReadContent, refuseFolder(s.handleGetVersion))	s.artifactRoute(access.ReadContent, s.handleGetVersion)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.PushVersion, refuseFolder(s.handleReplaceVersion))	s.artifactRoute(access.PushVersion, s.handleReplaceVersion)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.ReadContent, refuseFolder(s.handleGetManifest))	s.artifactRoute(access.ReadContent, s.handleGetManifest)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.ReadContent, refuseFolder(s.handleGetBlob))	s.artifactRoute(access.ReadContent, s.handleGetBlob)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.Rename, refuseFolder(s.handlePutVersionMeta))	s.artifactRoute(access.Rename, s.handlePutVersionMeta)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.Delete, refuseFolder(s.handleDeleteVersion))	s.artifactRoute(access.Delete, s.handleDeleteVersion)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.ReadContent, refuseFolder(s.handleGetDB))	s.artifactRoute(access.ReadContent, s.handleGetDB)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.WriteData, refuseFolder(s.handlePutDB))	s.artifactRoute(access.WriteData, s.handlePutDB)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.ReadContent, refuseFolder(s.handleListDBRevisions))	s.artifactRoute(access.ReadContent, s.handleListDBRevisions)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.ReadContent, refuseFolder(s.handleGetDBRevision))	s.artifactRoute(access.ReadContent, s.handleGetDBRevision)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.ReadContent, refuseFolder(s.handleFileList))	s.artifactRoute(access.ReadContent, s.handleFileList)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.ReadContent, refuseFolder(s.handleFileGet))	s.artifactRoute(access.ReadContent, s.handleFileGet)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.WriteData, refuseFolder(s.handleFilePut))	s.artifactRoute(access.WriteData, s.handleFilePut)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	s.artifactRoute(access.WriteData, refuseFolder(s.handleFileDelete))	s.artifactRoute(access.WriteData, s.handleFileDelete)	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/routes.go	access.Move, s.handlePutParent	access.Rename, s.handlePutParent	go test ./internal/server -count=1 -run 'TestMove$'
+internal/server/folders.go	if requestArtifact(r).Kind == store.KindFolder {	if requestArtifact(r).Kind == "drawer" {	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/folders.go	case level == access.LevelNone:	case false:	go test ./internal/server -count=1 -run 'TestCreateRefusals|TestMove$'
+internal/server/folders.go	case level != access.LevelOwner:	case false:	go test ./internal/server -count=1 -run 'TestCreateRefusals'
+internal/server/folders.go	errors.Is(err, store.ErrNotFolder), errors.Is(err, store.ErrCycle),	errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrCycle),	go test ./internal/server -count=1 -run 'TestCreateRefusals'
+internal/server/folders.go	errors.Is(err, store.ErrCycle),	errors.Is(err, store.ErrNotFound),	go test ./internal/server -count=1 -run 'TestMove$'
+internal/server/folders.go	errors.Is(err, store.ErrTooDeep):	errors.Is(err, store.ErrNotFound):	go test ./internal/server -count=1 -run 'TestDepthLimit'
+internal/server/folders.go	if ok {	if ok || true {	go test ./internal/server -count=1 -run 'TestParentIsHidden'
+internal/server/folders.go	case req.Parent == nil:	case false:	go test ./internal/server -count=1 -run 'TestMove$'
+internal/server/folders.go	case string(req.Parent) != "null":	case string(req.Parent) == "null":	go test ./internal/server -count=1 -run 'TestMove$'
+internal/server/folders.go	|| parent == "" {	|| false {	go test ./internal/server -count=1 -run 'TestMove$'
+internal/server/folders.go	if parent != "" {	if parent == "x" {	go test ./internal/server -count=1 -run 'TestMove$'
+internal/server/folders.go	const errFolderNoContent = "a folder holds no content"	const errFolderNoContent = "a folder holds nothing"	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
+internal/server/folders.go	const errFolderShared = "folders cannot be shared yet"	const errFolderShared = "folders cannot be shared"	go test ./internal/server -count=1 -run 'TestFolderCannotBeOffered'
+internal/server/handlers_artifacts.go	if a.Kind == store.KindFolder {	if a.Kind == "drawer" {	go test ./internal/server -count=1 -run 'TestDeletingAFolder'
+internal/server/handlers_artifacts.go	if has {	if has && false {	go test ./internal/server -count=1 -run 'TestDeletingAFolder'
+internal/server/handlers_artifacts.go	err = s.showParent(v, a, c)	err = nil	go test ./internal/server -count=1 -run 'TestCreateFoldersAndItemsInThem'
+internal/server/handlers_artifacts.go	err = s.showParent(v, a, req.Caller)	err = nil	go test ./internal/server -count=1 -run 'TestCreateFoldersAndItemsInThem'
+internal/server/handlers_artifacts.go	writeError(w, http.StatusConflict, "the folder is not empty")	writeError(w, http.StatusConflict, "the folder is busy")	go test ./internal/server -count=1 -run 'TestDeletingAFolder'
+internal/server/sharing.go	case store.KindArtifact, store.KindFolder:	case store.KindArtifact:	go test ./internal/server -count=1 -run 'TestCreateFoldersAndItemsInThem'
+internal/server/sharing.go	req.Kind = store.KindArtifact	req.Kind = "drawer"	go test ./internal/server -count=1 -run 'TestCreateFoldersAndItemsInThem'
+internal/server/sharing.go	if req.Parent != "" {	if req.Parent == "x" {	go test ./internal/server -count=1 -run 'TestCreateRefusals'
+internal/server/sharing.go	v.Parent = &a.ParentID	v.Parent = nil	go test ./internal/server -count=1 -run 'TestCreateFoldersAndItemsInThem'
+internal/server/sharing.go	v := &artifactView{ID: a.ID, Kind: a.Kind,	v := &artifactView{ID: a.ID, Kind: "artifact",	go test ./internal/server -count=1 -run 'TestCreateFoldersAndItemsInThem'
+internal/server/transfer.go	if a.Kind == store.KindFolder {	if a.Kind == "drawer" {	go test ./internal/server -count=1 -run 'TestFolderCannotBeOffered'
+internal/server/transfer.go	if a.Kind != store.KindArtifact {	if a.Kind == "drawer" {	go test ./internal/server -count=1 -run 'TestFolderCannotBeOffered'
+internal/server/transfer.go	return tx.ClearParent()	return nil	go test ./internal/server -count=1 -run 'TestAcceptingAnItemInTheOwnersFolder'
+internal/access/access.go	ReviewVersions, Transfer, AnswerTransfer, Estate, Move:	ReviewVersions, Transfer, AnswerTransfer, Estate:	go test ./internal/access -count=1 -run TestMoveIsOwnerOnly
+internal/access/access.go	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer, Estate, Move:	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer, Estate:	go test ./internal/access -count=1 -run TestReadOnlyCallerNeverWrites
+internal/client/folders.go	if parent != "" {	if parent == "x" {	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	return a.Access != "owner"	return false	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	f == nil || f.Kind != store.KindFolder	f == nil	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	return fx	return fy	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	strings.ToLower(x.Title()) < strings.ToLower(y.Title())	x.Title() < y.Title()	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	append([]string{p.Title()}, names...)	append(names, p.Title())	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	root == nil || root.Kind != store.KindFolder	root == nil	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	depth[f.ID] + 1	depth[f.ID]	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	depth[out.Folders[i].ID] > depth[out.Folders[j].ID]	depth[out.Folders[i].ID] < depth[out.Folders[j].ID]	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	out.Folders = append(out.Folders, root)	out.Folders = append(out.Folders, out.Folders...)	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	apiErr.Status != http.StatusNotFound	apiErr.Status != http.StatusGone	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	*n++	*n += 2	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	range contents.Artifacts {	range contents.Artifacts[:0] {	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	done++	done += 2	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	+ len(contents.Folders)	+ 0	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	c.CreateArtifact(name, "", AsFolder(), InFolder(parent))	c.CreateArtifact(name, "", InFolder(parent))	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/folders.go	c.CreateArtifact(name, "", AsFolder(), InFolder(parent))	c.CreateArtifact(name, "", AsFolder())	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/sharing.go	req["kind"] = store.KindFolder	req["kind"] = store.KindArtifact	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/sharing.go	req["parent"] = o.parent	req["parent"] = ""	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/meta.go	kind != "" && a.Kind != kind	a.Kind != kind && false	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/meta.go	return a.Kind != kind })	return false })	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+internal/client/meta.go	return c.resolve(ref, store.KindFolder)	return c.resolve(ref, "")	go test ./internal/client -count=1 -run 'TestCreateFolder|TestMoveAnd|TestTree|TestFolderPaths|TestResolveFolder|TestFolderContents|TestDeleteFolder'
+cmd/cairn/folder_cmds.go	(*to == "") == !*top	(*to == "") && !*top	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	if !*yes {	if !*yes && false {	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	if !stdinIsTerminal() {	if stdinIsTerminal() {	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	if !confirmed("Delete them?") {	if confirmed("Delete them?") {	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	case "y", "yes":	case "y", "yes", "n":	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	if n == 1 {	if n == 2 {	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	if in == "" {	if in == "x" {	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	f, err := c.ResolveFolder(ref)	f, err := c.ResolveArtifact(ref)	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	title += "/"	title += "."	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	printTree(n.Children, indent+"  ")	printTree(n.Children, indent)	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	c.CreateFolder(pos[0], parent)	c.CreateFolder(pos[0], parent[:0])	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	root = f.ID	root = f.ID[:0]	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	moved.Name, moved.Description = item.Name, item.Description	moved.Description = item.Description	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	if parent == "" {	if parent != "" {	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	"folders": counts.Folders, "artifacts": counts.Artifacts}	"folders": counts.Artifacts, "artifacts": counts.Folders}	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/folder_cmds.go	if n.Kind == "folder" {	if n.Kind == "drawer" {	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/client_cmds.go	if paths[a.ID] != "" {	if paths[a.ID] == "" {	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/client_cmds.go	vis, title = "folder", title+"/"	vis, title = "folder", title	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/client_cmds.go	if a.Kind == "folder" {	if a.Kind == "drawer" {	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/client_cmds.go	a, err := c.CreateArtifact(name, *description, client.InFolder(parent))	a, err := c.CreateArtifact(name, *description, client.InFolder(parent[:0]))	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/client_cmds.go	isFolder := a.Kind == "folder"	isFolder := false	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/client_cmds.go	*in != "" && !*create	*in != "" && *create	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/client_cmds.go	if a.Kind != "artifact" {	if a.Kind == "drawer" {	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+cmd/cairn/client_cmds.go	CreateArtifact(*artifact, "", client.InFolder(parent))	CreateArtifact(*artifact, "", client.InFolder(parent[:0]))	go test ./cmd/cairn -count=1 -run 'TestFolder|TestMoveCommand|TestArtifactCreateAndPush|TestArtifactListShowsFolder|TestArtifactShowAFolder'
+internal/server/web/folders.mjs	if (parent !== null) req.parent = parent;	if (parent === null) req.parent = parent;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	const req = { id, kind: 'folder',	const req = { id, kind: 'artifact',	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	publicWrites: false,	publicWrites: true,	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	['estate', id, '1']	['estate', id, '2']	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	const clean = String(name).trim();	const clean = String(name);	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (clean === '') throw	if (false) throw	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	return [...here.filter((i) => i.kind === 'folder').sort(byName), 	return [...here.filter((i) => i.kind !== 'folder').sort(byName), 	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	return !pathOf(items, target).some((f) => f.id === id);	return !pathOf(items, target).some((f) => f.id !== id);	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	at = items.find((i) => i.id === placeOf(items, at))	at = undefined	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	folders.push(f);	folders.unshift(f);	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	const all = [...artifacts, ...folders];	const all = [...folders, ...artifacts];	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (err.status !== 404) throw err;	if (err.status !== 409) throw err;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (err.status !== 404) throw err;	if (false) throw err;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (item && (item.parent ?? null) === target) return false;	if (false) return false;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	{ parent: target });	{ parent: id });	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (!id) return;	if (false) return;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (!ours(event)) return;	if (false) return;	node --test internal/server/web/folders_test.mjs
+internal/server/web/shell.mjs	if (info.kind === 'folder') {	if (info.kind === 'folderx') {	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	tab.href = '/app';	tab.href = '/apps';	node --test internal/server/web/shell_page_test.mjs

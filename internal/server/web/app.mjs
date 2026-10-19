@@ -6,6 +6,7 @@
 import { changePassword, createApiKey, enrollPasskey, listPasskeys, newRecoveryCode, passkeysAvailable, removePasskey, signOut } from './account.mjs';
 import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { createGroupsTab } from './groups-tab.mjs';
+import { FolderError, breadcrumb, childrenOf, createFolder, deleteTree, makeDraggable, makeDropTarget, moveItem, moveTargets, renameFolder, subtree } from './folders.mjs';
 import { describeArtifact } from './meta.mjs';
 import { KeyChangedError, memberControls, members, pin, publicLinkFor, setPublic, share, unshare } from './sharing.mjs';
 import { bannerView, myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions, who } from './successor.mjs';
@@ -21,7 +22,7 @@ async function api(path, options) {
   const resp = await fetch(path, options);
   if (resp.status === 401) { toLogin(); throw new UnauthenticatedError(); }
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+  if (!resp.ok) throw Object.assign(new Error(data.error || ('HTTP ' + resp.status)), { status: resp.status });
   return data;
 }
 const send = (method, path, body) => api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -136,17 +137,26 @@ $('signout').addEventListener('click', async (event) => {
 });
 
 // ------------------------------------------------------------- artifacts
+// Your own items show as a tree, one folder at a time: own is every item of
+// the caller's, as {id, kind, parent, name} for folders.mjs, ownRows the table
+// row of each, and viewFolder the folder in view (null for the top level).
+// Shared with you stays flat.
+let own = [];
+let ownRows = new Map();
+let viewFolder = null;
+
 // The server holds each name and description sealed, so a row shows the
 // artifact's ID until its own keys open them.
 async function listArtifacts({ me }) {
   const list = await api('/api/artifacts');
   const rows = new Map(list.map((a) => [a.id, artifactRow(a, a.owner === me.id)]));
-  const fill = (body, mine, empty) => {
-    const trs = list.filter((a) => (a.owner === me.id) === mine).map((a) => rows.get(a.id).tr);
-    if (trs.length === 0) emptyRow(body, 6, empty); else body.replaceChildren(...trs);
-  };
-  fill($('own'), true, 'No artifacts yet.');
-  fill($('shared'), false, 'Nothing is shared with you yet.');
+  const mine = list.filter((a) => a.owner === me.id);
+  ownRows = new Map(mine.map((a) => [a.id, rows.get(a.id)]));
+  own = mine.map((a) => ({ id: a.id, kind: a.kind ?? 'artifact', parent: a.parent ?? null, name: a.id }));
+  const ownItem = new Map(own.map((i) => [i.id, i]));
+  renderOwn();
+  const trs = list.filter((a) => a.owner !== me.id).map((a) => rows.get(a.id).tr);
+  if (trs.length === 0) emptyRow($('shared'), 6, 'Nothing is shared with you yet.'); else $('shared').replaceChildren(...trs);
   // One at a time: opening an artifact for the first time pins its owner in
   // the keyring, and each pin is a write at the keyring's next revision.
   for (const a of list) {
@@ -155,6 +165,7 @@ async function listArtifacts({ me }) {
     row.name = got.name;
     row.nameText.textContent = got.name;
     row.descText.textContent = got.description;
+    if (ownItem.has(a.id)) ownItem.get(a.id).name = got.name;
     // Said in the row, not only in a tooltip, so a keyboard or screen reader
     // user learns why the row shows an ID.
     row.reasonText.textContent = got.error ? describeError(got.error) : '';
@@ -164,6 +175,8 @@ async function listArtifacts({ me }) {
       $('share-title').textContent = got.name;
     }
   }
+  // Names sort the tree, so it is laid out again once they are all read.
+  renderOwn();
 }
 
 // One load at a time: two loads opening the same artifact for the first time
@@ -176,12 +189,24 @@ function loadArtifacts(ctx) {
 }
 
 function artifactRow(a, mine) {
-  const row = { name: a.id, nameText: el('a', 'clamp', a.id), descText: el('div', 'clamp', '') };
-  row.nameText.href = '/shared/' + a.id;
+  const folder = a.kind === 'folder';
+  const row = { id: a.id, folder, name: a.id, nameText: el(folder ? 'button' : 'a', 'clamp', a.id), descText: el('div', 'clamp', ''), actions: el('div', 'actions') };
   const tr = el('tr');
   tr.dataset.id = a.id;
+  if (folder) {
+    // Opening a folder shows what is in it; its own address has nothing to show.
+    row.nameText.type = 'button';
+    row.nameText.classList.add('link');
+    row.nameText.addEventListener('click', () => openFolder(a.id));
+    tr.addEventListener('click', (event) => {
+      if (!event.target.closest('button, a, input, select, form')) openFolder(a.id);
+    });
+  } else {
+    row.nameText.href = '/shared/' + a.id;
+  }
   row.reasonText = el('div', 'unreadable', '');
   const nameCell = td(row.nameText, 'name');
+  if (folder) nameCell.prepend(pill('folder'), ' ');
   nameCell.appendChild(row.reasonText);
   tr.append(
     nameCell,
@@ -190,22 +215,181 @@ function artifactRow(a, mine) {
     td(a.public ? 'public' : 'private', 'public'),
     td(minute(a.updatedAt), 'mono updated'),
   );
-  const actions = el('div', 'actions');
-  // A manager shares too, and the dialog verifies they are one.
-  if (mine || a.access === 'manager') actions.append(btn('Share', '', () => openShare(a.id, row.name)));
   if (mine) {
-    actions.append(
-      confirmButton('Delete', 'Delete for good?', () => del('/api/artifacts/' + a.id)
-        .then(() => { status('artifacts-status', 'Artifact deleted.'); return reloadArtifacts(); })
-        .catch(failIn('artifacts-status'))),
-    );
+    makeDraggable(tr, a.id);
+    if (folder) makeDropTarget(tr, a.id, moveTo);
+  } else if (a.access === 'manager') {
+    // A manager shares too, and the dialog verifies they are one.
+    row.actions.append(btn('Share', '', () => openShare(a.id, row.name)));
   }
-  tr.appendChild(td(actions));
+  tr.appendChild(td(row.actions));
   row.tr = tr;
   return row;
 }
 
 const reloadArtifacts = () => loadArtifacts({ me }).catch(failIn('artifacts-status'));
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// renderOwn lays out the folder in view: its breadcrumb, and its items as
+// rows, folders first. A folder in view that is gone shows the top level.
+function renderOwn() {
+  if (viewFolder !== null && !own.some((i) => i.id === viewFolder && i.kind === 'folder')) viewFolder = null;
+  renderCrumbs();
+  const kids = childrenOf(own, viewFolder);
+  if (kids.length === 0) {
+    emptyRow($('own'), 6, viewFolder === null ? 'No artifacts yet.' : 'This folder is empty.');
+    return;
+  }
+  $('own').replaceChildren(...kids.map((i) => {
+    const row = ownRows.get(i.id);
+    fillOwnActions(row);
+    return row.tr;
+  }));
+}
+
+function openFolder(id) {
+  viewFolder = id;
+  renderOwn();
+}
+
+// renderCrumbs shows Top, then each folder down to the one in view. Each
+// segment but the last opens that folder, and takes a dropped row.
+function renderCrumbs() {
+  const segs = breadcrumb(own, viewFolder);
+  const nodes = [];
+  segs.forEach((s, i) => {
+    if (i > 0) nodes.push(el('span', 'sep', '›'));
+    if (i === segs.length - 1) {
+      const here = el('span', '', s.name);
+      here.setAttribute('aria-current', 'page');
+      nodes.push(here);
+      return;
+    }
+    const b = btn(s.name, '', () => openFolder(s.id));
+    makeDropTarget(b, s.id, moveTo);
+    nodes.push(b);
+  });
+  $('crumbs').replaceChildren(...nodes);
+}
+
+// fillOwnActions sets the buttons of one own row. They are built each time
+// the tree is laid out, because a folder's delete states what it removes now.
+function fillOwnActions(row) {
+  const { id } = row;
+  const actions = [];
+  // A folder is private in this release, so it has no Share.
+  if (row.folder) actions.push(btn('Rename', '', () => startRename(row)));
+  else actions.push(btn('Share', '', () => openShare(id, row.name)));
+  actions.push(moveButton(row));
+  if (row.folder) {
+    const t = subtree(own, id);
+    const again = `Delete ${plural(t.folders.length, 'folder', 'folders')} and ${plural(t.artifacts.length, 'artifact', 'artifacts')}?`;
+    actions.push(confirmButton('Delete', again, () => removeFolder(id)));
+  } else {
+    actions.push(confirmButton('Delete', 'Delete for good?', () => del('/api/artifacts/' + id)
+      .then(() => { status('artifacts-status', 'Artifact deleted.'); return reloadArtifacts(); })
+      .catch(failIn('artifacts-status'))));
+  }
+  row.actions.replaceChildren(...actions);
+}
+
+// moveButton is Move to…, which turns into a select of the places the item
+// may go: the top level and each folder that is not the item or inside it.
+function moveButton(row) {
+  const b = btn('Move to…', '', () => {
+    const select = el('select');
+    select.setAttribute('aria-label', 'Move ' + row.name + ' to');
+    const prompt = el('option', '', 'Move to…');
+    prompt.value = '';
+    prompt.disabled = true;
+    prompt.selected = true;
+    select.appendChild(prompt);
+    for (const t of moveTargets(own, row.id)) {
+      const o = el('option', '', t.label);
+      o.value = t.id ?? 'top';
+      select.appendChild(o);
+    }
+    select.addEventListener('change', () => moveTo(row.id, select.value === 'top' ? null : select.value));
+    select.addEventListener('blur', () => select.replaceWith(b));
+    select.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { select.replaceWith(b); b.focus(); }
+    });
+    b.replaceWith(select);
+    select.focus();
+  });
+  return b;
+}
+
+async function moveTo(id, target) {
+  try {
+    if (await moveItem(send, own, id, target)) {
+      status('artifacts-status', 'Moved.');
+      await reloadArtifacts();
+    }
+  } catch (err) {
+    failIn('artifacts-status')(err);
+  }
+}
+
+// startRename swaps a folder's name for a field holding it.
+function startRename(row) {
+  const form = el('form', 'rename');
+  const input = el('input');
+  input.value = row.name;
+  input.setAttribute('aria-label', 'New name of ' + row.name);
+  input.autocomplete = 'off';
+  const save = btn('Save', '', () => {});
+  save.type = 'submit';
+  const cancel = btn('Cancel', '', () => { form.replaceWith(row.nameText); row.nameText.focus(); });
+  form.append(input, save, cancel);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    save.disabled = true;
+    try {
+      await renameFolder(deps, row.id, input.value);
+      status('artifacts-status', 'Folder renamed.');
+      await reloadArtifacts();
+    } catch (err) {
+      failIn('artifacts-status')(err);
+      save.disabled = false;
+    }
+  });
+  row.nameText.replaceWith(form);
+  input.focus();
+  input.select();
+}
+
+// removeFolder deletes what is in a folder, then the folder, and shows how far
+// it got. A failure stops it with the rest in place: deleting again finishes.
+async function removeFolder(id) {
+  try {
+    await deleteTree((x) => del('/api/artifacts/' + x), own, id, (done, total) => status('artifacts-status', `Deleting… ${done} of ${total}.`));
+    status('artifacts-status', 'Folder deleted.');
+  } catch (err) {
+    failIn('artifacts-status')(err);
+  }
+  await reloadArtifacts();
+}
+
+$('folder-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = $('folder-name');
+  const button = $('folder-form').querySelector('button');
+  button.disabled = true;
+  try {
+    await createFolder(deps, { name: name.value, parent: viewFolder });
+    name.value = '';
+    status('artifacts-status', 'Folder created.');
+    await reloadArtifacts();
+  } catch (err) {
+    failIn('artifacts-status')(err);
+    // The folder exists even though its name did not write.
+    if (err instanceof FolderError && /was created/.test(err.message)) await reloadArtifacts();
+  } finally {
+    button.disabled = false;
+  }
+});
 
 // ----------------------------------------------------------------- share
 // The dialog works on one artifact at a time. The public link carries the
@@ -569,6 +753,7 @@ function showBanners() {
   const viewerAccount = me?.role === 'viewer';
   $('viewer-note').hidden = !viewerAccount;
   $('create-hint').hidden = viewerAccount;
+  $('folder-form').hidden = viewerAccount;
   const v = bannerView(me);
   $('succession-banner').hidden = !v.banner;
   $('refuse-succession').hidden = !v.refuse;

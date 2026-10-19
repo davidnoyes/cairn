@@ -44,6 +44,11 @@
     <section id="artifacts" role="tabpanel" aria-labelledby="tab-artifacts" class="active">
       <h2>Your artifacts</h2>
       <p class="hint" id="create-hint">Create one with <span class="mono">cairn push DIR --create</span>.</p>
+      <nav class="crumbs" id="crumbs" aria-label="Folder in view"></nav>
+      <form class="bar" id="folder-form" method="dialog">
+        <input id="folder-name" placeholder="folder name" aria-label="New folder name" autocomplete="off">
+        <button class="btn primary" type="submit">New folder</button>
+      </form>
       <div class="list">
         <table>
           <thead><tr><th>name</th><th>description</th><th>access</th><th>visibility</th><th>updated</th><th></th></tr></thead>

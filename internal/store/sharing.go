@@ -195,32 +195,7 @@ func (s *Store) WithArtifact(id string, fn func(*ArtifactTx) error) error {
 // wraps land with the artifact or not at all. An ID in use is ErrExists. fn
 // follows the same rules as in WithArtifact.
 func (s *Store) CreateOwnedArtifact(id, ownerID string, fn func(*ArtifactTx) error) (*Artifact, error) {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	t := now()
-	if _, err := tx.Exec(`INSERT INTO artifacts (id, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-		id, ownerID, t, t); err != nil {
-		if isUniqueViolation(err) {
-			return nil, ErrExists
-		}
-		return nil, err
-	}
-	if fn != nil {
-		if err := fn(&ArtifactTx{tx: tx, id: id}); err != nil {
-			return nil, err
-		}
-	}
-	a, err := scanArtifact(tx.QueryRow(`SELECT `+artifactCols+` FROM artifacts WHERE id = ?`, id))
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return a, nil
+	return s.CreateOwnedItem(id, ownerID, KindArtifact, "", fn)
 }
 
 // AccessState reads what the permission check needs for userID on an

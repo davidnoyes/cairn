@@ -38,6 +38,7 @@ func TestManagerByAction(t *testing.T) {
 		Transfer:       {Forbidden, Forbidden, Forbidden},
 		AnswerTransfer: {Allow, Allow, Allow},
 		Estate:         {Forbidden, Forbidden, Forbidden},
+		Move:           {Forbidden, Forbidden, Forbidden},
 	}
 	for _, a := range allActions {
 		w, ok := want[a]

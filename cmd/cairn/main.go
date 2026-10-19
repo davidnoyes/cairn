@@ -22,7 +22,9 @@ Client:
   cairn forgot           Ask for a password reset link
   cairn reset            Set a new password from an emailed reset link
   cairn keys             Manage API keys (list|revoke)
-  cairn artifact         Manage artifacts (list|create NAME|show|update|delete)
+  cairn artifact         Manage artifacts (list|create NAME [--in FOLDER]|show|update|delete)
+  cairn folder           Manage folders (create NAME [--in FOLDER]|list [FOLDER]|delete FOLDER [--yes])
+  cairn move             Move an item into a folder, or to the top level (ITEM --to FOLDER|--top)
   cairn members          List an artifact's owner and members, with pin states, from its verified chain
   cairn share            Add a member, or change a role (ARTIFACT USER --role viewer|editor|manager)
   cairn unshare          Remove a member and start a new epoch (ARTIFACT USER)
@@ -36,7 +38,7 @@ Client:
   cairn transfer         Offer ownership to an editor (ARTIFACT USER), or answer an offer (accept|decline|withdraw ARTIFACT)
   cairn successor        Name a successor, or ask for access as one (code|status|nominate|remove|refuse|request|notice-email)
   cairn rotate-keys      Replace your keys, move your artifacts to a new epoch (--keep-epochs: stay), and print the new recovery code
-  cairn push             Upload a directory as a new (or replaced) version (--create: new artifact)
+  cairn push             Upload a directory as a new (or replaced) version (--create: new artifact, --in FOLDER: inside a folder)
   cairn db               Run SQL on a version's database, on your own decrypted copy (query|batch|revisions|restore|download)
   cairn files            Manage a version's stored files by path (list|put|get|delete)
   cairn reseal           Seal an artifact's data again under its current epoch (ARTIFACT); runs after unshare, public off, and the like
@@ -75,6 +77,10 @@ func main() {
 		err = runKeys(args)
 	case "artifact":
 		err = runArtifact(args)
+	case "folder":
+		err = runFolder(args)
+	case "move":
+		err = runMove(args)
 	case "members":
 		err = runMembers(args)
 	case "share":

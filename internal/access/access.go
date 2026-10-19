@@ -70,6 +70,7 @@ const (
 	Transfer       Action = "transfer"   // offer ownership
 	AnswerTransfer Action = "answer"     // accept, decline, or withdraw an offer
 	Estate         Action = "estate"     // PUT an epoch's estate copy: the owner only
+	Move           Action = "move"       // put the item in a folder, or at the top level: the owner only
 )
 
 // Decision is the outcome of a check.
@@ -283,7 +284,7 @@ func WritesArtifact(act Action) bool { return writesArtifact(act) }
 // ownership offer, are left to the table (accepting is refused by the handler).
 func writesArtifact(act Action) bool {
 	switch act {
-	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer, Estate:
+	case WriteData, PushVersion, Share, Delete, Rename, ApproveMember, ReviewVersions, Transfer, Estate, Move:
 		return true
 	}
 	return false
@@ -293,7 +294,7 @@ func allowed(m matches, a Artifact, act Action) bool {
 	if m.owner {
 		switch act {
 		case ReadContent, WriteData, PushVersion, Share, Delete, Rename, ReadMembership,
-			ReadKeys, ListPending, ApproveMember, ReviewVersions, Transfer, AnswerTransfer, Estate:
+			ReadKeys, ListPending, ApproveMember, ReviewVersions, Transfer, AnswerTransfer, Estate, Move:
 			return true
 		}
 		return false

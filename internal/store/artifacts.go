@@ -17,6 +17,11 @@ type Artifact struct {
 	UpdatedAt string      `json:"updatedAt"`
 	Resources []*Resource `json:"resources,omitempty"`
 
+	// Kind is KindArtifact or KindFolder. ParentID is the folder the item
+	// sits in, empty at the top level.
+	Kind     string `json:"kind"`
+	ParentID string `json:"parent,omitempty"`
+
 	// Sharing state, set from the latest membership record. OwnerID is
 	// empty for an artifact created without one; Epoch is 0 until the first
 	// record lands. PublicTokenHash and PublicEpoch are set only while public.
@@ -58,12 +63,13 @@ type Version struct {
 }
 
 const artifactCols = `id, public, created_at, updated_at,
-	COALESCE(owner_id, ''), epoch, team, public_writes, COALESCE(public_token_hash, ''), COALESCE(public_epoch, 0)`
+	COALESCE(owner_id, ''), epoch, team, public_writes, COALESCE(public_token_hash, ''), COALESCE(public_epoch, 0),
+	kind, COALESCE(parent_id, '')`
 
 func scanArtifact(row interface{ Scan(...any) error }) (*Artifact, error) {
 	var a Artifact
 	if err := row.Scan(&a.ID, &a.Public, &a.CreatedAt, &a.UpdatedAt,
-		&a.OwnerID, &a.Epoch, &a.Team, &a.PublicWrites, &a.PublicTokenHash, &a.PublicEpoch); err != nil {
+		&a.OwnerID, &a.Epoch, &a.Team, &a.PublicWrites, &a.PublicTokenHash, &a.PublicEpoch, &a.Kind, &a.ParentID); err != nil {
 		return nil, err
 	}
 	return &a, nil
