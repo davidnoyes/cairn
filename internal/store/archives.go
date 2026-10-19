@@ -16,6 +16,7 @@ type Archive struct {
 	ArchivedAt string        `json:"archivedAt"`
 	Bundle     Bundle        `json:"bundle"`
 	APIKeys    []ArchivedKey `json:"apiKeys"`
+	Passkeys   []ArchivedKey `json:"passkeys"`
 	// Successor is the nomination the reset archived with the bundle, nil
 	// when there was none. An archived copy is never released.
 	Successor *ArchivedSuccessor `json:"successor,omitempty"`
@@ -29,16 +30,16 @@ type ArchivedSuccessor struct {
 	NominatedAt string `json:"nominatedAt"`
 }
 
-// ArchivedKey is one API key's wrapped MK as it stood at the time of an
-// archive.
+// ArchivedKey is one API key's or passkey's wrapped MK as it stood at the
+// time of an archive.
 type ArchivedKey struct {
 	ID string `json:"id"`
 	MK []byte `json:"mk"`
 }
 
 // ResetAccount is the "reset without the recovery code" path: it archives
-// the current bundle and every live API key's wrapped MK, revokes those
-// keys, archives the nomination of a successor with its wrapped copy and ends
+// the current bundle and every live API key's and passkey's wrapped MK,
+// revokes those keys, deletes the passkeys, archives the nomination of a successor with its wrapped copy and ends
 // any request on it, replaces the bundle and auth hash, deletes the keyring,
 // and bumps token_version — all in one transaction.
 func (s *Store) ResetAccount(userID, authHash string, b Bundle, at time.Time) error {
@@ -81,6 +82,29 @@ func (s *Store) ResetAccount(userID, authHash string, b Bundle, at time.Time) er
 		return err
 	}
 
+	rows, err = tx.Query(`SELECT id, mk FROM passkeys WHERE user_id = ?`, userID)
+	if err != nil {
+		return err
+	}
+	var passkeys []ArchivedKey
+	for rows.Next() {
+		var k ArchivedKey
+		if err := rows.Scan(&k.ID, &k.MK); err != nil {
+			rows.Close()
+			return err
+		}
+		passkeys = append(passkeys, k)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	passkeysJSON, err := json.Marshal(passkeys)
+	if err != nil {
+		return err
+	}
+
 	var successorJSON []byte
 	switch sc, err := querySuccessor(tx, userID); {
 	case err == nil:
@@ -91,8 +115,11 @@ func (s *Store) ResetAccount(userID, authHash string, b Bundle, at time.Time) er
 		return err
 	}
 
-	if _, err := tx.Exec(`INSERT INTO bundle_archives (id, user_id, archived_at, bundle, api_keys, successor) VALUES (?, ?, ?, ?, ?, ?)`,
-		uuid.NewString(), userID, t, string(bundleJSON), string(keysJSON), string(successorJSON)); err != nil {
+	if _, err := tx.Exec(`INSERT INTO bundle_archives (id, user_id, archived_at, bundle, api_keys, passkeys, successor) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		uuid.NewString(), userID, t, string(bundleJSON), string(keysJSON), string(passkeysJSON), string(successorJSON)); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM passkeys WHERE user_id = ?`, userID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM successors WHERE user_id = ?`, userID); err != nil {
@@ -117,7 +144,7 @@ func (s *Store) ResetAccount(userID, authHash string, b Bundle, at time.Time) er
 
 // Archives returns bundles archived by a reset, newest first.
 func (s *Store) Archives(userID string) ([]*Archive, error) {
-	rows, err := s.db.Query(`SELECT id, archived_at, bundle, api_keys, successor FROM bundle_archives WHERE user_id = ? ORDER BY archived_at DESC`, userID)
+	rows, err := s.db.Query(`SELECT id, archived_at, bundle, api_keys, passkeys, successor FROM bundle_archives WHERE user_id = ? ORDER BY archived_at DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -125,14 +152,17 @@ func (s *Store) Archives(userID string) ([]*Archive, error) {
 	var out []*Archive
 	for rows.Next() {
 		var a Archive
-		var bundleJSON, keysJSON, successorJSON string
-		if err := rows.Scan(&a.ID, &a.ArchivedAt, &bundleJSON, &keysJSON, &successorJSON); err != nil {
+		var bundleJSON, keysJSON, passkeysJSON, successorJSON string
+		if err := rows.Scan(&a.ID, &a.ArchivedAt, &bundleJSON, &keysJSON, &passkeysJSON, &successorJSON); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(bundleJSON), &a.Bundle); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(keysJSON), &a.APIKeys); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(passkeysJSON), &a.Passkeys); err != nil {
 			return nil, err
 		}
 		if successorJSON != "" {

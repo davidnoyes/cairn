@@ -2344,7 +2344,6 @@ internal/webauthn/webauthn.go	if flags&flagUserVerified == 0 {	if false {	go tes
 internal/webauthn/webauthn.go	if !verifySignature(pub, msg, a.Signature) {	if false && !verifySignature(pub, msg, a.Signature) {	go test ./internal/webauthn -run 'TestVerifyRefuses/signature$|TestVerifySignatureAllAlgorithms'
 internal/webauthn/webauthn.go	&& signCount <= cred.SignCount	&& signCount < cred.SignCount	go test ./internal/webauthn -run TestVerifyCounter
 internal/webauthn/webauthn.go	(cred.SignCount != 0 || signCount != 0) &&	true &&	go test ./internal/webauthn -run TestVerifyCounter
-||||||| base
 internal/server/google.go	|| subtle.ConstantTimeCompare([]byte(st.State), []byte(q.Get("state"))) != 1 {	|| subtle.ConstantTimeCompare([]byte(st.State), []byte(st.State)) != 1 {	go test ./internal/server -count=1 -run TestGoogleCallbackRefusals
 internal/server/google.go	case c.Aud != s.cfg.GoogleClientID:	case false:	go test ./internal/server -count=1 -run TestGoogleCallbackRefusals
 internal/server/google.go	case email == "" || !c.EmailVerified:	case email == "":	go test ./internal/server -count=1 -run TestGoogleCallbackRefusals
@@ -2367,3 +2366,16 @@ internal/server/cli_auth.go	cliProofTTL = 2 * time.Minute	cliProofTTL = 10 * tim
 cmd/cairn/google_login.go	subtle.ConstantTimeCompare([]byte(q.Get("state")), []byte(state)) != 1	subtle.ConstantTimeCompare([]byte(state), []byte(state)) != 1	go test ./cmd/cairn -count=1 -run LoginWithGoogle
 cmd/cairn/client_cmds.go	e2e.NormalizeEmail(*email) != e2e.NormalizeEmail(h.Email)	false	go test ./cmd/cairn -count=1 -run LoginWithGoogle
 internal/server/web/cli.mjs	redirect.startsWith(`http://127.0.0.1:${port}/callback?`)	redirect.startsWith('http://')	node --test internal/server/web/cli_test.mjs
+internal/server/passkeys.go	delete(c.m, token)	_ = token	go test ./internal/server -count=1 -run 'TestPasskeyFinishRefusals|TestPasskeyFinishSpendsTheChallengeOnRefusal'
+internal/server/passkeys.go	return ok && c.clk.Now().Before(exp)	return ok && !exp.IsZero()	go test ./internal/server -count=1 -run 'TestPasskeyFinishRefusals|TestPasskeyChallengeLimits'
+internal/server/passkeys.go	Origin: s.appOrigin,	Origin: func() string { var o struct{ Origin string }; json.Unmarshal(clientData, &o); return o.Origin }(),	go test ./internal/server -count=1 -run TestPasskeyFinishRefusals
+internal/server/passkeys.go	RPID: s.appHost,	RPID: "",	go test ./internal/server -count=1 -run 'TestPasskeySignIn|TestPasskeyFinishRefusals'
+internal/server/passkeys.go	len(userHandle) > 0 &&	false &&	go test ./internal/server -count=1 -run TestPasskeyFinishRefusals
+internal/server/passkeys.go	if u.Disabled {	if false && u.Disabled {	go test ./internal/server -count=1 -run TestPasskeyFinishRefusals
+internal/server/passkeys.go	if s.googleEnabled() && !s.requireProof	if false && !s.requireProof	go test ./internal/server -count=1 -run TestPasskeySignInOnAGoogleServer
+internal/server/passkeys.go	if !s.requireFreshAuthKey(w, r, req.AuthKey) {	if false && !s.requireFreshAuthKey(w, r, req.AuthKey) {	go test ./internal/server -count=1 -run TestPasskeyEnrollRefusals
+internal/server/passkeys.go	|| webauthn.CheckPublicKey(spki, req.Alg) != nil	|| false	go test ./internal/server -count=1 -run TestPasskeyEnrollRefusals
+internal/server/rotate.go	if err := rt.DeletePasskeys(); err != nil {	if err := error(nil); err != nil {	go test ./internal/server -count=1 -run TestPasskeyIsRemovedByKeyRotation
+internal/store/rotation.go	DELETE FROM passkeys WHERE user_id = ?	DELETE FROM passkeys WHERE user_id = ? AND 1 = 0	go test ./internal/server -count=1 -run TestPasskeyIsRemovedByKeyRotation
+internal/store/archives.go	SELECT id, mk FROM passkeys WHERE user_id = ?	SELECT id, mk FROM passkeys WHERE user_id = ? AND 1 = 0	go test ./internal/store -count=1 -run TestResetAccountArchivesPasskeys
+internal/store/archives.go	DELETE FROM passkeys WHERE user_id = ?	DELETE FROM passkeys WHERE user_id = ? AND 1 = 0	go test ./internal/store -count=1 -run TestResetAccountArchivesPasskeys

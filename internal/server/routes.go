@@ -28,6 +28,8 @@ func (s *Server) routes() {
 	handle("GET /api/auth/config", s.handleAuthConfig)
 	handle("GET /api/auth/google", s.handleGoogleProof)
 	handle("POST /api/auth/cli", s.handleCLIProof)
+	handle("POST /api/auth/passkey/begin", s.handlePasskeyBegin)
+	handle("POST /api/auth/passkey/finish", s.handlePasskeyFinish)
 	handle("POST /api/auth/refuse/begin", s.handleRefuseBegin)
 	handle("POST /api/auth/refuse", s.handleRefuse)
 
@@ -57,6 +59,11 @@ func (s *Server) routes() {
 	handle("GET /api/keys", s.requireAuth(s.handleListKeys))
 	handle("POST /api/keys", s.requireSession(s.handleCreateKey))
 	handle("DELETE /api/keys/{id}", s.requireAuth(s.handleRevokeKey))
+
+	// Passkeys: the user's own only.
+	handle("GET /api/me/passkeys", s.requireAuth(s.handleListPasskeys))
+	handle("POST /api/me/passkeys", s.requireSession(s.handleCreatePasskey))
+	handle("DELETE /api/me/passkeys/{id}", s.requireAuth(s.handleDeletePasskey))
 
 	// User directory (any authenticated user)
 	handle("GET /api/users", s.requireAuth(s.handleUsers))

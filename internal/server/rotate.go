@@ -366,6 +366,9 @@ func (s *Server) handleMeRotate(w http.ResponseWriter, r *http.Request) {
 		if err := rt.RevokeAPIKeys(); err != nil {
 			return err
 		}
+		if err := rt.DeletePasskeys(); err != nil {
+			return err
+		}
 		// The nomination, its wrapped copy, and any request end with the keys
 		// the copy was made to open; the records stay so seq goes on.
 		if err := rt.DeleteSuccessor(); err != nil {

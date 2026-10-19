@@ -193,6 +193,7 @@ type archiveView struct {
 	ArchivedAt string     `json:"archivedAt"`
 	Bundle     bundleWire `json:"bundle"`
 	APIKeys    []apiKeyMK `json:"apiKeys"`
+	Passkeys   []apiKeyMK `json:"passkeys"`
 }
 
 func (s *Server) handleMeArchives(w http.ResponseWriter, r *http.Request) {
@@ -208,7 +209,11 @@ func (s *Server) handleMeArchives(w http.ResponseWriter, r *http.Request) {
 		for _, k := range a.APIKeys {
 			keys = append(keys, apiKeyMK{ID: k.ID, MK: e2e.B64(k.MK)})
 		}
-		out = append(out, archiveView{ID: a.ID, ArchivedAt: a.ArchivedAt, Bundle: encodeBundle(a.Bundle), APIKeys: keys})
+		passkeys := make([]apiKeyMK, 0, len(a.Passkeys))
+		for _, k := range a.Passkeys {
+			passkeys = append(passkeys, apiKeyMK{ID: k.ID, MK: e2e.B64(k.MK)})
+		}
+		out = append(out, archiveView{ID: a.ID, ArchivedAt: a.ArchivedAt, Bundle: encodeBundle(a.Bundle), APIKeys: keys, Passkeys: passkeys})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

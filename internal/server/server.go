@@ -92,6 +92,8 @@ type Server struct {
 	signIn    *signInLimiters
 	mailLimit *limiter
 
+	passkeyChallenges *challenges // issued by passkey/begin, spent by passkey/finish
+
 	googleAuthURL  string       // where the browser goes to sign in with Google
 	googleTokenURL string       // where the code is exchanged
 	httpClient     *http.Client // calls Google's token endpoint; tests replace it
@@ -147,6 +149,7 @@ func New(cfg Config) (*Server, error) {
 		googleTokenURL: cmp.Or(cfg.GoogleTokenURL, googleTokenEndpoint),
 		httpClient:     &http.Client{Timeout: googleTimeout},
 	}
+	s.passkeyChallenges = newChallenges(cfg.Clock)
 	if u, err := url.Parse(cfg.PublicURL); err == nil && u.Scheme == "https" {
 		s.secure = true
 	}

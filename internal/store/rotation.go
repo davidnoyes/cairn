@@ -268,6 +268,13 @@ func (t *RotateTx) RevokeAPIKeys() error {
 	return err
 }
 
+// DeletePasskeys removes every passkey the user has: each holds a copy of the
+// old MK, which nothing can open once the keys rotate.
+func (t *RotateTx) DeletePasskeys() error {
+	_, err := t.tx.Exec(`DELETE FROM passkeys WHERE user_id = ?`, t.userID)
+	return err
+}
+
 // CloseOffersToUser closes every open ownership offer made to the user.
 func (t *RotateTx) CloseOffersToUser() error {
 	_, err := t.tx.Exec(`UPDATE artifact_offers SET state = 'closed' WHERE to_user = ? AND state = 'open'`, t.userID)
