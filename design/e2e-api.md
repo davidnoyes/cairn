@@ -2720,6 +2720,10 @@ until then refuses to change a member list that uses either.
   the command-line tool build the same records from the same state.
 - A group that no longer exists is dropped from the next record the browser
   writes, and the dialog says so.
+- **Left for later.** The browser does not yet relist a listed member whose
+  keys rotated, as the Go client does. A change that needs a new epoch while
+  such a member is listed is refused with `member-key-changed`, naming them,
+  and `cairn share` relists them.
 
 ## Shared folders
 
