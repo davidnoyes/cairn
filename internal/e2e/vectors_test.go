@@ -564,6 +564,7 @@ func generateVectors(t testing.TB) vectorFile {
 		LabelBlind:       {[]byte("session"), []byte("abc123")},
 		LabelAKCommit:    {[]byte("artifact-1"), []byte("3")},
 		LabelSalt:        {[]byte("ada@example.com"), bytes.Repeat([]byte{5}, 16)},
+		LabelPasskey:     {[]byte("user-1"), []byte("credential-1")},
 	}
 	for _, label := range Labels() {
 		fields := fieldsByLabel[label]

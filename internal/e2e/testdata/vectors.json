@@ -192,6 +192,23 @@
       "salt": "73616d706c652d73616c742d31362d62",
       "fields": null,
       "want": "cefd0e71c08226e560a6b68be46451d01eb54b6106aff923e97ff4f4cb47457b"
+    },
+    {
+      "label": "cairn/v1/passkey",
+      "ikm": "73616d706c652d696e7075742d6b65792d6d6174657269616c2d333262797465",
+      "salt": "73616d706c652d73616c742d31362d62",
+      "fields": [
+        "757365722d31",
+        "63726564656e7469616c2d31"
+      ],
+      "want": "8bb0b7cb5dc459ac7f2e61f71488945ef05d8debd66a4568e383b5139ff1cdb8"
+    },
+    {
+      "label": "cairn/v1/passkey-prf",
+      "ikm": "73616d706c652d696e7075742d6b65792d6d6174657269616c2d333262797465",
+      "salt": "73616d706c652d73616c742d31362d62",
+      "fields": null,
+      "want": "6443f53c8ce21a0c05afa4554c4d0826d4b8d0bc9c62b37fa5af5569d3b83618"
     }
   ],
   "argon2": [

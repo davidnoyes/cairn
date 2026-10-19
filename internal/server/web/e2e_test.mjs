@@ -61,6 +61,18 @@ test('derive', async () => {
   }
 });
 
+// passkeyKek must use the spec's label and field order: the browser is the
+// only side that derives it, so the Go vectors cannot catch a drift here.
+test('passkeyKek: spec label, fields, and PRF input', async () => {
+  assert.equal(e2e.LABELS.passkey, 'cairn/v1/passkey');
+  assert.equal(new TextDecoder().decode(e2e.PASSKEY_PRF_INPUT), 'cairn/v1/passkey-prf');
+  const prf = testKeyBytes(9);
+  const enc = new TextEncoder();
+  const want = await e2e.derive(prf, null, 'cairn/v1/passkey', enc.encode('user-1'), enc.encode('credential-1'));
+  assert.equal(toHex(await e2e.passkeyKek(prf, 'user-1', 'credential-1')), toHex(want));
+  assert.notEqual(toHex(await e2e.passkeyKek(prf, 'user-1', 'credential-2')), toHex(want));
+});
+
 test('argon2', async () => {
   for (const v of vf.argon2) {
     const params = {
@@ -568,6 +580,14 @@ test('non-extractable keys: KEK CryptoKey variants match the raw KEKs, one purpo
     await e2e.apiKeyKek(keySecret, keyId),
     'apiKeyKek',
   );
+
+  const prf = testKeyBytes(9);
+  await assertKekPurposes(
+    await e2e.passkeyKekCryptoKey(prf, 'user-1', 'credential-1', 'seal'),
+    await e2e.passkeyKekCryptoKey(prf, 'user-1', 'credential-1', 'open'),
+    await e2e.passkeyKek(prf, 'user-1', 'credential-1'),
+    'passkeyKek',
+  );
 });
 
 // No KEK CryptoKey has a default purpose: leaving it out, or naming any
@@ -579,6 +599,7 @@ test('non-extractable keys: KEK CryptoKeys require a purpose', async () => {
     await assertThrows(async () => e2e.passwordCryptoKeys(testKeyBytes(7), purpose), e2e.FormatError);
     await assertThrows(async () => e2e.recoveryKekCryptoKey(code, purpose), e2e.FormatError);
     await assertThrows(async () => e2e.apiKeyKekCryptoKey(keySecret, keyId, purpose), e2e.FormatError);
+    await assertThrows(async () => e2e.passkeyKekCryptoKey(testKeyBytes(9), 'u', 'c', purpose), e2e.FormatError);
   }
 });
 

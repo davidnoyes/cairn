@@ -27,6 +27,8 @@ const (
 	LabelAKCommit    = "cairn/v1/ak-commit"
 	LabelSalt        = "cairn/v1/salt"
 	LabelRefuseFake  = "cairn/v1/refuse-fake"
+	LabelPasskey     = "cairn/v1/passkey"
+	LabelPasskeyPRF  = "cairn/v1/passkey-prf"
 )
 
 // Labels returns every label in the spec's table.
@@ -51,6 +53,8 @@ func Labels() []string {
 		LabelAKCommit,
 		LabelSalt,
 		LabelRefuseFake,
+		LabelPasskey,
+		LabelPasskeyPRF,
 	}
 }
 

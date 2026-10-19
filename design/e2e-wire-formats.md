@@ -52,6 +52,8 @@ labels. No two are equal, and a test enforces it.
 | `cairn/v1/refuse-fake` | The fake keys for a refusal with nothing to refuse |
 | `cairn/v1/salt` | The Argon2id salt, bound to the account's email |
 | `cairn/v1/ak-commit` | The commitment to `AK` in a membership record |
+| `cairn/v1/passkey` | `passkeyKek`, from a passkey's PRF output |
+| `cairn/v1/passkey-prf` | The input every passkey's PRF evaluates |
 
 The `v1` in every label is tied to the `0x01` version byte that starts a
 sealed value, a blob header, and a wrapped key. A later format version must
@@ -114,6 +116,18 @@ cairn_<keyid>_<authSecret>_<keySecret>
   not the 16 bytes it encodes.
 - `apiKeyKek = derive(keySecret, "", "cairn/v1/api-key", keyid)`, over the 32
   raw bytes of `keySecret`. It seals the key's copy of `MK`.
+
+## Passkeys
+
+- A passkey's PRF evaluates the UTF-8 bytes of `cairn/v1/passkey-prf`. The
+  authenticator mixes in a secret of its own, so the 32-byte output differs
+  for every credential.
+- `passkeyKek = derive(prfOutput, "", "cairn/v1/passkey", userId,
+  credentialId)`, where `credentialId` is the credential ID in base64url
+  without padding. It seals the passkey's copy of `MK`, bound to the fields
+  `mk` and `credentialId`.
+- Only the browser derives `passkeyKek`, so the JavaScript unit tests check
+  it against the label and field order here, not the Go vectors.
 
 ## Keys derived from the master, estate, and artifact keys
 

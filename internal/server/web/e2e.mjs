@@ -261,6 +261,8 @@ export const LABELS = {
   prelogin: 'cairn/v1/prelogin',
   salt: 'cairn/v1/salt',
   akCommit: 'cairn/v1/ak-commit',
+  passkey: 'cairn/v1/passkey',
+  passkeyPrf: 'cairn/v1/passkey-prf',
 };
 
 // KEY_LEN is the length every raw symmetric key (MK, EK, AK, and keys
@@ -633,6 +635,23 @@ export async function apiKeyKek(keySecret, keyId) {
 // for one purpose (see kekUsages).
 export async function apiKeyKekCryptoKey(keySecret, keyId, purpose) {
   return deriveKey(keySecret, null, LABELS.apiKey, [keyId], AES_GCM_256_ALG, kekUsages(purpose));
+}
+
+// PASSKEY_PRF_INPUT is what every passkey's PRF evaluates: the same bytes
+// for every credential, because the authenticator mixes in a secret of its
+// own, so each credential's output still differs.
+export const PASSKEY_PRF_INPUT = new TextEncoder().encode(LABELS.passkeyPrf);
+
+// passkeyKek derives the key that seals a passkey's copy of MK from the
+// passkey's PRF output, bound to the user and the credential.
+export async function passkeyKek(prfOutput, userId, credentialId) {
+  return derive(prfOutput, null, LABELS.passkey, userId, credentialId);
+}
+
+// passkeyKekCryptoKey is passkeyKek as a non-extractable AES-GCM CryptoKey
+// for one purpose (see kekUsages).
+export async function passkeyKekCryptoKey(prfOutput, userId, credentialId, purpose) {
+  return deriveKey(prfOutput, null, LABELS.passkey, [userId, credentialId], AES_GCM_256_ALG, kekUsages(purpose));
 }
 
 // apiKeyAuthHash is what the server stores for authSecret: the hash of the
