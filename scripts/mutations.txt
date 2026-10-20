@@ -3305,7 +3305,7 @@ internal/membership/membership.go	body.Team != access.TeamNone || body.Public ||
 internal/membership/membership.go	Kind: a.Kind, Owner: owner, Parent: a.ParentID}	Owner: owner, Parent: a.ParentID}	go test ./internal/server -count=1 -run 'TestFolderKeeps'
 internal/membership/membership.go	Kind: a.Kind, Owner: owner, Parent: a.ParentID}	Kind: a.Kind, Owner: owner}	go test ./internal/server -count=1 -run 'TestItemRecord|TestCreatingAnItemInAShared'
 internal/membership/membership.go	return x.User == m.User })	return x.User != m.User })	go test ./internal/membership -count=1 -run 'TestCheckInherited|TestCheckViaOn|TestCheckAccept|TestCheckAFolder'
-internal/membership/membership.go	if f == nil || !slices.ContainsFunc(f.Members	if f != nil && !slices.ContainsFunc(f.Members	go test ./internal/membership -count=1 -run 'TestCheckInherited|TestCheckViaOn|TestCheckAccept|TestCheckAFolder'
+internal/membership/membership.go	if f == nil || f.Owner != m.User && !slices.ContainsFunc(f.Members	if f != nil && f.Owner != m.User && !slices.ContainsFunc(f.Members	go test ./internal/membership -count=1 -run 'TestCheckInherited|TestCheckViaOn|TestCheckAccept|TestCheckAFolder'
 internal/membership/membership.go	return x.Group == g.Group })	return x.Group != g.Group })	go test ./internal/membership -count=1 -run 'TestCheckInherited|TestCheckViaOn|TestCheckAccept|TestCheckAFolder'
 internal/membership/membership.go	if f == nil || !slices.ContainsFunc(f.Groups	if f != nil && !slices.ContainsFunc(f.Groups	go test ./internal/membership -count=1 -run 'TestCheckInherited|TestCheckViaOn|TestCheckAccept|TestCheckAFolder'
 internal/membership/membership.go	if m.Via == "" {	if false {	go test ./internal/membership -count=1 -run 'TestCheckInherited|TestCheckViaOn|TestCheckAccept|TestCheckAFolder'
@@ -3622,3 +3622,19 @@ cmd/cairn/folder_cmds.go	if len(contents.Moved) > 0 {	if false {	go test ./cmd/c
 cmd/cairn/folder_cmds.go	if counts.Moved > 0 {	if false {	go test ./cmd/cairn -count=1 -run 'TestShareAFolderReports|TestFolderListShowsAStub|TestApplyPrints|TestApplyApproves|TestFolderDelete|TestApplyLeaves'
 cmd/cairn/folder_cmds.go	return u.Email	_ = u.Email; return id	go test ./cmd/cairn -count=1 -run 'TestShareAFolderReports|TestFolderListShowsAStub|TestApplyPrints|TestApplyApproves|TestFolderDelete|TestApplyLeaves'
 cmd/cairn/folder_cmds.go	"moved":   moved,	"moved":   nil,	go test ./cmd/cairn -count=1 -run 'TestShareAFolderReports|TestFolderListShowsAStub|TestApplyPrints|TestApplyApproves|TestFolderDelete|TestApplyLeaves'
+internal/membership/membership.go	f.Owner != m.User && !slices.ContainsFunc	!slices.ContainsFunc	go test ./internal/membership -count=1 -run TestCheckTheFoldersOwnerReadsWhatIsInIt
+internal/membership/membership.go	f == nil || f.Owner != m.User &&	f == nil || f.Owner != "" &&	go test ./internal/membership -count=1 -run TestCheckTheFoldersOwnerReadsWhatIsInIt
+internal/membership/membership.go	if parent.Owner != body.Owner {	if false {	go test ./internal/membership -count=1 -run TestCheckTheFoldersOwnerReadsWhatIsInIt
+internal/membership/membership.go	e2e.Member{User: parent.Owner, Role: access.RoleEditor}	e2e.Member{User: parent.Owner, Role: access.RoleViewer}	go test ./internal/membership -count=1 -run TestCheckTheFoldersOwnerReadsWhatIsInIt
+internal/store/inherit.go	errors.Is(err, sql.ErrNoRows) && !group {	errors.Is(err, sql.ErrNoRows) && false {	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
+internal/store/inherit.go	SELECT 'editor' FROM artifacts	SELECT 'viewer' FROM artifacts	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
+internal/store/inherit.go	SELECT 'editor' FROM artifacts	SELECT 'manager' FROM artifacts	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
+internal/store/inherit.go	WHERE id = ? AND owner_id = ?`, via, who	WHERE id = ? AND owner_id != ?`, via, who	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
+internal/store/inherit.go	WHERE f.id = ? AND f.owner_id != ?	WHERE f.id = ? AND f.owner_id = ?	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
+internal/store/inherit.go	WHERE verified_at IS NOT NULL AND disabled = 0)	WHERE verified_at IS NOT NULL)	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
+internal/store/inherit.go	WHERE verified_at IS NOT NULL AND disabled = 0)	WHERE disabled = 0)	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
+internal/store/inherit.go	AND (m.role IS NULL OR m.role = 'viewer')	AND (m.role IS NULL)	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
+internal/client/folder_share.go	if parent.Owner != item.Owner {	if false {	go test ./internal/client -count=1 -run 'TestPlanInherit|TestTheFoldersOwner|TestAFolderInsideAFolderListsBoth'
+internal/client/folder_share.go	Role: "editor", FP: parent.OwnerFP, Via: parentID	Role: "viewer", FP: parent.OwnerFP, Via: parentID	go test ./internal/client -count=1 -run 'TestPlanInherit|TestTheFoldersOwner|TestAFolderInsideAFolderListsBoth'
+internal/client/folder_share.go	FP: parent.OwnerFP, Via: parentID}	FP: "", Via: parentID}	go test ./internal/client -count=1 -run 'TestPlanInherit|TestTheFoldersOwner|TestAFolderInsideAFolderListsBoth'
+internal/client/folder_share.go	FP: parent.OwnerFP, Via: parentID}	FP: parent.OwnerFP}	go test ./internal/client -count=1 -run 'TestPlanInherit|TestTheFoldersOwner|TestAFolderInsideAFolderListsBoth'

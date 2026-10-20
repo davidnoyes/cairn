@@ -1,6 +1,8 @@
 package membership
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
@@ -191,4 +193,87 @@ func TestCheckAFolderInAFolder(t *testing.T) {
 	b := f.next()
 	_, err := Check(f.cur, f.dir, f.change(t, b, nil, nil))
 	refused(t, err, 409, RuleInherit, "member u-c is missing")
+}
+
+// ownedBy makes u the owner of the folder f's artifact sits in, as the
+// folder's latest record lists it.
+func (f *fixture) ownedBy(u *tUser) {
+	fr := f.cur.Folders[folderF]
+	fr.Owner, fr.OwnerFP = u.ID, u.FP
+}
+
+// The folder's owner reads what is in it: an item someone else owns lists
+// the owner of its folder as an editor via that folder. The item in the
+// fixture is owned by u-o, and folder F by u-c.
+func TestCheckTheFoldersOwnerReadsWhatIsInIt(t *testing.T) {
+	ownerEntry := func(f *fixture, role, via string) e2e.Member {
+		return e2e.Member{User: f.c.ID, Role: role, FP: f.c.FP, Via: via}
+	}
+	cases := []struct {
+		name   string
+		edit   func(f *fixture, b *e2e.MembershipBody)
+		status int // 0 for accepted
+		rule   Rule
+		msg    string
+	}{
+		{name: "the record lists the owner as an editor via the folder",
+			edit: func(f *fixture, b *e2e.MembershipBody) {
+				b.Members = append(b.Members, ownerEntry(f, "editor", folderF))
+			}},
+		{name: "a direct grant at editor keeps no via",
+			edit: func(f *fixture, b *e2e.MembershipBody) {
+				b.Members = append(b.Members, ownerEntry(f, "editor", ""))
+			}},
+		{name: "the record omits the folder's owner",
+			status: 409, rule: RuleInherit, msg: "member u-c is missing"},
+		{name: "the record lists the folder's owner as a viewer",
+			edit: func(f *fixture, b *e2e.MembershipBody) {
+				b.Members = append(b.Members, ownerEntry(f, "viewer", ""))
+			},
+			status: 409, rule: RuleInherit, msg: "member u-c is viewer"},
+		{name: "the folder's owner is deactivated",
+			edit: func(f *fixture, b *e2e.MembershipBody) { f.dir["u-c"].Active = false }},
+		{name: "the folder's owner is not verified",
+			edit: func(f *fixture, b *e2e.MembershipBody) { f.dir["u-c"].Verified = false }},
+		{name: "the folder is owned by the item's owner",
+			edit: func(f *fixture, b *e2e.MembershipBody) { f.ownedBy(f.o) }},
+		{name: "a via naming a folder that someone else owns",
+			edit: func(f *fixture, b *e2e.MembershipBody) {
+				f.ownedBy(f.a)
+				b.Members = append(b.Members, ownerEntry(f, "editor", folderF))
+			},
+			status: 409, rule: RuleVia, msg: "member u-c via " + folderF},
+		{name: "a folder further up, whose owner its record lists via itself",
+			edit: func(f *fixture, b *e2e.MembershipBody) {
+				f.cur.Folders[folderG] = folderRecord(folderG, nil, nil)
+				f.cur.Folders[folderG].Owner = f.a.ID
+				f.cur.Folders[folderF].Members = []e2e.Member{{User: f.a.ID, Role: "editor", FP: f.a.FP, Via: folderG}}
+				b.Members = append(b.Members, ownerEntry(f, "editor", folderF))
+				b.Members[0].Via = folderG
+			}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.inFolder(nil)
+			f.ownedBy(f.c)
+			b := f.next()
+			if c.edit != nil {
+				c.edit(f, b)
+			}
+			slices.SortFunc(b.Members, func(x, y e2e.Member) int { return strings.Compare(x.User, y.User) })
+			var wraps []WrapIn
+			if slices.ContainsFunc(b.Members, func(m e2e.Member) bool { return m.User == f.c.ID }) {
+				wraps = wrapsFor(f.c, 1, 2)
+			}
+			_, err := Check(f.cur, f.dir, f.change(t, b, wraps, nil))
+			if c.status == 0 {
+				if err != nil {
+					t.Fatalf("refused: %v", err)
+				}
+				return
+			}
+			refused(t, err, c.status, c.rule, c.msg)
+		})
+	}
 }

@@ -24,12 +24,41 @@ type folderView struct {
 // parent, owned by owner, and its ID.
 func itemRequest(t *testing.T, owner actor, kind, parent string) (string, map[string]any) {
 	t.Helper()
+	id, req, _ := itemRequestIn(t, owner, kind, parent, nil)
+	return id, req
+}
+
+// itemRequestIn is itemRequest for an item in folder, whose first record
+// lists what the folder requires of it: the folder's members and, when the
+// folder is someone else's, its owner as an editor, all via the folder. It
+// also returns that record.
+func itemRequestIn(t *testing.T, owner actor, kind, parent string, folder *owned) (string, map[string]any, e2e.MembershipBody) {
+	t.Helper()
 	id := uuid.NewString()
 	first := firstRecord(t, owner, id)
 	first.Folder = parent
+	wraps := []any{}
+	if folder != nil {
+		for _, m := range folder.latest.Members {
+			if m.User == owner.id {
+				continue
+			}
+			via := m.Via
+			if via == "" {
+				via = folder.id
+			}
+			first.Members = append(first.Members, e2e.Member{User: m.User, Role: m.Role, FP: m.FP, Via: via})
+			wraps = append(wraps, map[string]any{"user": m.User, "epoch": 1, "wrapped": e2e.B64(fakeWrap)})
+		}
+		if folder.owner.id != owner.id {
+			first.Members = append(first.Members, viaMember(folder.owner, "editor", folder.id))
+			wraps = append(wraps, map[string]any{"user": folder.owner.id, "epoch": 1, "wrapped": e2e.B64(fakeWrap)})
+		}
+		sortMembers(first.Members)
+	}
 	req := map[string]any{
 		"id": id, "membership": signRecord(t, owner, first),
-		"wraps": []any{}, "estate": []any{testEstate(t, id, 1)},
+		"wraps": wraps, "estate": []any{testEstate(t, id, 1)},
 	}
 	if kind != "" {
 		req["kind"] = kind
@@ -37,13 +66,25 @@ func itemRequest(t *testing.T, owner actor, kind, parent string) (string, map[st
 	if parent != "" {
 		req["parent"] = parent
 	}
-	return id, req
+	return id, req, first
 }
 
 // newItem creates an item of kind in parent and expects it to land.
 func newItem(t *testing.T, owner actor, kind, parent string) *owned {
 	t.Helper()
-	id, req := itemRequest(t, owner, kind, parent)
+	return newItemIn(t, owner, kind, parent, nil)
+}
+
+// itemIn creates an item of kind in folder, with the entries the folder
+// requires of it, and expects it to land.
+func itemIn(t *testing.T, owner actor, kind string, folder *owned) *owned {
+	t.Helper()
+	return newItemIn(t, owner, kind, folder.id, folder)
+}
+
+func newItemIn(t *testing.T, owner actor, kind, parent string, folder *owned) *owned {
+	t.Helper()
+	id, req, b := itemRequestIn(t, owner, kind, parent, folder)
 	var v folderView
 	owner.mustDo("POST", "/api/artifacts", req, &v, http.StatusCreated)
 	wantKind := kind
@@ -53,8 +94,6 @@ func newItem(t *testing.T, owner actor, kind, parent string) *owned {
 	if v.ID != id || v.Kind != wantKind || (parent == "") != (v.Parent == nil) || parent != "" && *v.Parent != parent {
 		t.Fatalf("created %s in %q answered %+v", kind, parent, v)
 	}
-	b := firstRecord(t, owner, id)
-	b.Folder = parent
 	return &owned{t: t, owner: owner, id: id, latest: b, hash: e2e.BodyHash(req["membership"].(e2e.Envelope).Body)}
 }
 

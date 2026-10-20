@@ -715,16 +715,16 @@ func rank(role string) int {
 
 // checkInherited is the folder rules for a record of an item: every via is
 // true, and the record lists every user and group the item's folder lists,
-// at that role or higher. The folder's own record already holds its
-// ancestors' entries, so one level covers every level. A refusal is a 409
-// that names the entry at fault.
+// at that role or higher, and the folder's owner as an editor. The folder's
+// own record already holds its ancestors' entries, so one level covers every
+// level. A refusal is a 409 that names the entry at fault.
 func checkInherited(cur Current, body *e2e.MembershipBody, dir Directory) error {
 	for _, m := range body.Members {
 		if m.Via == "" {
 			continue
 		}
 		f := cur.Folders[m.Via]
-		if f == nil || !slices.ContainsFunc(f.Members, func(x e2e.Member) bool { return x.User == m.User }) {
+		if f == nil || f.Owner != m.User && !slices.ContainsFunc(f.Members, func(x e2e.Member) bool { return x.User == m.User }) {
 			return conflict(RuleVia, "member %s via %s: that folder does not contain the item and list them", m.User, m.Via)
 		}
 	}
@@ -741,7 +741,14 @@ func checkInherited(cur Current, body *e2e.MembershipBody, dir Directory) error 
 	if parent == nil {
 		return nil
 	}
-	for _, p := range parent.Members {
+	// The folder's owner reads what is in it, as an editor, unless they own
+	// the item. The folder lists them as its owner, not as a member, so this
+	// entry is not in parent.Members.
+	required := slices.Clone(parent.Members)
+	if parent.Owner != body.Owner {
+		required = append(required, e2e.Member{User: parent.Owner, Role: access.RoleEditor})
+	}
+	for _, p := range required {
 		if p.User == body.Owner {
 			continue
 		}

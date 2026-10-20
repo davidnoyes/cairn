@@ -250,12 +250,14 @@ func TestUnsharingTakesAnotherOwnersItemAtOnceAndApplyExcludesIt(t *testing.T) {
 	wantInherit(t, w.bob, w.theirs, "pending")
 	// Bob's apply starts the next epoch without cat.
 	res := applyOK(t, w.bob)
+	adaID := latestBody(t, w.ada, w.work).Owner
 	if res.FanOut.Count(FanOutNewEpoch) != 3 {
 		t.Fatalf("bob's apply: %+v", res.FanOut.Items)
 	}
 	for _, id := range []string{w.theirs, w.theirFolder, w.inside} {
 		b := latestBody(t, w.bob, id)
-		if b.Epoch != 2 || slices.ContainsFunc(b.Members, func(m e2e.Member) bool { return m.Via != "" }) {
+		// Only ada, the folder's owner, stays: she reads what is in it.
+		if b.Epoch != 2 || slices.ContainsFunc(b.Members, func(m e2e.Member) bool { return m.Via != "" && m.User != adaID }) {
 			t.Errorf("%s: epoch %d, members %+v", id, b.Epoch, b.Members)
 		}
 		wantInherit(t, w.bob, id, "ok")
@@ -271,7 +273,7 @@ func TestApplyAfterTheFolderIsDeletedNamesNoFolder(t *testing.T) {
 	applyOK(t, w.bob)
 
 	// Ada sees what the delete does before it runs: her own item goes, bob's
-	// item and folder stay, as stubs she cannot read.
+	// item and folder stay, and she reads them as their folder's owner.
 	contents, err := w.ada.FolderContents(w.work)
 	if err != nil {
 		t.Fatal(err)
@@ -280,7 +282,7 @@ func TestApplyAfterTheFolderIsDeletedNamesNoFolder(t *testing.T) {
 		t.Fatalf("contents: %+v", contents)
 	}
 	for _, m := range contents.Moved {
-		if m.Access != "none" || m.OwnerID == "" {
+		if m.Access != "editor" || m.OwnerID == "" {
 			t.Errorf("moved %+v", m)
 		}
 	}

@@ -509,7 +509,7 @@ func TestPlanInherit(t *testing.T) {
 	g := func(group, role, via string) e2e.GroupShare {
 		return e2e.GroupShare{Group: group, Role: role, Via: via}
 	}
-	parent := &e2e.MembershipBody{Members: []e2e.Member{m("a", "editor", ""), m("b", "viewer", up), m("owner", "viewer", "")}}
+	parent := &e2e.MembershipBody{Owner: "owner", Members: []e2e.Member{m("a", "editor", ""), m("b", "viewer", up), m("owner", "viewer", "")}}
 	cases := []struct {
 		name    string
 		item    e2e.MembershipBody
@@ -537,19 +537,36 @@ func TestPlanInherit(t *testing.T) {
 		{name: "an item at the top level drops every inherited entry", item: e2e.MembershipBody{Owner: "owner", Members: []e2e.Member{m("a", "editor", f), m("d", "viewer", "")}},
 			members: []e2e.Member{m("d", "viewer", "")}, epoch: true},
 		{name: "a group's lower role takes an epoch", item: e2e.MembershipBody{Owner: "owner", Groups: []e2e.GroupShare{g("g2", "editor", f)}},
-			parent: &e2e.MembershipBody{}, groups: []e2e.GroupShare{g("g2", "viewer", "")},
+			parent: &e2e.MembershipBody{Owner: "owner"}, groups: []e2e.GroupShare{g("g2", "viewer", "")},
 			members: []e2e.Member{}, out: []e2e.GroupShare{g("g2", "viewer", f)}, epoch: true},
 		{name: "groups follow the same rules", item: e2e.MembershipBody{Owner: "owner", Groups: []e2e.GroupShare{g("g1", "viewer", ""), g("g2", "editor", f), g("g9", "viewer", f)}},
-			parent: &e2e.MembershipBody{}, groups: []e2e.GroupShare{g("g1", "editor", ""), g("g2", "viewer", up), g("g3", "viewer", "")},
+			parent: &e2e.MembershipBody{Owner: "owner"}, groups: []e2e.GroupShare{g("g1", "editor", ""), g("g2", "viewer", up), g("g3", "viewer", "")},
 			members: []e2e.Member{}, out: []e2e.GroupShare{g("g1", "editor", ""), g("g2", "viewer", up), g("g3", "viewer", f)}, epoch: true},
 		{name: "a deactivated user and a deleted group are skipped, and reported, not added", item: e2e.MembershipBody{Owner: "owner"},
-			parent: &e2e.MembershipBody{Members: []e2e.Member{m("a", "editor", ""), m("b", "viewer", "")}}, groups: []e2e.GroupShare{g("g1", "viewer", ""), g("g3", "viewer", "")},
+			parent: &e2e.MembershipBody{Owner: "owner", Members: []e2e.Member{m("a", "editor", ""), m("b", "viewer", "")}}, groups: []e2e.GroupShare{g("g1", "viewer", ""), g("g3", "viewer", "")},
 			members: []e2e.Member{m("a", "editor", f)}, out: []e2e.GroupShare{g("g1", "viewer", f)}, added: []string{"a"},
 			unusable: []string{"b"}, deleted: []string{"g3"}, skippedUsers: []string{"b"}, skippedGroups: []string{"g3"}},
 		{name: "a deactivated user and a deleted group the item already lists stay, with no epoch", item: e2e.MembershipBody{Owner: "owner", Members: []e2e.Member{m("b", "viewer", f)}, Groups: []e2e.GroupShare{g("g3", "viewer", f)}},
-			parent: &e2e.MembershipBody{Members: []e2e.Member{m("b", "viewer", "")}}, groups: []e2e.GroupShare{g("g3", "viewer", "")},
+			parent: &e2e.MembershipBody{Owner: "owner", Members: []e2e.Member{m("b", "viewer", "")}}, groups: []e2e.GroupShare{g("g3", "viewer", "")},
 			members: []e2e.Member{m("b", "viewer", f)}, out: []e2e.GroupShare{g("g3", "viewer", f)},
 			unusable: []string{"b"}, deleted: []string{"g3"}},
+		{name: "the folder's owner is added as an editor via the folder, with the fingerprint its record lists", item: e2e.MembershipBody{Owner: "owner"},
+			parent:  &e2e.MembershipBody{Owner: "po", OwnerFP: "fp-po"},
+			members: []e2e.Member{m("po", "editor", f)}, added: []string{"po"}},
+		{name: "the folder's owner keeps a direct grant at a higher role", item: e2e.MembershipBody{Owner: "owner", Members: []e2e.Member{m("po", "manager", "")}},
+			parent:  &e2e.MembershipBody{Owner: "po", OwnerFP: "fp-po"},
+			members: []e2e.Member{m("po", "manager", "")}},
+		{name: "the folder's owner is skipped when the account is deactivated", item: e2e.MembershipBody{Owner: "owner"},
+			parent:  &e2e.MembershipBody{Owner: "po", OwnerFP: "fp-po"},
+			members: []e2e.Member{}, unusable: []string{"po"}, skippedUsers: []string{"po"}},
+		{name: "the item's own owner is not listed when it owns the folder", item: e2e.MembershipBody{Owner: "owner"},
+			parent: &e2e.MembershipBody{Owner: "owner", OwnerFP: "fp-owner"}, members: []e2e.Member{}},
+		{name: "an owner entry of a folder the item left goes, with an epoch", item: e2e.MembershipBody{Owner: "owner", Members: []e2e.Member{m("po", "editor", up)}},
+			parent:  &e2e.MembershipBody{Owner: "other", OwnerFP: "fp-other"},
+			members: []e2e.Member{m("other", "editor", f)}, added: []string{"other"}, epoch: true},
+		{name: "a folder's owner inside a folder, and the folder above's owner via it", item: e2e.MembershipBody{Owner: "owner"},
+			parent:  &e2e.MembershipBody{Owner: "po", OwnerFP: "fp-po", Members: []e2e.Member{m("up", "editor", up)}},
+			members: []e2e.Member{m("po", "editor", f), m("up", "editor", up)}, added: []string{"po", "up"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

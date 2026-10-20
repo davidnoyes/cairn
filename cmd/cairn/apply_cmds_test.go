@@ -175,7 +175,9 @@ func TestFolderDeleteShowsWhatBecomesOfOtherPeoplesItems(t *testing.T) {
 		t.Errorf("bob's item after the delete sits in %q", item.ParentID)
 	}
 	res := runJSON[applyOut](t, runApply, "--json")
-	if res.Applied.Total != 1 || res.Applied.Updated != 1 || res.Applied.Items[0].ID != theirs {
+	// Ada, the folder's owner, read it through the folder, so her entry lapses
+	// and the apply starts a new epoch.
+	if res.Applied.Total != 1 || res.Applied.NewEpoch != 1 || res.Applied.Items[0].ID != theirs {
 		t.Errorf("bob's apply --json = %+v", res.Applied)
 	}
 	if text, err := runQuiet(t, runApply); err != nil || !strings.Contains(text, "nothing to apply") {

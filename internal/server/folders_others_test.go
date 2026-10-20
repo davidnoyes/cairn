@@ -40,8 +40,8 @@ func remove(c *testClient, id string) (int, string) { return move(c, id, nil) }
 func TestAnEditorPlacesTheirOwnItemsInSomeoneElsesFolder(t *testing.T) {
 	w := newOthersWorld(t)
 	// Creating: the folder lists bob, so a record naming it is bob's to sign.
-	made := newItem(t, w.bob, "", w.folder.id)
-	madeFolder := newItem(t, w.bob, "folder", w.folder.id)
+	made := itemIn(t, w.bob, "", w.folder)
+	madeFolder := itemIn(t, w.bob, "folder", w.folder)
 	if v := parentOf(t, w.bob.testClient, made.id); v == nil || *v != w.folder.id {
 		t.Errorf("created item sits in %v, want the folder", v)
 	}
@@ -102,8 +102,8 @@ func TestPlacingAnItemNeedsToOwnOrManageIt(t *testing.T) {
 
 func TestRemovingAnItemFromAFolderYouEdit(t *testing.T) {
 	w := newOthersWorld(t)
-	item := newItem(t, w.bob, "", w.folder.id)
-	again := newItem(t, w.bob, "", w.folder.id)
+	item := itemIn(t, w.bob, "", w.folder)
+	again := itemIn(t, w.bob, "", w.folder)
 
 	// A stranger to the folder is told nothing of the item.
 	if got, msg := remove(w.dave.testClient, item.id); got != http.StatusNotFound {
@@ -145,7 +145,7 @@ func TestRemovingAnItemFromAFolderYouEdit(t *testing.T) {
 
 func TestAnOwnerTakesTheirItemOutOfAFolderTheyOnlyView(t *testing.T) {
 	w := newOthersWorld(t)
-	item := newItem(t, w.bob, "", w.folder.id)
+	item := itemIn(t, w.bob, "", w.folder)
 	// Alice lowers bob to a viewer, so he cannot edit the folder any more.
 	b := w.folder.nextEpoch()
 	b.Members[0].Role = "viewer"
@@ -158,7 +158,7 @@ func TestMovingBetweenFoldersNeedsBoth(t *testing.T) {
 	w := newOthersWorld(t)
 	second := newItem(t, w.alice, "folder", "")
 	second.share("viewer", w.bob)
-	item := newItem(t, w.bob, "", w.folder.id)
+	item := itemIn(t, w.bob, "", w.folder)
 	if got, msg := move(w.bob.testClient, item.id, second.id); got != http.StatusForbidden {
 		t.Errorf("into a folder bob only views: %d %q, want 403", got, msg)
 	}
@@ -189,9 +189,9 @@ func stubOfItem(t *testing.T, c *testClient, id string) map[string]any {
 
 func TestAnItemYouCannotReadIsListedAsAStub(t *testing.T) {
 	w := newOthersWorld(t)
-	item := newItem(t, w.bob, "", w.folder.id)
-	inner := newItem(t, w.bob, "folder", w.folder.id)
-	deep := newItem(t, w.bob, "", inner.id)
+	item := itemIn(t, w.bob, "", w.folder)
+	inner := itemIn(t, w.bob, "folder", w.folder)
+	deep := itemIn(t, w.bob, "", inner)
 	w.folder.share("viewer", w.carol)
 
 	stub := stubOfItem(t, w.carol.testClient, item.id)
@@ -227,15 +227,15 @@ func TestAnItemYouCannotReadIsListedAsAStub(t *testing.T) {
 	if e := stubOfItem(t, w.carol.testClient, item.id); e == nil || e["access"] != "viewer" || e["meta"] == nil && e["team"] == nil {
 		t.Errorf("after bob's record the entry is %v, want the full view", e)
 	}
-	// The folder's owner reads nothing of bob's item either, and sees a stub.
-	if s := stubOfItem(t, w.alice.testClient, item.id); s == nil || s["access"] != "none" {
+	// The folder's owner reads what is in it, as an editor.
+	if s := stubOfItem(t, w.alice.testClient, item.id); s == nil || s["access"] != "editor" {
 		t.Errorf("alice's entry for bob's item: %v", s)
 	}
 }
 
 func TestUnsharingTheFolderTakesAnotherOwnersItemAtOnce(t *testing.T) {
 	w := newOthersWorld(t)
-	item := newItem(t, w.bob, "", w.folder.id)
+	item := itemIn(t, w.bob, "", w.folder)
 	w.folder.share("viewer", w.carol)
 	item.shareVia(w.folder, "viewer", w.carol)
 	wantStatus(t, w.carol.testClient, "GET", "/api/artifacts/"+item.id, nil, http.StatusOK)
@@ -249,9 +249,9 @@ func TestUnsharingTheFolderTakesAnotherOwnersItemAtOnce(t *testing.T) {
 
 func TestDeletingAFolderWithOtherPeoplesItems(t *testing.T) {
 	w := newOthersWorld(t)
-	theirs := newItem(t, w.bob, "", w.folder.id)
-	theirFolder := newItem(t, w.bob, "folder", w.folder.id)
-	inside := newItem(t, w.bob, "", theirFolder.id)
+	theirs := itemIn(t, w.bob, "", w.folder)
+	theirFolder := itemIn(t, w.bob, "folder", w.folder)
+	inside := itemIn(t, w.bob, "", theirFolder)
 	mine := newArtifact(t, w.alice, "mine")
 	w.alice.mustDo("PUT", "/api/artifacts/"+mine.id+"/parent", map[string]any{"parent": w.folder.id}, nil, http.StatusOK)
 	w.folder.share("viewer", w.carol)

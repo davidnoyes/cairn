@@ -296,3 +296,97 @@ func TestInheritPendingDoesNotRequireAnInactiveAccount(t *testing.T) {
 	}
 	pending(true, "bob is active again")
 }
+
+// The folder's owner reads what is in it: an item someone else owns lists
+// the folder's owner as an editor via the folder, which the folder's own
+// record never lists as a member. The nested folder here is owned by owner
+// and sits in the folder, which bob owns.
+func TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor(t *testing.T) {
+	w := newInheritWorld(t)
+	if _, err := w.s.db.Exec(`UPDATE artifacts SET owner_id = ? WHERE id = ?`, w.bob.ID, w.folder); err != nil {
+		t.Fatal(err)
+	}
+	pending := func(want bool, why string) {
+		t.Helper()
+		if p, err := inheritPending(w, w.nested); err != nil || p != want {
+			t.Errorf("%s: pending = %v, %v; want %v", why, p, err, want)
+		}
+	}
+	access := func() *Member {
+		t.Helper()
+		st, err := w.s.AccessState(w.nested, w.bob.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return st.Member
+	}
+	bob := func(role, via string) []Member {
+		return []Member{{UserID: w.bob.ID, Role: role, FP: "fb", Via: via}}
+	}
+	pending(true, "the record lacks the folder's owner")
+	if m := access(); m != nil {
+		t.Errorf("an owner who is not listed reads: %+v", m)
+	}
+	// A viewer is below the editor the folder's owner is.
+	w.listIn(t, w.nested, bob("viewer", ""), nil)
+	pending(true, "the folder's owner is a viewer")
+	// Listed as an editor via the folder, which lists them as its owner.
+	w.listIn(t, w.nested, bob("editor", w.folder), nil)
+	pending(false, "the folder's owner is an editor via the folder")
+	if m := access(); m == nil || m.Role != "editor" {
+		t.Errorf("the folder's owner reads: %+v, want an editor", m)
+	}
+	// A manager entry via the folder grants no more than editor.
+	w.listIn(t, w.nested, bob("manager", w.folder), nil)
+	if m := access(); m == nil || m.Role != "editor" {
+		t.Errorf("a manager entry via the folder: %+v, want an editor", m)
+	}
+	pending(true, "the role is above what the folder gives its owner")
+	// The entry has not lapsed.
+	users, _, err := lapsedOf(w, w.nested)
+	if err != nil || len(users) != 0 {
+		t.Errorf("lapsed users: %v, %v", users, err)
+	}
+	// The same entry via a folder bob does not own, or list, lapses.
+	w.listIn(t, w.nested, bob("editor", w.nested), nil)
+	if m := access(); m != nil {
+		t.Errorf("via a folder that neither contains the item nor is bob's: %+v", m)
+	}
+	// A deactivated owner is not required, and an item the folder's owner
+	// owns is never listed under them.
+	w.listIn(t, w.nested, nil, nil)
+	if err := w.s.SetUserDisabled(w.bob.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	pending(false, "the folder's owner is deactivated")
+	if err := w.s.SetUserDisabled(w.bob.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	pending(true, "the folder's owner is active again")
+	if _, err := w.s.db.Exec(`UPDATE users SET verified_at = NULL WHERE id = ?`, w.bob.ID); err != nil {
+		t.Fatal(err)
+	}
+	pending(false, "the folder's owner is not verified")
+	if _, err := w.s.db.Exec(`UPDATE users SET verified_at = ? WHERE id = ?`, t0, w.bob.ID); err != nil {
+		t.Fatal(err)
+	}
+	pending(true, "the folder's owner is verified again")
+	if _, err := w.s.db.Exec(`UPDATE artifacts SET owner_id = ? WHERE id = ?`, w.bob.ID, w.nested); err != nil {
+		t.Fatal(err)
+	}
+	pending(false, "bob owns the item and its folder")
+	// The entry ends when the item leaves the folder.
+	if _, err := w.s.db.Exec(`UPDATE artifacts SET owner_id = ? WHERE id = ?`, w.owner.ID, w.nested); err != nil {
+		t.Fatal(err)
+	}
+	w.listIn(t, w.nested, bob("editor", w.folder), nil)
+	if m := access(); m == nil {
+		t.Fatal("the entry does not read while the item is in the folder")
+	}
+	if err := w.s.MoveItem(w.nested, ""); err != nil {
+		t.Fatal(err)
+	}
+	if m := access(); m != nil {
+		t.Errorf("after the item left the folder: %+v", m)
+	}
+}
