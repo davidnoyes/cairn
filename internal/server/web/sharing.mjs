@@ -1550,8 +1550,8 @@ const sameEntries = (a, b, key) => a.length === b.length && a.every((e, i) => e[
 // item, the folder's owner is wanted too, as an editor marked with the folder,
 // under the fingerprint the folder's record gives them (ownerFp): as in Google
 // Drive, the owner of a folder opens what is inside it. They are added or
-// skipped like any user. Returns {members, groups,
-// added, addedGroups, skippedUsers, skippedGroups, epoch}. Mirrors planInherit.
+// skipped like any user. Returns {members, groups, added, addedGroups,
+// skippedUsers, skippedGroups, epoch}. Mirrors planInherit.
 export function planInherit(item, parent, parentId, usable, live) {
   const plan = { members: [], groups: [], added: [], addedGroups: [], skippedUsers: [], skippedGroups: [], epoch: false };
   const wantMembers = new Map();
@@ -1626,8 +1626,9 @@ export const FAN_OUT_STATES = { current: 'current', updated: 'updated', newEpoch
 // each by ID, as {a, refused, waits}. includeRoot puts the root itself first.
 // all is GET /api/artifacts, stubs included. A pending item the caller cannot
 // sign, a stub among them, is listed with waits set and is not read, nor
-// entered: it waits on its owner. The server's tree is unsigned, so folderNamed(a), async,
-// reads the folder an item's latest verified record names. A folder, and an
+// entered: it waits on its owner. The server's tree is unsigned, so
+// folderNamed(a), async, reads the folder an item's latest verified record
+// names. A folder, and an
 // artifact the server lists as pending, is checked: one found in a folder its
 // record does not name, or whose record does not verify, is listed with
 // refused, {listed, named, error}, and the walk does not go into it, so nothing
@@ -1765,6 +1766,9 @@ async function syncItem(run, item, placing) {
   let folderId = placing !== undefined ? placing ?? '' : signedFolderOf(va);
   // Apply: the server moved an item to the top level when its folder was
   // deleted or an editor removed it, and its owner signs the record to match.
+  // An item listed at the top level with no hiddenParent is taken on the
+  // server's word: it controls parent_id anyway, and the change only lowers
+  // what the folder's members hold. apply never gets here with hiddenParent.
   if (placing === undefined && run.topWhenOrphaned && (view.parent ?? '') === '') folderId = '';
   // The server's parent must agree with the signed one: otherwise the server
   // is claiming a placement nobody signed, and no key is sealed on its word.
@@ -1888,7 +1892,11 @@ export function applyNote(res, describe) {
 // because its own folder's record then says more. An item the server lists at
 // the top level whose record names a folder is written as naming none, which
 // only its owner signs: the server moved it there, because the folder was
-// deleted or an editor removed it. Any other mismatch between the record and
+// deleted or an editor removed it; the server's word is taken for that, as it
+// controls the tree anyway and the change only lowers what the folder's
+// members hold. An item the server marks hiddenParent sits in a folder the
+// caller cannot read, so it is not at the top level: nothing is signed for it,
+// and it is left as needsMove. Any other mismatch between the record and
 // the server's tree is left as needsMove, because only the owner knows where
 // the item belongs; a manager's record keeps the folder, so an item that needs
 // one waits on its owner. apply then approves the waiting members of every
@@ -1915,6 +1923,14 @@ export async function apply(deps) {
     }
     if (a.inherit !== 'pending' && !aboveChanged(all, a, changed)) continue;
     const item = newItem(a);
+    // The server does not name the folder, so nothing can be signed for it.
+    if (!a.parent && a.hiddenParent) {
+      const got = await describeArtifact(deps, a);
+      const error = new SharingError('placement', `${got.named ? `"${got.name}"` : a.id} sits in a folder you can no longer read, so it was left alone. Choose Remove from folder in the app, or run cairn move ${a.id} --top, to take it out.`);
+      Object.assign(item, { state: FAN_OUT_STATES.needsMove, error });
+      res.fanOut.items.push(item);
+      continue;
+    }
     try {
       await syncItem(run, item, undefined);
     } catch (err) {

@@ -566,9 +566,22 @@ test('subtree of a folder with other people\'s items counts what goes and what m
 });
 
 test('deleteSummary says how many items are deleted and how many others move, and says nothing of moves when none does', () => {
-  assert.equal(deleteSummary({ artifacts: ['a', 'b'], folders: ['F'], moved: [] }), 'Delete 1 folder and 2 artifacts?');
-  assert.equal(deleteSummary({ artifacts: ['a'], folders: ['G', 'F'], moved: ['x'] }), 'Delete 2 folders and 1 artifact of yours, and move 1 item other people own to their owners\' top level?');
-  assert.equal(deleteSummary({ artifacts: [], folders: ['F'], moved: ['x', 'y'] }), 'Delete 1 folder and 0 artifacts of yours, and move 2 items other people own to their owners\' top level?');
+  const dir = [{ id: 'u2', email: 'bob@x.com' }, { id: 'u3', email: 'carol@y.com' }];
+  const held = [stub('x', 'F', 'u2'), stub('y', 'F', 'u3'), stub('z', 'F', 'u2')];
+  assert.equal(deleteSummary({ artifacts: ['a', 'b'], folders: ['F'], moved: [] }, held, dir), 'Delete 1 folder and 2 artifacts?');
+  assert.equal(deleteSummary({ artifacts: ['a'], folders: ['G', 'F'], moved: ['x'] }, held, dir), 'Delete 2 folders and 1 artifact of yours, and move 1 item other people own (bob@x.com) to their owners\' top level?');
+  assert.equal(deleteSummary({ artifacts: [], folders: ['F'], moved: ['y', 'x'] }, held, dir), 'Delete 1 folder and 0 artifacts of yours, and move 2 items other people own (bob@x.com, carol@y.com) to their owners\' top level?');
+});
+
+test('deleteSummary names each owner once, in order, and by ID when the directory lacks them', () => {
+  const held = [stub('x', 'F', 'u9'), stub('y', 'F', 'u3'), stub('z', 'F', 'u9')];
+  const dir = [{ id: 'u3', email: 'carol@y.com' }];
+  assert.equal(deleteSummary({ artifacts: [], folders: ['F'], moved: ['z', 'y', 'x'] }, held, dir), 'Delete 1 folder and 0 artifacts of yours, and move 3 items other people own (carol@y.com, u9) to their owners\' top level?');
+});
+
+test('subtree of a folder the list does not hold moves nothing, rather than every child', () => {
+  assert.deepEqual(subtree(items, 'missing'), { artifacts: [], folders: [], moved: [] });
+  assert.deepEqual(subtree([stub('x', 'gone')], 'gone'), { artifacts: [], folders: [], moved: [] });
 });
 
 test('deleteTree deletes the owner\'s own items, artifacts first, then folders deepest first, and never what others own', async () => {

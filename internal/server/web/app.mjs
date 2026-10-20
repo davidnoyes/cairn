@@ -156,6 +156,9 @@ let viewFolder = null;
 let shared = [];
 let sharedRows = new Map();
 let sharedFolder = null;
+// The directory as the last list read it, which names the owners of other
+// people's items for a folder's Delete.
+let ownerDir = [];
 
 // The server holds each name and description sealed, so a row shows the
 // artifact's ID until its own keys open them.
@@ -164,7 +167,9 @@ async function listArtifacts({ me }) {
   const list = await api('/api/artifacts');
   // The stubs name their owners from the directory, which the page falls back
   // from to the owner's ID.
-  const dir = list.some(isStub) ? await directory(deps).catch(() => []) : [];
+  // Deleting a folder names the owners of the items it moves from it too.
+  const dir = list.some((a) => isStub(a) || (a.owner !== me.id && a.parent)) ? await directory(deps).catch(() => []) : [];
+  ownerDir = dir;
   const trees = splitTrees(list, me.id);
   own = trees.own;
   shared = trees.shared;
@@ -386,7 +391,7 @@ function fillActions(row, item) {
     },
     move: () => moveButton(row),
     delete: () => (row.folder
-      ? confirmButton('Delete', () => deleteSummary(subtree(everything(), id)), () => removeFolder(id))
+      ? confirmButton('Delete', () => deleteSummary(subtree(everything(), id), everything(), ownerDir), () => removeFolder(id))
       : confirmButton('Delete', 'Delete for good?', () => del('/api/artifacts/' + id)
         .then(() => { status('artifacts-status', 'Artifact deleted.'); return reloadArtifacts(); })
         .catch(failIn('artifacts-status')))),

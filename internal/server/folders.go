@@ -99,14 +99,20 @@ func (s *Server) readableBy(c access.Caller) func(id string) (bool, error) {
 
 // showParent sets v's parent to the folder a sits in, when readable reports
 // the caller can read that folder, and leaves it null otherwise, so a reader
-// of a shared item does not learn where its owner keeps it.
+// of a shared item does not learn where its owner keeps it. When the folder is
+// unreadable and the caller owns or manages the item, it sets hiddenParent,
+// without the folder's ID, so their client does not take the item for one at
+// the top level.
 func (s *Server) showParent(v *artifactView, a *store.Artifact, readable func(id string) (bool, error)) error {
 	if a.ParentID == "" {
 		return nil
 	}
 	ok, err := readable(a.ParentID)
-	if ok {
+	switch {
+	case ok:
 		v.Parent = &a.ParentID
+	case err == nil && (v.Access == access.LevelOwner || v.Access == access.LevelManager):
+		v.HiddenParent = true
 	}
 	return err
 }

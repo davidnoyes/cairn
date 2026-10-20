@@ -62,7 +62,11 @@ func printApply(res *client.ApplyResult) {
 		}
 	}
 	if len(res.Waiting) > 0 {
-		fmt.Printf("%s still wait on someone else:\n", plural(len(res.Waiting), "item", "items"))
+		verb := "wait"
+		if len(res.Waiting) == 1 {
+			verb = "waits"
+		}
+		fmt.Printf("%s still %s on someone else:\n", plural(len(res.Waiting), "item", "items"), verb)
 		for _, it := range res.Waiting {
 			fmt.Printf("%s: waits on %s\n", it.ID, ownerLabel(it))
 		}

@@ -278,6 +278,8 @@ type fanOut struct {
 	// server moved it there, because the folder was deleted or an editor of
 	// it removed the item, and the item's owner signs the record, so the move
 	// is theirs to confirm; it only ever lowers what the folder's members hold.
+	// The server's word is taken for it, as for the rest of the tree, unless
+	// it sets hiddenParent: Apply then signs nothing, and never gets here.
 	topWhenOrphaned bool
 }
 

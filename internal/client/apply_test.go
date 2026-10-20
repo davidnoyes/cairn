@@ -502,3 +502,64 @@ func TestApplyApprovesGroupNewcomers(t *testing.T) {
 		t.Errorf("the third apply approved again: %+v", res.Approvals)
 	}
 }
+
+func TestApplyLeavesAnItemInAFolderItsOwnerCannotRead(t *testing.T) {
+	w := newOthersTree(t)
+	// Ada takes the folder away from bob, and later lists cat on it: bob's
+	// items in it are pending, and he reads the folder no more.
+	if _, err := w.ada.Unshare(w.work, "bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.ada.Share(w.work, "cat@example.com", "viewer", false); err != nil {
+		t.Fatal(err)
+	}
+	fanOutOK(t, w.ada, w.work, nil)
+	wantInherit(t, w.bob, w.theirs, "pending")
+	view, err := w.bob.getArtifact(w.theirs)
+	if err != nil || view.ParentID != "" || !view.HiddenParent {
+		t.Fatalf("bob's view of the item: %+v, %v", view, err)
+	}
+	before := latestBody(t, w.bob, w.theirs)
+
+	res := applyOK(t, w.bob)
+	it := itemResult(&res.FanOut, w.theirs)
+	if it == nil || it.State != FanOutNeedsMove || it.Err == nil || !strings.Contains(it.Err.Error(), "can no longer read") || !strings.Contains(it.Err.Error(), "cairn move "+w.theirs+" --top") {
+		t.Fatalf("the item in the unreadable folder: %+v", it)
+	}
+	if after := latestBody(t, w.bob, w.theirs); after.Seq != before.Seq || after.Folder != w.work {
+		t.Errorf("apply wrote a record: seq %d to %d, folder %q", before.Seq, after.Seq, after.Folder)
+	}
+	wantInherit(t, w.bob, w.theirs, "pending")
+}
+
+func TestDeletingAFolderLeavesItsOwnersItemInsideAnotherOwnersFolder(t *testing.T) {
+	w := newOthersTree(t)
+	// Ada's folder Work holds bob's folder, which holds an item of ada's.
+	m := mustCreate(t, w.ada, "m", InFolder(w.theirFolder)).ID
+	contents, err := w.ada.FolderContents(w.work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contents.Artifacts) != 1 || contents.Artifacts[0].ID != w.mine || len(contents.Folders) != 1 || len(contents.Moved) != 2 {
+		t.Fatalf("contents: artifacts %d, folders %d, moved %d; M is inside bob's folder, so it does not count", len(contents.Artifacts), len(contents.Folders), len(contents.Moved))
+	}
+	counts, err := w.ada.DeleteFolder(w.work, nil)
+	if err != nil {
+		t.Fatalf("DeleteFolder: %v", err)
+	}
+	if counts != (DeleteCounts{Folders: 1, Artifacts: 1, Moved: 2}) {
+		t.Errorf("counts = %+v", counts)
+	}
+	// Bob's folder is at bob's top level, with M still inside it.
+	if a, err := w.bob.GetArtifact(w.theirFolder); err != nil || a.ParentID != "" {
+		t.Errorf("bob's folder after the delete: %+v, %v", a, err)
+	}
+	wantStatus(t, w.ada, m, http.StatusOK)
+	all, err := w.bob.listWithStubs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := byID(all, m); a == nil || a.ParentID != w.theirFolder {
+		t.Errorf("M after the delete: %+v, want it inside bob's folder", a)
+	}
+}

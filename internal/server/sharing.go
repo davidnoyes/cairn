@@ -283,7 +283,11 @@ type artifactView struct {
 	Kind string `json:"kind"`
 	// Parent is the ID of the folder the item sits in, when the caller can
 	// read that folder, and null otherwise.
-	Parent       *string       `json:"parent"`
+	Parent *string `json:"parent"`
+	// HiddenParent is true when the item sits in a folder the caller cannot
+	// read and the caller owns or manages it: Parent is null, but the item is
+	// not at the top level.
+	HiddenParent bool          `json:"hiddenParent,omitempty"`
 	Owner        string        `json:"owner"`
 	Access       access.Level  `json:"access"`
 	Epoch        int           `json:"epoch"`

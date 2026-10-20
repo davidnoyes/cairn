@@ -206,9 +206,10 @@ func recordNamesOtherFolder(q rowQuerier, a *Artifact) (bool, error) {
 // with its folder: it names another folder than a sits in, or lacks a user or
 // group the folder lists, or lists one at a lower role, or holds an entry
 // whose via no longer holds, or whose role is above what its folder lists
-// them as now, or lacks the owner of its folder as an editor. A group that was deleted is not required, because it grants
-// nothing, and neither is a user whose account is deactivated or not
-// verified, because a record may not add one, nor the item's own owner.
+// them as now, or lacks the owner of its folder as an editor. A group that was
+// deleted is not required, because it grants nothing, and neither is a user
+// whose account is deactivated or not verified, because a record may not add
+// one, nor the item's own owner.
 func (s *Store) InheritPending(a *Artifact) (bool, error) {
 	id := a.ID
 	if moved, err := recordNamesOtherFolder(s.db, a); err != nil || moved {
@@ -239,6 +240,8 @@ func (s *Store) InheritPending(a *Artifact) (bool, error) {
 			AND (m.group_id IS NULL OR (CASE m.role WHEN 'editor' THEN 2 ELSE 1 END)
 				< (CASE p.role WHEN 'editor' THEN 2 ELSE 1 END))
 		) OR EXISTS (
+			-- the folder's owner: the 6th, 7th and 8th ?, the item's ID, its
+			-- folder's ID and its owner's ID
 			SELECT 1 FROM artifacts f
 			LEFT JOIN artifact_members m ON m.artifact_id = ? AND m.user_id = f.owner_id
 			WHERE f.id = ? AND f.owner_id != ?

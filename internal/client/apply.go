@@ -44,7 +44,11 @@ type ApplyResult struct {
 // server lists it in is brought up to date. An item the server lists at the top
 // level whose record names a folder is written as naming none: the server
 // moved it there when the folder was deleted or an editor removed it, and
-// its owner signs the record. Any other mismatch between the record and the
+// its owner signs the record. An item the server lists at the top level
+// with no hiddenParent is taken on its word: it controls the tree anyway, and
+// the change only lowers what the folder's members hold. An item that sits in
+// a folder the caller cannot read (hiddenParent) is not at the top level, so
+// nothing is signed for it and it needs a move. Any other mismatch between the record and the
 // server's tree is left, as needing a move, because only the owner knows
 // where the item belongs; a manager's record keeps the folder, so an item
 // that needs one waits on its owner. Apply then approves the waiting members
@@ -76,6 +80,10 @@ func (c *Client) Apply() (*ApplyResult, error) {
 			continue
 		}
 		if a.Inherit != "pending" && !aboveChanged(all, a, changed) {
+			continue
+		}
+		if a.ParentID == "" && a.HiddenParent {
+			res.FanOut.Items = append(res.FanOut.Items, hiddenParentItem(a))
 			continue
 		}
 		item := f.item(a, nil)
@@ -110,6 +118,16 @@ func (c *Client) Apply() (*ApplyResult, error) {
 		return res, fmt.Errorf("%w: %d of %d", ErrFanOutIncomplete, n, len(res.FanOut.Items))
 	}
 	return res, nil
+}
+
+// hiddenParentItem is the FanOutNeedsMove entry for a, an item that sits in a
+// folder the caller can no longer read. The server does not name the folder,
+// so Apply cannot tell whether the item's record still matches it, and signs
+// nothing; the owner takes the item out of the folder, which needs no read
+// access to it.
+func hiddenParentItem(a *Artifact) FanOutItem {
+	return FanOutItem{ID: a.ID, Kind: a.Kind, State: FanOutNeedsMove,
+		Err: fmt.Errorf("it sits in a folder you can no longer read; take it out with: cairn move %s --top", a.ID)}
 }
 
 // inDepthOrder returns the artifacts of all with each folder before the items

@@ -52,6 +52,9 @@ type Artifact struct {
 	// Inherit is "ok", or "pending" while the artifact's record is out of
 	// step with its folder's: see FanOut.
 	Inherit string `json:"inherit,omitempty"`
+	// HiddenParent is true when the item sits in a folder the caller cannot
+	// read: ParentID is empty, yet the item is not at the top level.
+	HiddenParent bool `json:"-"`
 }
 
 // Title is the name the artifact displays under: its name, or its ID when it
@@ -76,9 +79,12 @@ type Version struct {
 // own fields, and the sealed fields beside them.
 type artifactWire struct {
 	store.Artifact
-	Access  string              `json:"access"`
-	Inherit string              `json:"inherit"`
-	Meta    map[string]MetaItem `json:"meta"`
+	Access  string `json:"access"`
+	Inherit string `json:"inherit"`
+	// HiddenParent: the item sits in a folder the caller cannot read, which
+	// the server leaves out of Parent.
+	HiddenParent bool                `json:"hiddenParent"`
+	Meta         map[string]MetaItem `json:"meta"`
 }
 
 type versionWire struct {
@@ -87,7 +93,7 @@ type versionWire struct {
 }
 
 func (w artifactWire) artifact() *Artifact {
-	return &Artifact{Artifact: w.Artifact, Meta: w.Meta, Access: w.Access, Inherit: w.Inherit}
+	return &Artifact{Artifact: w.Artifact, Meta: w.Meta, Access: w.Access, Inherit: w.Inherit, HiddenParent: w.HiddenParent}
 }
 func (w versionWire) version() *Version { return &Version{Version: w.Version, Meta: w.Meta} }
 

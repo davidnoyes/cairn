@@ -149,11 +149,14 @@ export async function makeFolderServer({ who, users = [], items }) {
 
   // viewOf is the artifact view the server serves: the kid's own, with inherit,
   // the owner and the caller's access, and the parent only while the caller can
-  // read it.
+  // read it. Where the item sits in a folder the caller cannot read, an owner
+  // or manager of the item gets hiddenParent: true, as showParent sets it.
   const viewOf = async (id, resp) => {
     const view = await resp.json();
     const readable = (x) => kids.has(x) && levelOf(x) !== '';
-    return { ...view, owner: latestOf(id).owner, access: levelOf(id), inherit: inheritOf(id), parent: view.parent && readable(view.parent) ? view.parent : null, public: false };
+    const access = levelOf(id);
+    const hidden = Boolean(view.parent) && !readable(view.parent) && (access === 'owner' || access === 'manager');
+    return { ...view, owner: latestOf(id).owner, access, inherit: inheritOf(id), parent: view.parent && readable(view.parent) ? view.parent : null, ...(hidden ? { hiddenParent: true } : {}), public: false };
   };
 
   // stubOf is stubView: what the list says of an item the caller cannot read.

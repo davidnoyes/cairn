@@ -252,7 +252,11 @@ export function subtree(items, folder) {
   const artifacts = [];
   const folders = [];
   const moved = [];
-  const owner = items.find((i) => i.id === folder)?.owner;
+  const root = items.find((i) => i.id === folder);
+  // A folder the list does not hold has no owner to compare with: nothing goes
+  // and nothing moves, rather than every child counting as moved.
+  if (!root) return { artifacts, folders, moved };
+  const owner = root.owner;
   const walk = (f) => {
     for (const c of childrenOf(items, f)) {
       if (c.owner !== owner) moved.push(c.id);
@@ -265,12 +269,18 @@ export function subtree(items, folder) {
 }
 
 // deleteSummary is the question a folder's Delete asks again, from subtree's
-// result: how many of the owner's items go, and how many of other people's move.
-export function deleteSummary(t) {
+// result: how many of the owner's items go, and how many of other people's
+// move, and whose they are: items is the list the owners are read from, and dir
+// the directory, which names an owner by address and falls back to their ID, as
+// stubLabel does. Each owner is named once, in order of that name.
+export function deleteSummary(t, items, dir) {
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const gone = `${plural(t.folders.length, 'folder', 'folders')} and ${plural(t.artifacts.length, 'artifact', 'artifacts')}`;
   if (t.moved.length === 0) return `Delete ${gone}?`;
-  return `Delete ${gone} of yours, and move ${plural(t.moved.length, 'item', 'items')} other people own to their owners' top level?`;
+  const owners = [...new Set(t.moved.map((id) => items.find((i) => i.id === id)?.owner))]
+    .map((id) => dir.find((u) => u.id === id)?.email ?? id)
+    .sort();
+  return `Delete ${gone} of yours, and move ${plural(t.moved.length, 'item', 'items')} other people own (${owners.join(', ')}) to their owners' top level?`;
 }
 
 // ------------------------------------------------------------ move, delete

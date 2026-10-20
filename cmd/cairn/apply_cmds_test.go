@@ -94,7 +94,7 @@ func TestApplyPrintsWhatItDidAndWhatWaits(t *testing.T) {
 	}
 	// Ada owns none of what is pending: it waits on bob.
 	text, err := runQuiet(t, runApply)
-	if err != nil || !strings.Contains(text, "1 item still wait on someone else") || !strings.Contains(text, theirs+": waits on bob@example.com") {
+	if err != nil || !strings.Contains(text, "1 item still waits on someone else:\n") || !strings.Contains(text, theirs+": waits on bob@example.com") {
 		t.Errorf("ada's apply printed %q, %v", text, err)
 	}
 	if res := runJSON[applyOut](t, runApply, "--json"); len(res.Waiting) != 1 || res.Waiting[0].ID != theirs || res.Waiting[0].OwnerEmail != "bob@example.com" || res.Applied.Total != 0 {
@@ -118,6 +118,20 @@ func TestApplyPrintsWhatItDidAndWhatWaits(t *testing.T) {
 	res := runJSON[applyOut](t, runApply, "--json")
 	if res.Applied.Total != 0 || len(res.Waiting) != 0 || len(res.Approve) != 0 || res.Applied.Items == nil || res.Waiting == nil {
 		t.Errorf("the second apply --json = %+v", res)
+	}
+}
+
+func TestApplyCountsSeveralItemsThatWait(t *testing.T) {
+	w, work, _ := newOthersWorld(t)
+	w.as(t, "bob")
+	runJSON[client.Artifact](t, runArtifact, "create", "more", "--in", work, "--json")
+	w.as(t, "ada")
+	if _, err := runQuiet(t, runShare, "Work", "cat@example.com", "--role", "viewer"); err != nil {
+		t.Fatal(err)
+	}
+	text, err := runQuiet(t, runApply)
+	if err != nil || !strings.Contains(text, "2 items still wait on someone else:\n") {
+		t.Errorf("ada's apply printed %q, %v", text, err)
 	}
 }
 

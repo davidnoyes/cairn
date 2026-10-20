@@ -2856,7 +2856,7 @@ internal/server/folders.go	if requestArtifact(r).Kind == store.KindFolder {	if r
 internal/server/folders.go	errors.Is(err, store.ErrNotFolder), errors.Is(err, store.ErrCycle),	errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrCycle),	go test ./internal/server -count=1 -run 'TestCreateRefusals'
 internal/server/folders.go	errors.Is(err, store.ErrCycle),	errors.Is(err, store.ErrNotFound),	go test ./internal/server -count=1 -run 'TestMove$'
 internal/server/folders.go	errors.Is(err, store.ErrTooDeep):	errors.Is(err, store.ErrNotFound):	go test ./internal/server -count=1 -run 'TestDepthLimit'
-internal/server/folders.go	if ok {	if ok || true {	go test ./internal/server -count=1 -run 'TestParentIsHidden'
+internal/server/folders.go	case ok:	case ok || true:	go test ./internal/server -count=1 -run 'TestParentIsHidden'
 internal/server/folders.go	case req.Parent == nil:	case false:	go test ./internal/server -count=1 -run 'TestMove$'
 internal/server/folders.go	case string(req.Parent) != "null":	case string(req.Parent) == "null":	go test ./internal/server -count=1 -run 'TestMove$'
 internal/server/folders.go	|| parent == "" {	|| false {	go test ./internal/server -count=1 -run 'TestMove$'
@@ -3377,7 +3377,7 @@ internal/client/share.go	rows = append(rows, MemberView{User: m.User, Role: m.Ro
 internal/client/share.go	r.ViaName = names[r.Via]	r.ViaName = names[""]	go test ./internal/client -count=1 -run 'TestSharingAFolderFans|TestFanOut|TestUnsharingAFolder|TestMovingAnItemInto|TestDirectAndInherited|TestLoweringAFolder|TestAnItemCreated|TestMembersName|TestSharingAFolderWithAGroup|TestAManager|TestAFanOut|TestPlanInherit|TestResharing|TestAFolderEntry|TestAUserApproved'
 internal/client/groupshare.go	Via: g.Via, ViaName: names[g.Via]}	Via: g.Via, ViaName: names[""]}	go test ./cmd/cairn -count=1 -run 'TestShareAFolder|TestUnshareAFolder|TestMoveFansOut|TestGroupSharedFolder|TestUnshareAGroupFromAFolder|TestUnshareOfANonMember|TestMembersNameAFolder'
 internal/client/reseal.go	if art.Kind != store.KindFolder {	if art.Kind != store.KindFolder || true {	go test ./internal/client -count=1 -run 'TestSharingAFolderFans|TestFanOut|TestUnsharingAFolder|TestMovingAnItemInto|TestDirectAndInherited|TestLoweringAFolder|TestAnItemCreated|TestMembersName|TestSharingAFolderWithAGroup|TestAManager|TestAFanOut|TestPlanInherit|TestResharing|TestAFolderEntry|TestAUserApproved'
-internal/client/meta.go	Inherit: w.Inherit}	Inherit: ""}	go test ./internal/client -count=1 -run 'TestSharingAFolderFans|TestFanOut|TestUnsharingAFolder|TestMovingAnItemInto|TestDirectAndInherited|TestLoweringAFolder|TestAnItemCreated|TestMembersName|TestSharingAFolderWithAGroup|TestAManager|TestAFanOut|TestPlanInherit|TestResharing|TestAFolderEntry|TestAUserApproved'
+internal/client/meta.go	Inherit: w.Inherit,	Inherit: "",	go test ./internal/client -count=1 -run 'TestSharingAFolderFans|TestFanOut|TestUnsharingAFolder|TestMovingAnItemInto|TestDirectAndInherited|TestLoweringAFolder|TestAnItemCreated|TestMembersName|TestSharingAFolderWithAGroup|TestAManager|TestAFanOut|TestPlanInherit|TestResharing|TestAFolderEntry|TestAUserApproved'
 cmd/cairn/fanout_cmds.go	if a.Kind != store.KindFolder && placing == nil {	if false {	go test ./cmd/cairn -count=1 -run 'TestShareAFolder|TestUnshareAFolder|TestMoveFansOut|TestGroupSharedFolder|TestUnshareAGroupFromAFolder|TestUnshareOfANonMember|TestMembersNameAFolder'
 cmd/cairn/fanout_cmds.go	return a.Kind == store.KindFolder && (errors.Is(err, client.ErrNotMember) || errors.Is(err, client.ErrNotSharedWithGroup))	return errors.Is(err, client.ErrNotMember) || errors.Is(err, client.ErrNotSharedWithGroup)	go test ./cmd/cairn -count=1 -run 'TestShareAFolder|TestUnshareAFolder|TestMoveFansOut|TestGroupSharedFolder|TestUnshareAGroupFromAFolder|TestUnshareOfANonMember|TestMembersNameAFolder'
 cmd/cairn/fanout_cmds.go	(errors.Is(err, client.ErrNotMember) || errors.Is(err, client.ErrNotSharedWithGroup))	(errors.Is(err, client.ErrNotSharedWithGroup))	go test ./cmd/cairn -count=1 -run 'TestShareAFolder|TestUnshareAFolder|TestMoveFansOut|TestGroupSharedFolder|TestUnshareAGroupFromAFolder|TestUnshareOfANonMember|TestMembersNameAFolder'
@@ -3712,3 +3712,33 @@ internal/server/web/folder_fixture.mjs	if (folder.owner !== body.owner && primar
 internal/server/web/folder_fixture.mjs	?? (latestOf(via).owner === user ? { user, role: 'editor' } : undefined);	?? undefined;	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/folder_fixture.mjs	if (levelOf(id) !== 'owner') return jsonResponse(levelOf(id) === '' ? 404 : 403, { error: 'only the owner deletes' });	if (false) return jsonResponse(403, { error: 'only the owner deletes' });	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/folder_fixture.mjs	if (!kids.has(body.parent) || levelOf(body.parent) === '') return jsonResponse(404, { error: 'folder not found' });	if (false) return jsonResponse(404, { error: 'folder not found' });	node --test internal/server/web/sharing_others_test.mjs
+
+internal/server/folders.go	v.Access == access.LevelOwner || v.Access == access.LevelManager	v.Access != ""	go test ./internal/server -count=1 -run 'TestAnItemInAFolderItsOwnerCannotReadSaysSo'
+internal/server/folders.go	v.Access == access.LevelOwner || v.Access == access.LevelManager	v.Access == access.LevelOwner	go test ./internal/server -count=1 -run 'TestAnItemInAFolderItsOwnerCannotReadSaysSo'
+internal/server/folders.go	v.Access == access.LevelOwner || v.Access == access.LevelManager	v.Access == access.LevelManager	go test ./internal/server -count=1 -run 'TestAnItemInAFolderItsOwnerCannotReadSaysSo'
+internal/server/folders.go	v.HiddenParent = true	v.HiddenParent = false	go test ./internal/server -count=1 -run 'TestAnItemInAFolderItsOwnerCannotReadSaysSo'
+internal/server/sharing.go	json:"hiddenParent,omitempty"	json:"hiddenParent"	go test ./internal/server -count=1 -run 'TestAnItemInAFolderItsOwnerCannotReadSaysSo'
+internal/client/meta.go	HiddenParent: w.HiddenParent}	HiddenParent: false}	go test ./internal/client -count=1 -run 'TestApplyLeavesAnItemInAFolderItsOwnerCannotRead'
+internal/client/meta.go	json:"hiddenParent"	json:"hiddenParent2"	go test ./internal/client -count=1 -run 'TestApplyLeavesAnItemInAFolderItsOwnerCannotRead'
+internal/client/apply.go	if a.ParentID == "" && a.HiddenParent {	if false {	go test ./internal/client -count=1 -run 'TestApplyLeavesAnItemInAFolderItsOwnerCannotRead'
+internal/client/apply.go	Kind: a.Kind, State: FanOutNeedsMove,	Kind: a.Kind, State: FanOutFailed,	go test ./internal/client -count=1 -run 'TestApplyLeavesAnItemInAFolderItsOwnerCannotRead'
+internal/client/apply.go	it sits in a folder you can no longer read;	it sits in a folder;	go test ./internal/client -count=1 -run 'TestApplyLeavesAnItemInAFolderItsOwnerCannotRead'
+internal/client/apply.go	take it out with: cairn move %s --top	take it out with: cairn move %s	go test ./internal/client -count=1 -run 'TestApplyLeavesAnItemInAFolderItsOwnerCannotRead'
+internal/client/folders.go	out.Moved = append(out.Moved, a)	out.Moved = append(out.Moved, a); queue = append(queue, a)	go test ./internal/client -count=1 -run 'TestDeletingAFolderLeavesItsOwners'
+internal/store/inherit.go	return b.Folder != a.ParentID, nil	return false, nil	go test ./internal/server -count=1 -run 'TestPlacingAnItemNeedsToOwnOrManageIt'
+internal/server/web/sharing.mjs	if (!a.parent && a.hiddenParent) {	if (false) {	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	state: FAN_OUT_STATES.needsMove, error });	state: FAN_OUT_STATES.failed, error });	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	sits in a folder you can no longer read, so it was left alone.	sits in a folder, so it was left alone.	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	Choose Remove from folder in the app, or run	Choose Delete in the app, or run	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	cairn move ${a.id} --top, to take it out.	cairn move ${a.id}, to take it out.	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folders.mjs	if (!root) return { artifacts, folders, moved };	if (false) return { artifacts, folders, moved };	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	[...new Set(t.moved.map((id) => items.find((i) => i.id === id)?.owner))]	[...t.moved.map((id) => items.find((i) => i.id === id)?.owner)]	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	?.email ?? id)	?.email ?? '')	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	.sort();	;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	other people own (${owners.join(', ')}) to	other people own to	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	owners.join(', ')	owners.join(',')	node --test internal/server/web/folders_test.mjs
+cmd/cairn/apply_cmds.go	if len(res.Waiting) == 1 {	if false {	go test ./cmd/cairn -count=1 -run 'TestApplyPrintsWhat|TestApplyCountsSeveral'
+cmd/cairn/apply_cmds.go	verb = "waits"	verb = "wait"	go test ./cmd/cairn -count=1 -run 'TestApplyPrintsWhat|TestApplyCountsSeveral'
+cmd/cairn/apply_cmds.go	fmt.Println("nothing to apply")	fmt.Println("nothing")	go test ./cmd/cairn -count=1 -run 'TestApplyPrintsWhat|TestApplyCountsSeveral'
+cmd/cairn/apply_cmds.go	fmt.Printf("%s: waits on %s\n", it.ID, ownerLabel(it))	fmt.Printf("%s: awaits %s\n", it.ID, ownerLabel(it))	go test ./cmd/cairn -count=1 -run 'TestApplyPrintsWhat|TestApplyCountsSeveral'
+cmd/cairn/folder_cmds.go	(not shared with you yet, owned by 	(not shared, owned by 	go test ./cmd/cairn -count=1 -run 'TestFolderListShowsAStub'

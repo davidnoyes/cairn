@@ -98,6 +98,8 @@ func TestPlacingAnItemNeedsToOwnOrManageIt(t *testing.T) {
 	w.folder.share("editor", w.carol)
 	w.carol.mustDo("PUT", "/api/artifacts/"+theirs.id+"/parent", map[string]any{"parent": w.folder.id}, nil, http.StatusOK)
 	wantParent(t, w.alice.testClient, theirs.id, w.folder.id)
+	// The item's record names no folder yet, so it is pending.
+	wantInherit(t, w.alice.testClient, theirs.id, "pending")
 }
 
 func TestRemovingAnItemFromAFolderYouEdit(t *testing.T) {
@@ -152,6 +154,25 @@ func TestAnOwnerTakesTheirItemOutOfAFolderTheyOnlyView(t *testing.T) {
 	w.folder.apply(b)
 	w.bob.mustDo("PUT", "/api/artifacts/"+item.id+"/parent", map[string]any{"parent": nil}, nil, http.StatusOK)
 	wantParent(t, w.bob.testClient, item.id, "")
+}
+
+func TestAnOwnerTakesTheirItemOutOfAFolderTheyCannotRead(t *testing.T) {
+	w := newOthersWorld(t)
+	item := itemIn(t, w.bob, "", w.folder)
+	// Alice takes bob off the folder altogether: he cannot read it, not even
+	// as a viewer, and the item stays in it.
+	w.folder.unshareNow(w.bob)
+	w.bob.mustDo("GET", "/api/artifacts/"+w.folder.id, nil, nil, http.StatusNotFound)
+	if got, msg := remove(w.carol.testClient, item.id); got != http.StatusNotFound {
+		t.Errorf("a stranger removes the item: %d %q, want 404", got, msg)
+	}
+	w.bob.mustDo("PUT", "/api/artifacts/"+item.id+"/parent", map[string]any{"parent": nil}, nil, http.StatusOK)
+	wantParent(t, w.bob.testClient, item.id, "")
+	var v map[string]any
+	w.bob.mustDo("GET", "/api/artifacts/"+item.id, nil, &v, http.StatusOK)
+	if _, ok := v["hiddenParent"]; ok {
+		t.Errorf("the item is at the top level, yet the view says %v", v)
+	}
 }
 
 func TestMovingBetweenFoldersNeedsBoth(t *testing.T) {
@@ -289,5 +310,53 @@ func TestAServerRefusesAPlacementWhoseRecordNamesAnotherFolder(t *testing.T) {
 	delete(req, "parent")
 	if got, msg := status(w.bob.testClient, "POST", "/api/artifacts", req); got != http.StatusConflict || !strings.Contains(msg, "folder") {
 		t.Errorf("a record naming a folder the item is not placed in: %d %q, want 409", got, msg)
+	}
+}
+
+// TestAnItemInAFolderItsOwnerCannotReadSaysSo checks the artifact view of an
+// item in a folder the caller cannot read: the owner and a manager are told,
+// without the folder's ID, so a client does not take the item for one at the
+// top level; a reader is not told.
+func TestAnItemInAFolderItsOwnerCannotReadSaysSo(t *testing.T) {
+	w := newOthersWorld(t)
+	item := itemIn(t, w.bob, "", w.folder)
+	item.share("manager", w.carol)
+	item.share("viewer", w.dave)
+	// Alice takes the folder away from bob; the item stays in it.
+	w.folder.unshareNow(w.bob)
+	wantParent(t, w.bob.testClient, item.id, "")
+
+	hidden := func(v map[string]any) bool { h, _ := v["hiddenParent"].(bool); return h }
+	cases := map[string]struct {
+		c    *testClient
+		want bool
+	}{"owner": {w.bob.testClient, true}, "manager": {w.carol.testClient, true}, "viewer": {w.dave.testClient, false}}
+	for name, tc := range cases {
+		var got map[string]any
+		tc.c.mustDo("GET", "/api/artifacts/"+item.id, nil, &got, http.StatusOK)
+		if hidden(got) != tc.want || got["parent"] != nil {
+			t.Errorf("%s GET: hiddenParent %v, parent %v; want hiddenParent %v, parent null", name, got["hiddenParent"], got["parent"], tc.want)
+		}
+		if !tc.want {
+			if _, ok := got["hiddenParent"]; ok {
+				t.Errorf("%s GET carries hiddenParent: %v", name, got)
+			}
+		}
+		if e := stubOfItem(t, tc.c, item.id); e == nil || hidden(e) != tc.want || e["parent"] != nil {
+			t.Errorf("%s list entry: %v, want hiddenParent %v", name, e, tc.want)
+		}
+	}
+	// Placing the item where it already sits answers the same.
+	var moved map[string]any
+	w.bob.mustDo("PUT", "/api/artifacts/"+item.id+"/parent", map[string]any{"parent": w.folder.id}, &moved, http.StatusOK)
+	if !hidden(moved) || moved["parent"] != nil {
+		t.Errorf("the move answered %v, want hiddenParent true and parent null", moved)
+	}
+	// An item at the top level, or in a folder the caller reads, has none.
+	top := newArtifact(t, w.bob, "top")
+	var v map[string]any
+	w.bob.mustDo("GET", "/api/artifacts/"+top.id, nil, &v, http.StatusOK)
+	if _, ok := v["hiddenParent"]; ok {
+		t.Errorf("an item at the top level carries hiddenParent: %v", v)
 	}
 }

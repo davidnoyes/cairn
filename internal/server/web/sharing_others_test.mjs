@@ -706,3 +706,19 @@ test('the server refuses a folder created inside one the caller cannot read, or 
   await assert.rejects(createFolder(viewer, { name: 'Mine', parent: F }), (e) => e.status === 403);
   assert.deepEqual(s.server.posts, []);
 });
+
+test('apply signs nothing for an item in a folder its owner cannot read, and says how to take it out', async () => {
+  const s = await scene({ items: [folderOf({ members: [listed(U.viewer, 'viewer')] }), itemOfP({ folder: F })] });
+  assert.equal(s.server.inheritOf(AP), 'pending');
+  const view = await (await s.server.fetch(`/api/artifacts/${AP}`)).json();
+  assert.equal(view.parent, null);
+  assert.equal(view.hiddenParent, true);
+  const res = await apply(s.deps);
+  const item = stateOf(res, AP);
+  assert.equal(item.state, 'needsMove');
+  assert.match(item.error.message, /folder you can no longer read.*Remove from folder.*cairn move f0000000-0000-4000-8000-0000000000a1 --top/);
+  assert.equal(item.error.code, 'placement');
+  assert.equal(res.fanOut.failed, 0, 'not a failure');
+  assert.equal(s.server.records.length, 0, 'nothing was written');
+  assert.equal(s.server.inheritOf(AP), 'pending');
+});
