@@ -116,6 +116,7 @@ test("others' items: place in someone's folder, share it, a stub until applied, 
     expect(moved.parent ?? null).toBeNull();
     await reads(ed.page, docId, true);
     await reads(rd.page, docId, false);
+    await reads(mg.page, docId, false);
   } finally {
     await ed.context.close();
     await rd.context.close();

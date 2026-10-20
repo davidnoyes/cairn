@@ -2424,7 +2424,8 @@ answers with the item's view.
 - **Private in F1.** A membership record for a folder must list no members,
   keep `team` at `none`, and keep `public` and `publicWrites` off. Otherwise
   it is refused with `409` and `folders cannot be shared yet`. An ownership
-  offer for a folder is refused the same way.
+  offer for a folder is refused with `409` and `a folder cannot be
+  transferred`, in every milestone.
 - **Deleting.** A folder that still holds items is refused with `409` and
   `the folder is not empty`. The client deletes the contents first.
 - **Transfers.** When someone accepts ownership of an item that sits in the
