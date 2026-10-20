@@ -524,8 +524,14 @@ there.
 
 A folder holds artifacts and other folders, up to 16 deep. Its name is
 encrypted like an artifact's, so the server sees which items sit together but
-not what anything is called. Folders are private to their owner for now; a
-shared folder, whose sharing reaches everything inside it, comes later.
+not what anything is called.
+
+Sharing a folder shares everything inside it. Each item's member list gains
+the folder's people and groups, marked with the folder they come from, and an
+item never lists fewer people than its folder. Unsharing a folder, or moving
+an item out of it, ends access at once, and each item then moves to a new
+epoch. An item's folder is named in its signed member list, so a server
+cannot steer an item's key to a folder it was never placed in.
 
 ```sh
 cairn folder create Reports                         # at the top level
@@ -534,11 +540,15 @@ cairn push ./dist --artifact q3 --create --in 2026  # create an artifact in a fo
 cairn move q3 --to Reports                          # or --top
 cairn folder list --json                            # your tree
 cairn folder delete Reports                         # and everything in it, after asking
+cairn share Reports bob@example.com --role viewer   # every item inside, with progress
+cairn unshare Reports bob@example.com               # a new epoch on each item
 ```
 
 On the app's **Artifacts** tab, your own items show as a tree with
 breadcrumbs. Use **New folder** and **Move to…**, or drag a row onto a
-folder, and a folder row has **Rename** and **Delete**.
+folder, and a folder row has **Share**, **Rename**, and **Delete**. Folders
+shared with you open the same way under **Shared with you**. A share that
+stopped part way shows as pending, with **Finish sharing** in the dialog.
 
 ### Groups
 
