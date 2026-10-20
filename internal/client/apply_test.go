@@ -584,3 +584,26 @@ func TestDeletingAFolderLeavesItsOwnersItemInsideAnotherOwnersFolder(t *testing.
 		t.Errorf("M after the delete: %+v, want it inside bob's folder", a)
 	}
 }
+
+// TestApplyLeavesAnItemTheCallerCanOnlyEditWaiting: dan edits bob's item
+// through ada's folder. Once a new manager leaves it pending, only bob signs
+// it, so dan's Apply reports it as waiting on bob, tries no write, and fails
+// nothing.
+func TestApplyLeavesAnItemTheCallerCanOnlyEditWaiting(t *testing.T) {
+	w := newOthersTree(t)
+	if _, err := w.ada.Share(w.work, "dan@example.com", "editor", false); err != nil {
+		t.Fatal(err)
+	}
+	fanOutOK(t, w.ada, w.work, nil)
+	shareManagerLeavingPending(t, w)
+	if a, err := w.dan.getArtifact(w.theirs); err != nil || a.Access != "editor" || a.Inherit != "pending" {
+		t.Fatalf("dan's view of bob's item: %+v, %v; want editor access, pending", a, err)
+	}
+	res := applyOK(t, w.dan)
+	if len(res.FanOut.Items) != 0 {
+		t.Errorf("dan's Apply wrote or tried: %+v", res.FanOut.Items)
+	}
+	if !slices.ContainsFunc(res.Waiting, func(it FanOutItem) bool { return it.ID == w.theirs && it.OwnerEmail == "bob@example.com" }) {
+		t.Errorf("waiting = %+v, want bob's item waiting on bob", res.Waiting)
+	}
+}
