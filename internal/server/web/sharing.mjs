@@ -1685,9 +1685,9 @@ export async function subtreeOrder(all, root, includeRoot, folderNamed) {
 // verified or deleted, or the group was deleted. An item that waits on its owner
 // has state waits, with owner (an ID) and ownerEmail, '' when the directory does
 // not hold them. Only a failure that ends the command, as fatalFetch says, is
-// thrown. topWhenOrphaned is the explicit apply's: an item the server lists at
-// the top level whose record names a folder is written as naming none. Mirrors
-// FanOut.
+// thrown. topWhenOrphaned is apply's, automatic or not: an item the server
+// lists at the top level whose record names a folder is written as naming
+// none. Mirrors FanOut.
 export async function fanOut(deps, rootId, { includeRoot = false, placing, progress, topWhenOrphaned = false } = {}) {
   const caller = await unlock(deps);
   const all = await call(deps, null, 'GET', '/api/artifacts');
