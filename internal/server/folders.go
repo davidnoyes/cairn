@@ -14,9 +14,9 @@ import (
 // errFolderNoContent is the 409 answer to a content route aimed at a folder.
 const errFolderNoContent = "a folder holds no content"
 
-// errFolderShared is the 409 answer to sharing a folder or offering one to a
-// new owner, which F1 does not allow.
-const errFolderShared = "folders cannot be shared yet"
+// errFolderTransfer is the 409 answer to offering a folder to a new owner,
+// which is not allowed.
+const errFolderTransfer = "a folder cannot be transferred"
 
 // refuseFolder wraps a content handler: a folder has no versions, database,
 // or files, so it answers 409 before the handler runs. It runs behind

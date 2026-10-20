@@ -140,7 +140,7 @@ type offerTransferRequest struct {
 func (s *Server) handleOfferTransfer(w http.ResponseWriter, r *http.Request) {
 	a := requestArtifact(r)
 	if a.Kind == store.KindFolder {
-		writeError(w, http.StatusConflict, errFolderShared)
+		writeError(w, http.StatusConflict, errFolderTransfer)
 		return
 	}
 	var req offerTransferRequest
@@ -411,7 +411,7 @@ func (s *Server) handleAdminOfferTransfer(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if a.Kind != store.KindArtifact {
-		writeError(w, http.StatusConflict, errFolderShared)
+		writeError(w, http.StatusConflict, errFolderTransfer)
 		return
 	}
 	var view *transferView

@@ -405,12 +405,12 @@ func TestFolderCannotBeOffered(t *testing.T) {
 	body := e2e.TransferBody{V: 1, Artifact: f.id, From: w.owner.id, To: w.ed.id, ToFP: w.ed.keys.fp(), Prev: f.hash}
 	req := map[string]any{"to": w.ed.id, "offer": signOffer(t, w.owner, body)}
 	got, msg := status(w.owner.testClient, "POST", "/api/artifacts/"+f.id+"/transfer", req)
-	if got != http.StatusConflict || !strings.Contains(msg, "folders cannot be shared yet") {
+	if got != http.StatusConflict || !strings.Contains(msg, "a folder cannot be transferred") {
 		t.Errorf("offer of a folder: %d %q", got, msg)
 	}
 	w.deactivate(w.owner)
 	got, msg = status(w.admin, "POST", "/api/admin/artifacts/"+f.id+"/transfer", map[string]any{"to": w.ed.id})
-	if got != http.StatusConflict || !strings.Contains(msg, "folders cannot be shared yet") {
+	if got != http.StatusConflict || !strings.Contains(msg, "a folder cannot be transferred") {
 		t.Errorf("administrator's offer of a folder: %d %q", got, msg)
 	}
 }

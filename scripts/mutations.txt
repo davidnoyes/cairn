@@ -2861,7 +2861,7 @@ internal/server/folders.go	case req.Parent == nil:	case false:	go test ./interna
 internal/server/folders.go	case string(req.Parent) != "null":	case string(req.Parent) == "null":	go test ./internal/server -count=1 -run 'TestMove$'
 internal/server/folders.go	|| parent == "" {	|| false {	go test ./internal/server -count=1 -run 'TestMove$'
 internal/server/folders.go	const errFolderNoContent = "a folder holds no content"	const errFolderNoContent = "a folder holds nothing"	go test ./internal/server -count=1 -run 'TestFolderRefusesEveryContentRoute'
-internal/server/folders.go	const errFolderShared = "folders cannot be shared yet"	const errFolderShared = "folders cannot be shared"	go test ./internal/server -count=1 -run 'TestFolderCannotBeOffered'
+internal/server/folders.go	const errFolderTransfer = "a folder cannot be transferred"	const errFolderTransfer = "a folder cannot be"	go test ./internal/server -count=1 -run 'TestFolderCannotBeOffered'
 internal/server/handlers_artifacts.go	if a.Kind == store.KindFolder {	if a.Kind == "drawer" {	go test ./internal/server -count=1 -run 'TestDeletingAFolder'
 internal/store/folders.go	errors.New("the folder is not empty")	errors.New("the folder is busy")	go test ./internal/server -count=1 -run 'TestDeletingAFolder'
 internal/server/sharing.go	case store.KindArtifact, store.KindFolder:	case store.KindArtifact:	go test ./internal/server -count=1 -run 'TestCreateFoldersAndItemsInThem'
