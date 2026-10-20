@@ -2900,6 +2900,18 @@ F2, until its owner or one of its managers applies the share.
   group. The **Artifacts** tab names the items the caller can apply and
   offers **Apply**. Applying always waits for that click or command, so a
   client never writes on its user's behalf unasked.
+- **An item its folder no longer shows.** The server leaves `parent` null
+  when the caller cannot read the item's folder, so a reader does not learn
+  where its owner keeps it. To the item's owner and managers, such a view
+  also carries `hiddenParent: true`. Applying leaves that item alone and
+  reports that it needs a move. **Remove from folder**, or `cairn move` to
+  the top level, takes it out.
+- **An item the server moved to the top level.** An item with `parent` null
+  and no `hiddenParent`, whose record still names a folder, was moved out by
+  the server, because its folder was deleted or an editor removed it.
+  Applying signs a record naming no folder, on the server's word. This is
+  accepted: the server controls the item's folder anyway, and the new record
+  only removes what the folder's members held.
 - **Removal stays immediate.** Taking access away still needs no one to
   apply anything: the server stops serving at once, and the new epoch
   follows when the item's owner or a manager applies it.
@@ -2907,7 +2919,9 @@ F2, until its owner or one of its managers applies the share.
 ### Deleting a folder with other people's items
 
 Only the folder's owner deletes it. Before it starts, the page and the
-command-line tool show what happens to everything inside:
+command-line tool show what happens to everything inside. The page counts
+what it deletes and what moves, and names the owners of what moves; the
+command-line tool lists each item that moves, with its owner:
 
 - Items the owner owns are deleted, folders included, down to any folder
   someone else owns.
