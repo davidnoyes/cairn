@@ -2747,8 +2747,10 @@ it comes from. An entry without `via` is a direct grant. See
 
 - **More, never fewer.** A new membership record for an item inside a folder
   lists every user and group its parent folder lists, with at least the
-  parent's role. A folder's own record already holds its ancestors' entries,
-  so checking the parent covers every level. A record that drops an inherited
+  parent's role. A deactivated or unverified account, and a deleted group, are
+  not required, because a record may not add them. A folder's own record
+  already holds its ancestors' entries, so checking the parent covers every
+  level. A record that drops an inherited
   entry, or lowers it below the parent's role, is refused while the item sits
   in that folder.
 - **Marking.** An entry that exists only because of a folder carries `via`,
