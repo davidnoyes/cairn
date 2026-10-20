@@ -2756,7 +2756,11 @@ it comes from. An entry without `via` is a direct grant. See
 - **Marking.** An entry that exists only because of a folder carries `via`,
   naming the nearest folder that lists that user or group. An entry with a
   direct grant carries no `via`, and its role is the higher of the direct
-  role and every inherited one.
+  role and every inherited one. The raised role stays when the item leaves
+  the folder, because the entry no longer records what the direct grant
+  was. A folder's owner with a direct grant on an item placed in their
+  folder therefore stays a manager of it afterwards; its owner can lower the
+  entry by sharing again.
 - **A mark must be true.** An entry with `via` names a folder that contains
   the item, and that folder's latest record lists that user or group.
 - **Reading.** An entry with `via` counts only while that folder still
