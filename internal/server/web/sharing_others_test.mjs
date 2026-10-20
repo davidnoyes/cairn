@@ -14,7 +14,7 @@ import { makeUser } from './viewer_fixture.mjs';
 import { depsFor, extraUser, keyStoreRecord, seedGroup } from './sharing_fixture.mjs';
 import { makeFolderServer } from './folder_fixture.mjs';
 import { createFolder, deleteTree, moveAndPlace, removeFromFolder, splitTrees } from './folders.mjs';
-import { GroupKeyChangedError, apply, applyNote, fanOut, fanOutNote, planInherit, share } from './sharing.mjs';
+import { GroupKeyChangedError, apply, applyNote, autoApplyNote, fanOut, fanOutNote, planInherit, share } from './sharing.mjs';
 import { openArtifact } from './viewer.mjs';
 
 const U = {};
@@ -466,6 +466,20 @@ test('apply approves the newcomers of a group an item lists whose checks pass, a
   assert.deepEqual(again.approvals.find((a) => a.id === AP).approved, []);
 });
 
+test('apply without approvals signs the pending records and approves no one, which the explicit apply then does', async () => {
+  const items = [
+    folderOf({ groups: [{ group: GROUP, role: 'viewer' }] }),
+    itemOfP({ members: [listed(U.owner, 'manager', F), listed(U.viewer, 'viewer', F)], groups: [{ group: GROUP, role: 'viewer', via: F }] }),
+  ];
+  const s = await scene({ items, users: [U.outsider, U.other, U.manager, U.editor, U.viewer] });
+  await seedGroup(s.server.primary, { id: GROUP, name: 'Design', members: [{ user: U.outsider }] });
+  const res = await apply(s.deps, { approve: false });
+  assert.deepEqual(res.approvals, []);
+  assert.equal(s.server.kids.get(AP).approves.length, 0);
+  const explicit = await apply(s.deps);
+  assert.deepEqual(explicit.approvals.find((a) => a.id === AP).approved.map((u) => u.id), [U.outsider.id]);
+});
+
 test('apply never reads a stub', async () => {
   const s = await scene({ who: 'owner', items: [folderOf(), itemOfP()] });
   await apply(s.deps);
@@ -769,4 +783,11 @@ test('apply signs nothing for an item in a folder its owner cannot read, and say
   assert.equal(res.fanOut.failed, 0, 'not a failure');
   assert.equal(s.server.records.length, 0, 'nothing was written');
   assert.equal(s.server.inheritOf(AP), 'pending');
+});
+
+test('autoApplyNote says nothing when nothing came back, and a needs-move-only result is not nothing', () => {
+  const describe = (e) => e.message;
+  assert.equal(autoApplyNote({ fanOut: { items: [], total: 0, failed: 0 }, waiting: [], approvals: [] }, describe), '');
+  const moveOnly = { fanOut: { items: [{ id: 'x', kind: 'artifact', state: 'needsMove', error: new Error('left alone'), excluded: [], reseal: null, approved: [], pending: [], skippedUsers: [], skippedGroups: [] }], total: 1, failed: 0 }, waiting: [], approvals: [] };
+  assert.match(autoApplyNote(moveOnly, describe), /1 item needs a move first/);
 });

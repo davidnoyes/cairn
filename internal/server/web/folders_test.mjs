@@ -10,7 +10,7 @@ import { openArtifact } from './viewer.mjs';
 import { readMeta } from './meta.mjs';
 import {
   FolderError, applicable, breadcrumb, canEdit, canMoveInto, canPlaceIn, canRemoveFromFolder, childrenOf, createFolder, deleteSummary, deleteTree,
-  describeList, isStub, makeDraggable, makeDropTarget, moveItem, moveTargets, removeFromFolder, renameFolder, rowActions, splitTrees, stubLabel, subtree,
+  describeList, isStub, makeDraggable, makeDropTarget, moveItem, moveTargets, nextAttempt, removeFromFolder, renameFolder, rowActions, splitTrees, stubLabel, subtree,
 } from './folders.mjs';
 
 const owner = await makeUser('owner');
@@ -454,6 +454,24 @@ test('applicable lists the pending items the caller owns or manages, and no stub
   const at = (id, access, inherit = 'pending') => ({ id, access, inherit });
   const list = [at('o', 'owner'), at('m', 'manager'), at('e', 'editor'), at('v', 'viewer'), at('s', 'none'), at('ok', 'owner', 'ok')];
   assert.deepEqual(applicable(list).map((i) => i.id), ['o', 'm']);
+});
+
+test('nextAttempt asks for the pending items not tried yet, and forgets the ones that are no longer pending', () => {
+  const at = (id, inherit = 'pending') => ({ id, access: 'owner', inherit });
+  let r = nextAttempt([at('a'), at('b', 'ok')], new Set());
+  assert.deepEqual(r.todo, ['a']);
+  // The same list again: a was tried and still waits, so nothing is asked.
+  r = nextAttempt([at('a'), at('b', 'ok')], r.tried);
+  assert.deepEqual(r.todo, []);
+  // A new item turns pending: only it is new, but the next apply takes all.
+  r = nextAttempt([at('a'), at('b')], r.tried);
+  assert.deepEqual(r.todo, ['b']);
+  // a is current now, then pending again: it counts as new.
+  r = nextAttempt([at('a', 'ok'), at('b')], r.tried);
+  assert.deepEqual(r.todo, []);
+  r = nextAttempt([at('a'), at('b')], r.tried);
+  assert.deepEqual(r.todo, ['a']);
+  assert.deepEqual(nextAttempt([], r.tried), { todo: [], tried: new Set() });
 });
 
 // F is a folder the caller owns; theirs is another person's item in it, a stub

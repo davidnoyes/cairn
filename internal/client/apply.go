@@ -56,12 +56,24 @@ type ApplyResult struct {
 // does. A pending item the caller cannot sign is reported as waiting. Running
 // it again finds nothing more to do. Items that fail are skipped, with the
 // reason in the result, and ErrFanOutIncomplete is returned at the end.
-func (c *Client) Apply() (*ApplyResult, error) {
-	k, err := c.Unlock()
+func (c *Client) Apply() (*ApplyResult, error) { return c.apply(true) }
+
+// ApplyInherited is Apply without the approvals: it signs the pending records
+// the caller can and reports the ones that wait, and approves no group
+// newcomer, which stays an explicit decision. It is what runs on its own, as
+// the caller's client starts. With no item pending it lists the artifacts and
+// does nothing more.
+func (c *Client) ApplyInherited() (*ApplyResult, error) { return c.apply(false) }
+
+func (c *Client) apply(approve bool) (*ApplyResult, error) {
+	all, err := c.listWithStubs()
 	if err != nil {
 		return nil, err
 	}
-	all, err := c.listWithStubs()
+	if !approve && !slices.ContainsFunc(all, func(a *Artifact) bool { return a.Inherit == "pending" }) {
+		return &ApplyResult{}, nil
+	}
+	k, err := c.Unlock()
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +115,7 @@ func (c *Client) Apply() (*ApplyResult, error) {
 		res.FanOut.Items = append(res.FanOut.Items, item)
 	}
 	for _, a := range all {
-		if !slices.Contains([]string{"owner", "manager", "editor"}, a.Access) {
+		if !approve || !slices.Contains([]string{"owner", "manager", "editor"}, a.Access) {
 			continue
 		}
 		ap, err := c.applyApprovals(k, a)

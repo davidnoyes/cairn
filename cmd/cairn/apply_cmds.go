@@ -17,7 +17,7 @@ func runApply(args []string) error {
 	if _, err := parsePositional(fs, args, 0, usage); err != nil {
 		return err
 	}
-	c, err := apiClient()
+	c, err := plainClient()
 	if err != nil {
 		return err
 	}

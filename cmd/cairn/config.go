@@ -195,8 +195,23 @@ func (a configAnchors) SaveAnchor(userID, fp string, anchor e2e.KeyringAnchor) e
 // config file both hold the full four-part key; only its bearer (the first
 // two parts) ever goes on the wire, and the client keeps the whole key to
 // unlock the account's keys locally. Keyring anchors always live in the
-// config file, even when the login comes from the environment.
+// config file, even when the login comes from the environment. The client is
+// applied first, as autoApply says, so every command that gets its client here
+// starts with the caller's items up to date; cairn apply gets its own from
+// plainClient.
 func apiClient() (*client.Client, error) {
+	c, err := plainClient()
+	if err != nil {
+		return nil, err
+	}
+	if err := autoApply(c); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// plainClient is apiClient without the automatic apply.
+func plainClient() (*client.Client, error) {
 	host := os.Getenv("CAIRN_HOST")
 	fullKey := os.Getenv("CAIRN_API_KEY")
 	cfg := loadConfig()

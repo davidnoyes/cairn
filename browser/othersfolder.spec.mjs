@@ -3,8 +3,8 @@
 // who manages everything under it, reads it. Sharing the folder with a reader
 // signs the editor's item at once. Adding a manager changes the item's
 // managers, which only its owner signs: the new manager sees a stub until the
-// editor clicks Apply. Deleting the folder moves the editor's item to the
-// editor's top level and ends the reader's access to it.
+// editor's page applies it by itself. Deleting the folder moves the editor's
+// item to the editor's top level and ends the reader's access to it.
 import path from 'node:path';
 import { test, expect } from './test.mjs';
 import { MARKER, cli, cliJson, contentFrame, freshUser, loadState, runCli, signIn } from './helpers.mjs';
@@ -93,14 +93,10 @@ test("others' items: place in someone's folder, share it, a stub until applied, 
     await expect(stub.getByRole('link')).toHaveCount(0);
     await reads(mg.page, docId, false);
 
-    // The editor is told the item is out of step with its folder, and
-    // applies it with one click.
+    // The editor opens the Artifacts tab, and the item comes up to date with
+    // no click, which the status says; the new manager can then read it.
     await artifacts(ed.page);
-    await expect(ed.page.locator('#apply-text')).toContainText(doc);
-    await ed.page.locator('#apply-button').click();
-    await expect(ed.page.locator('#artifacts-status')).toContainText('items up to date', { timeout: 60_000 });
-    await settled(ed.page);
-    await expect(ed.page.locator('#apply-bar')).toBeHidden();
+    await expect(ed.page.locator('#artifacts-status')).toHaveText('1 of 1 items up to date.');
     await reads(mg.page, docId, true);
 
     // Deleting the folder says the editor's item moves to its owner, then

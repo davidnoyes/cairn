@@ -148,6 +148,17 @@ export async function describeList(list, describe, each) {
 // or manage, who alone sign the record that brings an item in step.
 export const applicable = (items) => items.filter((a) => a.inherit === 'pending' && canSign(a));
 
+// nextAttempt decides whether the page applies on its own: todo is the IDs of
+// the applicable items it has not tried yet, and tried is what to remember
+// for the next list, the items still pending. An item that stays pending after
+// an apply, because it waits on someone else or failed, is not tried again
+// until it has been current and turned pending again, so the page never loops;
+// a reload of the page starts with nothing tried.
+export function nextAttempt(items, tried) {
+  const pending = applicable(items).map((a) => a.id);
+  return { todo: pending.filter((id) => !tried.has(id)), tried: new Set(pending) };
+}
+
 // canRemoveFromFolder says whether the caller (user ID me) may take the item
 // id out of the folder it sits in, as an editor of the folder: it is someone
 // else's, a stub too, and the folder is one the caller may edit. The server

@@ -6,10 +6,10 @@
 import { changePassword, createApiKey, enrollPasskey, listPasskeys, newRecoveryCode, passkeysAvailable, removePasskey, signOut } from './account.mjs';
 import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { createGroupsTab } from './groups-tab.mjs';
-import { FolderError, applicable, breadcrumb, canEdit, childrenOf, createFolder, deleteSummary, deleteTree, describeList, isStub, makeDraggable, makeDropTarget, moveAndPlace, moveTargets, removeFromFolder, renameFolder, rowActions, splitTrees, stubLabel, subtree } from './folders.mjs';
+import { FolderError, breadcrumb, canEdit, childrenOf, createFolder, deleteSummary, deleteTree, describeList, isStub, makeDraggable, makeDropTarget, moveAndPlace, moveTargets, nextAttempt, removeFromFolder, renameFolder, rowActions, splitTrees, stubLabel, subtree } from './folders.mjs';
 import { listGroups, verifiedGroup } from './groups.mjs';
 import { describeArtifact } from './meta.mjs';
-import { GroupKeyChangedError, KeyChangedError, apply, applyNote, approvableCount, approve, canShare, directory, fanOut, fanOutNote, memberControls, members, offersFinishSharing, pin, publicLinkFor, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
+import { GroupKeyChangedError, KeyChangedError, apply, autoApplyNote, approvableCount, approve, canShare, directory, fanOut, fanOutNote, memberControls, members, offersFinishSharing, pin, publicLinkFor, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
 import { bannerView, myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions, who } from './successor.mjs';
 import { confirmRecoveryCode, describeError, describePasskeyError, pageDeps, watchStrength } from './ui.mjs';
 
@@ -222,12 +222,40 @@ function setArtifactsBusy(busy) {
 function loadArtifacts(ctx) {
   artifactsLoading++;
   setArtifactsBusy(true);
-  const run = artifactsLoad.then(() => listArtifacts(ctx));
+  const run = artifactsLoad.then(async () => {
+    await listArtifacts(ctx);
+    await applyOwn(ctx);
+  });
   artifactsLoad = run.catch(() => {}).finally(() => {
     artifactsLoading--;
     if (artifactsLoading === 0) setArtifactsBusy(false);
   });
   return run;
+}
+
+// The items the page has applied since it loaded, as nextAttempt keeps them:
+// the ones still pending, so an item that waits on someone else, or failed,
+// is not tried again in a loop.
+let attempted = new Set();
+
+// applyOwn brings the items the caller owns or manages up to date with their
+// folders, once the lists are loaded: only they sign the record, so sharing
+// needs no further step. It signs the records and approves no one, which stays
+// the Approve button. It runs inside the load queue, so two never run at once,
+// and reads the lists again when it is done.
+async function applyOwn(ctx) {
+  const next = nextAttempt(everything(), attempted);
+  attempted = next.tried;
+  if (next.todo.length === 0) return;
+  status('artifacts-status', 'Bringing items up to date with their folders…');
+  try {
+    const res = await apply(deps, { approve: false });
+    status('artifacts-status', autoApplyNote(res, describeError), res.fanOut.failed > 0);
+    await listArtifacts(ctx);
+    attempted = nextAttempt(everything(), attempted).tried;
+  } catch (err) {
+    failIn('artifacts-status')(err);
+  }
 }
 
 // APPROVERS are the access levels that may approve people the artifact is
@@ -315,7 +343,6 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 function renderOwn() {
   if (viewFolder !== null && !own.some((i) => i.id === viewFolder && i.kind === 'folder')) viewFolder = null;
   renderCrumbs($('crumbs'), own, viewFolder, openFolder, moveTo);
-  renderApply();
   const kids = childrenOf(own, viewFolder);
   if (kids.length === 0) {
     emptyRow($('own'), 6, viewFolder === null ? 'No artifacts yet.' : 'This folder is empty.');
@@ -338,7 +365,6 @@ function renderShared() {
   if (sharedFolder !== null && !shared.some((i) => i.id === sharedFolder && i.kind === 'folder')) sharedFolder = null;
   renderCrumbs($('shared-crumbs'), shared, sharedFolder, openSharedFolder, moveTo, (id) => id !== null && canEdit(shared.find((i) => i.id === id)));
   $('shared-folder-form').hidden = !(sharedFolder !== null && canEdit(shared.find((i) => i.id === sharedFolder)));
-  renderApply();
   const kids = childrenOf(shared, sharedFolder);
   if (kids.length === 0) {
     emptyRow($('shared'), 6, sharedFolder === null ? 'Nothing is shared with you yet.' : 'This folder is empty.');
@@ -527,32 +553,6 @@ $('folder-form').addEventListener('submit', (event) => {
 $('shared-folder-form').addEventListener('submit', (event) => {
   event.preventDefault();
   newFolder($('shared-folder-form'), $('shared-folder-name'), sharedFolder);
-});
-
-// renderApply names the items the caller can apply, and offers Apply when
-// there are any: the folders of those items changed, and only their owners and
-// managers sign the record that brings them in step. Nothing is written until
-// the click.
-function renderApply() {
-  const names = applicable(everything()).map((i) => (ownRows.get(i.id) ?? sharedRows.get(i.id)).name);
-  $('apply-bar').hidden = names.length === 0;
-  $('apply-text').textContent = names.length === 0 ? '' : `${plural(names.length, 'item is', 'items are')} not in step with ${names.length === 1 ? 'its folder' : 'their folders'}: ${names.join(', ')}.`;
-}
-
-$('apply-bar').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const button = $('apply-button');
-  button.disabled = true;
-  status('artifacts-status', 'Applying…');
-  try {
-    const res = await apply(deps);
-    status('artifacts-status', applyNote(res, describeError), res.fanOut.failed > 0);
-    await reloadArtifacts();
-  } catch (err) {
-    failIn('artifacts-status')(err);
-  } finally {
-    button.disabled = false;
-  }
 });
 
 // ----------------------------------------------------------------- share

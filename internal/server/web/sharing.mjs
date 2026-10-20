@@ -1886,6 +1886,13 @@ export function applyNote(res, describe) {
   return note;
 }
 
+// autoApplyNote is applyNote for the apply the page runs on its own: empty
+// when nothing came back, so nothing is shown. An item that needs a move, or
+// waits, or failed, counts as something.
+export function autoApplyNote(res, describe) {
+  return res.fanOut.items.length + res.waiting.length === 0 ? '' : applyNote(res, describe);
+}
+
 // apply signs every pending record the caller can, as cairn apply does. For
 // each item the caller owns or manages whose artifact view says inherit is
 // pending, it adds the entries the folder lists, with wraps of every epoch's
@@ -1904,14 +1911,16 @@ export function applyNote(res, describe) {
 // the item belongs; a manager's record keeps the folder, so an item that needs
 // one waits on its owner. apply then approves the waiting members of every
 // group an item the caller can approve on lists, as sharing with a group does.
-// It never runs unasked: the page calls it on a click. Returns {fanOut:
+// The page calls it on its own with approve false, which signs the records and
+// approves no one: approving newcomers stays the explicit Approve button and
+// cairn apply. Returns {fanOut:
 // {items, total, failed}, waiting, approvals}: waiting holds the pending items
 // that only someone else can sign, as fanOut items in state waits, and each
 // approval is {id, kind, approved, pending}. An item that fails is in fanOut
 // with its error, so that one item does not hold the rest back; only a failure
 // that ends the command, as fatalFetch says, is thrown, with the result so
-// far. Mirrors Apply.
-export async function apply(deps) {
+// far. Mirrors Apply and ApplyInherited.
+export async function apply(deps, { approve = true } = {}) {
   const caller = await unlock(deps);
   const all = await call(deps, null, 'GET', '/api/artifacts');
   if (!Array.isArray(all)) throw new e2e.FormatError('the artifact list is not a list');
@@ -1949,7 +1958,7 @@ export async function apply(deps) {
     res.fanOut.items.push(item);
   }
   res.fanOut.total = res.fanOut.items.length;
-  for (const a of all.filter((x) => ['owner', 'manager', 'editor'].includes(x.access))) {
+  for (const a of approve ? all.filter((x) => ['owner', 'manager', 'editor'].includes(x.access)) : []) {
     const approval = await approveListed(deps, caller, a).catch((err) => { throw Object.assign(err, { result: res }); });
     if (approval) res.approvals.push(approval);
   }

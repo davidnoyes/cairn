@@ -218,20 +218,20 @@ func TestFolderDeleteShowsWhatBecomesOfOtherPeoplesItems(t *testing.T) {
 	if _, err := runQuiet(t, runArtifact, "show", mine); err == nil {
 		t.Errorf("ada's own item was not deleted")
 	}
-	// Bob's item is at his top level and pending until he applies.
+	// Bob's item is at his top level and pending until his next command
+	// applies it: ada, the folder's owner, read it through the folder, so her
+	// entry lapses and the apply starts a new epoch.
 	w.as(t, "bob")
+	errDone := captureStderr(t)
 	item := runJSON[client.Artifact](t, runArtifact, "show", theirs, "--json")
 	if item.ParentID != "" {
 		t.Errorf("bob's item after the delete sits in %q", item.ParentID)
 	}
-	res := runJSON[applyOut](t, runApply, "--json")
-	// Ada, the folder's owner, read it through the folder, so her entry lapses
-	// and the apply starts a new epoch.
-	if res.Applied.Total != 1 || res.Applied.NewEpoch != 1 || res.Applied.Items[0].ID != theirs {
-		t.Errorf("bob's apply --json = %+v", res.Applied)
+	if applied := errDone(); applied != "applied folder sharing to 1 item\n" {
+		t.Errorf("bob's command printed %q on stderr", applied)
 	}
 	if text, err := runQuiet(t, runApply); err != nil || !strings.Contains(text, "nothing to apply") {
-		t.Errorf("a second apply printed %q, %v", text, err)
+		t.Errorf("an apply after it printed %q, %v", text, err)
 	}
 }
 
