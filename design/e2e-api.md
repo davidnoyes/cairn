@@ -2865,12 +2865,22 @@ other people own.
   moving an item into a folder needs editor access to the folder, or
   manager or owner access, and the caller must own the item or manage it.
   Moving an item out of a folder, or removing it, needs editor access to the
-  folder it leaves, and puts it at the top level of its owner.
+  folder it leaves, and puts it at the top level of its owner. The item's
+  owner may always take it out, even after losing that access, so they can
+  always clear a pending item of their own.
 - Moving an item from one folder to another needs both: editor access to
   the folder it leaves and to the one it enters. The checks for depth and
   cycles stay as in F1.
 - A folder's editors may create folders inside it. Each new folder belongs to
   the editor who creates it.
+- A manager of an item may move it, but only its owner signs where it is: a
+  manager's record may not change `folder`. The item shows as pending until
+  its owner places it, with `cairn apply` or a move.
+- **The folder's owner reads what is in it.** An item someone else owns lists
+  the owner of its folder as an inherited `editor`, with `via` naming that
+  folder, as a folder in Google Drive lets its owner open what is inside. The
+  more-never-fewer rule requires this entry like any other, and it ends when
+  the item leaves the folder.
 
 ### Inheritance others have to apply
 
