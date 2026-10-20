@@ -1,8 +1,8 @@
 # Roles, groups, and folders
 
-Status: **plan, decisions agreed; R1 (viewer accounts) and R2 (managers) are
-built**; R3 and F1 are in progress, and the rest is not yet. It extends the
-[trust model](e2e-trust-model.md) and builds on
+Status: **plan, decisions agreed; R1 (viewer accounts), R2 (managers), R3
+(groups), F1 (folders), and F2 (shared folders) are built**; F3 is not yet.
+It extends the [trust model](e2e-trust-model.md) and builds on
 [Google sign-in and passkey unlock](google-signin.md).
 
 ## Goal
