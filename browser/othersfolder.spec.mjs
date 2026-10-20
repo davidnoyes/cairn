@@ -1,9 +1,10 @@
 // Folders holding other people's items, in a real browser (F3). An editor of
-// the owner's folder puts their own artifact in it, and the folder's owner
-// reads it. When the owner shares the folder with a reader, the editor's item
-// waits on the editor: the reader sees a stub until the editor clicks Apply.
-// Deleting the folder moves the editor's item to the editor's top level and
-// ends the reader's access to it.
+// the owner's folder puts their own artifact in it, and the folder's owner,
+// who manages everything under it, reads it. Sharing the folder with a reader
+// signs the editor's item at once. Adding a manager changes the item's
+// managers, which only its owner signs: the new manager sees a stub until the
+// editor clicks Apply. Deleting the folder moves the editor's item to the
+// editor's top level and ends the reader's access to it.
 import path from 'node:path';
 import { test, expect } from './test.mjs';
 import { MARKER, cli, cliJson, contentFrame, freshUser, loadState, runCli, signIn } from './helpers.mjs';
@@ -40,12 +41,13 @@ async function signedIn(browser, user) {
   return { context, page };
 }
 
-test("others' items: place in someone's folder, a stub until applied, and delete the folder", async ({ browser, ownerPage, browserName }) => {
+test("others' items: place in someone's folder, share it, a stub until applied, and delete the folder", async ({ browser, ownerPage, browserName }) => {
   const s = loadState();
   const domain = s.users.owner.email.split('@')[1];
   const stamp = `${browserName}-${Date.now()}`;
   const editor = await freshUser(`of-ed-${stamp}`, domain);
   const reader = await freshUser(`of-rd-${stamp}`, domain);
+  const manager = await freshUser(`of-mg-${stamp}`, domain);
   const asEditor = (args) => runCli(s.bin, editor.config, args);
   const top = `others-${stamp}`;
   const doc = `of-doc-${stamp}`;
@@ -65,22 +67,31 @@ test("others' items: place in someone's folder, a stub until applied, and delete
   await expect(ownerPage.locator(`#own tr[data-id="${docId}"]`)).toHaveCount(1);
   await reads(ownerPage, docId, true);
 
-  // Sharing the folder with the reader cannot sign the editor's item, so
-  // the item waits on the editor.
+  // The folder's owner manages the editor's item, so sharing the folder with
+  // the reader signs it too, and nothing waits.
   const out = cli('owner', ['share', topId, reader.email, '--role', 'viewer']);
-  expect(out).toContain(`${docId}: waits on ${editor.email}`);
+  expect(out).not.toContain('waits on');
 
   const ed = await signedIn(browser, editor);
   const rd = await signedIn(browser, reader);
+  const mg = await signedIn(browser, manager);
   try {
-    // The reader sees the item as a stub naming its owner, and cannot read it.
-    await artifacts(rd.page);
-    await rd.page.locator(`#shared tr[data-id="${topId}"]`).getByRole('button', { name: top }).click();
-    const stub = rd.page.locator(`#shared tr[data-id="${docId}"]`);
+    await reads(rd.page, docId, true);
+
+    // Adding a manager changes the item's managers, which only the editor
+    // signs: the item waits on them.
+    const out2 = cli('owner', ['share', topId, manager.email, '--role', 'manager']);
+    expect(out2).toContain(`${docId}: waits on ${editor.email}`);
+
+    // The new manager sees the item as a stub naming its owner, and cannot
+    // read it.
+    await artifacts(mg.page);
+    await mg.page.locator(`#shared tr[data-id="${topId}"]`).getByRole('button', { name: top }).click();
+    const stub = mg.page.locator(`#shared tr[data-id="${docId}"]`);
     await expect(stub).toHaveAttribute('data-stub', 'true');
     await expect(stub.locator('.stub-note')).toHaveText(`not shared with you yet, owned by ${editor.email}`);
     await expect(stub.getByRole('link')).toHaveCount(0);
-    await reads(rd.page, docId, false);
+    await reads(mg.page, docId, false);
 
     // The editor is told the item is out of step with its folder, and
     // applies it with one click.
@@ -90,7 +101,7 @@ test("others' items: place in someone's folder, a stub until applied, and delete
     await expect(ed.page.locator('#artifacts-status')).toContainText('items up to date', { timeout: 60_000 });
     await settled(ed.page);
     await expect(ed.page.locator('#apply-bar')).toBeHidden();
-    await reads(rd.page, docId, true);
+    await reads(mg.page, docId, true);
 
     // Deleting the folder says the editor's item moves to its owner, then
     // moves it there, and the reader loses it.
@@ -108,6 +119,7 @@ test("others' items: place in someone's folder, a stub until applied, and delete
   } finally {
     await ed.context.close();
     await rd.context.close();
+    await mg.context.close();
   }
 });
 
