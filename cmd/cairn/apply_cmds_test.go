@@ -218,17 +218,21 @@ func TestFolderDeleteShowsWhatBecomesOfOtherPeoplesItems(t *testing.T) {
 	if _, err := runQuiet(t, runArtifact, "show", mine); err == nil {
 		t.Errorf("ada's own item was not deleted")
 	}
-	// Bob's item is at his top level and pending until his next command
-	// applies it: ada, the folder's owner, read it through the folder, so her
-	// entry lapses and the apply starts a new epoch.
+	// Bob's item is at his top level and pending. His commands do not sign
+	// that move on the server's word, only say it needs one; his cairn apply
+	// does: ada, the folder's owner, read it through the folder, so her entry
+	// lapses and the apply starts a new epoch.
 	w.as(t, "bob")
 	errDone := captureStderr(t)
 	item := runJSON[client.Artifact](t, runArtifact, "show", theirs, "--json")
 	if item.ParentID != "" {
 		t.Errorf("bob's item after the delete sits in %q", item.ParentID)
 	}
-	if applied := errDone(); applied != "applied folder sharing to 1 item\n" {
-		t.Errorf("bob's command printed %q on stderr", applied)
+	if noted := errDone(); noted != "1 item needs a move; run cairn apply for why and how\n" {
+		t.Errorf("bob's command printed %q on stderr", noted)
+	}
+	if text, err := runQuiet(t, runApply); err != nil || !strings.Contains(text, "1 at a new epoch") {
+		t.Errorf("bob's apply printed %q, %v", text, err)
 	}
 	if text, err := runQuiet(t, runApply); err != nil || !strings.Contains(text, "nothing to apply") {
 		t.Errorf("an apply after it printed %q, %v", text, err)

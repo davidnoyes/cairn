@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/aloisdeniel/cairn/internal/client"
@@ -45,8 +44,9 @@ func reportAutoApply(w io.Writer, res *client.ApplyResult, err error) error {
 }
 
 // autoApplySummary is the one line for what the apply did, or "" when it did
-// nothing and nothing waits: items brought up to date, items that wait on
-// someone else, items that need a move, and items that failed.
+// nothing: items brought up to date, items that need a move, and items that
+// failed. Items that wait on someone else are left to cairn apply, because
+// the caller can do nothing about them.
 func autoApplySummary(res *client.ApplyResult) string {
 	if res == nil {
 		return ""
@@ -54,19 +54,6 @@ func autoApplySummary(res *client.ApplyResult) string {
 	var parts []string
 	if n := res.FanOut.Count(client.FanOutUpdated) + res.FanOut.Count(client.FanOutNewEpoch); n > 0 {
 		parts = append(parts, "applied folder sharing to "+plural(n, "item", "items"))
-	}
-	if n := len(res.Waiting); n > 0 {
-		var owners []string
-		for _, it := range res.Waiting {
-			if l := ownerLabel(it); !slices.Contains(owners, l) {
-				owners = append(owners, l)
-			}
-		}
-		verb := "wait"
-		if n == 1 {
-			verb = "waits"
-		}
-		parts = append(parts, fmt.Sprintf("%s still %s on %s", plural(n, "item", "items"), verb, strings.Join(owners, ", ")))
 	}
 	if n := res.FanOut.Count(client.FanOutNeedsMove); n > 0 {
 		verb := "needs"

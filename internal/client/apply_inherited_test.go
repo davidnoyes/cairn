@@ -1,6 +1,7 @@
 package client
 
 import (
+	"errors"
 	"net/http"
 	"testing"
 )
@@ -67,5 +68,55 @@ func TestApplyInheritedWithNothingPendingReturnsAnEmptyResult(t *testing.T) {
 	keyless.Key = nil
 	if _, err := keyless.ApplyInherited(); err != nil {
 		t.Errorf("ApplyInherited with nothing pending and no key: %v", err)
+	}
+}
+
+// An item the server lists at the top level while its signed record names a
+// folder is the server's word alone, so the automatic apply signs nothing for
+// it and reports it as needing a move; the explicit Apply, which the owner
+// runs by asking, still signs it.
+func TestApplyInheritedDoesNotSignAnItemTheServerMovedToTheTopLevel(t *testing.T) {
+	w := newOthersTree(t)
+	if _, err := w.bob.Move(w.theirs, ""); err != nil {
+		t.Fatal(err)
+	}
+	wantInherit(t, w.bob, w.theirs, "pending")
+	bob, sent := claiming(w.bob, nil)
+	res, err := bob.ApplyInherited()
+	if err != nil {
+		t.Fatalf("ApplyInherited: %v", err)
+	}
+	it := itemResult(&res.FanOut, w.theirs)
+	if it == nil || it.State != FanOutNeedsMove || !errors.Is(it.Err, ErrPlacement) {
+		t.Fatalf("the item: %+v", res.FanOut.Items)
+	}
+	if writesTo(*sent, w.theirs) {
+		t.Errorf("a record was written for the item: %v", *sent)
+	}
+	wantInherit(t, w.bob, w.theirs, "pending")
+	if res = applyOK(t, w.bob); res.FanOut.Count(FanOutNewEpoch)+res.FanOut.Count(FanOutUpdated) == 0 {
+		t.Fatalf("Apply signed nothing: %+v", res.FanOut.Items)
+	}
+	wantInherit(t, w.bob, w.theirs, "ok")
+}
+
+// A user whose only pending items wait on someone else pays one list call:
+// nothing is unlocked or fetched, because there is nothing they can sign.
+func TestApplyInheritedWithOnlyWaitingItemsReturnsAfterTheList(t *testing.T) {
+	w := newOthersTree(t)
+	shareManagerLeavingPending(t, w)
+	var paths []string
+	cat := NewWithKey(w.cat.Host, *w.cat.Key)
+	cat.Anchors = w.cat.Anchors
+	cat.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		paths = append(paths, r.Method+" "+r.URL.Path)
+		return http.DefaultTransport.RoundTrip(r)
+	})}
+	res, err := cat.ApplyInherited()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Waiting) != 0 || len(res.FanOut.Items) != 0 || len(paths) != 1 {
+		t.Errorf("result %+v after requests %v, want nothing and one list call", res, paths)
 	}
 }

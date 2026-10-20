@@ -1685,8 +1685,9 @@ export async function subtreeOrder(all, root, includeRoot, folderNamed) {
 // verified or deleted, or the group was deleted. An item that waits on its owner
 // has state waits, with owner (an ID) and ownerEmail, '' when the directory does
 // not hold them. Only a failure that ends the command, as fatalFetch says, is
-// thrown. topWhenOrphaned is apply's: an item the server lists at the top level
-// whose record names a folder is written as naming none. Mirrors FanOut.
+// thrown. topWhenOrphaned is the explicit apply's: an item the server lists at
+// the top level whose record names a folder is written as naming none. Mirrors
+// FanOut.
 export async function fanOut(deps, rootId, { includeRoot = false, placing, progress, topWhenOrphaned = false } = {}) {
   const caller = await unlock(deps);
   const all = await call(deps, null, 'GET', '/api/artifacts');
@@ -1841,8 +1842,9 @@ async function syncItem(run, item, placing) {
 // the advice for any other failure, are both given when both kinds are present.
 // An item that waits on its owner, and one that needs a move first, are named
 // with what to do, and are neither up to date nor failures. Nothing for an
-// artifact, which has no fanOut in res.
-export function fanOutNote(res, describe) {
+// artifact, which has no fanOut in res. retry is the advice that ends a failure
+// other than a placement; the share dialog's is its Finish sharing control.
+export function fanOutNote(res, describe, retry = 'Choose Finish sharing to try again.') {
   const f = res.fanOut;
   if (!f) return '';
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -1859,7 +1861,7 @@ export function fanOutNote(res, describe) {
   if (failed.length > 0) {
     note += ` ${plural(failed.length, 'item', 'items')} could not be brought up to date: ${failed.map((i) => `${i.id} (${describe(i.error)})`).join('; ')}.`;
     if (failed.some((i) => i.error.code === 'placement')) note += ' An item whose own record does not place it where it is shown is placed by its owner moving it into that folder again.';
-    if (failed.some((i) => i.error.code !== 'placement')) note += ' Choose Finish sharing to try again.';
+    if (failed.some((i) => i.error.code !== 'placement')) note += ` ${retry}`;
   }
   const users = [...new Set(f.items.flatMap((i) => i.skippedUsers))];
   if (users.length > 0) note += ` Not added, because the account is deactivated or not verified: ${users.join(', ')}.`;
@@ -1872,11 +1874,12 @@ export function fanOutNote(res, describe) {
 
 // applyNote says what apply did: how many items are up to date, which wait on
 // their owners or need a move, which failed, and whom it approved or left
-// waiting. describe turns an error into a line.
-export function applyNote(res, describe) {
+// waiting. describe turns an error into a line, and retry ends a failure, as
+// in fanOutNote.
+export function applyNote(res, describe, retry) {
   const f = res.fanOut;
   const total = f.items.length + res.waiting.length;
-  let note = total === 0 ? 'Nothing was waiting to be applied.' : fanOutNote({ fanOut: { ...f, total, items: [...f.items, ...res.waiting] } }, describe).trim();
+  let note = total === 0 ? 'Nothing was waiting to be applied.' : fanOutNote({ fanOut: { ...f, total, items: [...f.items, ...res.waiting] } }, describe, retry).trim();
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const who = (u) => u.email ?? u.id;
   const approved = res.approvals.flatMap((a) => a.approved.map((u) => `${who(u)} on ${a.id}`));
@@ -1888,9 +1891,10 @@ export function applyNote(res, describe) {
 
 // autoApplyNote is applyNote for the apply the page runs on its own: empty
 // when nothing came back, so nothing is shown. An item that needs a move, or
-// waits, or failed, counts as something.
+// waits, or failed, counts as something. Nothing retries on its own, so a
+// failure ends with reloading the page, not with the share dialog's control.
 export function autoApplyNote(res, describe) {
-  return res.fanOut.items.length + res.waiting.length === 0 ? '' : applyNote(res, describe);
+  return res.fanOut.items.length + res.waiting.length === 0 ? '' : applyNote(res, describe, 'Reload the page to try again.');
 }
 
 // apply signs every pending record the caller can, as cairn apply does. For
@@ -1904,7 +1908,9 @@ export function autoApplyNote(res, describe) {
 // only its owner signs: the server moved it there, because the folder was
 // deleted or an editor removed it; the server's word is taken for that, as it
 // controls the tree anyway and the change only lowers what the folder's
-// members hold. An item the server marks hiddenParent sits in a folder the
+// members hold, but only when asked: with approve false, the page's own run,
+// the item is left as needsMove, so nothing is signed on the server's word
+// unattended. An item the server marks hiddenParent sits in a folder the
 // caller cannot read, so it is not at the top level: nothing is signed for it,
 // and it is left as needsMove. Any other mismatch between the record and
 // the server's tree is left as needsMove, because only the owner knows where
@@ -1924,7 +1930,7 @@ export async function apply(deps, { approve = true } = {}) {
   const caller = await unlock(deps);
   const all = await call(deps, null, 'GET', '/api/artifacts');
   if (!Array.isArray(all)) throw new e2e.FormatError('the artifact list is not a list');
-  const run = { deps, caller, dir: await directory(deps), folders: new Map(), verified: new Map(), topWhenOrphaned: true };
+  const run = { deps, caller, dir: await directory(deps), folders: new Map(), verified: new Map(), topWhenOrphaned: approve };
   const res = { fanOut: { items: [], total: 0, failed: 0 }, waiting: [], approvals: [] };
   const newItem = (a) => ({ id: a.id, kind: a.kind ?? 'artifact', state: FAN_OUT_STATES.current, error: null, excluded: [], reseal: null, approved: [], pending: [], skippedUsers: [], skippedGroups: [] });
   const changed = new Set();

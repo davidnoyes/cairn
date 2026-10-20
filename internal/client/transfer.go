@@ -495,6 +495,9 @@ func (c *Client) AcceptTransfer(artifactID string, opts AcceptTransferOptions) (
 		}
 		prevEntry := e2e.Member{User: latest.Owner, Role: "editor", FP: latest.OwnerFP}
 		if prevOwnsFolder {
+			// The server's folderOwner is a hint. It validates every via and
+			// requires the real folder owner, so a lying hint only makes the
+			// acceptance fail.
 			prevEntry.Role, prevEntry.Via = "manager", latest.Folder
 		}
 		next.Members = append(members, prevEntry)

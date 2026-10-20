@@ -61,8 +61,11 @@ func (c *Client) Apply() (*ApplyResult, error) { return c.apply(true) }
 // ApplyInherited is Apply without the approvals: it signs the pending records
 // the caller can and reports the ones that wait, and approves no group
 // newcomer, which stays an explicit decision. It is what runs on its own, as
-// the caller's client starts. With no item pending it lists the artifacts and
-// does nothing more.
+// the caller's client starts. With no item pending that the caller can sign it
+// lists the artifacts and does nothing more. It also never signs on the
+// server's word that an item left its folder: an item the server lists at the
+// top level whose record names a folder is reported as needing a move, which
+// the owner confirms with cairn apply or cairn move.
 func (c *Client) ApplyInherited() (*ApplyResult, error) { return c.apply(false) }
 
 func (c *Client) apply(approve bool) (*ApplyResult, error) {
@@ -70,7 +73,7 @@ func (c *Client) apply(approve bool) (*ApplyResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !approve && !slices.ContainsFunc(all, func(a *Artifact) bool { return a.Inherit == "pending" }) {
+	if !approve && !slices.ContainsFunc(all, func(a *Artifact) bool { return a.Inherit == "pending" && canSign(a) }) {
 		return &ApplyResult{}, nil
 	}
 	k, err := c.Unlock()
@@ -81,7 +84,7 @@ func (c *Client) apply(approve bool) (*ApplyResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	f := &fanOut{c: c, k: k, dir: dir, parents: map[string]*e2e.MembershipBody{}, verified: map[string]*VerifiedArtifact{}, topWhenOrphaned: true}
+	f := &fanOut{c: c, k: k, dir: dir, parents: map[string]*e2e.MembershipBody{}, verified: map[string]*VerifiedArtifact{}, topWhenOrphaned: approve}
 	res := &ApplyResult{}
 	changed := map[string]bool{}
 	for _, a := range inDepthOrder(all) {

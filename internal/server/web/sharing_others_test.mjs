@@ -321,6 +321,18 @@ test('apply writes a record naming no folder for an own item the server lists at
   assert.deepEqual(s.server.moves, [], 'nothing was moved: only the record was written');
 });
 
+test('the automatic apply does not sign for an own item the server lists at the top level: it needs a move, and nothing is written', async () => {
+  const s = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ parent: null, folder: F, members: [listed(U.owner, 'manager', F)] })] });
+  const res = await apply(s.deps, { approve: false });
+  assert.deepEqual(res.fanOut.items.map((i) => [i.id, i.state, i.error?.code]), [[AP, 'needsMove', 'placement']]);
+  assert.equal(s.server.records.length, 0);
+  assert.equal(s.server.inheritOf(AP), 'pending');
+  // Asking, with the default approve, still signs it.
+  const explicit = await apply(s.deps);
+  assert.deepEqual(explicit.fanOut.items.map((i) => [i.id, i.state]), [[AP, 'newEpoch']]);
+  assert.equal(s.server.inheritOf(AP), 'ok');
+});
+
 test('apply writes the orphan\'s record at the same epoch when no entry came from the folder', async () => {
   const s = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ parent: null, folder: F, members: [listed(U.viewer, 'viewer')] })] });
   const res = await apply(s.deps);
@@ -790,4 +802,15 @@ test('autoApplyNote says nothing when nothing came back, and a needs-move-only r
   assert.equal(autoApplyNote({ fanOut: { items: [], total: 0, failed: 0 }, waiting: [], approvals: [] }, describe), '');
   const moveOnly = { fanOut: { items: [{ id: 'x', kind: 'artifact', state: 'needsMove', error: new Error('left alone'), excluded: [], reseal: null, approved: [], pending: [], skippedUsers: [], skippedGroups: [] }], total: 1, failed: 0 }, waiting: [], approvals: [] };
   assert.match(autoApplyNote(moveOnly, describe), /1 item needs a move first/);
+});
+
+test('autoApplyNote ends a failure with reloading the page, and the share dialog\'s note still says Finish sharing', () => {
+  const describe = (e) => e.message;
+  const failed = { fanOut: { items: [{ id: 'x', kind: 'artifact', state: 'failed', error: Object.assign(new Error('boom'), { code: 'other' }), excluded: [], reseal: null, approved: [], pending: [], skippedUsers: [], skippedGroups: [] }], total: 1, failed: 1 }, waiting: [], approvals: [] };
+  const auto = autoApplyNote(failed, describe);
+  assert.match(auto, /Reload the page to try again\.$/);
+  assert.doesNotMatch(auto, /Finish sharing/);
+  const dialog = fanOutNote(failed, describe);
+  assert.match(dialog, /Choose Finish sharing to try again\./);
+  assert.doesNotMatch(dialog, /Reload/);
 });

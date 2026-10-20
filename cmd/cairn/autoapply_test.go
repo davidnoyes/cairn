@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -69,15 +71,17 @@ func TestACommandAppliesPendingItemsAndSaysSoOnStderr(t *testing.T) {
 	}
 }
 
-func TestACommandSaysWhoAnItemWaitsOn(t *testing.T) {
+// An item that waits on someone else is not the caller's to act on, so the
+// automatic summary leaves it to cairn apply.
+func TestACommandStaysSilentAboutItemsThatWaitOnSomeoneElse(t *testing.T) {
 	w, _ := pendingOnBob(t)
 	w.as(t, "ada")
-	out, errOut := listWithStderr(t)
-	if errOut != "1 item still waits on bob@example.com\n" {
-		t.Errorf("stderr = %q", errOut)
+	if _, errOut := listWithStderr(t); errOut != "" {
+		t.Errorf("stderr = %q, want nothing", errOut)
 	}
-	if strings.Contains(out, "waits on") {
-		t.Errorf("stdout carries the summary: %q", out)
+	text, err := runQuiet(t, runApply)
+	if err != nil || !strings.Contains(text, "waits on bob@example.com") {
+		t.Errorf("cairn apply = %q, %v; want it to say what waits on bob", text, err)
 	}
 }
 
@@ -130,7 +134,7 @@ func TestAnAutoApplySaysWhatFailedWithoutAWarning(t *testing.T) {
 	if err := reportAutoApply(&buf, res, fmt.Errorf("%w: 1 of 3", client.ErrFanOutIncomplete)); err != nil {
 		t.Fatal(err)
 	}
-	want := "applied folder sharing to 2 items; 2 items still wait on bob@example.com; 1 item could not be brought up to date; run cairn apply for the reason\n"
+	want := "applied folder sharing to 2 items; 1 item could not be brought up to date; run cairn apply for the reason\n"
 	if buf.String() != want {
 		t.Errorf("stderr = %q, want %q", buf.String(), want)
 	}
@@ -166,5 +170,123 @@ func TestAnAutoApplySaysWhenItemsNeedAMove(t *testing.T) {
 		if got := autoApplySummary(&client.ApplyResult{FanOut: client.FanOutResult{Items: c.items}}); got != c.want {
 			t.Errorf("summary = %q, want %q", got, c.want)
 		}
+	}
+}
+
+// requestLog swaps the transport the CLI's client uses for one that records
+// "METHOD path" for each request, and returns the log so far.
+func requestLog(t *testing.T) func() []string {
+	t.Helper()
+	var log []string
+	old := http.DefaultClient.Transport
+	http.DefaultClient.Transport = autoApplyRoundTrip(func(r *http.Request) (*http.Response, error) {
+		log = append(log, r.Method+" "+r.URL.Path)
+		return http.DefaultTransport.RoundTrip(r)
+	})
+	t.Cleanup(func() { http.DefaultClient.Transport = old })
+	return func() []string { return log }
+}
+
+type autoApplyRoundTrip func(*http.Request) (*http.Response, error)
+
+func (f autoApplyRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// inheritOf is the inherit state artifact list --json shows for id.
+func inheritOf(t *testing.T, id string) string {
+	t.Helper()
+	for _, a := range runJSON[[]client.Artifact](t, runArtifact, "list", "--json") {
+		if a.ID == id {
+			return a.Inherit
+		}
+	}
+	t.Fatalf("%s is not listed", id)
+	return ""
+}
+
+// The automatic apply costs one request, the list, when the caller has nothing
+// to sign: nothing pending, or only items that wait on someone else. It
+// unlocks nothing and fetches no directory, and prints nothing.
+func TestACommandCostsOneListWhenTheCallerHasNothingToSign(t *testing.T) {
+	want := []string{"GET /api/artifacts"}
+	apiClientAlone := func(t *testing.T) (log []string, stderr string) {
+		t.Helper()
+		requests := requestLog(t)
+		errDone := captureStderr(t)
+		if _, err := apiClient(); err != nil {
+			t.Fatal(err)
+		}
+		stderr = errDone()
+		return requests(), stderr
+	}
+	t.Run("nothing pending", func(t *testing.T) {
+		w, _, _ := newOthersWorld(t)
+		w.as(t, "ada")
+		if log, errOut := apiClientAlone(t); errOut != "" || !slices.Equal(log, want) {
+			t.Errorf("stderr %q, requests %v; want no output and %v", errOut, log, want)
+		}
+	})
+	t.Run("only items waiting on others", func(t *testing.T) {
+		w, _, _ := newOthersWorld(t)
+		// Dan manages Work, which only bob can sign into his item: dan lists
+		// it as a pending stub he cannot sign.
+		shareManagerOfOthersItems(t, "dan@example.com")
+		w.as(t, "dan")
+		if text, err := runQuiet(t, runFolder, "list", "Work"); err != nil || !strings.Contains(text, "not shared with you yet") {
+			t.Fatalf("dan lists %q, %v; want the pending stub", text, err)
+		}
+		if log, errOut := apiClientAlone(t); errOut != "" || !slices.Equal(log, want) {
+			t.Errorf("stderr %q, requests %v; want no output and %v", errOut, log, want)
+		}
+	})
+}
+
+// With CAIRN_HOST and CAIRN_API_KEY and no saved login, the command applies
+// and says so, as for a saved login.
+func TestAHeadlessCommandAppliesPendingItems(t *testing.T) {
+	_, theirs := pendingOnBob(t)
+	cfg := loadConfig()
+	t.Setenv("CAIRN_CONFIG", filepath.Join(t.TempDir(), "none.json"))
+	t.Setenv("CAIRN_HOST", cfg.Host)
+	t.Setenv("CAIRN_API_KEY", cfg.APIKey)
+	if _, errOut := listWithStderr(t); errOut != "applied folder sharing to 1 item\n" {
+		t.Errorf("stderr = %q", errOut)
+	}
+	if got := inheritOf(t, theirs); got != "ok" {
+		t.Errorf("the item is %q, want it applied", got)
+	}
+}
+
+// An item in a folder its owner can no longer read is not applied: a normal
+// command says it needs a move, and writes nothing.
+func TestACommandSaysAnItemInAnUnreadableFolderNeedsAMove(t *testing.T) {
+	w, _, theirs := newOthersWorld(t)
+	if _, err := runQuiet(t, runUnshare, "Work", "bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	shareManagerOfOthersItems(t, "cat@example.com")
+	w.as(t, "bob")
+	log := requestLog(t)
+	_, errOut := listWithStderr(t)
+	if errOut != "1 item needs a move; run cairn apply for why and how\n" {
+		t.Errorf("stderr = %q", errOut)
+	}
+	for _, r := range log() {
+		if strings.Contains(r, "/api/artifacts/") && !strings.HasPrefix(r, "GET ") {
+			t.Errorf("the command sent %q", r)
+		}
+	}
+	if got := inheritOf(t, theirs); got != "pending" {
+		t.Errorf("the item is %q, want it still pending", got)
+	}
+}
+
+// The first command applies a pending item and the second finds nothing.
+func TestARepeatedCommandPrintsNothing(t *testing.T) {
+	pendingOnBob(t)
+	if _, errOut := listWithStderr(t); errOut != "applied folder sharing to 1 item\n" {
+		t.Fatalf("first command: stderr = %q", errOut)
+	}
+	if _, errOut := listWithStderr(t); errOut != "" {
+		t.Errorf("second command: stderr = %q, want nothing", errOut)
 	}
 }
