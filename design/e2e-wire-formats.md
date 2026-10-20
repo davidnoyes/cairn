@@ -419,6 +419,9 @@ surrogate.
 - A member entry and a `groups` entry may end with `"via"`, the ID of the
   folder the entry comes from, a lowercase UUID. The key is left out for a
   direct grant.
+- Either membership version may carry `"folder"`, after `groups`: the ID of
+  the folder the item sits in, a lowercase UUID. The key is left out at the
+  top level.
 - In a membership record, `role` is `viewer`, `editor`, or `manager`, `team`
   is `none`, `viewer`, or `editor`, each `groups` entry names a group ID (a
   lowercase UUID) with `role` `viewer` or `editor`, sorted by group ID, unique,

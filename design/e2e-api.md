@@ -2773,6 +2773,28 @@ it comes from. An entry without `via` is a direct grant. See
   it. A change to that folder's record then reaches the whole subtree at
   once.
 
+### Placement is signed
+
+The server's tree is unsigned, so it must never decide whose keys an item is
+sealed to. Each membership record therefore names its item's folder:
+
+- A record may carry `folder`, the ID of the folder the item sits in, and
+  leaves it out at the top level. See
+  [Signatures](e2e-wire-formats.md#signatures).
+- The server refuses a new record whose `folder` differs from the item's
+  `parent`.
+- A client copies a folder's entries into an item's record only when the
+  item's latest verified record names that folder in `folder`, or when the
+  client itself is placing the item there, by creating it or moving it,
+  because then its user chose the folder. A fan-out walks only items whose
+  record names the folder it came from, and refuses any other item the
+  server lists as pending, naming it.
+- A folder's own record names its parent the same way, so each level of
+  the chain is signed by someone who could sign that folder.
+- Display, and the server's own access checks, still use the server's tree:
+  a server that lies about it can only hide items or show them in the wrong
+  place, and it already decides who it serves.
+
 ### Fan-out
 
 Sharing or unsharing a folder is one change to the folder, followed by one
@@ -2785,9 +2807,10 @@ change to each item inside it.
   a next-epoch record that excludes users who held the item only through the
   folder, and re-seals its latest version, database, and files, as any
   removal does.
-- **Moving.** Moving an item into a folder is followed by a record that adds
-  the folder's entries. Moving it out is followed by a next-epoch record
-  that excludes users who had it only through the folders it left.
+- **Moving.** Moving an item into a folder is followed by a record that
+  names the folder and adds its entries. Moving it out is followed by a
+  next-epoch record that excludes users who had it only through the folders
+  it left.
 - **Pending.** An item whose record lacks entries its parent requires is
   pending. The artifact view carries `inherit`: `ok`, or `pending` while the
   item's record is missing entries its parent lists or holds entries whose
