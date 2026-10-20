@@ -2428,9 +2428,12 @@ answers with the item's view.
   transferred`, in every milestone.
 - **Deleting.** A folder that still holds items is refused with `409` and
   `the folder is not empty`. The client deletes the contents first.
-- **Transfers.** When someone accepts ownership of an item that sits in the
-  previous owner's folder, the server moves the item to the top level in the
-  same transaction, because the new owner cannot read that folder.
+- **Transfers.** An item keeps its folder when its ownership changes, as
+  in Google Drive, whether the new owner accepts an offer or an
+  administrator hands the item over. The accepting record names the same
+  folder and keeps the inherited entries, so the new owner need not read
+  the folder. The folder's owner stays an inherited manager, unless they
+  are the new owner. Until F3 the item moved to the new owner's top level.
 
 The tree's shape is visible to the server, and it is not signed: the server
 sees which items sit together, and a hostile server could show an item in
@@ -2910,9 +2913,15 @@ still wait on an item's owner, as in F2:
   adds missing inherited entries, sealing each epoch's key to the new
   members, and starts a new epoch where a `via` entry no longer holds. It
   also approves the newcomers whose checks pass, as `cairn share` does for a
-  group. The **Artifacts** tab names the items the caller can apply and
-  offers **Apply**. Applying always waits for that click or command, so a
-  client never writes on its user's behalf unasked.
+  group.
+- **Applying automatically.** Sharing is the action, so no one has to apply
+  a share by hand. A client that can sign applies the pending records by
+  itself whenever it runs. The page does so after it loads the **Artifacts**
+  lists, once per item and state, and shows what it did. The command-line
+  tool does so before any command that can unlock the caller's keys, and
+  prints a summary on standard error, so standard output is unchanged. This
+  automatic apply signs inheritance only. Approving a group's newcomers stays
+  a decision, made with **Approve** or an explicit `cairn apply`.
 - **An item its folder no longer shows.** The server leaves `parent` null
   when the caller cannot read the item's folder, so a reader does not learn
   where its owner keeps it. To the item's owner and managers, such a view
@@ -2950,5 +2959,6 @@ command-line tool lists each item that moves, with its owner:
 
 - `cairn apply [--json]` applies every pending record and approval the
   caller can, and prints what it did and what still waits on someone else.
+  Other commands apply pending records, but not approvals, by themselves.
 - `cairn folder list` shows stubs as `(not shared with you yet, owned by
   EMAIL)`.

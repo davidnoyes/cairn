@@ -560,15 +560,17 @@ A folder can hold items that other people own, as in Google Drive:
   everything under it, so sharing your own folder covers every item at once.
   When someone else shares it, or adds a manager, the items they cannot sign
   wait on their owners. Until an owner signs, their item
-  shows as a stub: you see its owner but not its name. To sign every item
-  that waits on you, run `cairn apply` or click **Apply** on the
-  **Artifacts** tab. Cairn never applies a share without that step.
+  shows as a stub: you see its owner but not its name. Their Cairn signs it
+  by itself the next time they open the app or run a `cairn` command, with
+  no extra step.
+- **Transfers.** An item keeps its folder when its ownership changes, as in
+  Google Drive.
 - **Deleting.** Deleting a folder deletes what you own inside it. Items and
   folders that other people own move to their owners' top levels. Both the
   app and `cairn folder delete` list what happens before they start.
 
 ```sh
-cairn apply           # sign what waits on you, and list what waits on others
+cairn apply           # sign now, approve group newcomers, and list what waits
 cairn apply --json
 ```
 
