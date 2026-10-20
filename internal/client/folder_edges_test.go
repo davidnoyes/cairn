@@ -2,10 +2,7 @@ package client
 
 import (
 	"net/http"
-	"slices"
 	"testing"
-
-	"github.com/aloisdeniel/cairn/internal/e2e"
 )
 
 // Edges of the folder owner's inherited manager entry: nesting, a folder
@@ -176,11 +173,10 @@ func transferItem(t *testing.T, id string, owner, to *Client, toEmail string) {
 
 // Bob gives ada, who owns the folder, his item in it. She is listed as a
 // manager of it, which makes her a listed manager the offer may go to, and the
-// record that accepts it must not list her as a member of her own item.
-func TestAnItemTransferredToTheFoldersOwnerIsNotRefusedForTheOldEntry(t *testing.T) {
+// record that accepts it must not list her as a member of her own item. The
+// item stays in her folder, and cat, whom the folder lists, still reads it.
+func TestAnItemTransferredToTheFoldersOwnerStaysInTheFolder(t *testing.T) {
 	w := newOthersTree(t)
-	// Cat is listed on the item via the folder too, so the accepted record
-	// carries an entry whose folder no longer holds the item.
 	if _, err := w.ada.Share(w.work, "cat@example.com", "viewer", false); err != nil {
 		t.Fatal(err)
 	}
@@ -194,42 +190,37 @@ func TestAnItemTransferredToTheFoldersOwnerIsNotRefusedForTheOldEntry(t *testing
 	if b.Owner != ada || memberOf(b, ada) != nil {
 		t.Errorf("owner %s, ada listed as %+v; want her owner and unlisted", b.Owner, memberOf(b, ada))
 	}
+	if b.Folder != w.work {
+		t.Errorf("the accepting record names folder %q, want %q", b.Folder, w.work)
+	}
 	if m := memberOf(b, bob); m == nil || m.Role != "editor" || m.Via != "" {
 		t.Errorf("bob is %+v, want a direct editor", m)
 	}
-	// Accepting takes an item out of its folder, so the entry for cat lapses.
-	if a, err := w.ada.GetArtifact(w.theirs); err != nil || a.ParentID != "" || a.Access != "owner" {
-		t.Errorf("ada's view: %+v, %v; want her item at the top level", a, err)
+	if m := memberOf(b, cat); m == nil || m.Role != "viewer" || m.Via != w.work {
+		t.Errorf("cat is %+v, want a viewer via the folder", m)
 	}
-	wantStatus(t, w.cat, w.theirs, http.StatusNotFound)
-	wantInherit(t, w.ada, w.theirs, "pending")
-	// Ada applies it: a next epoch drops cat, and nothing waits.
-	res := applyOK(t, w.ada)
-	if len(res.Waiting) != 0 || res.FanOut.Count(FanOutFailed) != 0 || stateOf(&res.FanOut, w.theirs) != FanOutNewEpoch {
-		t.Fatalf("ada's apply: %+v, waiting %+v", res.FanOut.Items, res.Waiting)
+	if a, err := w.ada.GetArtifact(w.theirs); err != nil || a.ParentID != w.work || a.Access != "owner" {
+		t.Errorf("ada's view: %+v, %v; want her item in her folder", a, err)
 	}
-	b = latestBody(t, w.ada, w.theirs)
-	if memberOf(b, cat) != nil || !slices.ContainsFunc(b.Excluded, func(e e2e.ExcludedEntry) bool { return e.User == cat }) {
-		t.Errorf("after applying: members %+v excluded %+v", b.Members, b.Excluded)
-	}
+	wantStatus(t, w.cat, w.theirs, http.StatusOK)
 	wantInherit(t, w.ada, w.theirs, "ok")
 	for _, c := range []*Client{w.ada, w.bob} {
-		if res := applyOK(t, c); len(res.Waiting) != 0 || len(res.FanOut.Items) != 0 {
+		if res := applyOK(t, c); len(res.Waiting) != 0 || stateOf(&res.FanOut, w.theirs) != "" {
 			t.Errorf("a later apply: %+v, waiting %+v", res.FanOut.Items, res.Waiting)
 		}
 	}
 }
 
-// Bob gives a third user, who edits the folder, his item in it. Accepting
-// takes an item to the new owner's top level (the server cannot know they read
-// the folder), so the folder's owner loses it with the folder.
-func TestAnItemTransferredToAThirdUserLeavesTheFolder(t *testing.T) {
+// Bob gives cat, who edits the folder, his item in it. The item stays in the
+// folder and still lists ada, the folder's owner, as its manager, and the
+// folder's members keep reading it.
+func TestAnItemTransferredToAThirdUserStaysInTheFolder(t *testing.T) {
 	w := newOthersTree(t)
-	if _, err := w.bob.Share(w.theirs, "cat@example.com", "editor", false); err != nil {
+	if _, err := w.ada.Share(w.work, "cat@example.com", "editor", false); err != nil {
 		t.Fatal(err)
 	}
-	ada, cat := userID(t, w.ada), userID(t, w.cat)
-	// Sharing the item keeps the folder's owner in its record.
+	fanOutOK(t, w.ada, w.work, nil)
+	ada, bob, cat := userID(t, w.ada), userID(t, w.bob), userID(t, w.cat)
 	if m := memberOf(latestBody(t, w.bob, w.theirs), ada); m == nil || m.Role != "manager" || m.Via != w.work {
 		t.Fatalf("bob's item lists ada as %+v before the transfer", m)
 	}
@@ -237,20 +228,118 @@ func TestAnItemTransferredToAThirdUserLeavesTheFolder(t *testing.T) {
 	transferItem(t, w.theirs, w.bob, w.cat, "cat@example.com")
 
 	b := latestBody(t, w.cat, w.theirs)
-	if b.Owner != cat || b.Folder != "" {
-		t.Errorf("owner %s folder %q, want cat's and the top level", b.Owner, b.Folder)
+	if b.Owner != cat || b.Folder != w.work {
+		t.Errorf("owner %s folder %q, want cat's and the folder", b.Owner, b.Folder)
 	}
-	if a, err := w.cat.GetArtifact(w.theirs); err != nil || a.ParentID != "" || a.Access != "owner" {
+	if m := memberOf(b, ada); m == nil || m.Role != "manager" || m.Via != w.work {
+		t.Errorf("the item lists ada as %+v, want a manager via the folder", m)
+	}
+	if memberOf(b, cat) != nil {
+		t.Errorf("the item lists its owner as %+v", memberOf(b, cat))
+	}
+	if m := memberOf(b, bob); m == nil || m.Role != "editor" {
+		t.Errorf("bob is %+v, want an editor", m)
+	}
+	if a, err := w.cat.GetArtifact(w.theirs); err != nil || a.ParentID != w.work || a.Access != "owner" {
 		t.Errorf("cat's view: %+v, %v", a, err)
 	}
-	// The entry survives in the record without a folder to stand on, so ada
-	// loses the item at once and cat's next record sheds her.
-	wantStatus(t, w.ada, w.theirs, http.StatusNotFound)
-	wantInherit(t, w.cat, w.theirs, "pending")
-	applyOK(t, w.cat)
-	b = latestBody(t, w.cat, w.theirs)
-	if memberOf(b, ada) != nil || !slices.ContainsFunc(b.Excluded, func(e e2e.ExcludedEntry) bool { return e.User == ada }) {
-		t.Errorf("after applying: members %+v excluded %+v", b.Members, b.Excluded)
+	for _, c := range []*Client{w.ada, w.bob} {
+		wantStatus(t, c, w.theirs, http.StatusOK)
 	}
 	wantInherit(t, w.cat, w.theirs, "ok")
+}
+
+// The new owner is a direct editor of the item and not a member of the folder,
+// so they cannot read it. They accept anyway: the item stays in the folder,
+// their view says it sits in one they cannot read, and the folder's members
+// keep access.
+func TestAnItemTransferredToAUserWhoCannotReadTheFolderStaysInIt(t *testing.T) {
+	w := newOthersTree(t)
+	if _, err := w.bob.Share(w.theirs, "cat@example.com", "editor", false); err != nil {
+		t.Fatal(err)
+	}
+	ada, cat := userID(t, w.ada), userID(t, w.cat)
+	wantStatus(t, w.cat, w.work, http.StatusNotFound)
+
+	transferItem(t, w.theirs, w.bob, w.cat, "cat@example.com")
+
+	b := latestBody(t, w.cat, w.theirs)
+	if b.Owner != cat || b.Folder != w.work {
+		t.Errorf("owner %s folder %q, want cat's and the folder", b.Owner, b.Folder)
+	}
+	a, err := w.cat.GetArtifact(w.theirs)
+	if err != nil || a.ParentID != "" || !a.HiddenParent || a.Access != "owner" {
+		t.Errorf("cat's view: %+v, %v; want hiddenParent", a, err)
+	}
+	if m := memberOf(b, ada); m == nil || m.Role != "manager" || m.Via != w.work {
+		t.Errorf("the item lists ada as %+v, want a manager via the folder", m)
+	}
+	for _, c := range []*Client{w.ada, w.bob} {
+		wantStatus(t, c, w.theirs, http.StatusOK)
+	}
+	if a, err := w.ada.GetArtifact(w.theirs); err != nil || a.ParentID != w.work {
+		t.Errorf("ada's view: %+v, %v", a, err)
+	}
+	wantInherit(t, w.cat, w.theirs, "ok")
+}
+
+// The folder lists dan, whom the item's record lacks, so the item is pending.
+// A new owner who cannot read the folder accepts it with the entries it has,
+// and it stays pending until ada, the folder's owner and its manager, applies.
+func TestTransferOfAPendingItemLandsAndStaysPending(t *testing.T) {
+	w := newOthersTree(t)
+	if _, err := w.bob.Share(w.theirs, "cat@example.com", "editor", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.ada.Share(w.work, "dan@example.com", "viewer", false); err != nil {
+		t.Fatal(err)
+	}
+	dan := userID(t, w.dan)
+	wantInherit(t, w.bob, w.theirs, "pending")
+
+	transferItem(t, w.theirs, w.bob, w.cat, "cat@example.com")
+
+	b := latestBody(t, w.cat, w.theirs)
+	if b.Owner != userID(t, w.cat) || b.Folder != w.work || memberOf(b, dan) != nil {
+		t.Errorf("the accepting record: owner %s folder %q, dan %+v", b.Owner, b.Folder, memberOf(b, dan))
+	}
+	wantInherit(t, w.cat, w.theirs, "pending")
+	wantStatus(t, w.dan, w.theirs, http.StatusNotFound)
+
+	applyOK(t, w.ada)
+	wantInherit(t, w.cat, w.theirs, "ok")
+	wantStatus(t, w.dan, w.theirs, http.StatusOK)
+	if m := memberOf(latestBody(t, w.cat, w.theirs), dan); m == nil || m.Role != "viewer" || m.Via != w.work {
+		t.Errorf("after ada applied, dan is %+v", m)
+	}
+}
+
+// An administrator hands over an item in a folder while its owner is
+// deactivated. The record keeps the folder, and the item stays in it.
+func TestAnAdministratorsHandoverKeepsTheItemInItsFolder(t *testing.T) {
+	x := newXfer(t, nil)
+	f, err := x.ada.CreateFolder("Work", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x.ada.Move(x.artifact, f.ID); err != nil {
+		t.Fatal(err)
+	}
+	fanOutOK(t, x.ada, x.artifact, &Placing{Parent: f.ID})
+	x.deactivate(x.ada)
+	x.adminOffer(x.bob)
+	// Ada owns the folder, and an administrator's handover drops her anyway:
+	// she is deactivated, so the folder cannot require her.
+	if _, err := x.bob.AcceptTransfer(x.artifact, AcceptTransferOptions{DropPreviousOwner: true}); err != nil {
+		t.Fatalf("AcceptTransfer: %v", err)
+	}
+	latest := x.verify(x.dan).Chain.Latest
+	if latest.Owner != x.id(x.bob) || latest.Folder != f.ID {
+		t.Errorf("latest record: owner %s folder %q, want bob's and %q", latest.Owner, latest.Folder, f.ID)
+	}
+	a, err := x.bob.GetArtifact(x.artifact)
+	if err != nil || a.ParentID != "" || !a.HiddenParent || a.Access != "owner" {
+		t.Errorf("bob's view: %+v, %v; want an item in a folder he cannot read", a, err)
+	}
+	wantStatus(t, x.cat, x.artifact, http.StatusOK)
 }

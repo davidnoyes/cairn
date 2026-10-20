@@ -100,6 +100,15 @@ func (s *Server) handleGetArtifact(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = s.showParent(v, a, s.readableBy(req.Caller))
 	}
+	if err == nil && a.ParentID != "" {
+		offered := v.Transfer != nil && v.Transfer.To == req.Caller.UserID
+		if offered || v.Access == access.LevelOwner || v.Access == access.LevelManager {
+			var parent *store.Artifact
+			if parent, err = s.store.ArtifactByID(a.ParentID); err == nil {
+				v.FolderOwner = parent.OwnerID
+			}
+		}
+	}
 	if err != nil {
 		s.writeStoreError(w, err, "artifact")
 		return

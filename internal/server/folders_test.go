@@ -415,30 +415,6 @@ func TestFolderCannotBeOffered(t *testing.T) {
 	}
 }
 
-func TestAcceptingAnItemInTheOwnersFolderMovesItToTheTop(t *testing.T) {
-	w := newTransferWorld(t)
-	f := newItem(t, w.owner, "folder", "")
-	if got, msg := move(w.owner.testClient, w.o.id, f.id); got != http.StatusOK {
-		t.Fatalf("move: %d %q", got, msg)
-	}
-	wantParent(t, w.owner.testClient, w.o.id, f.id)
-
-	offer := w.offer(w.ed)
-	_, req := w.acceptOwnerOffer(w.ed, offer, false)
-	w.ed.mustDo("POST", w.transferPath("/accept"), req, nil, http.StatusOK)
-
-	for _, c := range []*testClient{w.ed.testClient, w.owner.testClient} {
-		wantParent(t, c, w.o.id, "")
-	}
-	var list []folderView
-	w.ed.mustDo("GET", "/api/artifacts", nil, &list, http.StatusOK)
-	for _, v := range list {
-		if v.ID == f.id {
-			t.Errorf("the new owner lists the previous owner's folder")
-		}
-	}
-}
-
 func TestDeletingAFolder(t *testing.T) {
 	a, b := folderWorld(t)
 	f := newItem(t, a, "folder", "")

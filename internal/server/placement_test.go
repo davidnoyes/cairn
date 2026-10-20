@@ -123,33 +123,9 @@ func TestAManagerCannotChangeTheFolder(t *testing.T) {
 	wantInherit(t, w.alice.testClient, w.item.id, "ok")
 }
 
-// Accepting an offer takes the item to the top level, and the accepting
-// record names no folder.
-func TestAcceptTakesTheItemOutOfItsFolder(t *testing.T) {
-	w := newTransferWorld(t)
-	folder := newItem(t, w.owner, "folder", "")
-	w.o = newItem(t, w.owner, "", folder.id)
-	w.o.share("editor", w.ed)
-	offer := w.offer(w.ed)
-
-	b, req := w.acceptOwnerOffer(w.ed, offer, false)
-	wantStatus(t, w.ed.testClient, "POST", w.transferPath("/accept"), req, http.StatusConflict)
-	b.Folder = ""
-	req["membership"] = signRecord(t, w.ed, b)
-	w.ed.mustDo("POST", w.transferPath("/accept"), req, nil, http.StatusOK)
-	item, err := w.s.store.ArtifactByID(w.o.id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if item.ParentID != "" {
-		t.Errorf("the accepted item sits in %q: accepting sets its parent to none", item.ParentID)
-	}
-}
-
-// An accepting record skips the via checks, so the new owner can list a user
-// through a folder that does not contain the item. The entry grants nothing,
-// because the item sits at the top level and no folder holds it.
-func TestAnAcceptRecordWithAForgedViaGrantsNothing(t *testing.T) {
+// An accepting record is held to the via checks, so the new owner cannot list
+// a user through a folder that does not contain the item.
+func TestAnAcceptRecordWithAForgedViaIsRefused(t *testing.T) {
 	w := newTransferWorld(t)
 	folder := newItem(t, w.owner, "folder", "")
 	folder.share("viewer", w.out)
@@ -160,11 +136,7 @@ func TestAnAcceptRecordWithAForgedViaGrantsNothing(t *testing.T) {
 	sortMembers(b.Members)
 	req["membership"] = signRecord(t, w.ed, b)
 	req["wraps"] = append(req["wraps"].([]any), map[string]any{"user": w.out.id, "epoch": 1, "wrapped": e2e.B64(fakeWrap)})
-	w.ed.mustDo("POST", w.transferPath("/accept"), req, nil, http.StatusOK)
-
-	wantStatus(t, w.out.testClient, "GET", "/api/artifacts/"+w.o.id, nil, http.StatusNotFound)
-	// The entry's via no longer holds, so the item is pending.
-	wantInherit(t, w.ed.testClient, w.o.id, "pending")
+	wantStatus(t, w.ed.testClient, "POST", w.transferPath("/accept"), req, http.StatusConflict)
 }
 
 // A user disabled after the folder shared them is not required of an item,

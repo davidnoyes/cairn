@@ -326,24 +326,13 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 
 	// Placement is signed: the record names the folder the item sits in, and
 	// a client that fans a folder's entries out into an item trusts that name,
-	// never the server's tree. An accepting record takes the item to the top
-	// level, because accepting sets its parent to none.
-	wantFolder := cur.Parent
-	if ch.Accept != nil {
-		wantFolder = ""
+	// never the server's tree. An accepting record keeps the item where it
+	// is, as transferring a file in Google Drive does.
+	if body.Folder != cur.Parent {
+		return nil, conflict(RulePlacement, "folder %q is not the folder the item sits in, %q (empty is the top level)", body.Folder, cur.Parent)
 	}
-	if body.Folder != wantFolder {
-		return nil, conflict(RulePlacement, "folder %q is not the folder the item sits in, %q (empty is the top level)", body.Folder, wantFolder)
-	}
-
-	// An accepting record is about to take the item out of its folder, so
-	// the folder's entries no longer bind it. That is safe because accepting
-	// sets parent_id to none, so every via in the record lapses at once and
-	// grants nothing, however the record marks it.
-	if ch.Accept == nil {
-		if err := checkInherited(cur, &body, dir); err != nil {
-			return nil, err
-		}
+	if err := checkInherited(cur, &body, dir, ch.Accept != nil); err != nil {
+		return nil, err
 	}
 
 	// Rule 7.
@@ -718,13 +707,26 @@ func rank(role string) int {
 // at that role or higher, and the folder's owner as a manager. The folder's
 // own record already holds its ancestors' entries, so one level covers every
 // level. A refusal is a 409 that names the entry at fault.
-func checkInherited(cur Current, body *e2e.MembershipBody, dir Directory) error {
+//
+// The record that accepts an offer (accepting) keeps the item in its folder,
+// and the new owner may not read the folder's record, so it only has to keep
+// what the latest record lists: an entry it carries over unchanged stands
+// even if its via has lapsed, an entry the folder lists that the record
+// lacks is not required, and a listed one is required at the role the latest
+// record gives it, not the folder's. The folder's owner is the exception: a
+// record that does not own the item lists them as a manager, whether or not
+// they are the previous owner, as for any item. The client learns who they are
+// from the server, which cannot gain by lying: a wrong hint fails here.
+func checkInherited(cur Current, body *e2e.MembershipBody, dir Directory, accepting bool) error {
 	for _, m := range body.Members {
 		if m.Via == "" {
 			continue
 		}
 		f := cur.Folders[m.Via]
 		if f == nil || f.Owner != m.User && !slices.ContainsFunc(f.Members, func(x e2e.Member) bool { return x.User == m.User }) {
+			if accepting && slices.Contains(cur.Latest.Members, m) {
+				continue
+			}
 			return conflict(RuleVia, "member %s via %s: that folder does not contain the item and list them", m.User, m.Via)
 		}
 	}
@@ -734,6 +736,9 @@ func checkInherited(cur Current, body *e2e.MembershipBody, dir Directory) error 
 		}
 		f := cur.Folders[g.Via]
 		if f == nil || !slices.ContainsFunc(f.Groups, func(x e2e.GroupShare) bool { return x.Group == g.Group }) {
+			if accepting && slices.Contains(cur.Latest.Groups, g) {
+				continue
+			}
 			return conflict(RuleVia, "group %s via %s: that folder does not contain the item and list it", g.Group, g.Via)
 		}
 	}
@@ -752,6 +757,13 @@ func checkInherited(cur Current, body *e2e.MembershipBody, dir Directory) error 
 		if p.User == body.Owner {
 			continue
 		}
+		if accepting && p.User != parent.Owner {
+			i := slices.IndexFunc(cur.Latest.Members, func(m e2e.Member) bool { return m.User == p.User })
+			if i < 0 {
+				continue
+			}
+			p.Role = cur.Latest.Members[i].Role
+		}
 		// A deactivated or unverified account, and one that no longer exists,
 		// is not required, because a record may not add it.
 		if u, err := dir.User(p.User); err != nil {
@@ -768,6 +780,13 @@ func checkInherited(cur Current, body *e2e.MembershipBody, dir Directory) error 
 		}
 	}
 	for _, p := range parent.Groups {
+		if accepting {
+			i := slices.IndexFunc(cur.Latest.Groups, func(g e2e.GroupShare) bool { return g.Group == p.Group })
+			if i < 0 {
+				continue
+			}
+			p.Role = cur.Latest.Groups[i].Role
+		}
 		// A deleted group grants nothing, so it is not required.
 		if ok, err := dir.GroupExists(p.Group); err != nil {
 			return err

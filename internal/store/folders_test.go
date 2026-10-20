@@ -278,7 +278,7 @@ func TestDeleteFolderIfNoneOwnedRacesCreate(t *testing.T) {
 	}
 }
 
-func TestSetOwnerMovesTheItemToTheTopLevel(t *testing.T) {
+func TestSetOwnerKeepsTheItemInItsFolder(t *testing.T) {
 	s := testStore(t)
 	o := testAccount(t, s, "o@x.y")
 	n := testAccount(t, s, "n@x.y")
@@ -292,7 +292,7 @@ func TestSetOwnerMovesTheItemToTheTopLevel(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := s.ArtifactByID(itemC)
-	if err != nil || got.OwnerID != n.ID || got.ParentID != "" {
-		t.Fatalf("after SetOwner: owner %q parent %q (%v), want owner %q and no parent", got.OwnerID, got.ParentID, err, n.ID)
+	if err != nil || got.OwnerID != n.ID || got.ParentID != folderA {
+		t.Fatalf("after SetOwner: owner %q parent %q (%v), want owner %q in %q", got.OwnerID, got.ParentID, err, n.ID, folderA)
 	}
 }

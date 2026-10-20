@@ -287,7 +287,15 @@ type artifactView struct {
 	// HiddenParent is true when the item sits in a folder the caller cannot
 	// read and the caller owns or manages it: Parent is null, but the item is
 	// not at the top level.
-	HiddenParent bool          `json:"hiddenParent,omitempty"`
+	HiddenParent bool `json:"hiddenParent,omitempty"`
+	// FolderOwner is the ID of the owner of the folder the item sits in. Only
+	// GET of one artifact sets it, and only for the item's owner, its
+	// managers, and the user an open offer names: the client that accepts an
+	// offer needs it to list the folder's owner as the folder requires, though
+	// it cannot read the folder. It says who owns the folder, not what it is
+	// called. A server that lies about it only makes the acceptance fail,
+	// because the server checks the record against the folder's real owner.
+	FolderOwner  string        `json:"folderOwner,omitempty"`
 	Owner        string        `json:"owner"`
 	Access       access.Level  `json:"access"`
 	Epoch        int           `json:"epoch"`

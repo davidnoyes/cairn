@@ -680,9 +680,11 @@ func TestAManagerCannotPlaceAnItem(t *testing.T) {
 	wantInherit(t, w.ada, w.item1, "ok")
 }
 
-// Accepting ownership takes the item to the top level: the accepting record
-// names no folder.
-func TestAcceptingTakesAnItemOutOfItsFolder(t *testing.T) {
+// Accepting ownership keeps the item in its folder: the accepting record names
+// it. Bob cannot read the folder, so his view says the item sits in one he
+// cannot read. Ada owns the folder and gave the item away, so she is listed as
+// its manager via the folder, nothing is pending, and she can still manage it.
+func TestAcceptingKeepsAnItemInItsFolder(t *testing.T) {
 	w := newFolderTree(t)
 	if _, err := w.ada.Share(w.item1, "bob@example.com", "editor", false); err != nil {
 		t.Fatal(err)
@@ -693,12 +695,46 @@ func TestAcceptingTakesAnItemOutOfItsFolder(t *testing.T) {
 	if _, err := w.bob.AcceptTransfer(w.item1, AcceptTransferOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if b := latestBody(t, w.bob, w.item1); b.Folder != "" || b.Owner == "" {
+	b := latestBody(t, w.bob, w.item1)
+	if b.Folder != w.f || b.Owner == "" {
 		t.Errorf("the accepting record: %+v", b)
 	}
+	if m := memberOf(b, userID(t, w.ada)); m == nil || m.Role != "manager" || m.Via != w.f {
+		t.Errorf("ada is %+v, want a manager via the folder", m)
+	}
 	got, err := w.bob.GetArtifact(w.item1)
-	if err != nil || got.ParentID != "" {
+	if err != nil || got.ParentID != "" || !got.HiddenParent || got.Inherit != "ok" {
 		t.Errorf("the item after it was accepted: %+v, %v", got, err)
+	}
+	if got, err := w.ada.GetArtifact(w.item1); err != nil || got.ParentID != w.f {
+		t.Errorf("ada's view: %+v, %v", got, err)
+	}
+	// She manages it still: a manager shares it.
+	if _, err := w.ada.Share(w.item1, "cat@example.com", "viewer", false); err != nil {
+		t.Errorf("ada shares the item: %v", err)
+	}
+}
+
+// Dropping the previous owner is refused while they own the folder the item is
+// in, before anything is written, and the offer stays open.
+func TestDroppingTheFoldersOwnerOnAcceptIsRefused(t *testing.T) {
+	w := newFolderTree(t)
+	if _, err := w.ada.Share(w.item1, "bob@example.com", "editor", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.ada.OfferTransfer(w.item1, "bob@example.com", false); err != nil {
+		t.Fatal(err)
+	}
+	before := latestBody(t, w.bob, w.item1)
+	_, err := w.bob.AcceptTransfer(w.item1, AcceptTransferOptions{DropPreviousOwner: true})
+	if !errors.Is(err, ErrDropFolderOwner) || !strings.Contains(err.Error(), "move the item out of the folder first") {
+		t.Fatalf("AcceptTransfer dropping the folder's owner: %v", err)
+	}
+	if after := latestBody(t, w.bob, w.item1); after.Seq != before.Seq {
+		t.Errorf("a record was written: %+v", after)
+	}
+	if o, err := w.bob.OpenTransfer(w.item1); err != nil || o == nil {
+		t.Errorf("the offer after the refusal: %+v, %v", o, err)
 	}
 }
 

@@ -28,6 +28,10 @@ var (
 	// ErrNotListedEditor means the latest record does not list the caller as an
 	// editor or manager, so they cannot take ownership.
 	ErrNotListedEditor = errors.New("the latest record does not list you as an editor or manager, so you cannot take ownership")
+	// ErrDropFolderOwner means the previous owner owns the folder the item is
+	// in, and the folder keeps them as a manager of everything in it, so
+	// dropping them cannot work.
+	ErrDropFolderOwner = errors.New("the previous owner owns the folder this item is in, and a folder's owner manages everything in it, so they cannot be dropped: move the item out of the folder first")
 	// ErrNoOffer means no ownership offer is open on the artifact.
 	ErrNoOffer = errors.New("no ownership offer is open on this artifact")
 	// ErrNoOfferToYou means no open ownership offer is to the caller.
@@ -122,15 +126,23 @@ type TransferOffer struct {
 	By    string        `json:"by"`
 	At    string        `json:"at"`
 	Offer *e2e.Envelope `json:"offer"`
+	// FolderOwner is who the server says owns the folder the item is in, empty
+	// at the top level. The server checks the accepting record against the real
+	// owner, so a wrong answer only makes the acceptance fail.
+	FolderOwner string `json:"-"`
 }
 
 // OpenTransfer returns the artifact's open ownership offer, or nil.
 func (c *Client) OpenTransfer(artifactID string) (*TransferOffer, error) {
 	var a struct {
-		Transfer *TransferOffer `json:"transfer"`
+		Transfer    *TransferOffer `json:"transfer"`
+		FolderOwner string         `json:"folderOwner"`
 	}
 	if err := c.doJSON("GET", "/api/artifacts/"+artifactID, nil, &a); err != nil {
 		return nil, err
+	}
+	if a.Transfer != nil {
+		a.Transfer.FolderOwner = a.FolderOwner
 	}
 	return a.Transfer, nil
 }
@@ -413,9 +425,9 @@ func (c *Client) AcceptTransfer(artifactID string, opts AcceptTransferOptions) (
 	}
 	next := latest
 	next.Owner, next.OwnerFP = k.UserID, k.FP
-	// Accepting takes the item to the top level, and the server refuses a
-	// record that names a folder.
-	next.Folder = ""
+	// The item stays in its folder, so next keeps the latest record's folder
+	// and its inherited entries, bar the new owner's own. The new owner may
+	// not read the folder, and the item may be pending: neither stops them.
 	switch open.By {
 	case "owner":
 		if open.Offer == nil {
@@ -440,6 +452,14 @@ func (c *Client) AcceptTransfer(artifactID string, opts AcceptTransferOptions) (
 		return nil, fmt.Errorf("%w: the server says an administrator made it, but the owner is still active", ErrOfferRefused)
 	}
 	drop := opts.DropPreviousOwner || open.By == "admin"
+	// The folder's owner is listed as a manager via the folder, unless they own
+	// the item. When that is the previous owner, they take that entry in place
+	// of an editor's. An administrator's handover may still drop them, because
+	// the server requires only an active account.
+	prevOwnsFolder := latest.Folder != "" && open.FolderOwner == latest.Owner && latest.Owner != k.UserID
+	if prevOwnsFolder && opts.DropPreviousOwner && open.By != "admin" {
+		return nil, ErrDropFolderOwner
+	}
 	members := slices.DeleteFunc(slices.Clone(latest.Members), func(m e2e.Member) bool { return m.User == k.UserID })
 
 	res := &AcceptResult{Handover: open.By == "admin"}
@@ -473,7 +493,11 @@ func (c *Client) AcceptTransfer(artifactID string, opts AcceptTransferOptions) (
 		if aks, err = c.callerAKs(k, artifactID, va.Chain); err != nil {
 			return nil, err
 		}
-		next.Members = append(members, e2e.Member{User: latest.Owner, Role: "editor", FP: latest.OwnerFP})
+		prevEntry := e2e.Member{User: latest.Owner, Role: "editor", FP: latest.OwnerFP}
+		if prevOwnsFolder {
+			prevEntry.Role, prevEntry.Via = "manager", latest.Folder
+		}
+		next.Members = append(members, prevEntry)
 		slices.SortFunc(next.Members, func(a, b e2e.Member) int { return strings.Compare(a.User, b.User) })
 		for epoch := 1; epoch <= latest.Epoch; epoch++ {
 			ak, err := epochKey(aks, epoch)

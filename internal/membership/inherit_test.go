@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
+	"github.com/aloisdeniel/cairn/internal/store"
 )
 
 const (
@@ -144,43 +145,208 @@ func TestCheckViaOnAnItemInNoFolder(t *testing.T) {
 	}
 }
 
-// A record that accepts an ownership offer takes the item out of its folder,
-// so the folder's entries do not bind it, and it names no folder, because the
-// item is at the top level once the record lands.
-func TestCheckAcceptIgnoresTheFolder(t *testing.T) {
-	f := newFixture(t)
-	f.inFolder([]e2e.Member{{User: f.c.ID, Role: "viewer", FP: f.c.FP}})
-	accepted := f.takeOver()
-	accepted.Folder = ""
-	if _, err := Check(f.cur, f.dir, f.accepting(t, accepted, wrapsFor(f.o, 1, 2), estates(2))); err != nil {
-		t.Fatalf("an accepting record: %v", err)
+// A record that accepts an ownership offer leaves the item in its folder: it
+// names the folder, and it is held to the folder's entries, though it need not
+// catch up with entries the item's record lacks. The item in the fixture is
+// owned by u-o and lists u-a (who accepts) and u-b; folder F is owned by u-c,
+// whom the item lists as a manager via F.
+func TestCheckAcceptKeepsTheItemInItsFolder(t *testing.T) {
+	cFolder := func(f *fixture) e2e.Member {
+		return e2e.Member{User: f.c.ID, Role: "manager", FP: f.c.FP, Via: folderF}
 	}
-	// An accepting record that still names the folder is not the one the
-	// item will have.
-	_, err := Check(f.cur, f.dir, f.accepting(t, f.takeOver(), wrapsFor(f.o, 1, 2), estates(2)))
-	refused(t, err, 409, RulePlacement, "folder")
-	b := f.next()
-	_, err = Check(f.cur, f.dir, f.change(t, b, nil, nil))
-	refused(t, err, 409, RuleInherit, "member u-c is missing")
+	tmVia := func(f *fixture, role string) e2e.Member {
+		return e2e.Member{User: f.tm.ID, Role: role, FP: f.tm.FP, Via: folderF}
+	}
+	cases := []struct {
+		name string
+		// setup shapes the folder and the item's latest record; accepted
+		// shapes the accepting record built from takeOver.
+		setup    func(f *fixture)
+		accepted func(f *fixture, b *e2e.MembershipBody)
+		status   int // 0 for accepted
+		rule     Rule
+		msg      string
+	}{
+		{name: "the folder's owner stays listed via the folder",
+			accepted: func(f *fixture, b *e2e.MembershipBody) { b.Members = append(b.Members, cFolder(f)) }},
+		{name: "the folder's owner is missing",
+			status: 409, rule: RuleInherit, msg: "member u-c is missing"},
+		{name: "the folder's owner is an editor",
+			accepted: func(f *fixture, b *e2e.MembershipBody) {
+				m := cFolder(f)
+				m.Role = "editor"
+				b.Members = append(b.Members, m)
+			},
+			status: 409, rule: RuleInherit, msg: "member u-c is editor"},
+		{name: "the new owner owns the folder, so the folder's owner entry goes",
+			setup: func(f *fixture) {
+				f.ownedBy(f.a)
+				f.dropFromLatest(f.c)
+			}},
+		{name: "the previous owner owns the folder and is listed as an editor",
+			setup: func(f *fixture) {
+				f.ownedBy(f.o)
+				f.dropFromLatest(f.c)
+			},
+			status: 409, rule: RuleInherit, msg: "member u-o is editor: folder " + folderF + " lists them as manager"},
+		{name: "the previous owner owns the folder and is omitted",
+			setup: func(f *fixture) {
+				f.ownedBy(f.o)
+				f.dropFromLatest(f.c)
+			},
+			accepted: func(f *fixture, b *e2e.MembershipBody) {
+				b.Members = []e2e.Member{member(f.b, "viewer")}
+			},
+			status: 409, rule: RuleInherit, msg: "member u-o is missing"},
+		{name: "the folder's owner is not in the latest record and the record omits them",
+			setup:  func(f *fixture) { f.dropFromLatest(f.c) },
+			status: 409, rule: RuleInherit, msg: "member u-c is missing"},
+		{name: "the previous owner owns the folder and is listed as its manager",
+			setup: func(f *fixture) {
+				f.ownedBy(f.o)
+				f.dropFromLatest(f.c)
+			},
+			accepted: func(f *fixture, b *e2e.MembershipBody) {
+				b.Members[1].Role, b.Members[1].Via = "manager", folderF
+			}},
+		{name: "the record names no folder",
+			accepted: func(f *fixture, b *e2e.MembershipBody) {
+				b.Members = append(b.Members, cFolder(f))
+				b.Folder = ""
+			},
+			status: 409, rule: RulePlacement, msg: "folder"},
+		{name: "the folder lists a user the item does not, so the item is pending",
+			setup: func(f *fixture) {
+				f.cur.Folders[folderF].Members = []e2e.Member{{User: f.tm.ID, Role: "viewer", FP: f.tm.FP}}
+			},
+			accepted: func(f *fixture, b *e2e.MembershipBody) { b.Members = append(b.Members, cFolder(f)) }},
+		{name: "the folder lists a user at a higher role than the item does",
+			setup: func(f *fixture) {
+				f.cur.Folders[folderF].Members = []e2e.Member{{User: f.b.ID, Role: "editor", FP: f.b.FP}}
+			},
+			accepted: func(f *fixture, b *e2e.MembershipBody) { b.Members = append(b.Members, cFolder(f)) }},
+		{name: "the record drops a user the folder lists and the item has",
+			setup: func(f *fixture) {
+				f.cur.Folders[folderF].Members = []e2e.Member{{User: f.b.ID, Role: "viewer", FP: f.b.FP}}
+			},
+			accepted: func(f *fixture, b *e2e.MembershipBody) {
+				b.Members = []e2e.Member{member(f.o, "editor"), cFolder(f)}
+			},
+			status: 409, rule: RuleInherit, msg: "member u-b is missing"},
+		{name: "the record lowers a user the folder lists and the item has",
+			setup: func(f *fixture) {
+				f.cur.Folders[folderF].Members = []e2e.Member{{User: f.b.ID, Role: "viewer", FP: f.b.FP}}
+				f.setRoleInLatest(f.b, "editor")
+			},
+			accepted: func(f *fixture, b *e2e.MembershipBody) { b.Members = append(b.Members, cFolder(f)) },
+			status:   409, rule: RuleInherit, msg: "member u-b is viewer"},
+		{name: "the folder lists a group the item lacks",
+			setup: func(f *fixture) {
+				f.cur.Folders[folderF].Groups = []e2e.GroupShare{share(groupA, "viewer")}
+			},
+			accepted: func(f *fixture, b *e2e.MembershipBody) { b.Members = append(b.Members, cFolder(f)) }},
+		{name: "the record drops a group the folder lists and the item has",
+			setup: func(f *fixture) {
+				f.cur.Folders[folderF].Groups = []e2e.GroupShare{share(groupA, "viewer")}
+				f.latestWith("viewer", withVia(share(groupA, "viewer"), folderF))
+				f.listInLatest(cFolder(f))
+			},
+			accepted: func(f *fixture, b *e2e.MembershipBody) {
+				b.Members = append(b.Members, cFolder(f))
+				b.Groups = nil
+			},
+			status: 409, rule: RuleInherit, msg: "group " + groupA + " is missing"},
+		{name: "the folder lists a group at a higher role than the item does",
+			setup: func(f *fixture) {
+				f.cur.Folders[folderF].Groups = []e2e.GroupShare{share(groupA, "editor")}
+				f.latestWith("viewer", withVia(share(groupA, "viewer"), folderF))
+				f.listInLatest(cFolder(f))
+			},
+			accepted: func(f *fixture, b *e2e.MembershipBody) { b.Members = append(b.Members, cFolder(f)) }},
+		{name: "a group via a folder that stopped listing it is carried over",
+			setup: func(f *fixture) {
+				f.latestWith("viewer", withVia(share(groupA, "viewer"), folderF))
+				f.listInLatest(cFolder(f))
+			},
+			accepted: func(f *fixture, b *e2e.MembershipBody) { b.Members = append(b.Members, cFolder(f)) }},
+		{name: "a group via a folder that never listed it",
+			accepted: func(f *fixture, b *e2e.MembershipBody) {
+				b.Members = append(b.Members, cFolder(f))
+				b.Groups = []e2e.GroupShare{withVia(share(groupA, "viewer"), folderF)}
+			},
+			status: 409, rule: RuleVia, msg: "group " + groupA + " via " + folderF},
+		{name: "an entry via a folder that stopped listing the user is carried over",
+			setup: func(f *fixture) { f.listInLatest(tmVia(f, "viewer")) },
+			accepted: func(f *fixture, b *e2e.MembershipBody) {
+				b.Members = append(b.Members, cFolder(f), tmVia(f, "viewer"))
+			}},
+		{name: "an entry via a folder the item never had it from",
+			accepted: func(f *fixture, b *e2e.MembershipBody) {
+				b.Members = append(b.Members, cFolder(f))
+				b.Members[0].Via = folderF
+			},
+			status: 409, rule: RuleVia, msg: "member u-b via " + folderF},
+		{name: "an entry that changed its role under a via the folder does not honor",
+			setup: func(f *fixture) { f.listInLatest(tmVia(f, "viewer")) },
+			accepted: func(f *fixture, b *e2e.MembershipBody) {
+				b.Members = append(b.Members, cFolder(f), tmVia(f, "editor"))
+			},
+			status: 409, rule: RuleVia, msg: "member u-t via " + folderF},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.inFolder(nil)
+			f.ownedBy(f.c)
+			f.listInLatest(cFolder(f))
+			for e := 1; e <= 2; e++ {
+				f.cur.Wraps = append(f.cur.Wraps, store.Wrap{UserID: f.c.ID, Epoch: e, Wrapped: make([]byte, 81), FP: f.c.FP})
+			}
+			if c.setup != nil {
+				c.setup(f)
+			}
+			b := f.takeOver()
+			if c.accepted != nil {
+				c.accepted(f, b)
+			}
+			slices.SortFunc(b.Members, func(x, y e2e.Member) int { return strings.Compare(x.User, y.User) })
+			_, err := Check(f.cur, f.groupsOf(nil, nil), f.accepting(t, b, wrapsFor(f.o, 1, 2), estates(2)))
+			if c.status == 0 {
+				if err != nil {
+					t.Fatalf("refused: %v", err)
+				}
+				return
+			}
+			refused(t, err, c.status, c.rule, c.msg)
+		})
+	}
 }
 
-// An accepting record skips the via checks, so one that carries a via the
-// folder does not honor is accepted. It grants nothing, because accepting
-// sets the item's parent to none, and an entry whose via names a folder that
-// does not contain the item counts for no one: see the server's test.
-func TestCheckAcceptAcceptsAForgedVia(t *testing.T) {
-	f := newFixture(t)
-	f.inFolder(nil)
-	forged := f.takeOver()
-	forged.Folder = ""
-	forged.Members[0].Via = folderG
-	res, err := Check(f.cur, f.dir, f.accepting(t, forged, wrapsFor(f.o, 1, 2), estates(2)))
-	if err != nil {
-		t.Fatalf("an accepting record with a via: %v", err)
+// listInLatest adds m to the members the item's latest record lists.
+func (f *fixture) listInLatest(m ...e2e.Member) {
+	b := *f.cur.Latest
+	b.Members = append(slices.Clone(b.Members), m...)
+	slices.SortFunc(b.Members, func(x, y e2e.Member) int { return strings.Compare(x.User, y.User) })
+	f.setLatest(&b)
+}
+
+// dropFromLatest removes u from the members the item's latest record lists.
+func (f *fixture) dropFromLatest(u *tUser) {
+	b := *f.cur.Latest
+	b.Members = slices.DeleteFunc(slices.Clone(b.Members), func(m e2e.Member) bool { return m.User == u.ID })
+	f.setLatest(&b)
+}
+
+// setRoleInLatest changes u's role in the item's latest record.
+func (f *fixture) setRoleInLatest(u *tUser, role string) {
+	b := *f.cur.Latest
+	b.Members = slices.Clone(b.Members)
+	for i := range b.Members {
+		if b.Members[i].User == u.ID {
+			b.Members[i].Role = role
+		}
 	}
-	if res.Members[0].Via != folderG {
-		t.Errorf("the via is stored as written: %+v", res.Members)
-	}
+	f.setLatest(&b)
 }
 
 // A folder's own record is held to its parent's entries, and may list its
