@@ -87,7 +87,7 @@ func (c *Client) Apply() (*ApplyResult, error) {
 			continue
 		}
 		item := f.item(a, nil)
-		if errors.Is(item.Err, ErrManagerOwnerOnly) {
+		if errors.Is(item.Err, ErrManagerOwnerOnly) || errors.Is(item.Err, ErrExcludedOwnerOnly) {
 			res.Waiting = append(res.Waiting, waitingItem(a, dir))
 			continue
 		}

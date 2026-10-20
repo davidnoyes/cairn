@@ -685,6 +685,11 @@ func TestAManagerCannotAddAManagerOrListAnExcludedUserThroughAFanOut(t *testing.
 		t.Fatalf("FanOut = %+v, %v", res, err)
 	}
 	wantWaitsOnAda(t, w, res, 2)
+	// Apply agrees: the items wait on their owner, and nothing failed.
+	applied, err := w.bob.Apply()
+	if err != nil || applied.FanOut.Count(FanOutFailed) != 0 || len(applied.Waiting) != 2 {
+		t.Fatalf("bob's Apply = %+v, %v; want 2 waiting and none failed", applied, err)
+	}
 	if res := fanOutOK(t, w.ada, w.f, nil); res.Count(FanOutUpdated) != 3 {
 		t.Fatalf("the owner's fan-out: %+v", res.Items)
 	}
