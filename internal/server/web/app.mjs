@@ -9,7 +9,7 @@ import { createGroupsTab } from './groups-tab.mjs';
 import { FolderError, breadcrumb, childrenOf, createFolder, deleteTree, makeDraggable, makeDropTarget, moveAndPlace, moveTargets, renameFolder, subtree } from './folders.mjs';
 import { listGroups, verifiedGroup } from './groups.mjs';
 import { describeArtifact } from './meta.mjs';
-import { GroupKeyChangedError, KeyChangedError, approvableCount, approve, canShare, fanOut, memberControls, members, offersFinishSharing, pin, publicLinkFor, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
+import { GroupKeyChangedError, KeyChangedError, approvableCount, approve, canShare, fanOut, fanOutNote, memberControls, members, offersFinishSharing, pin, publicLinkFor, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
 import { bannerView, myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions, who } from './successor.mjs';
 import { confirmRecoveryCode, describeError, describePasskeyError, pageDeps, watchStrength } from './ui.mjs';
 
@@ -241,7 +241,7 @@ function artifactRow(a, mine) {
   row.waitingPill.hidden = true;
   // A pending item's record is out of step with its folder's: Finish sharing,
   // in the share dialog, brings it up to date.
-  row.pendingPill = pill('sharing pending', 'waiting');
+  row.pendingPill = pill('sharing pending', 'pending');
   row.pendingPill.hidden = !offersFinishSharing(a);
   const tr = el('tr');
   tr.dataset.id = a.id;
@@ -412,7 +412,7 @@ async function moveTo(id, target) {
   try {
     const res = await moveAndPlace(deps, send, own, id, target, (done, total) => status('artifacts-status', `${done} of ${total} items up to date.`));
     if (res) {
-      status('artifacts-status', 'Moved.' + fanOutNote({ fanOut: res }), res.failed > 0);
+      status('artifacts-status', 'Moved.' + fanOutNote({ fanOut: res }, describeError), res.failed > 0);
       await reloadArtifacts();
     }
   } catch (err) {
@@ -839,33 +839,12 @@ function memberRow(s, m) {
 // showProgress is the status while a folder's items are brought up to date.
 const showProgress = (done, total) => status('share-status', `${done} of ${total} items up to date.`);
 
-// fanOutNote says how many items inside a folder are up to date after a change
-// to the folder, which of them are not and why, and who still waits for approval
-// because a group was listed on them. Nothing for an artifact.
-function fanOutNote(res) {
-  const f = res.fanOut;
-  if (!f) return '';
-  let note = ` ${f.total - f.failed} of ${f.total} items up to date.`;
-  const failed = f.items.filter((i) => i.error);
-  if (failed.length > 0) {
-    note += ` ${plural(failed.length, 'item', 'items')} could not be brought up to date: ${failed.map((i) => `${i.id} (${describeError(i.error)})`).join('; ')}.`;
-    // An item its own record does not place is finished by moving it into
-    // its folder again; anything else, by Finish sharing.
-    note += failed.some((i) => i.error?.code === 'placement')
-      ? ' To place an item where it is shown, move it into that folder again.'
-      : ' Choose Finish sharing to try again.';
-  }
-  const waits = f.items.flatMap((i) => i.pending);
-  if (waits.length > 0) note += ` ${plural(waits.length, 'person', 'people')} still waiting for approval on the items inside.`;
-  return note;
-}
-
 // epochNote says what a change did beyond what the caller reports: which
 // approved people the record listed or left out, which deleted groups it
 // dropped, who it excluded besides the user removed, and, for a new epoch, what
 // it re-sealed and what it left alone and why.
 function epochNote(res) {
-  let note = fanOutNote(res);
+  let note = fanOutNote(res, describeError);
   if (res.listed?.length > 0) note += ` Listed ${plural(res.listed.length, 'approved person', 'approved people')}: ${res.listed.map((u) => u.email).join(', ')}.`;
   if (res.unlisted?.length > 0) note += ` Not listed, because their approval does not check out: ${res.unlisted.map((x) => `${x.user.email} (${describeError(x.error)})`).join('; ')}.`;
   if (res.droppedGroups?.length > 0) note += ` Dropped ${plural(res.droppedGroups.length, 'deleted group', 'deleted groups')}: ${res.droppedGroups.join(', ')}.`;
@@ -986,7 +965,7 @@ $('finish-sharing').addEventListener('click', () => {
   const s = sharing;
   act(() => 'Finishing…', async () => {
     const res = await fanOut(deps, s.id, { includeRoot: true, progress: showProgress });
-    return 'Finished sharing.' + fanOutNote({ fanOut: res });
+    return 'Finished sharing.' + fanOutNote({ fanOut: res }, describeError);
   });
 });
 

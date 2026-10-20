@@ -54,7 +54,7 @@ test('folders: create, nest, move in and out, rename, open, and delete the tree'
   const docRow = ownerPage.locator(`#own tr[data-id="${item(doc).id}"]`);
   await docRow.getByRole('button', { name: 'Move to…' }).click();
   await docRow.getByLabel(`Move ${doc} to`).selectOption({ label: outer });
-  await expect(ownerPage.locator('#artifacts-status')).toHaveText('Moved.', { timeout: 30_000 });
+  await expect(ownerPage.locator('#artifacts-status')).toHaveText('Moved. 1 of 1 items up to date.', { timeout: 30_000 });
   await expect.poll(() => item(doc).parent).toBe(outerID);
   await expect(docRow).toHaveCount(0);
   await settled(ownerPage);
@@ -63,7 +63,7 @@ test('folders: create, nest, move in and out, rename, open, and delete the tree'
   await ownerPage.locator(`#own tr[data-id="${outerID}"]`).getByRole('button', { name: outer }).click();
   await expect(ownerPage.locator('#own')).toContainText(doc);
   await docRow.dragTo(crumbs.getByRole('button', { name: 'Top' }));
-  await expect(ownerPage.locator('#artifacts-status')).toHaveText('Moved.', { timeout: 30_000 });
+  await expect(ownerPage.locator('#artifacts-status')).toHaveText('Moved. 1 of 1 items up to date.', { timeout: 30_000 });
   await expect(docRow).toHaveCount(0);
   await expect.poll(() => item(doc).parent ?? null, { timeout: 30_000 }).toBeNull();
   await settled(ownerPage);

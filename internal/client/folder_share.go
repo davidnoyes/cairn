@@ -164,6 +164,17 @@ func placeName(id string) string {
 	return "folder " + id
 }
 
+// placementError is ErrPlacement for the item id the server lists in listed
+// while its record names named. A move another client made looks the same, so
+// the message says how the owner places the item: by moving it there.
+func placementError(id, listed, named string) error {
+	move := "cairn move " + id + " --top"
+	if listed != "" {
+		move = "cairn move " + id + " --to " + listed
+	}
+	return fmt.Errorf("%w: it is listed in %s, and its record names %s; its owner places it with: %s (a move made by another client looks the same until then)", ErrPlacement, placeName(listed), placeName(named), move)
+}
+
 // subtreeOrder lists the items the server lists inside the folder root, depth
 // first, each folder before the items inside it, folders before artifacts and
 // each by ID. includeRoot puts the root itself first. The server's tree is
@@ -199,7 +210,7 @@ func subtreeOrder(all []*Artifact, root string, includeRoot bool, folderNamed fu
 				case err != nil:
 					item.refused = err
 				case named != parent:
-					item.refused = fmt.Errorf("%w: it is listed in %s, and its record names %s", ErrPlacement, placeName(parent), placeName(named))
+					item.refused = placementError(a.ID, parent, named)
 				}
 			}
 			out = append(out, item)
@@ -292,7 +303,7 @@ func (f *fanOut) sync(id string, placing *Placing, out *FanOutItem) error {
 		folder = placing.Parent
 	}
 	if view.ParentID != folder {
-		return fmt.Errorf("%w: it is listed in %s, and its record names %s", ErrPlacement, placeName(view.ParentID), placeName(folder))
+		return placementError(id, view.ParentID, folder)
 	}
 	var parent *e2e.MembershipBody
 	live := func(string) bool { return false }

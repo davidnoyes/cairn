@@ -14,7 +14,7 @@ import { V1, makeUser } from './viewer_fixture.mjs';
 import { depsFor, extraUser, keyStoreRecord, seedGroup, seedMeta, seedVersion } from './sharing_fixture.mjs';
 import { makeFolderServer } from './folder_fixture.mjs';
 import { createFolder, moveAndPlace } from './folders.mjs';
-import { SharingError, fanOut, memberControls, members, offersFinishSharing, planInherit, setPublic, setTeam, share, shareGroup, subtreeOrder, unshare, unshareGroup } from './sharing.mjs';
+import { SharingError, fanOut, fanOutNote, memberControls, members, offersFinishSharing, planInherit, setPublic, setTeam, share, shareGroup, subtreeOrder, unshare, unshareGroup } from './sharing.mjs';
 import { openArtifact } from './viewer.mjs';
 
 const U = {};
@@ -407,6 +407,8 @@ test('Finish sharing is offered to the owner and a manager of a pending item, an
 
 // ---- the plan, against folder_share.go ----
 
+const yes = () => true;
+
 // The state below is worked by hand from planInherit in
 // internal/client/folder_share.go, line by line, as the Go function runs it.
 // The folder P lists a1 as viewer, b as editor, c as viewer, d0 as manager
@@ -432,6 +434,7 @@ test('planInherit gives what folder_share.go gives for one state', () => {
       { user: 'o0', role: 'viewer', fp: 'fo' },
       { user: 'a1', role: 'viewer', fp: 'fa' },
     ],
+    groups: [{ group: 'g1', role: 'viewer' }, { group: 'g0', role: 'viewer' }],
   };
   const item = {
     owner: 'o0',
@@ -442,7 +445,7 @@ test('planInherit gives what folder_share.go gives for one state', () => {
     ],
     groups: [{ group: 'g2', role: 'viewer', via: 'P' }],
   };
-  const plan = planInherit(item, parent, 'P', [{ group: 'g1', role: 'viewer' }, { group: 'g0', role: 'viewer' }]);
+  const plan = planInherit(item, parent, 'P', yes, yes);
   assert.deepEqual(plan, {
     members: [
       { user: 'a1', role: 'viewer', fp: 'fa', via: 'P' },
@@ -453,26 +456,45 @@ test('planInherit gives what folder_share.go gives for one state', () => {
     groups: [{ group: 'g0', role: 'viewer', via: 'P' }, { group: 'g1', role: 'viewer', via: 'P' }],
     added: ['a1', 'd0'],
     addedGroups: ['g0', 'g1'],
+    skippedUsers: [],
+    skippedGroups: [],
     epoch: true,
   });
   // An item at the top level wants only its direct grants.
-  const top = planInherit(item, null, '', []);
+  const top = planInherit(item, null, '', yes, yes);
   assert.deepEqual(top.members, [{ user: 'c0', role: 'editor', fp: 'fc' }]);
   assert.equal(top.epoch, true);
   assert.deepEqual(top.added, []);
   // An item that already matches its folder needs nothing.
-  const same = planInherit({ owner: 'o0', members: [{ user: 'b0', role: 'editor', fp: 'fb', via: 'P' }] }, { members: [{ user: 'b0', role: 'editor', fp: 'fb' }] }, 'P', []);
+  const same = planInherit({ owner: 'o0', members: [{ user: 'b0', role: 'editor', fp: 'fb', via: 'P' }] }, { members: [{ user: 'b0', role: 'editor', fp: 'fb' }] }, 'P', yes, yes);
   assert.equal(same.epoch, false);
   assert.deepEqual(same.added, []);
+});
+
+test('planInherit skips a user who is not usable and a group that is not live, keeps one the item lists already, and says which', () => {
+  const parent = {
+    members: [{ user: 'u1', role: 'viewer', fp: 'f1' }, { user: 'u0', role: 'viewer', fp: 'f0' }, { user: 'u2', role: 'editor', fp: 'f2' }, { user: 'u3', role: 'viewer', fp: 'f3' }],
+    groups: [{ group: 'g2', role: 'viewer' }, { group: 'g1', role: 'viewer' }, { group: 'g0', role: 'viewer' }, { group: 'g3', role: 'viewer' }],
+  };
+  // u3 and g3 are on the item already, through the folder.
+  const item = { owner: 'o', members: [{ user: 'u3', role: 'viewer', fp: 'f3', via: 'P' }], groups: [{ group: 'g3', role: 'viewer', via: 'P' }] };
+  const plan = planInherit(item, parent, 'P', (u) => u === 'u2', (g) => g === 'g1');
+  assert.deepEqual(plan.members.map((m) => m.user), ['u2', 'u3'], 'a user not usable is not listed; one already listed stays');
+  assert.deepEqual(plan.added, ['u2']);
+  assert.deepEqual(plan.skippedUsers, ['u0', 'u1']);
+  assert.deepEqual(plan.groups.map((g) => g.group), ['g1', 'g3']);
+  assert.deepEqual(plan.addedGroups, ['g1']);
+  assert.deepEqual(plan.skippedGroups, ['g0', 'g2']);
+  assert.equal(plan.epoch, false);
 });
 
 test('a role on the folder below the item\'s entry starts a new epoch in the plan, and an equal or higher one does not', () => {
   const entry = (role) => ({ members: [{ user: 'u', role, fp: 'f', via: 'P' }], owner: 'o' });
   const folder = (role) => ({ members: [{ user: 'u', role, fp: 'f' }] });
-  assert.equal(planInherit(entry('editor'), folder('viewer'), 'P', []).epoch, true);
-  assert.equal(planInherit(entry('editor'), folder('editor'), 'P', []).epoch, false);
-  assert.equal(planInherit(entry('viewer'), folder('manager'), 'P', []).epoch, false);
-  assert.equal(planInherit(entry('viewer'), folder('manager'), 'P', []).members[0].role, 'manager');
+  assert.equal(planInherit(entry('editor'), folder('viewer'), 'P', yes, yes).epoch, true);
+  assert.equal(planInherit(entry('editor'), folder('editor'), 'P', yes, yes).epoch, false);
+  assert.equal(planInherit(entry('viewer'), folder('manager'), 'P', yes, yes).epoch, false);
+  assert.equal(planInherit(entry('viewer'), folder('manager'), 'P', yes, yes).members[0].role, 'manager');
 });
 
 // ---- more of the rules ----
@@ -489,15 +511,34 @@ test('sharing an item with a role below the one its folder gives keeps the folde
   assert.deepEqual(entry(t, A1, U.viewer), { user: U.viewer.id, role: 'editor', fp: U.viewer.fp });
 });
 
-test('subtreeOrder visits folders before artifacts, each by ID, depth first, and stops at a loop and at the depth limit', () => {
+test('subtreeOrder visits folders before artifacts, each by ID, depth first, and stops at a loop and at the depth limit', async () => {
   const at = (id, kind, parent) => ({ id, kind, parent });
   const all = [at('z', 'artifact', 'r'), at('b', 'artifact', 'r'), at('y', 'folder', 'r'), at('c', 'folder', 'r'), at('c1', 'artifact', 'c'), at('r', 'folder', null), at('out', 'artifact', null)];
-  assert.deepEqual(subtreeOrder(all, 'r', false).map((i) => i.id), ['c', 'c1', 'y', 'b', 'z']);
-  assert.deepEqual(subtreeOrder(all, 'r', true).map((i) => i.id), ['r', 'c', 'c1', 'y', 'b', 'z']);
+  const where = async (a) => (a.parent ?? '');
+  const ids = async (...args) => (await subtreeOrder(...args)).map((i) => i.a.id);
+  assert.deepEqual(await ids(all, 'r', false, where), ['c', 'c1', 'y', 'b', 'z']);
+  assert.deepEqual(await ids(all, 'r', true, where), ['r', 'c', 'c1', 'y', 'b', 'z']);
   const loop = [at('a', 'folder', 'b'), at('b', 'folder', 'a')];
-  assert.deepEqual(subtreeOrder(loop, 'a', false).map((i) => i.id), ['b']);
+  assert.deepEqual(await ids(loop, 'a', false, where), ['b']);
   const chain = Array.from({ length: 20 }, (_, i) => at(`d${i}`, 'folder', i === 0 ? 'root' : `d${i - 1}`));
-  assert.equal(subtreeOrder([at('root', 'folder', null), ...chain], 'root', false).length, 16);
+  assert.equal((await subtreeOrder([at('root', 'folder', null), ...chain], 'root', false, where)).length, 16);
+});
+
+test('subtreeOrder checks a folder and a pending artifact, not a current one, and does not list what is inside a folder it refuses', async () => {
+  const at = (id, kind, parent, inherit = 'ok') => ({ id, kind, parent, inherit });
+  const all = [at('r', 'folder', null), at('bad', 'folder', 'r'), at('in', 'artifact', 'bad'), at('good', 'folder', 'r'), at('in2', 'artifact', 'good'), at('cur', 'artifact', 'r'), at('pend', 'artifact', 'r', 'pending'), at('broken', 'folder', 'r')];
+  const asked = [];
+  const named = async (a) => {
+    asked.push(a.id);
+    if (a.id === 'broken') throw new Error('does not verify');
+    return a.id === 'bad' ? 'elsewhere' : a.id === 'pend' ? 'r' : a.parent;
+  };
+  const order = await subtreeOrder(all, 'r', false, named);
+  assert.deepEqual(order.map((i) => i.a.id), ['bad', 'broken', 'good', 'in2', 'cur', 'pend'], 'nothing inside the refused folders');
+  assert.deepEqual(order.map((i) => [i.a.id, i.refused && (i.refused.error?.message ?? [i.refused.listed, i.refused.named])]), [
+    ['bad', ['r', 'elsewhere']], ['broken', 'does not verify'], ['good', null], ['in2', null], ['cur', null], ['pend', null],
+  ]);
+  assert.deepEqual(asked.sort(), ['bad', 'broken', 'good', 'pend'], 'the current artifact is not read');
 });
 
 test('a failure that ends the command ends the fan-out, with what it did', async () => {
@@ -509,13 +550,27 @@ test('a failure that ends the command ends the fan-out, with what it did', async
   assert.deepEqual(err.result.items.map((i) => i.state), ['updated', 'updated']);
 });
 
-test('an account the folder lists that no longer exists fails the item alone', async () => {
+test('an account the folder lists that is no longer usable is skipped, and the item is brought up to date without it', async () => {
   const gone = await extraUser('gone', '99999999-0000-4999-8999-999999999999');
   const s = await scene({ spec: { [F]: { members: [{ user: gone, role: 'viewer' }, { user: U.viewer, role: 'viewer' }] } } });
   s.server.primary.directory.delete(gone.id);
   const res = await fanOut(s.deps, F);
-  assert.deepEqual(res.items.map((i) => [i.id, i.error?.code]), [[G, 'member-deleted'], [A2, undefined], [A1, 'member-deleted']]);
-  assert.equal(res.failed, 2);
+  assert.deepEqual(res.items.map((i) => [i.id, i.state, i.error]), [[G, 'updated', null], [A2, 'updated', null], [A1, 'updated', null]]);
+  assert.deepEqual(res.items.map((i) => i.skippedUsers), [[gone.id], [], [gone.id]], 'A2 sits in G, which does not list them');
+  assert.equal(res.failed, 0);
+  for (const id of [G, A1, A2]) assert.deepEqual(latest(s, id).members.map((m) => m.user), [U.viewer.id], id);
+  assert.equal(s.server.inheritOf(A1), 'pending', 'the folder still lists them, so the server still says so');
+  const again = await fanOut(s.deps, F);
+  assert.equal(again.failed, 0);
+  assert.deepEqual(again.items.map((i) => i.state), ['current', 'current', 'current']);
+  assert.equal(s.server.records.length, 3, 'nothing is written again');
+});
+
+test('a group the folder lists that was deleted is skipped and named on the item', async () => {
+  const s = await scene({ spec: { [F]: { members: [{ user: U.viewer, role: 'viewer' }], groups: [{ group: GROUP, role: 'viewer' }] } } });
+  const res = await fanOut(s.deps, F);
+  assert.deepEqual(res.items.map((i) => i.skippedGroups), [[GROUP], [], [GROUP]], 'A2 sits in G, which does not list it');
+  assert.deepEqual(res.items.map((i) => i.skippedUsers), [[], [], []]);
 });
 
 test('an item whose handover waits for the caller fails alone', async () => {
@@ -614,7 +669,7 @@ const foreignTree = [
 // hostile is deps whose server lies about the tree: list and view change the
 // parent and inherit of an item in the list and in its own view, by ID. sent
 // holds each PUT and POST, so a test can show that nothing was written.
-function hostile(s, { list = {}, view = {} }) {
+function hostile(s, { list = {}, view = {} }, who = 'owner') {
   const sent = [];
   const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
   const fetch = async (path, init = {}) => {
@@ -627,7 +682,7 @@ function hostile(s, { list = {}, view = {} }) {
     if (one && view[one[1]]) return json({ ...(await resp.json()), ...view[one[1]] });
     return resp;
   };
-  return { deps: depsFor({ fetch }, records.owner), sent };
+  return { deps: depsFor({ fetch }, records[who]), sent };
 }
 const wroteTo = (sent, id) => sent.some((x) => x.includes(`/api/artifacts/${id}/`));
 const shareF = { [F]: { members: [{ user: U.viewer, role: 'viewer' }] }, [G]: { members: [{ user: U.viewer, role: 'viewer', via: F }] } };
@@ -651,6 +706,29 @@ test('a server that lists a foreign item under the folder does not get it a writ
   }
 });
 
+test('a placement failure names the item and the folders as the caller can read them, and tells the owner to move the item again', async () => {
+  const claim = { parent: F, inherit: 'pending' };
+  const s = await scene({ spec: shareF });
+  await seedMeta(s.server.kids.get(TOP), { field: 'name', value: 'Report' });
+  await seedMeta(s.server.kids.get(F), { field: 'name', value: 'Plans' });
+  const res = await fanOut(hostile(s, { list: { [TOP]: claim }, view: { [TOP]: claim } }).deps, F);
+  assert.equal(stateOf(res, TOP).error.message, '"Report" is shown in the folder "Plans", but its own record places it in the top level, so it was left alone. To place it there, move it to the folder "Plans" again.');
+  // Inside another folder, and the view alone disagreeing, say the same of the folders.
+  const t = await scene({ spec: { ...shareF, [TOP]: { folder: G } } });
+  const again = await fanOut(hostile(t, { list: { [TOP]: claim }, view: { [TOP]: claim } }).deps, F);
+  assert.equal(stateOf(again, TOP).error.message, `${TOP} is shown in the folder ${F}, but its own record places it in the folder ${G}, so it was left alone. To place it there, move it to the folder ${F} again.`, 'IDs where nothing is readable');
+  const view = await fanOut(hostile(await scene({ spec: shareF }), { view: { [A1]: { parent: G } } }).deps, F);
+  assert.equal(stateOf(view, A1).error.message, `${A1} is shown in the folder ${G}, but its own record places it in the folder ${F}, so it was left alone. To place it there, move it to the folder ${G} again.`);
+});
+
+test('a manager whose fan-out meets a placement failure is told that the owner must place the item', async () => {
+  const claim = { parent: F, inherit: 'pending' };
+  const mgr = (via) => ({ members: [{ user: U.manager, role: 'manager', ...(via ? { via: F } : {}) }] });
+  const s = await scene({ who: 'manager', spec: { [F]: mgr(false), [G]: mgr(true), [A1]: mgr(true), [A2]: mgr(true), [TOP]: mgr(false) } });
+  const res = await fanOut(hostile(s, { list: { [TOP]: claim }, view: { [TOP]: claim } }, 'manager').deps, F);
+  assert.equal(stateOf(res, TOP).error.message, `${TOP} is shown in the folder ${F}, but its own record places it in the top level, so it was left alone. Only its owner can place it there: ask them to move it to the folder ${F} again.`);
+});
+
 test('a server that rewrites an item\'s parent in its view does not get it sealed to another folder', async () => {
   const s = await scene({ spec: shareF });
   const h = hostile(s, { view: { [A1]: { parent: G } } });
@@ -668,11 +746,56 @@ test('a foreign folder listed under the folder is refused, and so is everything 
   const h = hostile(s, { list: { [OTHER]: claim }, view: { [OTHER]: claim } });
   const res = await fanOut(h.deps, F);
   assert.equal(stateOf(res, OTHER).error?.code, 'placement');
-  assert.equal(stateOf(res, INSIDE).error?.code, 'placement');
-  assert.equal(res.failed, 2);
+  assert.equal(stateOf(res, INSIDE), undefined, 'what is inside a refused folder is not listed');
+  assert.equal(res.failed, 1);
+  assert.equal(res.total, res.items.length, 'nor counted');
   assert.equal(wroteTo(h.sent, OTHER) || wroteTo(h.sent, INSIDE), false);
   assert.equal(entry(s, INSIDE, U.viewer), undefined);
   assert.equal(stateOf(res, A1).state, 'updated');
+});
+
+test('a root that fails on a transient error does not refuse what is inside it', async () => {
+  const s = await scene({ spec: { [F]: { members: [{ user: U.viewer, role: 'viewer' }] } } });
+  const boom = () => new Response(JSON.stringify({ error: 'boom' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+  const fetch = async (path, init = {}) => (path === `/api/artifacts/${F}` && (init.method ?? 'GET') === 'GET' ? boom() : s.server.fetch(path, init));
+  const res = await fanOut(depsFor({ fetch }, records.owner), F, { includeRoot: true });
+  assert.deepEqual(res.items.map((i) => [i.id, i.state, i.error?.code]), [[F, 'failed', undefined], [G, 'updated', undefined], [A2, 'updated', undefined], [A1, 'updated', undefined]]);
+  assert.match(res.items[0].error.message, /boom/);
+  assert.equal(res.failed, 1);
+});
+
+test('a folder whose record does not verify is refused with that error, and nothing inside it is listed; a failure that ends the command ends the run', async () => {
+  const s = await scene({ spec: { [F]: { members: [{ user: U.viewer, role: 'viewer' }] } } });
+  const failing = (status) => async (path, init = {}) => (path === `/api/artifacts/${G}/membership` ? new Response(JSON.stringify({ error: 'boom' }), { status, headers: { 'Content-Type': 'application/json' } }) : s.server.fetch(path, init));
+  const res = await fanOut(depsFor({ fetch: failing(500) }, records.owner), F);
+  assert.deepEqual(res.items.map((i) => [i.id, i.state, i.error?.code]), [[G, 'failed', undefined], [A1, 'updated', undefined]], 'A2 inside G is not listed');
+  assert.match(res.items[0].error.message, /boom/);
+  assert.equal(res.total, 2);
+  const err = await fanOut(depsFor({ fetch: failing(401) }, records.owner), F).catch((e) => e);
+  assert.equal(err.status, 401);
+  assert.deepEqual(err.result.items, []);
+});
+
+test('the chain the walk verified is the one the write uses: each item is read once', async () => {
+  const s = await scene({ spec: { [F]: { members: [{ user: U.viewer, role: 'viewer' }] } } });
+  await fanOut(s.deps, F);
+  // One read to verify it on the walk, and one to read it back after the write.
+  assert.equal(s.server.kids.get(A1).calls.filter((c) => c.path.endsWith('/membership') && c.method === 'GET').length, 2);
+});
+
+test('a folder created inside a folder that lists a deleted group does not list the group', async () => {
+  const s = await scene({ spec: { [F]: { members: [{ user: U.viewer, role: 'viewer' }], groups: [{ group: GROUP, role: 'viewer' }] } } });
+  const { id } = await createFolder(s.deps, { name: 'Sub', parent: F });
+  assert.deepEqual(latest(s, id).groups ?? [], []);
+  assert.deepEqual(latest(s, id).members.map((m) => m.user), [U.viewer.id]);
+});
+
+test('a folder created inside a folder that lists a user who is no longer usable leaves them out', async () => {
+  const gone = await extraUser('gone', '99999999-0000-4999-8999-999999999999');
+  const s = await scene({ spec: { [F]: { members: [{ user: gone, role: 'viewer' }, { user: U.viewer, role: 'viewer' }] } } });
+  s.server.primary.directory.delete(gone.id);
+  const { id } = await createFolder(s.deps, { name: 'Sub', parent: F });
+  assert.deepEqual(latest(s, id).members.map((m) => m.user), [U.viewer.id]);
 });
 
 test('a foreign folder the server calls current is refused as well', async () => {
@@ -682,7 +805,7 @@ test('a foreign folder the server calls current is refused as well', async () =>
     const h = hostile(s, { list: { [OTHER]: { parent: F } }, view });
     const res = await fanOut(h.deps, F);
     assert.equal(stateOf(res, OTHER).error?.code, 'placement', 'its place is checked whatever inherit says');
-    assert.equal(stateOf(res, INSIDE).error?.code, 'placement');
+    assert.equal(stateOf(res, INSIDE), undefined);
   }
 });
 
@@ -812,4 +935,28 @@ test('a manager cannot place an item, by a move or by a fan-out', async () => {
   assert.deepEqual(res.items.map((i) => [i.id, i.state, i.error?.code]), [[TOP, 'failed', 'owner-only']]);
   assert.equal(s.server.records.length, 0);
   assert.equal(latest(s, TOP).folder, undefined);
+});
+
+// ---- the note under a folder change ----
+
+test('fanOutNote gives the placement advice for a placement failure, and Finish sharing for any other, and both when both are present', () => {
+  const describe = (e) => e.message;
+  const failure = (id, code) => ({ id, error: Object.assign(new Error(`${id} failed`), { code }), skippedUsers: [], skippedGroups: [], pending: [] });
+  const ok = { id: 'ok', error: null, skippedUsers: [], skippedGroups: [], pending: [] };
+  const note = (...items) => fanOutNote({ fanOut: { total: items.length, failed: items.filter((i) => i.error).length, items } }, describe);
+  const place = 'An item whose own record does not place it where it is shown is placed by its owner moving it into that folder again.';
+  const finish = 'Choose Finish sharing to try again.';
+  assert.equal(note(ok, failure('p', 'placement')), ` 1 of 2 items up to date. 1 item could not be brought up to date: p (p failed). ${place}`);
+  assert.equal(note(ok, failure('o', 'owner-only')), ` 1 of 2 items up to date. 1 item could not be brought up to date: o (o failed). ${finish}`);
+  assert.equal(note(failure('p', 'placement'), failure('o', 'owner-only')), ` 0 of 2 items up to date. 2 items could not be brought up to date: p (p failed); o (o failed). ${place} ${finish}`);
+  assert.equal(note(ok), ' 1 of 1 items up to date.');
+  assert.equal(fanOutNote({}, describe), '', 'nothing for an artifact');
+});
+
+test('fanOutNote names the users and groups the folder lists that no record could add, once each, and who waits for approval', () => {
+  const item = (skippedUsers, skippedGroups, pending = []) => ({ id: 'i', error: null, skippedUsers, skippedGroups, pending });
+  const res = { fanOut: { total: 3, failed: 0, items: [item(['u2', 'u1'], ['g1']), item(['u1'], ['g1']), item([], [], [{}, {}])] } };
+  assert.equal(fanOutNote(res, (e) => e.message), ' 3 of 3 items up to date. Not added, because the account is deactivated or not verified: u2, u1. Not added, because the group was deleted: g1. 2 people still waiting for approval on the items inside.');
+  const none = { fanOut: { total: 1, failed: 0, items: [item([], [])] } };
+  assert.equal(fanOutNote(none, (e) => e.message), ' 1 of 1 items up to date.');
 });

@@ -1536,17 +1536,20 @@ const sameEntries = (a, b, key) => a.length === b.length && a.every((e, i) => e[
 // with a via exists only because of a folder: it follows the folder's role and
 // mark while the folder lists it, and leaves when the folder does not, which
 // takes a next epoch. A user or group the folder lists and the item does not
-// is added, marked with its nearest folder. The item's owner is never listed.
-// Returns {members, groups, added, addedGroups, epoch}. Mirrors planInherit.
-export function planInherit(item, parent, parentId, parentGroups) {
-  const plan = { members: [], groups: [], added: [], addedGroups: [], epoch: false };
+// is added, marked with its nearest folder, unless usable(userId) says the
+// user's account is deactivated, not verified or deleted, or live(groupId)
+// says the group was deleted: those are skipped, and kept if the item already
+// lists them. The item's owner is never listed. Returns {members, groups,
+// added, addedGroups, skippedUsers, skippedGroups, epoch}. Mirrors planInherit.
+export function planInherit(item, parent, parentId, usable, live) {
+  const plan = { members: [], groups: [], added: [], addedGroups: [], skippedUsers: [], skippedGroups: [], epoch: false };
   const wantMembers = new Map();
   const wantGroups = new Map();
   if (parent) {
     for (const m of parent.members) {
       if (m.user !== item.owner) wantMembers.set(m.user, { user: m.user, role: m.role, fp: m.fp, via: nearestVia(m.via, parentId) });
     }
-    for (const g of parentGroups) wantGroups.set(g.group, { group: g.group, role: g.role, via: nearestVia(g.via, parentId) });
+    for (const g of parent.groups ?? []) wantGroups.set(g.group, { group: g.group, role: g.role, via: nearestVia(g.via, parentId) });
   }
   // follow is the entry that stays for entry, or null when it leaves.
   const follow = (entry, want) => {
@@ -1567,6 +1570,10 @@ export function planInherit(item, parent, parentId, parentGroups) {
     if (kept) plan.members.push(kept);
   }
   for (const w of wantMembers.values()) {
+    if (!usable(w.user)) {
+      plan.skippedUsers.push(w.user);
+      continue;
+    }
     plan.members.push(w);
     plan.added.push(w.user);
   }
@@ -1577,6 +1584,10 @@ export function planInherit(item, parent, parentId, parentGroups) {
     if (kept) plan.groups.push(kept);
   }
   for (const w of wantGroups.values()) {
+    if (!live(w.group)) {
+      plan.skippedGroups.push(w.group);
+      continue;
+    }
     plan.groups.push(w);
     plan.addedGroups.push(w.group);
   }
@@ -1584,6 +1595,8 @@ export function planInherit(item, parent, parentId, parentGroups) {
   plan.groups.sort(byGroup);
   plan.added.sort();
   plan.addedGroups.sort();
+  plan.skippedUsers.sort();
+  plan.skippedGroups.sort();
   return plan;
 }
 
@@ -1592,22 +1605,37 @@ export function planInherit(item, parent, parentId, parentGroups) {
 // next-epoch record removed an entry or lowered a role), and failed.
 export const FAN_OUT_STATES = { current: 'current', updated: 'updated', newEpoch: 'newEpoch', failed: 'failed' };
 
-// subtreeOrder lists the items inside the folder root, depth first, each
-// folder before the items inside it, folders before artifacts and each by ID.
-// includeRoot puts the root itself first. all is GET /api/artifacts. Mirrors
-// subtreeOrder.
-export function subtreeOrder(all, root, includeRoot) {
-  const out = includeRoot ? [all.find((a) => a.id === root)] : [];
+// subtreeOrder lists the items the server lists inside the folder root, depth
+// first, each folder before the items inside it, folders before artifacts and
+// each by ID, as {a, refused}. includeRoot puts the root itself first. all is
+// GET /api/artifacts. The server's tree is unsigned, so folderNamed(a), async,
+// reads the folder an item's latest verified record names. A folder, and an
+// artifact the server lists as pending, is checked: one found in a folder its
+// record does not name, or whose record does not verify, is listed with
+// refused, {listed, named, error}, and the walk does not go into it, so nothing
+// inside it is listed at all. An artifact the server calls current is not
+// read, because nothing is copied into it. Mirrors subtreeOrder.
+export async function subtreeOrder(all, root, includeRoot, folderNamed) {
+  const out = includeRoot ? [{ a: all.find((a) => a.id === root), refused: null }] : [];
   const seen = new Set([root]);
   const folderFirst = (a, b) => ((a.kind === 'folder') === (b.kind === 'folder') ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : (a.kind === 'folder' ? -1 : 1));
-  const walk = (parent, depth) => {
+  const walk = async (parent, depth) => {
     for (const a of all.filter((x) => inheritsFrom(x, parent) && !seen.has(x.id)).sort(folderFirst)) {
       seen.add(a.id);
-      out.push(a);
-      if (a.kind === 'folder' && depth < FOLDER_DEPTH) walk(a.id, depth + 1);
+      const entry = { a, refused: null };
+      if (a.kind === 'folder' || a.inherit === 'pending') {
+        try {
+          const named = await folderNamed(a);
+          if (named !== parent) entry.refused = { listed: parent, named, error: null };
+        } catch (error) {
+          entry.refused = { listed: parent, named: null, error };
+        }
+      }
+      out.push(entry);
+      if (!entry.refused && a.kind === 'folder' && depth < FOLDER_DEPTH) await walk(a.id, depth + 1);
     }
   };
-  walk(root, 1);
+  await walk(root, 1);
   return out;
 }
 
@@ -1617,39 +1645,43 @@ export function subtreeOrder(all, root, includeRoot) {
 // entries the folder lists, marked with the folder they come from, and, when
 // an entry no longer holds because its folder stopped listing the user or the
 // item left it, a next-epoch record that excludes the users who held the item
-// only through it, and seals its data again. includeRoot also visits the root
-// itself. placing, a folder ID or null for the top level, says this client has
-// just moved the root there: its record is written to name that folder, which
-// is left undefined for any other run. progress, a function (done, total), is called after each item; an
-// item already current counts as done. An item that fails is skipped, so that
-// one item does not hold the rest back: it is in the result with its error,
-// and running fanOut again resumes with the items still pending. Returns
-// {items, total, failed}: an item is {id, kind, state, error, excluded,
-// reseal, approved, pending}. Only a failure that ends the command, as
-// fatalFetch says, is thrown. Mirrors FanOut.
+// only through it, and seals its data again. The walk goes into an item only
+// when its latest verified record names the folder it was found in (see
+// subtreeOrder); any other item the server lists there as pending is refused,
+// with the folders and names in the message, and never sealed to. includeRoot
+// also visits the root itself. placing, a folder ID or null for the top level,
+// says this client has just moved the root there: its record is written to
+// name that folder, which is left undefined for any other run. progress, a
+// function (done, total), is called after each item; an item already current
+// counts as done. An item that fails is skipped, so that one item does not hold
+// the rest back: it is in the result with its error, and running fanOut again
+// resumes with the items still pending. Returns {items, total, failed}: an
+// item is {id, kind, state, error, excluded, reseal, approved, pending,
+// skippedUsers, skippedGroups}, the last two being the entries the folder
+// lists that the record did not add, because the account is deactivated, not
+// verified or deleted, or the group was deleted. Only a failure that ends the
+// command, as fatalFetch says, is thrown. Mirrors FanOut.
 export async function fanOut(deps, rootId, { includeRoot = false, placing, progress } = {}) {
   const caller = await unlock(deps);
   const all = await call(deps, null, 'GET', '/api/artifacts');
   if (!Array.isArray(all)) throw new e2e.FormatError('the artifact list is not a list');
   if (!all.some((a) => a.id === rootId)) throw new SharingError('no-artifact', `No artifact has the ID ${rootId}.`);
-  const order = subtreeOrder(all, rootId, includeRoot);
-  const run = { deps, caller, dir: await directory(deps), folders: new Map(), placed: new Set() };
+  const run = { deps, caller, dir: await directory(deps), folders: new Map(), verified: new Map() };
+  // The chain the walk verified for an item, which syncItem uses once, before
+  // it writes the item.
+  const folderNamed = async (a) => {
+    const va = await verifyArtifact(deps, caller, a.id);
+    run.verified.set(a.id, va);
+    return signedFolderOf(va);
+  };
+  const order = await subtreeOrder(all, rootId, includeRoot, folderNamed);
   const res = { items: [], total: order.length, failed: 0 };
-  // A folder whose own record does not name the folder it was listed under is
-  // refused, and so is everything the server lists inside it.
-  const refused = new Set();
-  for (const [i, a] of order.entries()) {
-    const item = { id: a.id, kind: a.kind ?? 'artifact', state: FAN_OUT_STATES.current, error: null, excluded: [], reseal: null, approved: [], pending: [] };
-    const root = a.id === rootId;
+  for (const [i, { a, refused }] of order.entries()) {
+    const item = { id: a.id, kind: a.kind ?? 'artifact', state: FAN_OUT_STATES.current, error: null, excluded: [], reseal: null, approved: [], pending: [], skippedUsers: [], skippedGroups: [] };
     try {
-      if (!root && refused.has(a.parent ?? '')) throw new SharingError('placement', `${a.id} is listed in a folder whose own record does not place it there, so it was left alone.`);
-      // The root's folder is the one this client is placing it in, when it
-      // is; anything else must sit, by its own record, where it was listed.
-      await syncItem(run, item, root && placing !== undefined ? { placing } : { listedIn: root ? null : a.parent ?? '' });
+      if (refused) throw refused.error ?? (await placementError(run, a, run.verified.get(a.id), refused.listed, refused.named));
+      await syncItem(run, item, a.id === rootId ? placing : undefined);
     } catch (err) {
-      // A folder that did not pass the placement check, or whose record cannot
-      // be verified, is not walked into.
-      if (a.kind === 'folder' && !run.placed.has(a.id)) refused.add(a.id);
       if (fatalFetch(err)) throw Object.assign(err, { result: res });
       Object.assign(item, { state: FAN_OUT_STATES.failed, error: err });
       res.failed++;
@@ -1668,38 +1700,48 @@ async function folderRecord(run, id) {
   return run.folders.get(id);
 }
 
+// placementError is the refusal of an item the server lists in the folder
+// listed (empty for the top level) while its own record, which va holds,
+// names named. It names the item and the folders as the caller can read them,
+// by ID otherwise, and says what to do: the owner places the item by moving it
+// there again, and a manager cannot.
+async function placementError(run, view, va, listed, named) {
+  const { deps } = run;
+  const labels = await folderLabels(deps, [listed, named]);
+  const place = (id) => (id === '' ? 'the top level' : labels.get(id) === id ? `the folder ${id}` : `the folder "${labels.get(id)}"`);
+  const got = await describeArtifact(deps, view);
+  const owner = callerRoleOf(run.caller, va) === 'owner';
+  const remedy = owner ? `To place it there, move it to ${place(listed)} again.` : `Only its owner can place it there: ask them to move it to ${place(listed)} again.`;
+  return new SharingError('placement', `${got.named ? `"${got.name}"` : view.id} is shown in ${place(listed)}, but its own record places it in ${place(named)}, so it was left alone. ${remedy}`);
+}
+
 // syncItem writes the record that brings item.id up to date, if the server
-// says it is pending, and notes in item what it did. where is {placing}, the
-// folder this client is placing the item in (or null for the top level), or
-// {listedIn}, the folder the walk found it under (null for the root, which is
-// checked against nothing but the server). Mirrors sync.
-async function syncItem(run, item, where = { listedIn: null }) {
+// says it is pending, and notes in item what it did. The folder whose entries
+// it copies in is the one the item's latest verified record names, or placing,
+// a folder ID or null for the top level, when this client has just moved the
+// item there itself and is left undefined otherwise. The server's own word for
+// where the item sits must agree, or nothing is written. Mirrors sync.
+async function syncItem(run, item, placing) {
   const { deps, caller, dir } = run;
   const view = await call(deps, null, 'GET', `/api/artifacts/${item.id}`);
-  const placing = 'placing' in where;
-  // A folder met on the walk is checked even when it is current, for its
-  // place decides whether the walk goes into it.
-  const walked = where.listedIn !== undefined && where.listedIn !== null && item.kind === 'folder';
-  if (view.inherit !== 'pending' && !walked) return;
-  const va = await verifyArtifact(deps, caller, item.id);
-  const latest = va.latest;
-  const folderId = placing ? where.placing ?? '' : signedFolderOf(va);
-  // The server's parent must agree with the signed one, and, inside a walk,
-  // with the folder the item was listed under: otherwise the server is
-  // claiming a placement nobody signed, and no key is sealed on its word.
-  if ((view.parent ?? '') !== folderId || (!placing && where.listedIn !== null && where.listedIn !== folderId)) {
-    throw new SharingError('placement', `${item.id} is not placed in ${(view.parent ?? '') || 'the top level'} by its own record, so it was left alone; its owner can move it there to place it.`);
-  }
-  run.placed.add(item.id);
   if (view.inherit !== 'pending') return;
+  const va = run.verified.get(item.id) ?? (await verifyArtifact(deps, caller, item.id));
+  run.verified.delete(item.id);
+  const latest = va.latest;
+  const folderId = placing !== undefined ? placing ?? '' : signedFolderOf(va);
+  // The server's parent must agree with the signed one: otherwise the server
+  // is claiming a placement nobody signed, and no key is sealed on its word.
+  if ((view.parent ?? '') !== folderId) throw await placementError(run, view, va, view.parent ?? '', folderId);
   checkHandover(va);
   let parent = null;
-  let groups = [];
+  let kept = [];
   if (folderId) {
     parent = await folderRecord(run, folderId);
-    groups = (await liveGroups(deps, parent.groups ?? [])).kept;
+    kept = (await liveGroups(deps, parent.groups ?? [])).kept;
   }
-  const plan = planInherit(latest, parent, folderId, groups);
+  const byId = new Map(dir.map((u) => [u.id, u]));
+  const plan = planInherit(latest, parent, folderId, (id) => byId.has(id), (g) => kept.some((k) => k.group === g));
+  Object.assign(item, { skippedUsers: plan.skippedUsers, skippedGroups: plan.skippedGroups });
   const moved = folderId !== signedFolderOf(va);
   if (!moved && sameEntries(plan.members, latest.members, 'user') && sameEntries(plan.groups, latest.groups ?? [], 'group')) return;
   if (moved) checkOwnerOnly(adminRole(caller, va) === 'manager', 'place it in a folder');
@@ -1707,12 +1749,10 @@ async function syncItem(run, item, where = { listedIn: null }) {
   const manager = role === 'manager';
   const managersOf = (ms) => JSON.stringify(ms.filter((m) => m.role === 'manager'));
   if (managersOf(latest.members) !== managersOf(plan.members)) checkOwnerOnly(manager, 'change the managers');
-  const byId = new Map(dir.map((u) => [u.id, u]));
   // A user the item lists anew is listed under the keys the directory serves
   // now, which must be the ones the folder lists them under.
   for (const id of plan.added) {
     const u = byId.get(id);
-    if (!u) throw new SharingError('member-deleted', `The account of ${id} was deleted, so the folder's entry for them cannot be inherited.`);
     if (u.fp !== plan.members.find((m) => m.user === id).fp) {
       throw new SharingError('member-key-changed', `${u.email} (${u.id}) was listed by the folder under another fingerprint than the directory serves now. Share the folder with them again and accept the new key.`);
     }
@@ -1739,14 +1779,41 @@ async function syncItem(run, item, where = { listedIn: null }) {
     aks ??= (await akSet(deps, caller, va)).aks;
     for (let epoch = 1; epoch <= latest.epoch; epoch++) wraps.push(await wrapTo(u, item.id, epoch, needAK(aks, epoch, `share with ${u.email}, who needs it`)));
   }
-  const { kept, dropped } = dropExcluded(latest.excluded, next.members, dir);
+  const { kept: keptExcluded, dropped } = dropExcluded(latest.excluded, next.members, dir);
   if (manager && dropped.length > 0) checkOwnerOnly(manager, 'list again someone removed from the artifact');
-  next.excluded = kept;
+  next.excluded = keptExcluded;
   await putRecord(deps, caller, va, next, wraps, [], '');
   await storePins(deps, caller, pins);
   await readBack(deps, caller, va, '');
   item.state = FAN_OUT_STATES.updated;
   Object.assign(item, await approveListedGroups(deps, item.id, plan.addedGroups));
+}
+
+// fanOutNote says how many items inside a folder are up to date after a change
+// to the folder, which of them are not and why, which users and groups the
+// folder lists that no record could add, and who still waits for approval
+// because a group was listed on them. describe turns an error into a line. The
+// advice for an item whose own record does not place it where it is shown, and
+// the advice for any other failure, are both given when both kinds are present.
+// Nothing for an artifact, which has no fanOut in res.
+export function fanOutNote(res, describe) {
+  const f = res.fanOut;
+  if (!f) return '';
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  let note = ` ${f.total - f.failed} of ${f.total} items up to date.`;
+  const failed = f.items.filter((i) => i.error);
+  if (failed.length > 0) {
+    note += ` ${plural(failed.length, 'item', 'items')} could not be brought up to date: ${failed.map((i) => `${i.id} (${describe(i.error)})`).join('; ')}.`;
+    if (failed.some((i) => i.error.code === 'placement')) note += ' An item whose own record does not place it where it is shown is placed by its owner moving it into that folder again.';
+    if (failed.some((i) => i.error.code !== 'placement')) note += ' Choose Finish sharing to try again.';
+  }
+  const users = [...new Set(f.items.flatMap((i) => i.skippedUsers))];
+  if (users.length > 0) note += ` Not added, because the account is deactivated or not verified: ${users.join(', ')}.`;
+  const groups = [...new Set(f.items.flatMap((i) => i.skippedGroups))];
+  if (groups.length > 0) note += ` Not added, because the group was deleted: ${groups.join(', ')}.`;
+  const waits = f.items.flatMap((i) => i.pending);
+  if (waits.length > 0) note += ` ${plural(waits.length, 'person', 'people')} still waiting for approval on the items inside.`;
+  return note;
 }
 
 // approveListedGroups approves the waiting members of each group in ids, which
@@ -1774,17 +1841,17 @@ export async function inheritFirst(deps, first, parentId, ak) {
   const caller = await unlock(deps);
   const parent = (await verifyArtifact(deps, caller, parentId)).latest;
   const { kept } = await liveGroups(deps, parent.groups ?? []);
-  const plan = planInherit(first, parent, parentId, kept);
+  // Nobody to check when the folder lists no user.
+  const byId = new Map((parent.members.length > 0 ? await directory(deps) : []).map((u) => [u.id, u]));
+  const plan = planInherit(first, parent, parentId, (id) => byId.has(id), (g) => kept.some((k) => k.group === g));
   first.members = plan.members;
   if (plan.groups.length > 0) first.groups = plan.groups;
   // The record names the folder the item sits in, which the server requires.
   first.folder = parentId;
-  if (plan.added.length === 0) return [];
-  const byId = new Map((await directory(deps)).map((u) => [u.id, u]));
   const wraps = [];
   for (const id of plan.added) {
     const u = byId.get(id);
-    if (!u || u.fp !== plan.members.find((m) => m.user === id).fp) {
+    if (u.fp !== plan.members.find((m) => m.user === id).fp) {
       throw new SharingError('member-key-changed', `${id} was listed by the folder under another fingerprint than the directory serves now. Share the folder with them again and accept the new key.`);
     }
     wraps.push(await wrapTo(u, first.artifact, 1, ak));

@@ -102,6 +102,25 @@ test('shared folder: share a tree, browse it as the reader, move an artifact in,
     await expect(ownerPage.locator('#artifacts-status')).toContainText('items up to date', { timeout: 60_000 });
     await reads(page, ids[later], true);
 
+    // A move nobody placed (as one made by another client) leaves the item
+    // pending, and the reader loses it at once. Moving it there again from
+    // the page places it, and the pending mark goes.
+    await ownerPage.evaluate(async (id) => {
+      const r = await fetch(`/api/artifacts/${id}/parent`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parent: null }) });
+      if (!r.ok) throw new Error(`move: ${r.status}`);
+    }, ids[later]);
+    await ownerPage.reload();
+    await ownerPage.getByRole('tab', { name: 'Artifacts' }).click();
+    await settled(ownerPage);
+    const pendingRow = ownerPage.locator(`#own tr[data-id="${ids[later]}"]`);
+    await expect(pendingRow.locator('span.pill.pending')).toBeVisible();
+    await reads(page, ids[later], false);
+    await pendingRow.getByRole('button', { name: 'Move to…' }).click();
+    await pendingRow.getByLabel(`Move ${later} to`).selectOption({ label: 'Top level' });
+    await expect(ownerPage.locator('#artifacts-status')).toContainText('items up to date', { timeout: 60_000 });
+    await settled(ownerPage);
+    await expect(pendingRow.locator('span.pill.pending')).toBeHidden();
+
     // Unsharing the folder ends the reader's access to everything inside.
     dialog = await openDialog(ownerPage, ids[top]);
     await dialog.locator('#members tr').filter({ hasText: reader.email }).getByRole('button', { name: 'Remove' }).click();

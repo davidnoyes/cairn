@@ -115,7 +115,7 @@ export async function makeFolderServer({ who, users = [], items }) {
     if (!parent || !kids.has(parent)) return '';
     const folder = latestOf(parent);
     for (const p of folder.members) {
-      if (p.user === body.owner) continue;
+      if (p.user === body.owner || !primary.directory.has(p.user)) continue; // a user the directory no longer serves is not required, as the server does
       const m = body.members.find((x) => x.user === p.user);
       if (!m) return `inherit: member ${p.user} is missing: folder ${parent} lists them as ${p.role}`;
       if (rank(m.role) < rank(p.role)) return `inherit: member ${p.user} is ${m.role}: folder ${parent} lists them as ${p.role}`;

@@ -171,6 +171,9 @@ func TestAHostileServerCannotRewriteAnItemsParent(t *testing.T) {
 	if it := itemResult(res, w.item1); it == nil || it.State != FanOutFailed || !errors.Is(it.Err, ErrPlacement) {
 		t.Fatalf("item1: %+v", it)
 	}
+	if want := "cairn move " + w.item1 + " --to " + h.ID; !strings.Contains(itemResult(res, w.item1).Err.Error(), want) {
+		t.Errorf("the message %q does not give the remedy %q", itemResult(res, w.item1).Err, want)
+	}
 	if writesTo(*sent, w.item1) {
 		t.Errorf("a write was sent for item1: %v", *sent)
 	}
@@ -276,6 +279,10 @@ func TestAFanOutRefusesAnItemMovedByAnotherClientUntilItIsPlaced(t *testing.T) {
 	}
 	if it := itemResult(res, loose); it == nil || !errors.Is(it.Err, ErrPlacement) {
 		t.Fatalf("the moved item: %+v", it)
+	}
+	// The message says how its owner places it: a move by another client looks the same.
+	if want := "cairn move " + loose + " --to " + w.f; !strings.Contains(itemResult(res, loose).Err.Error(), want) {
+		t.Errorf("the message %q does not give the remedy %q", itemResult(res, loose).Err, want)
 	}
 	if after := latestBody(t, w.ada, loose); after.Seq != before.Seq {
 		t.Errorf("a record was written: %+v", after)
@@ -692,5 +699,18 @@ func TestAcceptingTakesAnItemOutOfItsFolder(t *testing.T) {
 	got, err := w.bob.GetArtifact(w.item1)
 	if err != nil || got.ParentID != "" {
 		t.Errorf("the item after it was accepted: %+v, %v", got, err)
+	}
+}
+
+// The remedy names the item and the folder it is listed in, or --top.
+func TestPlacementErrorGivesTheMoveCommand(t *testing.T) {
+	for _, c := range []struct{ listed, want string }{
+		{"fold", "cairn move item --to fold"},
+		{"", "cairn move item --top"},
+	} {
+		err := placementError("item", c.listed, "other")
+		if !errors.Is(err, ErrPlacement) || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("placementError(listed %q) = %v, want %q", c.listed, err, c.want)
+		}
 	}
 }
