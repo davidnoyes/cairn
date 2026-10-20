@@ -550,6 +550,25 @@ folder, and a folder row has **Share**, **Rename**, and **Delete**. Folders
 shared with you open the same way under **Shared with you**. A share that
 stopped part way shows as pending, with **Finish sharing** in the dialog.
 
+A folder can hold items that other people own, as in Google Drive:
+
+- **Placing items.** To put your own item in someone else's folder, you need
+  editor access to that folder. The folder's owner then reads the item as an
+  editor.
+- **Waiting items.** When a folder is shared, only an item's owner or one of
+  its managers can sign that item's new member list. Until they do, the item
+  shows as a stub: you see its owner but not its name. To sign every item
+  that waits on you, run `cairn apply` or click **Apply** on the
+  **Artifacts** tab. Cairn never applies a share without that step.
+- **Deleting.** Deleting a folder deletes what you own inside it. Items and
+  folders that other people own move to their owners' top levels. Both the
+  app and `cairn folder delete` list what happens before they start.
+
+```sh
+cairn apply           # sign what waits on you, and list what waits on others
+cairn apply --json
+```
+
 ### Groups
 
 A group is a named set of people, kept as a chain of records that its

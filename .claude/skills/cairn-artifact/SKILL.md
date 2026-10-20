@@ -91,7 +91,10 @@ only on `artifact create`: `cairn` blinds the value on your machine, so a raw
 
 If the user keeps artifacts in folders, add `--in <folder>` to
 `artifact create` or `push --create`. `cairn folder list` shows their tree,
-and `cairn move <artifact> --to <folder>` files an existing one.
+and `cairn move <artifact> --to <folder>` files an existing one. A folder
+can be someone else's if the user can edit it. An item listed as `(not shared
+with you yet, owned by EMAIL)` waits on its owner. If the user is told an
+item waits on them, `cairn apply --json` signs everything they can.
 
 Every new artifact is private. The `push --json` output has the artifact id,
 the version id and a `url`, which is the full-screen address on the app host.
