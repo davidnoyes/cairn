@@ -2433,7 +2433,12 @@ answers with the item's view.
   administrator hands the item over. The accepting record names the same
   folder and keeps the inherited entries, so the new owner need not read
   the folder. The folder's owner stays an inherited manager, unless they
-  are the new owner. Until F3 the item moved to the new owner's top level.
+  are the new owner. The artifact view names the folder's owner in
+  `folderOwner`, by user ID, to the item's owner, its managers, and the
+  user an open offer names, even when they cannot read the folder. The
+  server refuses an accepting record that does not list that user as a
+  manager, so a false `folderOwner` only makes the acceptance fail. Until
+  F3 the item moved to the new owner's top level.
 
 The tree's shape is visible to the server, and it is not signed: the server
 sees which items sit together, and a hostile server could show an item in

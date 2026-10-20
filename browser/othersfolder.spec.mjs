@@ -97,6 +97,7 @@ test("others' items: place in someone's folder, share it, a stub until applied, 
     // no click, which the status says; the new manager can then read it.
     await artifacts(ed.page);
     await expect(ed.page.locator('#artifacts-status')).toHaveText('1 of 1 items up to date.');
+    await expect(ed.page.getByRole('button', { name: 'Apply' })).toHaveCount(0);
     await reads(mg.page, docId, true);
 
     // Deleting the folder says the editor's item moves to its owner, then
