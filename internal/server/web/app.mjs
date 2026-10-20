@@ -6,10 +6,10 @@
 import { changePassword, createApiKey, enrollPasskey, listPasskeys, newRecoveryCode, passkeysAvailable, removePasskey, signOut } from './account.mjs';
 import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { createGroupsTab } from './groups-tab.mjs';
-import { FolderError, breadcrumb, childrenOf, createFolder, deleteTree, makeDraggable, makeDropTarget, moveAndPlace, moveTargets, renameFolder, subtree } from './folders.mjs';
+import { FolderError, applicable, breadcrumb, canEdit, childrenOf, createFolder, deleteSummary, deleteTree, describeList, isStub, makeDraggable, makeDropTarget, moveAndPlace, moveTargets, removeFromFolder, renameFolder, rowActions, splitTrees, stubLabel, subtree } from './folders.mjs';
 import { listGroups, verifiedGroup } from './groups.mjs';
 import { describeArtifact } from './meta.mjs';
-import { GroupKeyChangedError, KeyChangedError, approvableCount, approve, canShare, fanOut, fanOutNote, memberControls, members, offersFinishSharing, pin, publicLinkFor, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
+import { GroupKeyChangedError, KeyChangedError, apply, applyNote, approvableCount, approve, canShare, directory, fanOut, fanOutNote, memberControls, members, offersFinishSharing, pin, publicLinkFor, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
 import { bannerView, myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions, who } from './successor.mjs';
 import { confirmRecoveryCode, describeError, describePasskeyError, pageDeps, watchStrength } from './ui.mjs';
 
@@ -138,12 +138,18 @@ $('signout').addEventListener('click', async (event) => {
 });
 
 // ------------------------------------------------------------- artifacts
-// Your own items show as a tree, one folder at a time: own is every item of
-// the caller's, as {id, kind, parent, name} for folders.mjs, ownRows the table
-// row of each, and viewFolder the folder in view (null for the top level).
-// Shared with you is a tree the same way: shared, sharedRows and sharedFolder.
-// An item whose folder the caller cannot read has no parent in the list the
-// server serves, so it stays at the top.
+// Your own items show as a tree, one folder at a time: own is the entries of
+// the tree of the caller's own folders, as folders.mjs's tree items, ownRows
+// the table row of each, and viewFolder the folder in view (null for the top
+// level). Shared with you is a tree the same way: shared, sharedRows and
+// sharedFolder. An item sits in the tree of the folder the server lists it in,
+// so someone else's item shows in the caller's folder, and the caller's own
+// inside a folder someone else owns. An item whose folder the caller cannot
+// read has no parent in the list the server serves, so it stays at the top.
+// A stub is an item in a folder the caller reads that they cannot read yet:
+// the row says whose it is, and nothing in it is opened or decrypted.
+let myId = '';
+let ownIds = new Set();
 let own = [];
 let ownRows = new Map();
 let viewFolder = null;
@@ -154,23 +160,28 @@ let sharedFolder = null;
 // The server holds each name and description sealed, so a row shows the
 // artifact's ID until its own keys open them.
 async function listArtifacts({ me }) {
+  myId = me.id;
   const list = await api('/api/artifacts');
-  const rows = new Map(list.map((a) => [a.id, artifactRow(a, a.owner === me.id)]));
-  const mine = list.filter((a) => a.owner === me.id);
-  const theirs = list.filter((a) => a.owner !== me.id);
-  ownRows = new Map(mine.map((a) => [a.id, rows.get(a.id)]));
-  sharedRows = new Map(theirs.map((a) => [a.id, rows.get(a.id)]));
-  const item = (a) => ({ id: a.id, kind: a.kind ?? 'artifact', parent: a.parent ?? null, name: a.id, inherit: a.inherit ?? 'ok' });
-  own = mine.map(item);
-  shared = theirs.map(item);
+  // The stubs name their owners from the directory, which the page falls back
+  // from to the owner's ID.
+  const dir = list.some(isStub) ? await directory(deps).catch(() => []) : [];
+  const trees = splitTrees(list, me.id);
+  own = trees.own;
+  shared = trees.shared;
+  ownIds = new Set(own.map((i) => i.id));
+  const rows = new Map(list.map((a) => [a.id, artifactRow(a, dir)]));
+  ownRows = new Map(own.map((i) => [i.id, rows.get(i.id)]));
+  sharedRows = new Map(shared.map((i) => [i.id, rows.get(i.id)]));
+  for (const i of [...own, ...shared]) fillActions(rows.get(i.id), i);
   const ownItem = new Map([...own, ...shared].map((i) => [i.id, i]));
   renderOwn();
   renderShared();
   // One at a time: opening an artifact for the first time pins its owner in
-  // the keyring, and each pin is a write at the keyring's next revision.
-  for (const a of list) {
+  // the keyring, and each pin is a write at the keyring's next revision. A
+  // stub is not asked about: its name is sealed under a key the caller does
+  // not hold yet.
+  await describeList(list, (a) => describeArtifact(deps, a), async (a, got) => {
     const row = rows.get(a.id);
-    const got = await describeArtifact(deps, a);
     row.name = got.name;
     row.nameText.textContent = got.name;
     row.descText.textContent = got.description;
@@ -186,7 +197,7 @@ async function listArtifacts({ me }) {
     // How many newcomers the caller can approve, where they may: one request
     // each, in turn, like the names.
     if (!row.folder && APPROVERS.includes(a.access)) await showWaiting(row);
-  }
+  });
   // Names sort the trees, so they are laid out again once they are all read.
   renderOwn();
   renderShared();
@@ -234,9 +245,10 @@ async function showWaiting(row) {
   if (row.approveButton) row.approveButton.hidden = n === 0;
 }
 
-function artifactRow(a, mine) {
+function artifactRow(a, dir) {
   const folder = a.kind === 'folder';
-  const row = { id: a.id, folder, name: a.id, nameText: el(folder ? 'button' : 'a', 'clamp', a.id), descText: el('div', 'clamp', ''), actions: el('div', 'actions') };
+  const stub = isStub(a);
+  const row = { id: a.id, folder, stub, name: a.id, nameText: el(folder && !stub ? 'button' : stub ? 'span' : 'a', 'clamp', a.id), descText: el('div', 'clamp', ''), actions: el('div', 'actions') };
   row.waitingPill = pill('', 'waiting');
   row.waitingPill.hidden = true;
   // A pending item's record is out of step with its folder's: Finish sharing,
@@ -245,11 +257,17 @@ function artifactRow(a, mine) {
   row.pendingPill.hidden = !offersFinishSharing(a);
   const tr = el('tr');
   tr.dataset.id = a.id;
-  if (folder) {
+  tr.dataset.access = a.access;
+  const inOwn = ownIds.has(a.id);
+  if (stub) {
+    // Nothing to open, rename, share or move: the name is sealed, and the
+    // item is its owner's to apply.
+    tr.dataset.stub = 'true';
+  } else if (folder) {
     // Opening a folder shows what is in it; its own address has nothing to show.
     row.nameText.type = 'button';
     row.nameText.classList.add('link');
-    const open = mine ? openFolder : openSharedFolder;
+    const open = inOwn ? openFolder : openSharedFolder;
     row.nameText.addEventListener('click', () => open(a.id));
     tr.addEventListener('click', (event) => {
       if (!event.target.closest('button, a, input, select, form')) open(a.id);
@@ -257,7 +275,7 @@ function artifactRow(a, mine) {
   } else {
     row.nameText.href = '/shared/' + a.id;
   }
-  row.reasonText = el('div', 'unreadable', '');
+  row.reasonText = el('div', stub ? 'stub-note' : 'unreadable', stub ? stubLabel(a, dir) : '');
   const nameCell = td(row.nameText, 'name');
   if (folder) nameCell.prepend(pill('folder'), ' ');
   nameCell.append(row.reasonText);
@@ -265,22 +283,12 @@ function artifactRow(a, mine) {
     nameCell,
     td(row.descText, 'desc'),
     td(a.access, 'access'),
-    td(a.public ? 'public' : 'private', 'public'),
+    td(stub ? '' : a.public ? 'public' : 'private', 'public'),
     td(minute(a.updatedAt), 'mono updated'),
   );
-  if (mine) {
-    makeDraggable(tr, a.id);
-    if (folder) makeDropTarget(tr, a.id, moveTo);
-  } else if (a.access === 'manager') {
-    // A manager shares too, and the dialog verifies they are one.
-    row.actions.append(btn('Share', '', () => openShare(a.id, row.name)));
-  } else if (a.access === 'editor') {
-    // An editor approves the people waiting, and changes nothing else.
-    row.approveButton = btn('Approve', '', () => openShare(a.id, row.name, { approveOnly: true }));
-    row.approveButton.hidden = true;
-    row.actions.append(row.approveButton);
-  }
-  // The pill sits in the actions cell, not the name cell: fillOwnActions
+  if (!stub && a.owner === myId) makeDraggable(tr, a.id);
+  if (!stub && folder && canEdit(a)) makeDropTarget(tr, a.id, moveTo);
+  // The pill sits in the actions cell, not the name cell: fillActions
   // replaces what is in row.actions, and the name cell is the row's name.
   const actionsCell = td(row.actions);
   actionsCell.prepend(row.pendingPill, row.waitingPill);
@@ -291,6 +299,10 @@ function artifactRow(a, mine) {
 
 const reloadArtifacts = () => loadArtifacts({ me }).catch(failIn('artifacts-status'));
 
+// everything is both trees as one list: where an item may go, and what a
+// folder holds, are judged across them.
+const everything = () => [...own, ...shared];
+
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 // renderOwn lays out the folder in view: its breadcrumb, and its items as
@@ -298,19 +310,13 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 function renderOwn() {
   if (viewFolder !== null && !own.some((i) => i.id === viewFolder && i.kind === 'folder')) viewFolder = null;
   renderCrumbs($('crumbs'), own, viewFolder, openFolder, moveTo);
+  renderApply();
   const kids = childrenOf(own, viewFolder);
   if (kids.length === 0) {
     emptyRow($('own'), 6, viewFolder === null ? 'No artifacts yet.' : 'This folder is empty.');
     return;
   }
-  $('own').replaceChildren(...kids.map((i) => {
-    const row = ownRows.get(i.id);
-    if (!row.filled) {
-      fillOwnActions(row);
-      row.filled = true;
-    }
-    return row.tr;
-  }));
+  $('own').replaceChildren(...kids.map((i) => ownRows.get(i.id).tr));
 }
 
 function openFolder(id) {
@@ -319,11 +325,15 @@ function openFolder(id) {
 }
 
 // renderShared lays out the shared folder in view the same way: the items the
-// caller can read inside it, folders first. Its rows are made once per load,
-// with their buttons, and are only put in order here.
+// caller can read inside it, and the stubs of those they cannot read yet,
+// folders first. Its rows are made once per load, with their buttons, and are
+// only put in order here. A folder the caller may edit takes a dropped row, and
+// has a form to create a folder inside it.
 function renderShared() {
   if (sharedFolder !== null && !shared.some((i) => i.id === sharedFolder && i.kind === 'folder')) sharedFolder = null;
-  renderCrumbs($('shared-crumbs'), shared, sharedFolder, openSharedFolder);
+  renderCrumbs($('shared-crumbs'), shared, sharedFolder, openSharedFolder, moveTo, (id) => id !== null && canEdit(shared.find((i) => i.id === id)));
+  $('shared-folder-form').hidden = !(sharedFolder !== null && canEdit(shared.find((i) => i.id === sharedFolder)));
+  renderApply();
   const kids = childrenOf(shared, sharedFolder);
   if (kids.length === 0) {
     emptyRow($('shared'), 6, sharedFolder === null ? 'Nothing is shared with you yet.' : 'This folder is empty.');
@@ -339,8 +349,8 @@ function openSharedFolder(id) {
 
 // renderCrumbs shows Top, then each folder down to the one in view, in the
 // element where. Each segment but the last opens that folder with open, and
-// takes a dropped row when dropTo is given.
-function renderCrumbs(where, items, folder, open, dropTo) {
+// takes a dropped row when dropTo is given and accepts(id) agrees.
+function renderCrumbs(where, items, folder, open, dropTo, accepts = () => true) {
   const segs = breadcrumb(items, folder);
   const nodes = [];
   segs.forEach((s, i) => {
@@ -352,37 +362,42 @@ function renderCrumbs(where, items, folder, open, dropTo) {
       return;
     }
     const b = btn(s.name, '', () => open(s.id));
-    if (dropTo) makeDropTarget(b, s.id, dropTo);
+    if (dropTo && accepts(s.id)) makeDropTarget(b, s.id, dropTo);
     nodes.push(b);
   });
   where.replaceChildren(...nodes);
 }
 
-// fillOwnActions sets the buttons of one own row, once per load: laying the
-// tree out again keeps them, so a Delete armed while names are still being
-// read stays armed. A folder's Delete counts what it removes when clicked.
-function fillOwnActions(row) {
+// fillActions sets the buttons of one row, once per load: laying the tree out
+// again keeps them, so a Delete armed while names are still being read stays
+// armed. rowActions says which the entry item gets: a stub none but Remove from
+// folder. A folder's Delete says what it removes and what it moves when clicked.
+function fillActions(row, item) {
   const { id } = row;
-  const actions = [];
-  if (row.folder) actions.push(btn('Rename', '', () => startRename(row)));
-  actions.push(btn('Share', '', () => openShare(id, row.name)));
-  actions.push(moveButton(row));
-  if (row.folder) {
-    const again = () => {
-      const t = subtree(own, id);
-      return `Delete ${plural(t.folders.length, 'folder', 'folders')} and ${plural(t.artifacts.length, 'artifact', 'artifacts')}?`;
-    };
-    actions.push(confirmButton('Delete', again, () => removeFolder(id)));
-  } else {
-    actions.push(confirmButton('Delete', 'Delete for good?', () => del('/api/artifacts/' + id)
-      .then(() => { status('artifacts-status', 'Artifact deleted.'); return reloadArtifacts(); })
-      .catch(failIn('artifacts-status'))));
-  }
-  row.actions.replaceChildren(...actions);
+  const make = {
+    rename: () => btn('Rename', '', () => startRename(row)),
+    share: () => btn('Share', '', () => openShare(id, row.name)),
+    // An editor approves the people waiting, and changes nothing else. A manager
+    // shares too, and the dialog verifies they are one.
+    approve: () => {
+      row.approveButton = btn('Approve', '', () => openShare(id, row.name, { approveOnly: true }));
+      row.approveButton.hidden = true;
+      return row.approveButton;
+    },
+    move: () => moveButton(row),
+    delete: () => (row.folder
+      ? confirmButton('Delete', () => deleteSummary(subtree(everything(), id)), () => removeFolder(id))
+      : confirmButton('Delete', 'Delete for good?', () => del('/api/artifacts/' + id)
+        .then(() => { status('artifacts-status', 'Artifact deleted.'); return reloadArtifacts(); })
+        .catch(failIn('artifacts-status')))),
+    remove: () => btn('Remove from folder', '', () => removeOthers(id)),
+  };
+  row.actions.replaceChildren(...rowActions(item, everything(), myId).map((name) => make[name]()));
 }
 
 // moveButton is Move to…, which turns into a select of the places the item
-// may go: the top level and each folder that is not the item or inside it.
+// may go: the top level and each folder it may move into, which is not the item
+// or inside it, and is the caller's own or one they may edit.
 function moveButton(row) {
   const b = btn('Move to…', '', () => {
     const select = el('select');
@@ -392,7 +407,7 @@ function moveButton(row) {
     prompt.disabled = true;
     prompt.selected = true;
     select.appendChild(prompt);
-    for (const t of moveTargets(own, row.id)) {
+    for (const t of moveTargets(everything(), row.id)) {
       const o = el('option', '', t.label);
       o.value = t.id ?? 'top';
       select.appendChild(o);
@@ -410,7 +425,7 @@ function moveButton(row) {
 
 async function moveTo(id, target) {
   try {
-    const res = await moveAndPlace(deps, send, own, id, target, (done, total) => status('artifacts-status', `${done} of ${total} items up to date.`));
+    const res = await moveAndPlace(deps, send, everything(), id, target, (done, total) => status('artifacts-status', `${done} of ${total} items up to date.`));
     if (res) {
       status('artifacts-status', 'Moved.' + fanOutNote({ fanOut: res }, describeError), res.failed > 0);
       await reloadArtifacts();
@@ -448,25 +463,41 @@ function startRename(row) {
   input.select();
 }
 
-// removeFolder deletes what is in a folder, then the folder, and shows how far
-// it got. A failure stops it with the rest in place: deleting again finishes.
-async function removeFolder(id) {
+// removeOthers takes someone else's item out of the folder it sits in, as an
+// editor of the folder: the server puts it at its owner's top level.
+async function removeOthers(id) {
   try {
-    await deleteTree((x) => del('/api/artifacts/' + x), own, id, (done, total) => status('artifacts-status', `Deleting… ${done} of ${total}.`));
-    status('artifacts-status', 'Folder deleted.');
+    await removeFromFolder(send, everything(), id, myId);
+    status('artifacts-status', 'Removed from the folder. It is at its owner\'s top level now.');
   } catch (err) {
     failIn('artifacts-status')(err);
   }
   await reloadArtifacts();
 }
 
-$('folder-form').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const name = $('folder-name');
-  const button = $('folder-form').querySelector('button');
+// removeFolder deletes what the folder's owner owns in it, then the folder, and
+// shows how far it got: what other people own moves to their owners' top level
+// when the folder goes. A failure stops it with the rest in place: deleting
+// again finishes.
+async function removeFolder(id) {
+  const moved = subtree(everything(), id).moved.length;
+  try {
+    await deleteTree((x) => del('/api/artifacts/' + x), everything(), id, (done, total) => status('artifacts-status', `Deleting… ${done} of ${total}.`));
+    status('artifacts-status', 'Folder deleted.' + (moved === 0 ? '' : ` ${plural(moved, 'item', 'items')} other people own moved to their owners' top level.`));
+  } catch (err) {
+    failIn('artifacts-status')(err);
+  }
+  await reloadArtifacts();
+}
+
+// newFolder creates the folder named in the field input inside parent, with
+// the button of the form disabled while it runs. Inside a folder someone else
+// owns it is the caller's, and lists the folder's entries and its owner.
+async function newFolder(form, name, parent) {
+  const button = form.querySelector('button');
   button.disabled = true;
   try {
-    await createFolder(deps, { name: name.value, parent: viewFolder });
+    await createFolder(deps, { name: name.value, parent });
     name.value = '';
     status('artifacts-status', 'Folder created.');
     await reloadArtifacts();
@@ -478,6 +509,42 @@ $('folder-form').addEventListener('submit', async (event) => {
       name.value = '';
       await reloadArtifacts();
     }
+  } finally {
+    button.disabled = false;
+  }
+}
+
+$('folder-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  newFolder($('folder-form'), $('folder-name'), viewFolder);
+});
+
+$('shared-folder-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  newFolder($('shared-folder-form'), $('shared-folder-name'), sharedFolder);
+});
+
+// renderApply names the items the caller can apply, and offers Apply when
+// there are any: the folders of those items changed, and only their owners and
+// managers sign the record that brings them in step. Nothing is written until
+// the click.
+function renderApply() {
+  const names = applicable(everything()).map((i) => (ownRows.get(i.id) ?? sharedRows.get(i.id)).name);
+  $('apply-bar').hidden = names.length === 0;
+  $('apply-text').textContent = names.length === 0 ? '' : `${plural(names.length, 'item is', 'items are')} not in step with ${names.length === 1 ? 'its folder' : 'their folders'}: ${names.join(', ')}.`;
+}
+
+$('apply-bar').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = $('apply-button');
+  button.disabled = true;
+  status('artifacts-status', 'Applying…');
+  try {
+    const res = await apply(deps);
+    status('artifacts-status', applyNote(res, describeError), res.fanOut.failed > 0);
+    await reloadArtifacts();
+  } catch (err) {
+    failIn('artifacts-status')(err);
   } finally {
     button.disabled = false;
   }

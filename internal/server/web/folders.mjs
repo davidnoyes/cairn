@@ -5,13 +5,14 @@
 // has its own key, a signed membership chain, and an encrypted name, so
 // creating one mirrors the Go client's CreateArtifact.
 //
-// The tree functions take `items`, the caller's own entries from
-// GET /api/artifacts as {id, kind, parent, name}, with name already read.
-// Nothing here reads a browser global; app.mjs passes in what it needs.
+// The tree functions take `items`, entries of GET /api/artifacts as
+// {id, kind, parent, name, owner, access, inherit}, with name already read (a
+// stub has none, and shows its ID). Nothing here reads a browser global;
+// app.mjs passes in what it needs.
 import * as e2e from './e2e.mjs';
 import { call, openArtifact, signedInCaller } from './viewer.mjs';
 import { writeMeta } from './meta.mjs';
-import { approveListedGroups, fanOut, inheritFirst } from './sharing.mjs';
+import { approveListedGroups, canSign, fanOut, inheritFirst } from './sharing.mjs';
 
 // FolderError is a refusal the page can show as it is. created is true when
 // the folder exists anyway, so the page must not offer to create it again.
@@ -96,6 +97,86 @@ export async function renameFolder(deps, id, name) {
   await writeName(deps, id, cleanName(name));
 }
 
+// ------------------------------------------------------- other people's items
+
+// isStub says whether the list entry a is a stub: an item in a folder the
+// caller reads that they cannot read themselves yet. The server gives it no
+// name, no key and no member list, and its access is none.
+export const isStub = (a) => a.access === 'none';
+
+// canEdit says whether the caller may put items in the folder a, and take
+// other people's out: editor access, or manager or owner.
+export const canEdit = (a) => ['editor', 'manager', 'owner'].includes(a.access);
+
+// stubLabel is what the page says of a stub in place of a name: dir is the
+// directory, {id, email}, and an owner it does not hold shows as the ID.
+export const stubLabel = (a, dir) => `not shared with you yet, owned by ${dir.find((u) => u.id === a.owner)?.email ?? a.owner}`;
+
+// treeItem is the entry of the folder trees for the list entry a.
+const treeItem = (a) => ({ id: a.id, kind: a.kind ?? 'artifact', parent: a.parent ?? null, name: a.id, owner: a.owner, access: a.access, inherit: a.inherit ?? 'ok' });
+
+// splitTrees puts every entry of the list in one of two trees, as tree items:
+// an entry sits in the tree of the folder the server lists it in, when that
+// folder is in the list, so an item someone else owns shows inside the
+// caller's folder, and the caller's own item inside someone else's folder.
+// An entry with no folder in the list is at the top of the caller's own tree
+// when me (the caller's user ID) owns it, and of Shared with you otherwise.
+export function splitTrees(list, me) {
+  const byId = new Map(list.map((a) => [a.id, a]));
+  const ownTree = (a, seen = new Set()) => {
+    const folder = byId.get(a.parent);
+    if (!folder || folder.kind !== 'folder' || seen.has(a.id)) return a.owner === me;
+    return ownTree(folder, seen.add(a.id));
+  };
+  const own = [];
+  const shared = [];
+  for (const a of list) (ownTree(a) ? own : shared).push(treeItem(a));
+  return { own, shared };
+}
+
+// describeList reads the name of each entry of the list with describe(a), in
+// turn, and passes it to each(a, got). A stub is skipped: its name is sealed
+// under a key the caller does not hold yet, so nothing in it can be read.
+export async function describeList(list, describe, each) {
+  for (const a of list) {
+    if (isStub(a)) continue;
+    await each(a, await describe(a));
+  }
+}
+
+// applicable lists the entries the caller can apply: pending items they own
+// or manage, who alone sign the record that brings an item in step.
+export const applicable = (items) => items.filter((a) => a.inherit === 'pending' && canSign(a));
+
+// canRemoveFromFolder says whether the caller (user ID me) may take the item
+// id out of the folder it sits in, as an editor of the folder: it is someone
+// else's, a stub too, and the folder is one the caller may edit. The server
+// moves it to its owner's top level.
+export function canRemoveFromFolder(items, id, me) {
+  const item = items.find((i) => i.id === id);
+  const folder = items.find((i) => i.id === item?.parent && i.kind === 'folder');
+  return Boolean(item && folder && item.owner !== me && canEdit(folder));
+}
+
+// rowActions is the controls a row offers, by name, for the entry a: the
+// owner's own item Share, Move and Delete, and Rename for a folder; Share for a
+// manager and Approve for an editor; and Remove from folder on someone else's
+// item in a folder the caller edits. A stub, whose access is none, has nothing
+// but the last: no Share, Move, Delete, nor Open.
+export function rowActions(a, items, me) {
+  const out = [];
+  if (a.owner === me) {
+    if (a.kind === 'folder') out.push('rename');
+    out.push('share', 'move', 'delete');
+  } else if (a.access === 'manager') {
+    out.push('share');
+  } else if (a.access === 'editor') {
+    out.push('approve');
+  }
+  if (canRemoveFromFolder(items, a.id, me)) out.push('remove');
+  return out;
+}
+
 // ------------------------------------------------------------------ tree
 
 const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -138,15 +219,23 @@ export function canMoveInto(items, id, target) {
   return !pathOf(items, target).some((f) => f.id === id);
 }
 
+// canPlaceIn says whether the caller may put an item in target, a folder ID or
+// null for their own top level: a folder they may edit, whoever owns it.
+export function canPlaceIn(items, target) {
+  if (target === null) return true;
+  const folder = items.find((i) => i.id === target && i.kind === 'folder');
+  return Boolean(folder && canEdit(folder));
+}
+
 // moveTargets is where an item may go: the top level, then every folder it
-// may move into, in tree order, each labelled by its path.
+// may move into, in tree order, each labelled by its path. A folder someone
+// else owns is offered when the caller may edit it.
 export function moveTargets(items, id) {
   const out = [{ id: null, label: 'Top level' }];
   const walk = (folder, prefix) => {
     for (const f of childrenOf(items, folder).filter((i) => i.kind === 'folder')) {
-      if (!canMoveInto(items, id, f.id)) continue;
       const label = prefix + f.name;
-      out.push({ id: f.id, label });
+      if (canMoveInto(items, id, f.id) && canEdit(f)) out.push({ id: f.id, label });
       walk(f.id, label + ' / ');
     }
   };
@@ -154,19 +243,34 @@ export function moveTargets(items, id) {
   return out;
 }
 
-// subtree is everything under folder, and the folder: the artifact IDs, and
-// the folder IDs deepest first, with the folder itself last.
+// subtree is what deleting the folder takes with it: the artifact IDs, and the
+// folder IDs deepest first, with the folder itself last, of the items its owner
+// owns, down to any folder someone else owns; and moved, the IDs of the items
+// someone else owns that sit in a folder being deleted, which the server moves
+// to their owners' top level, a folder with everything inside it.
 export function subtree(items, folder) {
   const artifacts = [];
   const folders = [];
+  const moved = [];
+  const owner = items.find((i) => i.id === folder)?.owner;
   const walk = (f) => {
     for (const c of childrenOf(items, f)) {
-      if (c.kind === 'folder') walk(c.id); else artifacts.push(c.id);
+      if (c.owner !== owner) moved.push(c.id);
+      else if (c.kind === 'folder') walk(c.id); else artifacts.push(c.id);
     }
     folders.push(f);
   };
   walk(folder);
-  return { artifacts, folders };
+  return { artifacts, folders, moved };
+}
+
+// deleteSummary is the question a folder's Delete asks again, from subtree's
+// result: how many of the owner's items go, and how many of other people's move.
+export function deleteSummary(t) {
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const gone = `${plural(t.folders.length, 'folder', 'folders')} and ${plural(t.artifacts.length, 'artifact', 'artifacts')}`;
+  if (t.moved.length === 0) return `Delete ${gone}?`;
+  return `Delete ${gone} of yours, and move ${plural(t.moved.length, 'item', 'items')} other people own to their owners' top level?`;
 }
 
 // ------------------------------------------------------------ move, delete
@@ -178,6 +282,7 @@ export function subtree(items, folder) {
 export async function moveItem(send, items, id, target) {
   const item = items.find((i) => i.id === id);
   if (!canMoveInto(items, id, target)) throw new FolderError('A folder cannot move into itself or into a folder inside it.');
+  if (!canPlaceIn(items, target)) throw new FolderError('You need editor access to that folder to put items in it.');
   if (item && (item.parent ?? null) === target) return false;
   await send('PUT', `/api/artifacts/${id}/parent`, { parent: target });
   return true;
@@ -197,14 +302,29 @@ export async function moveAndPlace(deps, send, items, id, target, progress) {
     // can be finished this way. Anything else that moves nothing does nothing.
     const it = items.find((i) => i.id === id);
     if (!it || (it.parent ?? null) !== target || it.inherit !== 'pending') return null;
+    // The list hides a folder the caller cannot read, so a pending item shown at
+    // the top level may still sit in one. Its owner may always take it out,
+    // which the server does for a move to the top level.
+    if (target === null) await send('PUT', `/api/artifacts/${id}/parent`, { parent: null });
   }
   return fanOut(deps, id, { includeRoot: true, placing: target, progress });
 }
 
-// deleteTree deletes every artifact under folder, then the folders deepest
-// first, then the folder, calling progress(done, total) after each. del(id)
-// deletes one item. An item the server no longer has is skipped, so running
-// it again finishes an interrupted delete. It returns the number of items.
+// removeFromFolder takes the item id, which someone else owns, out of the
+// folder it sits in, as an editor of that folder: the server puts it at the top
+// level of its owner, and nothing is written to its record. send is app.mjs's
+// (method, path, body), me the caller's user ID.
+export async function removeFromFolder(send, items, id, me) {
+  if (!canRemoveFromFolder(items, id, me)) throw new FolderError('You can only remove someone else\'s item from a folder you may edit.');
+  await send('PUT', `/api/artifacts/${id}/parent`, { parent: null });
+}
+
+// deleteTree deletes every item the folder's owner owns under it, artifacts,
+// then the folders deepest first, then the folder, calling progress(done,
+// total) after each. del(id) deletes one item. An item the server no longer
+// has is skipped, so running it again finishes an interrupted delete. What
+// other people own is not deleted: the server moves it to its owner's top level
+// when the folder goes. It returns the number of items.
 export async function deleteTree(del, items, folder, progress) {
   const { artifacts, folders } = subtree(items, folder);
   const all = [...artifacts, ...folders];

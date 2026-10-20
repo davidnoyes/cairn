@@ -227,7 +227,8 @@ test('a manager signs the records of a fan-out, and cannot add a manager through
     spec: { [F]: { members: [{ user: U.manager, role: 'manager' }, { user: U.other, role: 'manager' }] }, [G]: mgr(true), [A1]: mgr(true) },
   });
   const res = await fanOut(t.deps, F);
-  assert.deepEqual(res.items.map((i) => [i.id, i.state, i.error?.code]), [[G, 'failed', 'owner-only'], [A1, 'failed', 'owner-only']], 'A2 is not in the manager\'s list');
+  // A2 is not in the manager's list but as a stub: the owner's to apply.
+  assert.deepEqual(res.items.map((i) => [i.id, i.state, i.error?.code]), [[G, 'failed', 'owner-only'], [A2, 'waits', undefined], [A1, 'failed', 'owner-only']]);
   assert.equal(t.server.records.length, 0);
 });
 
@@ -525,7 +526,7 @@ test('subtreeOrder visits folders before artifacts, each by ID, depth first, and
 });
 
 test('subtreeOrder checks a folder and a pending artifact, not a current one, and does not list what is inside a folder it refuses', async () => {
-  const at = (id, kind, parent, inherit = 'ok') => ({ id, kind, parent, inherit });
+  const at = (id, kind, parent, inherit = 'ok') => ({ id, kind, parent, inherit, access: 'owner' });
   const all = [at('r', 'folder', null), at('bad', 'folder', 'r'), at('in', 'artifact', 'bad'), at('good', 'folder', 'r'), at('in2', 'artifact', 'good'), at('cur', 'artifact', 'r'), at('pend', 'artifact', 'r', 'pending'), at('broken', 'folder', 'r')];
   const asked = [];
   const named = async (a) => {
@@ -811,7 +812,7 @@ test('a foreign folder the server calls current is refused as well', async () =>
 
 // ---- a move places the item ----
 
-const itemsOf = (s) => [...s.server.kids].map(([id, k]) => ({ id, kind: k.kind, parent: k.parent, name: id }));
+const itemsOf = (s) => [...s.server.kids].map(([id, k]) => ({ id, kind: k.kind, parent: k.parent, name: id, owner: s.server.latestOf(id).owner, access: s.server.levelOf(id) }));
 const sender = (s) => async (method, path, body) => {
   const resp = await s.server.fetch(path, { method, body: JSON.stringify(body) });
   if (!resp.ok) throw Object.assign(new Error(`${resp.status}`), { status: resp.status });
@@ -925,16 +926,15 @@ test('the server refuses a manager\'s record that changes the folder, and an ite
   assert.equal(s.server.inheritOf(TOP), 'ok');
 });
 
-test('a manager cannot place an item, by a move or by a fan-out', async () => {
+test('a manager may move an item, and cannot place it: only its owner signs where it is', async () => {
   const mgr = { members: [{ user: U.manager, role: 'manager' }, { user: U.viewer, role: 'viewer' }] };
   const s = await scene({ who: 'manager', spec: { [F]: mgr, [TOP]: { members: [{ user: U.manager, role: 'manager' }] } } });
-  await assert.rejects(moveAndPlace(s.deps, sender(s), itemsOf(s), TOP, F), (e) => e.status === 403);
-  // The owner moved it, and the record still names no folder.
-  s.server.setParent(TOP, F);
-  const res = await fanOut(s.deps, TOP, { includeRoot: true, placing: F });
-  assert.deepEqual(res.items.map((i) => [i.id, i.state, i.error?.code]), [[TOP, 'failed', 'owner-only']]);
+  const res = await moveAndPlace(s.deps, sender(s), itemsOf(s), TOP, F);
+  assert.deepEqual(s.server.moves.map((m) => [m.id, m.target]), [[TOP, F]], 'the server took the move');
+  assert.deepEqual(res.items.map((i) => [i.id, i.state, i.error?.code]), [[TOP, 'failed', 'owner-only']], 'the placement is the owner\'s to sign');
   assert.equal(s.server.records.length, 0);
   assert.equal(latest(s, TOP).folder, undefined);
+  assert.equal(s.server.inheritOf(TOP), 'pending', 'the item shows as pending until its owner places it');
 });
 
 // ---- the note under a folder change ----

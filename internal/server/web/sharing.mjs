@@ -301,8 +301,10 @@ function adminRole(caller, va) {
 
 // checkOwnerOnly refuses a change to a manager's entry, or making someone a
 // manager, when the caller is a manager: only the owner does either.
-function checkOwnerOnly(manager, what) {
-  if (manager) throw new SharingError('owner-only', `Only the artifact's owner can ${what}.`);
+// waitsOnOwner marks the refusal of a pending item's record, which apply
+// reports as waiting on the owner and not as a failure.
+function checkOwnerOnly(manager, what, waitsOnOwner = false) {
+  if (manager) throw Object.assign(new SharingError('owner-only', `Only the artifact's owner can ${what}.`), waitsOnOwner ? { waitsOnOwner } : {});
 }
 
 // adminAction is the start of every member-list change: the caller, the
@@ -1507,7 +1509,12 @@ export async function publicLinkFor(deps, artifactId) {
 // offersFinishSharing says whether the page offers Finish sharing for an
 // artifact view: the item is pending, and the caller owns it or manages it,
 // who alone write its record.
-export const offersFinishSharing = (view) => view.inherit === 'pending' && (view.access === 'owner' || view.access === 'manager');
+export const offersFinishSharing = (view) => view.inherit === 'pending' && canSign(view);
+
+// canSign says whether the caller signs the records of an item: the server gave
+// them the owner's or a manager's access, which is not what a stub, an editor
+// and a viewer have. Mirrors canSign.
+export const canSign = (view) => view.access === 'owner' || view.access === 'manager';
 
 // signedFolderOf is the folder an item sits in, from its latest verified
 // record: the ID its signed folder field names, or '' at the top level. The
@@ -1539,13 +1546,18 @@ const sameEntries = (a, b, key) => a.length === b.length && a.every((e, i) => e[
 // is added, marked with its nearest folder, unless usable(userId) says the
 // user's account is deactivated, not verified or deleted, or live(groupId)
 // says the group was deleted: those are skipped, and kept if the item already
-// lists them. The item's owner is never listed. Returns {members, groups,
+// lists them. The item's owner is never listed. When someone else owns the
+// item, the folder's owner is wanted too, as an editor marked with the folder,
+// under the fingerprint the folder's record gives them (ownerFp): as in Google
+// Drive, the owner of a folder opens what is inside it. They are added or
+// skipped like any user. Returns {members, groups,
 // added, addedGroups, skippedUsers, skippedGroups, epoch}. Mirrors planInherit.
 export function planInherit(item, parent, parentId, usable, live) {
   const plan = { members: [], groups: [], added: [], addedGroups: [], skippedUsers: [], skippedGroups: [], epoch: false };
   const wantMembers = new Map();
   const wantGroups = new Map();
   if (parent) {
+    if (parent.owner && parent.owner !== item.owner) wantMembers.set(parent.owner, { user: parent.owner, role: 'editor', fp: parent.ownerFp, via: parentId });
     for (const m of parent.members) {
       if (m.user !== item.owner) wantMembers.set(m.user, { user: m.user, role: m.role, fp: m.fp, via: nearestVia(m.via, parentId) });
     }
@@ -1602,13 +1614,19 @@ export function planInherit(item, parent, parentId, usable, live) {
 
 // The states of an item after fanOut: current (its record already matched its
 // folder's), updated (a same-epoch record added entries), newEpoch (a
-// next-epoch record removed an entry or lowered a role), and failed.
-export const FAN_OUT_STATES = { current: 'current', updated: 'updated', newEpoch: 'newEpoch', failed: 'failed' };
+// next-epoch record removed an entry or lowered a role), failed, waits (the
+// item is pending and only its owner, or a manager, can sign its record, and
+// the caller is neither: not a failure), and needsMove (apply only: the record
+// names another folder than the server lists the item in, which needs the
+// move the error names; not a failure).
+export const FAN_OUT_STATES = { current: 'current', updated: 'updated', newEpoch: 'newEpoch', failed: 'failed', waits: 'waits', needsMove: 'needsMove' };
 
 // subtreeOrder lists the items the server lists inside the folder root, depth
 // first, each folder before the items inside it, folders before artifacts and
-// each by ID, as {a, refused}. includeRoot puts the root itself first. all is
-// GET /api/artifacts. The server's tree is unsigned, so folderNamed(a), async,
+// each by ID, as {a, refused, waits}. includeRoot puts the root itself first.
+// all is GET /api/artifacts, stubs included. A pending item the caller cannot
+// sign, a stub among them, is listed with waits set and is not read, nor
+// entered: it waits on its owner. The server's tree is unsigned, so folderNamed(a), async,
 // reads the folder an item's latest verified record names. A folder, and an
 // artifact the server lists as pending, is checked: one found in a folder its
 // record does not name, or whose record does not verify, is listed with
@@ -1616,13 +1634,17 @@ export const FAN_OUT_STATES = { current: 'current', updated: 'updated', newEpoch
 // inside it is listed at all. An artifact the server calls current is not
 // read, because nothing is copied into it. Mirrors subtreeOrder.
 export async function subtreeOrder(all, root, includeRoot, folderNamed) {
-  const out = includeRoot ? [{ a: all.find((a) => a.id === root), refused: null }] : [];
+  const out = includeRoot ? [{ a: all.find((a) => a.id === root), refused: null, waits: false }] : [];
   const seen = new Set([root]);
   const folderFirst = (a, b) => ((a.kind === 'folder') === (b.kind === 'folder') ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : (a.kind === 'folder' ? -1 : 1));
   const walk = async (parent, depth) => {
     for (const a of all.filter((x) => inheritsFrom(x, parent) && !seen.has(x.id)).sort(folderFirst)) {
       seen.add(a.id);
-      const entry = { a, refused: null };
+      const entry = { a, refused: null, waits: false };
+      if (a.inherit === 'pending' && !canSign(a)) {
+        out.push({ ...entry, waits: true });
+        continue;
+      }
       if (a.kind === 'folder' || a.inherit === 'pending') {
         try {
           const named = await folderNamed(a);
@@ -1659,14 +1681,17 @@ export async function subtreeOrder(all, root, includeRoot, folderNamed) {
 // item is {id, kind, state, error, excluded, reseal, approved, pending,
 // skippedUsers, skippedGroups}, the last two being the entries the folder
 // lists that the record did not add, because the account is deactivated, not
-// verified or deleted, or the group was deleted. Only a failure that ends the
-// command, as fatalFetch says, is thrown. Mirrors FanOut.
-export async function fanOut(deps, rootId, { includeRoot = false, placing, progress } = {}) {
+// verified or deleted, or the group was deleted. An item that waits on its owner
+// has state waits, with owner (an ID) and ownerEmail, '' when the directory does
+// not hold them. Only a failure that ends the command, as fatalFetch says, is
+// thrown. topWhenOrphaned is apply's: an item the server lists at the top level
+// whose record names a folder is written as naming none. Mirrors FanOut.
+export async function fanOut(deps, rootId, { includeRoot = false, placing, progress, topWhenOrphaned = false } = {}) {
   const caller = await unlock(deps);
   const all = await call(deps, null, 'GET', '/api/artifacts');
   if (!Array.isArray(all)) throw new e2e.FormatError('the artifact list is not a list');
   if (!all.some((a) => a.id === rootId)) throw new SharingError('no-artifact', `No artifact has the ID ${rootId}.`);
-  const run = { deps, caller, dir: await directory(deps), folders: new Map(), verified: new Map() };
+  const run = { deps, caller, dir: await directory(deps), folders: new Map(), verified: new Map(), topWhenOrphaned };
   // The chain the walk verified for an item, which syncItem uses once, before
   // it writes the item.
   const folderNamed = async (a) => {
@@ -1676,11 +1701,13 @@ export async function fanOut(deps, rootId, { includeRoot = false, placing, progr
   };
   const order = await subtreeOrder(all, rootId, includeRoot, folderNamed);
   const res = { items: [], total: order.length, failed: 0 };
-  for (const [i, { a, refused }] of order.entries()) {
+  for (const [i, { a, refused, waits }] of order.entries()) {
     const item = { id: a.id, kind: a.kind ?? 'artifact', state: FAN_OUT_STATES.current, error: null, excluded: [], reseal: null, approved: [], pending: [], skippedUsers: [], skippedGroups: [] };
     try {
-      if (refused) throw refused.error ?? (await placementError(run, a, run.verified.get(a.id), refused.listed, refused.named));
-      await syncItem(run, item, a.id === rootId ? placing : undefined);
+      if (waits) {
+        Object.assign(item, waitingItem(a, run.dir));
+      } else if (refused) throw refused.error ?? (await placementError(run, a, run.verified.get(a.id), refused.listed, refused.named));
+      else await syncItem(run, item, a.id === rootId ? placing : undefined);
     } catch (err) {
       if (fatalFetch(err)) throw Object.assign(err, { result: res });
       Object.assign(item, { state: FAN_OUT_STATES.failed, error: err });
@@ -1690,6 +1717,13 @@ export async function fanOut(deps, rootId, { includeRoot = false, placing, progr
     if (progress) progress(i + 1, order.length);
   }
   return res;
+}
+
+// waitingItem is the part of a fan-out item that says a is pending and waits on
+// its owner: state waits, the owner's ID, and their email when the directory
+// holds them. Mirrors waitingItem.
+function waitingItem(a, dir) {
+  return { state: FAN_OUT_STATES.waits, owner: a.owner, ownerEmail: dir.find((u) => u.id === a.owner)?.email ?? '' };
 }
 
 // folderRecord is the latest verified record of the folder id, as of this run.
@@ -1728,7 +1762,10 @@ async function syncItem(run, item, placing) {
   const va = run.verified.get(item.id) ?? (await verifyArtifact(deps, caller, item.id));
   run.verified.delete(item.id);
   const latest = va.latest;
-  const folderId = placing !== undefined ? placing ?? '' : signedFolderOf(va);
+  let folderId = placing !== undefined ? placing ?? '' : signedFolderOf(va);
+  // Apply: the server moved an item to the top level when its folder was
+  // deleted or an editor removed it, and its owner signs the record to match.
+  if (placing === undefined && run.topWhenOrphaned && (view.parent ?? '') === '') folderId = '';
   // The server's parent must agree with the signed one: otherwise the server
   // is claiming a placement nobody signed, and no key is sealed on its word.
   if ((view.parent ?? '') !== folderId) throw await placementError(run, view, va, view.parent ?? '', folderId);
@@ -1744,11 +1781,11 @@ async function syncItem(run, item, placing) {
   Object.assign(item, { skippedUsers: plan.skippedUsers, skippedGroups: plan.skippedGroups });
   const moved = folderId !== signedFolderOf(va);
   if (!moved && sameEntries(plan.members, latest.members, 'user') && sameEntries(plan.groups, latest.groups ?? [], 'group')) return;
-  if (moved) checkOwnerOnly(adminRole(caller, va) === 'manager', 'place it in a folder');
+  if (moved) checkOwnerOnly(adminRole(caller, va) === 'manager', 'place it in a folder', true);
   const role = adminRole(caller, va);
   const manager = role === 'manager';
   const managersOf = (ms) => JSON.stringify(ms.filter((m) => m.role === 'manager'));
-  if (managersOf(latest.members) !== managersOf(plan.members)) checkOwnerOnly(manager, 'change the managers');
+  if (managersOf(latest.members) !== managersOf(plan.members)) checkOwnerOnly(manager, 'change the managers', true);
   // A user the item lists anew is listed under the keys the directory serves
   // now, which must be the ones the folder lists them under.
   for (const id of plan.added) {
@@ -1795,13 +1832,23 @@ async function syncItem(run, item, placing) {
 // because a group was listed on them. describe turns an error into a line. The
 // advice for an item whose own record does not place it where it is shown, and
 // the advice for any other failure, are both given when both kinds are present.
-// Nothing for an artifact, which has no fanOut in res.
+// An item that waits on its owner, and one that needs a move first, are named
+// with what to do, and are neither up to date nor failures. Nothing for an
+// artifact, which has no fanOut in res.
 export function fanOutNote(res, describe) {
   const f = res.fanOut;
   if (!f) return '';
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-  let note = ` ${f.total - f.failed} of ${f.total} items up to date.`;
-  const failed = f.items.filter((i) => i.error);
+  const failed = f.items.filter((i) => i.error && i.state !== FAN_OUT_STATES.needsMove);
+  const onOwner = f.items.filter((i) => i.state === FAN_OUT_STATES.waits);
+  const moves = f.items.filter((i) => i.state === FAN_OUT_STATES.needsMove);
+  let note = ` ${f.total - failed.length - onOwner.length - moves.length} of ${f.total} items up to date.`;
+  if (onOwner.length > 0) {
+    note += ` ${plural(onOwner.length, 'item waits', 'items wait')} on ${onOwner.length === 1 ? 'its owner, who applies it' : 'their owners, who apply them'}: ${onOwner.map((i) => `${i.id} (${i.ownerEmail || i.owner})`).join('; ')}.`;
+  }
+  if (moves.length > 0) {
+    note += ` ${plural(moves.length, 'item needs', 'items need')} a move first: ${moves.map((i) => `${i.id} (${describe(i.error)})`).join('; ')}.`;
+  }
   if (failed.length > 0) {
     note += ` ${plural(failed.length, 'item', 'items')} could not be brought up to date: ${failed.map((i) => `${i.id} (${describe(i.error)})`).join('; ')}.`;
     if (failed.some((i) => i.error.code === 'placement')) note += ' An item whose own record does not place it where it is shown is placed by its owner moving it into that folder again.';
@@ -1814,6 +1861,132 @@ export function fanOutNote(res, describe) {
   const waits = f.items.flatMap((i) => i.pending);
   if (waits.length > 0) note += ` ${plural(waits.length, 'person', 'people')} still waiting for approval on the items inside.`;
   return note;
+}
+
+// applyNote says what apply did: how many items are up to date, which wait on
+// their owners or need a move, which failed, and whom it approved or left
+// waiting. describe turns an error into a line.
+export function applyNote(res, describe) {
+  const f = res.fanOut;
+  const total = f.items.length + res.waiting.length;
+  let note = total === 0 ? 'Nothing was waiting to be applied.' : fanOutNote({ fanOut: { ...f, total, items: [...f.items, ...res.waiting] } }, describe).trim();
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const who = (u) => u.email ?? u.id;
+  const approved = res.approvals.flatMap((a) => a.approved.map((u) => `${who(u)} on ${a.id}`));
+  if (approved.length > 0) note += ` Approved ${plural(approved.length, 'person', 'people')}: ${approved.join('; ')}.`;
+  const waits = res.approvals.flatMap((a) => a.pending.map((p) => `${who(p.user)} on ${a.id} (${describe(p.error)})`));
+  if (waits.length > 0) note += ` ${plural(waits.length, 'person is', 'people are')} still waiting for approval: ${waits.join('; ')}.`;
+  return note;
+}
+
+// apply signs every pending record the caller can, as cairn apply does. For
+// each item the caller owns or manages whose artifact view says inherit is
+// pending, it adds the entries the folder lists, with wraps of every epoch's
+// key, or starts the next epoch where an entry no longer holds, as fanOut does
+// for a folder it changed; folders come before the items inside them, and an
+// item is also visited when a folder above it was written during the run,
+// because its own folder's record then says more. An item the server lists at
+// the top level whose record names a folder is written as naming none, which
+// only its owner signs: the server moved it there, because the folder was
+// deleted or an editor removed it. Any other mismatch between the record and
+// the server's tree is left as needsMove, because only the owner knows where
+// the item belongs; a manager's record keeps the folder, so an item that needs
+// one waits on its owner. apply then approves the waiting members of every
+// group an item the caller can approve on lists, as sharing with a group does.
+// It never runs unasked: the page calls it on a click. Returns {fanOut:
+// {items, total, failed}, waiting, approvals}: waiting holds the pending items
+// that only someone else can sign, as fanOut items in state waits, and each
+// approval is {id, kind, approved, pending}. An item that fails is in fanOut
+// with its error, so that one item does not hold the rest back; only a failure
+// that ends the command, as fatalFetch says, is thrown, with the result so
+// far. Mirrors Apply.
+export async function apply(deps) {
+  const caller = await unlock(deps);
+  const all = await call(deps, null, 'GET', '/api/artifacts');
+  if (!Array.isArray(all)) throw new e2e.FormatError('the artifact list is not a list');
+  const run = { deps, caller, dir: await directory(deps), folders: new Map(), verified: new Map(), topWhenOrphaned: true };
+  const res = { fanOut: { items: [], total: 0, failed: 0 }, waiting: [], approvals: [] };
+  const newItem = (a) => ({ id: a.id, kind: a.kind ?? 'artifact', state: FAN_OUT_STATES.current, error: null, excluded: [], reseal: null, approved: [], pending: [], skippedUsers: [], skippedGroups: [] });
+  const changed = new Set();
+  for (const a of inDepthOrder(all)) {
+    if (!canSign(a)) {
+      if (a.inherit === 'pending') res.waiting.push({ ...newItem(a), ...waitingItem(a, run.dir) });
+      continue;
+    }
+    if (a.inherit !== 'pending' && !aboveChanged(all, a, changed)) continue;
+    const item = newItem(a);
+    try {
+      await syncItem(run, item, undefined);
+    } catch (err) {
+      if (fatalFetch(err)) { err.result = res; throw err; }
+      if (err.waitsOnOwner) {
+        res.waiting.push({ ...newItem(a), ...waitingItem(a, run.dir) });
+        continue;
+      }
+      Object.assign(item, { state: err.code === 'placement' ? FAN_OUT_STATES.needsMove : FAN_OUT_STATES.failed, error: err });
+      if (err.code !== 'placement') res.fanOut.failed++;
+    }
+    if (item.state === FAN_OUT_STATES.updated || item.state === FAN_OUT_STATES.newEpoch) changed.add(a.id);
+    res.fanOut.items.push(item);
+  }
+  res.fanOut.total = res.fanOut.items.length;
+  for (const a of all.filter((x) => ['owner', 'manager', 'editor'].includes(x.access))) {
+    const approval = await approveListed(deps, caller, a).catch((err) => { throw Object.assign(err, { result: res }); });
+    if (approval) res.approvals.push(approval);
+  }
+  return res;
+}
+
+// inDepthOrder is all with each folder before the items inside it, as the
+// server lists the tree, and otherwise by ID. A loop in the parents ends the
+// walk up.
+function inDepthOrder(all) {
+  const byId = new Map(all.map((a) => [a.id, a]));
+  const depth = (a) => {
+    let n = 0;
+    for (let at = a; at?.parent && n < 4 * all.length; at = byId.get(at.parent)) n++;
+    return n;
+  };
+  return all.map((a) => ({ a, d: depth(a) })).sort((x, y) => x.d - y.d || (x.a.id < y.a.id ? -1 : x.a.id > y.a.id ? 1 : 0)).map((x) => x.a);
+}
+
+// aboveChanged says whether a folder above a, as the server lists the tree,
+// was written during this run.
+function aboveChanged(all, a, changed) {
+  const byId = new Map(all.map((x) => [x.id, x]));
+  let n = 0;
+  for (let at = byId.get(a.parent); at && n < all.length; at = byId.get(at.parent), n++) {
+    if (changed.has(at.id)) return true;
+  }
+  return false;
+}
+
+// approveListed approves the waiting members of each group a's latest record
+// lists, for an item the caller can approve on, as the server's access level
+// says: an approval a check refuses is left waiting, with the reason. It
+// returns null when nothing was approved and nothing is left waiting. An item
+// whose chain does not verify, or a group that does not, is skipped: whoever
+// can fix them runs what says why. Mirrors applyApprovals.
+async function approveListed(deps, caller, a) {
+  let va;
+  try {
+    va = await verifyArtifact(deps, caller, a.id);
+  } catch (err) {
+    if (fatalFetch(err)) throw err;
+    return null;
+  }
+  const res = { approved: [], pending: [] };
+  for (const g of va.latest.groups ?? []) {
+    let vg;
+    try {
+      vg = await verifyGroup(deps, g.group);
+    } catch (err) {
+      if (fatalFetch(err)) throw err;
+      continue;
+    }
+    await approveGroupMembers(deps, a.id, vg.chain, res);
+  }
+  return res.approved.length === 0 && res.pending.length === 0 ? null : { id: a.id, kind: a.kind ?? 'artifact', approved: res.approved, pending: res.pending };
 }
 
 // approveListedGroups approves the waiting members of each group in ids, which

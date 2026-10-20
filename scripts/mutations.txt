@@ -2512,7 +2512,7 @@ internal/server/web/sharing.mjs	m.role === 'manager' && m.fp === caller.fp)) ret
 internal/server/web/sharing.mjs	if (role === 'manager') checkOwnerOnly(manager, 'make someone a manager');	if (false) checkOwnerOnly(manager, 'make someone a manager');	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (i >= 0 && list[i].role === 'manager') checkOwnerOnly(manager	if (false) checkOwnerOnly(manager	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	m.role === 'manager')) checkOwnerOnly(manager, 'remove a manager');	false)) checkOwnerOnly(manager, 'remove a manager');	node --test internal/server/web/sharing_test.mjs
-internal/server/web/sharing.mjs	if (manager) throw new SharingError('owner-only'	if (false) throw new SharingError('owner-only'	node --test internal/server/web/sharing_test.mjs
+internal/server/web/sharing.mjs	if (manager) throw Object.assign(new SharingError('owner-only'	if (false) throw Object.assign(new SharingError('owner-only'	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	wraps.push(await wrapTo(owner, artifact, epoch, ak));	void owner;	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (r.manager) {	if (false) {	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (ROLE_RANK.get(role) > 0 && u.role === 'viewer'	if (role === 'editor' && u.role === 'viewer'	node --test internal/server/web/sharing_test.mjs
@@ -3436,8 +3436,8 @@ internal/server/web/sharing.mjs	if (got.named) out.set(id, got.name);	if (false)
 internal/server/web/sharing.mjs	{ ...g, via: latest.groups[i].via, viaName: viaNames.get(latest.groups[i].via) }	{ ...g, via: latest.groups[i].via }	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	if (m.via || m.role === 'owner'	if (m.role === 'owner'	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	export const offersFinishSharing = (view) => view.inherit === 'pending' &&	export const offersFinishSharing = (view) => view.inherit !== 'pending' &&	node --test internal/server/web/sharing_folders_test.mjs
-internal/server/web/sharing.mjs	(view.access === 'owner' || view.access === 'manager');	(view.access === 'owner' || view.access === 'manager' || view.access === 'editor');	node --test internal/server/web/sharing_folders_test.mjs
-internal/server/web/sharing.mjs	(view.access === 'owner' || view.access === 'manager');	(view.access === 'owner');	node --test internal/server/web/sharing_folders_test.mjs
+internal/server/web/sharing.mjs	export const canSign = (view) => view.access === 'owner' || view.access === 'manager';	export const canSign = (view) => view.access === 'owner' || view.access === 'manager' || view.access === 'editor';	node --test internal/server/web/sharing_folders_test.mjs
+internal/server/web/sharing.mjs	export const canSign = (view) => view.access === 'owner' || view.access === 'manager';	export const canSign = (view) => view.access === 'owner';	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	return { caller, va, manager, folder: kind === 'folder' };	return { caller, va, manager, folder: false };	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	if (folder) throw new SharingError('folder-private'	if (false) throw new SharingError('folder-private'	node --test internal/server/web/sharing_test.mjs
 internal/server/web/sharing.mjs	if (team !== 'none') folderOnlyUsersAndGroups(folder, 'a team share');	if (false) folderOnlyUsersAndGroups(folder, 'a team share');	node --test internal/server/web/sharing_test.mjs
@@ -3472,7 +3472,7 @@ internal/server/web/sharing.mjs	if (fatalFetch(err)) throw Object.assign(err, { 
 internal/server/web/sharing.mjs	res.failed++;	res.failed += 0;	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	if (progress) progress(i + 1, order.length);	if (progress) progress(i, order.length);	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	if (!run.folders.has(id)) {	if (true) {	node --test internal/server/web/sharing_folders_test.mjs
-internal/server/web/sharing.mjs	if (managersOf(latest.members) !== managersOf(plan.members)) checkOwnerOnly(manager, 'change the managers');	if (managersOf(latest.members) === managersOf(plan.members)) checkOwnerOnly(manager, 'change the managers');	node --test internal/server/web/sharing_folders_test.mjs
+internal/server/web/sharing.mjs	if (managersOf(latest.members) !== managersOf(plan.members)) checkOwnerOnly(manager, 'change the managers', true);	if (managersOf(latest.members) === managersOf(plan.members)) checkOwnerOnly(manager, 'change the managers', true);	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	  if (plan.epoch) {	  if (!plan.epoch) {	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	if (manager && dropped.length > 0) checkOwnerOnly(manager, 'list again someone removed from the artifact');	if (false) checkOwnerOnly(manager, 'list again someone removed from the artifact');	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	[PENDING_APPROVED, PENDING_LEFT, PENDING_ROTATED].includes(p.state))) continue;	[PENDING_APPROVED, PENDING_LEFT, PENDING_ROTATED].includes(p.state))) void 0;	node --test internal/server/web/sharing_folders_test.mjs
@@ -3488,7 +3488,7 @@ internal/server/web/folders.mjs	const req = { id, kind: 'folder', membership, wr
 internal/server/web/folders.mjs	await approveListedGroups(deps, id, (first.groups ?? []).map((g) => g.group));	void 0;	node --test internal/server/web/sharing_folders_test.mjs
 # signed placement: the fan-out trusts the record, a move writes it
 internal/server/web/sharing.mjs	const signedFolderOf = (va) => va.latest.folder ?? '';	const signedFolderOf = (va) => '';	node --test internal/server/web/sharing_folders_test.mjs
-internal/server/web/sharing.mjs	if (moved) checkOwnerOnly(adminRole(caller, va) === 'manager', 'place it in a folder');	void 0;	node --test internal/server/web/sharing_folders_test.mjs
+internal/server/web/sharing.mjs	if (moved) checkOwnerOnly(adminRole(caller, va) === 'manager', 'place it in a folder', true);	void 0;	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	const moved = folderId !== signedFolderOf(va);	const moved = false;	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	if (!moved && sameEntries(	if (sameEntries(	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	groups: plan.groups, folder: folderId };	groups: plan.groups };	node --test internal/server/web/sharing_folders_test.mjs
@@ -3502,12 +3502,12 @@ internal/server/web/folder_fixture.mjs	if ((latestOf(id).folder ?? '') !== (pare
 internal/server/web/folder_fixture.mjs	if ((signed.folder ?? '') !== (body.parent ?? '')) return jsonResponse(409	if (false) return jsonResponse(409	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/folder_fixture.mjs	if ((signed.folder ?? '') !== (kid.parent ?? '')) refused =	if (false) refused =	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/folder_fixture.mjs	if (!refused && signed.signer && (signed.folder ?? '') !== (latest.folder ?? '')) refused =	if (false) refused =	node --test internal/server/web/sharing_folders_test.mjs
-internal/server/web/folder_fixture.mjs	if (router.who.id !== latestOf(m[1]).owner) return jsonResponse(403	if (false) return jsonResponse(403	node --test internal/server/web/sharing_folders_test.mjs
+internal/server/web/folder_fixture.mjs	if (!manages && (entering || !leaving)) return	if (false && (entering || !leaving)) return	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/folders.mjs	    if (!it || (it.parent ?? null) !== target || it.inherit !== 'pending') return null;	    if (!it || (it.parent ?? null) !== target) return null;	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/folders.mjs	    if (!it || (it.parent ?? null) !== target || it.inherit !== 'pending') return null;	    return null;	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	if (!entry.refused && a.kind === 'folder' && depth < FOLDER_DEPTH) await walk(a.id, depth + 1);	if (!entry.refused && a.kind === 'folder') await walk(a.id, depth + 1);	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	if (!entry.refused && a.kind === 'folder' && depth < FOLDER_DEPTH) await walk(a.id, depth + 1);	if (a.kind === 'folder' && depth < FOLDER_DEPTH) await walk(a.id, depth + 1);	node --test internal/server/web/sharing_folders_test.mjs
-internal/server/web/sharing.mjs	const out = includeRoot ? [{ a: all.find((a) => a.id === root), refused: null }] : [];	const out = [];	node --test internal/server/web/sharing_folders_test.mjs
+internal/server/web/sharing.mjs	const out = includeRoot ? [{ a: all.find((a) => a.id === root), refused: null, waits: false }] : [];	const out = [];	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	if (view.inherit !== 'pending') return;	if (false) return;	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	kept = (await liveGroups(deps, parent.groups ?? [])).kept;	kept = parent.groups ?? [];	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	const plan = planInherit(latest, parent, folderId, (id) => byId.has(id), (g) => kept.some((k) => k.group === g));	const plan = planInherit(latest, parent, folderId, (id) => true, (g) => kept.some((k) => k.group === g));	node --test internal/server/web/sharing_folders_test.mjs
@@ -3526,7 +3526,7 @@ internal/server/web/sharing.mjs	plan.skippedGroups.push(w.group);	void w;	node -
 internal/server/web/sharing.mjs	plan.skippedUsers.sort();	void 0;	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	plan.skippedGroups.sort();	void 0;	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	if ((view.parent ?? '') !== folderId) throw await placementError(	if (false) throw await placementError(	node --test internal/server/web/sharing_folders_test.mjs
-internal/server/web/sharing.mjs	const folderId = placing !== undefined ? placing ?? '' : signedFolderOf(va);	const folderId = placing !== undefined ? placing ?? '' : (view.parent ?? '');	node --test internal/server/web/sharing_folders_test.mjs
+internal/server/web/sharing.mjs	let folderId = placing !== undefined ? placing ?? '' : signedFolderOf(va);	let folderId = placing !== undefined ? placing ?? '' : (view.parent ?? '');	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	if (named !== parent) entry.refused = { listed: parent, named, error: null };	if (false) entry.refused = { listed: parent, named, error: null };	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	entry.refused = { listed: parent, named: null, error };	entry.refused = null;	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	|| a.inherit === 'pending') {	|| true) {	node --test internal/server/web/sharing_folders_test.mjs
@@ -3548,7 +3548,7 @@ internal/server/web/sharing.mjs	if (users.length > 0) note +=	if (false) note +=
 internal/server/web/sharing.mjs	if (groups.length > 0) note +=	if (false) note +=	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	[...new Set(f.items.flatMap((i) => i.skippedUsers))]	f.items.flatMap((i) => i.skippedUsers)	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	[...new Set(f.items.flatMap((i) => i.skippedGroups))]	f.items.flatMap((i) => i.skippedGroups)	node --test internal/server/web/sharing_folders_test.mjs
-internal/server/web/sharing.mjs	` ${f.total - f.failed} of ${f.total} items up to date.`	` ${f.total} of ${f.total} items up to date.`	node --test internal/server/web/sharing_folders_test.mjs
+internal/server/web/sharing.mjs	` ${f.total - failed.length - onOwner.length - moves.length} of ${f.total} items up to date.`	` ${f.total} of ${f.total} items up to date.`	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/sharing.mjs	const res = { items: [], total: order.length, failed: 0 };	const res = { items: [], total: all.length, failed: 0 };	node --test internal/server/web/sharing_folders_test.mjs
 internal/server/web/folder_fixture.mjs	if (p.user === body.owner || !primary.directory.has(p.user)) continue;	if (p.user === body.owner) continue;	node --test internal/server/web/sharing_folders_test.mjs
 internal/client/folder_share.go	if listed != "" {	if false {	go test ./internal/client -count=1 -run 'Hostile|CreateAndMove|MovedByAnother|MovedDuring|TwoManagers|MiddleFolder|Disabled|DeletedGroup|TestPlanInherit|TestFanOut|TestMovingAnItemInto|TestAManagerCannotPlace|TestAcceptingTakes|TestAFolderEntry|TestAnItemCreated|PlacementError'
@@ -3638,3 +3638,77 @@ internal/client/folder_share.go	if parent.Owner != item.Owner {	if false {	go te
 internal/client/folder_share.go	Role: "editor", FP: parent.OwnerFP, Via: parentID	Role: "viewer", FP: parent.OwnerFP, Via: parentID	go test ./internal/client -count=1 -run 'TestPlanInherit|TestTheFoldersOwner|TestAFolderInsideAFolderListsBoth'
 internal/client/folder_share.go	FP: parent.OwnerFP, Via: parentID}	FP: "", Via: parentID}	go test ./internal/client -count=1 -run 'TestPlanInherit|TestTheFoldersOwner|TestAFolderInsideAFolderListsBoth'
 internal/client/folder_share.go	FP: parent.OwnerFP, Via: parentID}	FP: parent.OwnerFP}	go test ./internal/client -count=1 -run 'TestPlanInherit|TestTheFoldersOwner|TestAFolderInsideAFolderListsBoth'
+internal/server/web/sharing.mjs	if (parent.owner && parent.owner !== item.owner) wantMembers.set(	if (false) wantMembers.set(	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	parent.owner && parent.owner !== item.owner	parent.owner && parent.owner === item.owner	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	role: 'editor', fp: parent.ownerFp, via: parentId }	role: 'viewer', fp: parent.ownerFp, via: parentId }	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	fp: parent.ownerFp, via: parentId }	fp: '', via: parentId }	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	fp: parent.ownerFp, via: parentId }	fp: parent.ownerFp, via: '' }	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	export const canSign = (view) => view.access === 'owner' || view.access === 'manager';	export const canSign = (view) => view.access === 'owner';	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	export const canSign = (view) => view.access === 'owner' || view.access === 'manager';	export const canSign = (view) => view.access === 'owner' || view.access === 'editor';	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	      if (a.inherit === 'pending' && !canSign(a)) {	      if (false) {	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	      if (waits) {	      if (false) {	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	?.email ?? '' };	?.email ?? 'x' };	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	      if (a.inherit === 'pending') res.waiting.push({ ...newItem(a), ...waitingItem(a, run.dir) });	      if (false) res.waiting.push({ ...newItem(a), ...waitingItem(a, run.dir) });	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	if (err.waitsOnOwner) {	if (false) {	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	'place it in a folder', true)	'place it in a folder', false)	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	'change the managers', true)	'change the managers', false)	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	waitsOnOwner ? { waitsOnOwner } : {}	{}	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	if (placing === undefined && run.topWhenOrphaned && (view.parent ?? '') === '') folderId = '';	if (placing === undefined && run.topWhenOrphaned) folderId = '';	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	progress, topWhenOrphaned = false } = {}) {	progress, topWhenOrphaned = true } = {}) {	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	if (a.inherit !== 'pending' && !aboveChanged(all, a, changed)) continue;	if (a.inherit !== 'pending') continue;	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	if (a.inherit !== 'pending' && !aboveChanged(all, a, changed)) continue;	if (false) continue;	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	if (item.state === FAN_OUT_STATES.updated || item.state === FAN_OUT_STATES.newEpoch) changed.add(a.id);	if (item.state === FAN_OUT_STATES.updated) changed.add(a.id);	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	if (item.state === FAN_OUT_STATES.updated || item.state === FAN_OUT_STATES.newEpoch) changed.add(a.id);	if (item.state === FAN_OUT_STATES.newEpoch) changed.add(a.id);	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	state: err.code === 'placement' ? FAN_OUT_STATES.needsMove : FAN_OUT_STATES.failed	state: FAN_OUT_STATES.failed	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	if (err.code !== 'placement') res.fanOut.failed++;	res.fanOut.failed++;	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	res.fanOut.total = res.fanOut.items.length;	res.fanOut.total = 0;	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	x.d - y.d || (	(	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	if (changed.has(at.id)) return true;	if (false) return true;	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	['owner', 'manager', 'editor'].includes(x.access)	['owner', 'manager'].includes(x.access)	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	return res.approved.length === 0 && res.pending.length === 0 ? null :	return false ? null :	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	i.error && i.state !== FAN_OUT_STATES.needsMove	i.error	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	f.total - failed.length - onOwner.length - moves.length}	f.total - failed.length - onOwner.length}	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	f.total - failed.length - onOwner.length - moves.length}	f.total - failed.length - moves.length}	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	'Nothing was waiting to be applied.'	'Nothing.'	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	if (approved.length > 0) note +=	if (false) note +=	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	if (waits.length > 0) note += ` ${plural(waits.length, 'person is'	if (false) note += ` ${plural(waits.length, 'person is'	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	if (moves.length > 0) {	if (false) {	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	if (onOwner.length > 0) {	if (false) {	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folders.mjs	export const isStub = (a) => a.access === 'none';	export const isStub = (a) => a.access === 'nope';	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	['editor', 'manager', 'owner'].includes(a.access)	['manager', 'owner'].includes(a.access)	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	['editor', 'manager', 'owner'].includes(a.access)	['editor', 'owner'].includes(a.access)	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	?? a.owner}`;	?? ''}`;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (!folder || folder.kind !== 'folder' || seen.has(a.id)) return a.owner === me;	if (!folder || seen.has(a.id)) return a.owner === me;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (!folder || folder.kind !== 'folder' || seen.has(a.id)) return a.owner === me;	if (!folder || folder.kind !== 'folder') return a.owner === me;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	|| seen.has(a.id)) return a.owner === me;	|| seen.has(a.id)) return true;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	    if (isStub(a)) continue;	    if (false) continue;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	a.inherit === 'pending' && canSign(a)	a.inherit === 'pending'	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	Boolean(item && folder && item.owner !== me && canEdit(folder))	Boolean(item && folder && canEdit(folder))	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	Boolean(item && folder && item.owner !== me && canEdit(folder))	Boolean(item && folder && item.owner !== me)	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	i.id === item?.parent && i.kind === 'folder'	i.id === item?.parent	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (a.kind === 'folder') out.push('rename');	if (false) out.push('rename');	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	out.push('share', 'move', 'delete');	out.push('share', 'move');	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	} else if (a.access === 'manager') {	} else if (a.access === 'viewer') {	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	} else if (a.access === 'editor') {	} else if (a.access === 'viewer') {	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (canRemoveFromFolder(items, a.id, me)) out.push('remove');	if (false) out.push('remove');	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	  if (target === null) return true;	  if (target === null) return false;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	return Boolean(folder && canEdit(folder));	return Boolean(folder);	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (canMoveInto(items, id, f.id) && canEdit(f)) out.push	if (canMoveInto(items, id, f.id)) out.push	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (canMoveInto(items, id, f.id) && canEdit(f)) out.push	if (canEdit(f)) out.push	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (!canPlaceIn(items, target)) throw	if (false) throw	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (c.owner !== owner) moved.push(c.id);	if (false) moved.push(c.id);	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (t.moved.length === 0) return	if (true) return	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (!canRemoveFromFolder(items, id, me)) throw	if (false) throw	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (target === null) await send('PUT'	if (false) await send('PUT'	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	if (fatalFetch(err)) { err.result = res; throw err; }	if (false) { err.result = res; throw err; }	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	.catch((err) => { throw Object.assign(err, { result: res }); })	.catch((err) => { throw err; })	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folder_fixture.mjs	if (leaving && level !== 'owner' && rank(levelOf(kid.parent)) < rank('editor')) return	if (false) return	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folder_fixture.mjs	if (rank(levelOf(target)) < rank('editor')) return jsonResponse(403, { error: 'you need editor access to the folder' });	if (false) return jsonResponse(403, { error: 'you need editor access to the folder' });	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folder_fixture.mjs	kid.kind === 'folder' && inside.some((k) => latestOf(k).owner === owner)	false	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folder_fixture.mjs	for (const k of inside) kids.get(k).parent = null;	void 0;	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folder_fixture.mjs	if (levelOf(id) === '' && parent && kids.has(parent) && levelOf(parent) !== '') out.push(stubOf(id));	if (false) out.push(stubOf(id));	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folder_fixture.mjs	const ownerMissing = folder.owner !== latest.owner &&	const ownerMissing = false &&	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folder_fixture.mjs	if (folder.owner !== body.owner && primary.directory.has(folder.owner)) {	if (false) {	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folder_fixture.mjs	?? (latestOf(via).owner === user ? { user, role: 'editor' } : undefined);	?? undefined;	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folder_fixture.mjs	if (levelOf(id) !== 'owner') return jsonResponse(levelOf(id) === '' ? 404 : 403, { error: 'only the owner deletes' });	if (false) return jsonResponse(403, { error: 'only the owner deletes' });	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folder_fixture.mjs	if (!kids.has(body.parent) || levelOf(body.parent) === '') return jsonResponse(404, { error: 'folder not found' });	if (false) return jsonResponse(404, { error: 'folder not found' });	node --test internal/server/web/sharing_others_test.mjs

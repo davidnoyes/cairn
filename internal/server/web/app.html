@@ -44,6 +44,10 @@
     <section id="artifacts" role="tabpanel" aria-labelledby="tab-artifacts" class="active">
       <h2>Your artifacts</h2>
       <p class="hint" id="create-hint">Create one with <span class="mono">cairn push DIR --create</span>.</p>
+      <form class="bar" id="apply-bar" method="dialog" hidden>
+        <span id="apply-text"></span>
+        <button class="btn primary" type="submit" id="apply-button">Apply</button>
+      </form>
       <nav class="crumbs" id="crumbs" aria-label="Folder in view"></nav>
       <form class="bar" id="folder-form" method="dialog">
         <input id="folder-name" placeholder="folder name" aria-label="New folder name" autocomplete="off">
@@ -57,6 +61,10 @@
       </div>
       <h2 class="next">Shared with you</h2>
       <nav class="crumbs" id="shared-crumbs" aria-label="Shared folder in view"></nav>
+      <form class="bar" id="shared-folder-form" method="dialog" hidden>
+        <input id="shared-folder-name" placeholder="folder name" aria-label="New folder name in the shared folder" autocomplete="off">
+        <button class="btn primary" type="submit">New folder here</button>
+      </form>
       <div class="list">
         <table>
           <thead><tr><th>name</th><th>description</th><th>access</th><th>visibility</th><th>updated</th><th></th></tr></thead>

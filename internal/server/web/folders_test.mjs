@@ -9,8 +9,8 @@ import { ORIGIN, fakeKeyStore, fakeStorage, keyStoreRecord, makeUser } from './v
 import { openArtifact } from './viewer.mjs';
 import { readMeta } from './meta.mjs';
 import {
-  FolderError, breadcrumb, canMoveInto, childrenOf, createFolder, deleteTree, makeDraggable, makeDropTarget, moveItem, moveTargets,
-  renameFolder, subtree,
+  FolderError, applicable, breadcrumb, canEdit, canMoveInto, canPlaceIn, canRemoveFromFolder, childrenOf, createFolder, deleteSummary, deleteTree,
+  describeList, isStub, makeDraggable, makeDropTarget, moveItem, moveTargets, removeFromFolder, renameFolder, rowActions, splitTrees, stubLabel, subtree,
 } from './folders.mjs';
 
 const owner = await makeUser('owner');
@@ -154,7 +154,10 @@ test('renameFolder writes the name field of the folder', async () => {
 // ---- the tree ----
 
 // A is a folder with B inside it and artifact x; C is a folder at the top.
-const items = [
+// They are the caller's own, owned by ME.
+const ME = 'me';
+const mine = (list) => list.map((i) => ({ owner: ME, access: 'owner', inherit: 'ok', ...i }));
+const items = mine([
   { id: 'x', kind: 'artifact', parent: 'A', name: 'x file' },
   { id: 'z', kind: 'artifact', parent: null, name: 'Zebra' },
   { id: 'a2', kind: 'artifact', parent: null, name: 'apple' },
@@ -162,7 +165,7 @@ const items = [
   { id: 'A', kind: 'folder', parent: null, name: 'Work' },
   { id: 'C', kind: 'folder', parent: null, name: 'archive' },
   { id: 'D', kind: 'folder', parent: 'B', name: 'Deep' },
-];
+]);
 const ids = (list) => list.map((i) => i.id);
 
 test('childrenOf lists folders first, then artifacts, each sorted by name without regard to case', () => {
@@ -241,7 +244,8 @@ test('subtree lists the artifacts and the folders, deepest first, the folder its
   const t = subtree(items, 'A');
   assert.deepEqual(t.artifacts, ['x']);
   assert.deepEqual(t.folders, ['D', 'B', 'A']);
-  assert.deepEqual(subtree(items, 'C'), { artifacts: [], folders: ['C'] });
+  assert.deepEqual(t.moved, []);
+  assert.deepEqual(subtree(items, 'C'), { artifacts: [], folders: ['C'], moved: [] });
 });
 
 // ---- move ----
@@ -387,4 +391,194 @@ test('moving onto a child of a drop target keeps its highlight, and leaving it c
   fire(target, 'dragover', fakeTransfer({ 'application/x-cairn-item': 'x' }));
   fire(target, 'dragleave', fakeTransfer(), { relatedTarget: null });
   assert.equal(target.classList.has('drop'), false);
+});
+
+// ---- other people's items ----
+
+const them = (list) => list.map((i) => ({ owner: 'them', inherit: 'ok', access: 'viewer', ...i }));
+const stub = (id, parent, owner = 'them') => ({ id, kind: 'artifact', parent, owner, access: 'none', inherit: 'pending' });
+
+test('a stub is an item with access none, and says who owns it from the directory, or by ID when the directory lacks them', () => {
+  assert.equal(isStub({ access: 'none' }), true);
+  for (const access of ['viewer', 'editor', 'manager', 'owner']) assert.equal(isStub({ access }), false, access);
+  const dir = [{ id: 'u1', email: 'ann@example.com' }, { id: 'u2', email: 'bob@example.com' }];
+  assert.equal(stubLabel({ owner: 'u2' }, dir), 'not shared with you yet, owned by bob@example.com');
+  assert.equal(stubLabel({ owner: 'u9' }, dir), 'not shared with you yet, owned by u9');
+});
+
+test('only an editor, a manager or the owner of a folder may put items in it', () => {
+  for (const [access, may] of [['viewer', false], ['none', false], ['editor', true], ['manager', true], ['owner', true]]) assert.equal(canEdit({ access }), may, access);
+});
+
+test('splitTrees puts an item in the tree of its folder, and a top-level item by its owner', () => {
+  const list = [
+    { id: 'F', kind: 'folder', parent: null, owner: 'me', access: 'owner' },
+    { id: 'theirs', kind: 'artifact', parent: 'F', owner: 'them', access: 'viewer' },
+    { id: 'S', kind: 'folder', parent: null, owner: 'them', access: 'editor' },
+    { id: 'mineInS', kind: 'artifact', parent: 'S', owner: 'me', access: 'owner' },
+    { id: 'top', kind: 'artifact', parent: null, owner: 'me', access: 'owner' },
+    { id: 'hidden', kind: 'artifact', parent: null, owner: 'them', access: 'viewer' },
+    stub('pendingInF', 'F'),
+    stub('pendingInS', 'S'),
+  ];
+  const { own, shared } = splitTrees(list, 'me');
+  assert.deepEqual(own.map((i) => i.id), ['F', 'theirs', 'top', 'pendingInF']);
+  assert.deepEqual(shared.map((i) => i.id), ['S', 'mineInS', 'hidden', 'pendingInS']);
+  assert.deepEqual(own.find((i) => i.id === 'pendingInF'), { id: 'pendingInF', kind: 'artifact', parent: 'F', name: 'pendingInF', owner: 'them', access: 'none', inherit: 'pending' });
+  assert.deepEqual(ids(childrenOf(own, 'F')), ['pendingInF', 'theirs'], 'a stub sorts by its ID, inside the folder');
+  assert.deepEqual(ids(childrenOf(shared, 'S')), ['mineInS', 'pendingInS']);
+});
+
+test('splitTrees treats a parent that is not a folder, or a loop, as no folder', () => {
+  const list = [
+    { id: 'a', kind: 'artifact', parent: null, owner: 'them', access: 'viewer' },
+    { id: 'b', kind: 'artifact', parent: 'a', owner: 'me', access: 'owner' },
+    { id: 'l1', kind: 'folder', parent: 'l2', owner: 'me', access: 'owner' },
+    { id: 'l2', kind: 'folder', parent: 'l1', owner: 'me', access: 'owner' },
+  ];
+  const { own, shared } = splitTrees(list, 'me');
+  assert.deepEqual(own.map((i) => i.id), ['b', 'l1', 'l2']);
+  assert.deepEqual(shared.map((i) => i.id), ['a']);
+});
+
+test('describeList reads every entry but a stub, in order, and never asks about a stub', async () => {
+  const list = [{ id: 'a', access: 'owner' }, stub('s', 'F'), { id: 'b', access: 'viewer' }, stub('t', 'F')];
+  const asked = [];
+  const got = [];
+  await describeList(list, async (a) => { asked.push(a.id); return `name of ${a.id}`; }, async (a, name) => { got.push([a.id, name]); });
+  assert.deepEqual(asked, ['a', 'b']);
+  assert.deepEqual(got, [['a', 'name of a'], ['b', 'name of b']]);
+});
+
+test('applicable lists the pending items the caller owns or manages, and no stub, editor item or current one', () => {
+  const at = (id, access, inherit = 'pending') => ({ id, access, inherit });
+  const list = [at('o', 'owner'), at('m', 'manager'), at('e', 'editor'), at('v', 'viewer'), at('s', 'none'), at('ok', 'owner', 'ok')];
+  assert.deepEqual(applicable(list).map((i) => i.id), ['o', 'm']);
+});
+
+// F is a folder the caller owns; theirs is another person's item in it, a stub
+// is another's pending item, mine is the caller's own; S is a folder someone
+// else owns, in which the caller has the access the test sets.
+const folderTree = (access) => [
+  ...mine([{ id: 'F', kind: 'folder', parent: null, name: 'Mine' }, { id: 'mine', kind: 'artifact', parent: 'F', name: 'mine' }]),
+  ...them([{ id: 'theirs', kind: 'artifact', parent: 'F', name: 'theirs' }, { id: 'S', kind: 'folder', parent: null, name: 'Theirs', access }, { id: 'inS', kind: 'artifact', parent: 'S', name: 'inS' }]),
+  { ...stub('pending', 'F'), name: 'pending' },
+];
+
+test('an item someone else owns can be removed from a folder the caller may edit, and from no other', () => {
+  const can = (list, id) => canRemoveFromFolder(list, id, ME);
+  const own = folderTree('viewer');
+  assert.equal(can(own, 'theirs'), true, 'the folder is the caller\'s');
+  assert.equal(can(own, 'pending'), true, 'a stub is someone else\'s item too');
+  assert.equal(can(own, 'mine'), false, 'the caller moves their own item, not removes it');
+  assert.equal(can(own, 'F'), false, 'a top-level folder is in no folder');
+  assert.equal(can(own, 'inS'), false, 'a folder the caller may only read');
+  for (const [access, may] of [['editor', true], ['manager', true], ['viewer', false]]) assert.equal(can(folderTree(access), 'inS'), may, access);
+  assert.equal(can(own, 'nope'), false);
+});
+
+test('rowActions: a stub offers nothing but removal, the owner Share, Move and Delete', () => {
+  const list = folderTree('viewer');
+  const actions = (id) => rowActions(list.find((i) => i.id === id), list, ME);
+  assert.deepEqual(actions('pending'), ['remove'], 'no Share, Move, Delete, Open');
+  assert.deepEqual(actions('mine'), ['share', 'move', 'delete']);
+  assert.deepEqual(actions('F'), ['rename', 'share', 'move', 'delete']);
+  assert.deepEqual(actions('theirs'), ['remove'], 'a viewer of someone else\'s item in the caller\'s folder');
+  assert.deepEqual(actions('inS'), [], 'a viewer in a folder the caller cannot edit');
+});
+
+test('rowActions for someone else\'s item: Share for a manager, Approve for an editor, Remove from a folder the caller edits', () => {
+  const list = folderTree('editor');
+  const of = (access) => rowActions({ ...list.find((i) => i.id === 'inS'), access }, list, ME);
+  assert.deepEqual(of('manager'), ['share', 'remove']);
+  assert.deepEqual(of('editor'), ['approve', 'remove']);
+  assert.deepEqual(of('viewer'), ['remove']);
+  const readOnly = folderTree('viewer');
+  assert.deepEqual(rowActions({ ...readOnly.find((i) => i.id === 'inS'), access: 'editor' }, readOnly, ME), ['approve'], 'no removal from a folder the caller cannot edit');
+  assert.deepEqual(rowActions({ ...readOnly.find((i) => i.id === 'inS'), access: 'manager' }, readOnly, ME), ['share']);
+});
+
+test('moveTargets offers every folder the caller may edit, whoever owns it, labelled by its path', () => {
+  const targets = (access, id = 'mine') => moveTargets(folderTree(access), id).map((t) => [t.id, t.label]);
+  assert.deepEqual(targets('viewer'), [[null, 'Top level'], ['F', 'Mine']], 'a folder the caller may only read is not offered');
+  assert.deepEqual(targets('editor'), [[null, 'Top level'], ['F', 'Mine'], ['S', 'Theirs']]);
+  assert.deepEqual(targets('manager'), [[null, 'Top level'], ['F', 'Mine'], ['S', 'Theirs']]);
+  const nested = [...folderTree('viewer'), ...them([{ id: 'S2', kind: 'folder', parent: 'S', name: 'Inner', access: 'editor' }])];
+  assert.deepEqual(moveTargets(nested, 'mine').map((t) => [t.id, t.label]), [[null, 'Top level'], ['F', 'Mine'], ['S2', 'Theirs / Inner']], 'an editable folder inside a read-only one');
+  assert.deepEqual(targets('none'), [[null, 'Top level'], ['F', 'Mine']], 'a stub folder is not offered');
+});
+
+test('canPlaceIn is true for the top level and a folder the caller may edit', () => {
+  const list = folderTree('viewer');
+  assert.equal(canPlaceIn(list, null), true);
+  assert.equal(canPlaceIn(list, 'F'), true);
+  assert.equal(canPlaceIn(list, 'S'), false);
+  assert.equal(canPlaceIn(list, 'mine'), false, 'not a folder');
+  assert.equal(canPlaceIn(list, 'nope'), false);
+  assert.equal(canPlaceIn(folderTree('editor'), 'S'), true);
+});
+
+test('moveItem puts an own item in a folder someone else owns when the caller edits it, and refuses it otherwise', async () => {
+  const calls = [];
+  const send = async (...a) => { calls.push(a); return {}; };
+  assert.equal(await moveItem(send, folderTree('editor'), 'mine', 'S'), true);
+  assert.deepEqual(calls, [['PUT', '/api/artifacts/mine/parent', { parent: 'S' }]]);
+  await assert.rejects(moveItem(send, folderTree('viewer'), 'mine', 'S'), FolderError);
+  assert.equal(calls.length, 1, 'nothing was sent for a folder the caller cannot edit');
+  assert.equal(await moveItem(send, folderTree('viewer'), 'mine', null), true, 'the top level is always theirs');
+});
+
+test('removeFromFolder moves the item to no folder, and sends nothing for one the caller may not remove', async () => {
+  const calls = [];
+  const send = async (...a) => { calls.push(a); return {}; };
+  await removeFromFolder(send, folderTree('viewer'), 'theirs', ME);
+  assert.deepEqual(calls, [['PUT', '/api/artifacts/theirs/parent', { parent: null }]]);
+  await assert.rejects(removeFromFolder(send, folderTree('viewer'), 'mine', ME), FolderError);
+  await assert.rejects(removeFromFolder(send, folderTree('viewer'), 'inS', ME), FolderError);
+  assert.equal(calls.length, 1);
+});
+
+// Deleting F: the caller's own items go, down to a folder someone else owns,
+// and what others own moves to their owners' top level.
+const deletable = () => [
+  ...mine([
+    { id: 'F', kind: 'folder', parent: null, name: 'F' },
+    { id: 'a1', kind: 'artifact', parent: 'F', name: 'a1' },
+    { id: 'G', kind: 'folder', parent: 'F', name: 'G' },
+    { id: 'a2', kind: 'artifact', parent: 'G', name: 'a2' },
+    { id: 'inOthers', kind: 'artifact', parent: 'X', name: 'my item in their folder' },
+  ]),
+  ...them([
+    { id: 'theirs', kind: 'artifact', parent: 'F', name: 'theirs' },
+    { id: 'theirsInG', kind: 'artifact', parent: 'G', name: 'theirsInG' },
+    { id: 'X', kind: 'folder', parent: 'F', name: 'X' },
+    { id: 'inX', kind: 'artifact', parent: 'X', name: 'inX' },
+  ]),
+  { ...stub('pending', 'F'), name: 'pending' },
+];
+
+test('subtree of a folder with other people\'s items counts what goes and what moves, and does not go into a folder someone else owns', () => {
+  const t = subtree(deletable(), 'F');
+  assert.deepEqual(t.artifacts, ['a2', 'a1']);
+  assert.deepEqual(t.folders, ['G', 'F']);
+  assert.deepEqual([...t.moved].sort(), ['X', 'pending', 'theirs', 'theirsInG'], 'a folder counts once, with what is inside it; a stub moves too');
+  assert.ok(!t.artifacts.includes('inOthers'), 'the caller\'s item inside X goes with X');
+});
+
+test('deleteSummary says how many items are deleted and how many others move, and says nothing of moves when none does', () => {
+  assert.equal(deleteSummary({ artifacts: ['a', 'b'], folders: ['F'], moved: [] }), 'Delete 1 folder and 2 artifacts?');
+  assert.equal(deleteSummary({ artifacts: ['a'], folders: ['G', 'F'], moved: ['x'] }), 'Delete 2 folders and 1 artifact of yours, and move 1 item other people own to their owners\' top level?');
+  assert.equal(deleteSummary({ artifacts: [], folders: ['F'], moved: ['x', 'y'] }), 'Delete 1 folder and 0 artifacts of yours, and move 2 items other people own to their owners\' top level?');
+});
+
+test('deleteTree deletes the owner\'s own items, artifacts first, then folders deepest first, and never what others own', async () => {
+  const order = [];
+  const n = await deleteTree(async (id) => { order.push(id); }, deletable(), 'F', () => {});
+  assert.deepEqual(order, ['a2', 'a1', 'G', 'F']);
+  assert.equal(n, 4);
+});
+
+test('an item whose parent is not a folder is not removed from anything', () => {
+  const list = [...folderTree('editor'), ...them([{ id: 'art', kind: 'artifact', parent: null, name: 'art', access: 'editor' }, { id: 'odd', kind: 'artifact', parent: 'art', name: 'odd', access: 'editor' }])];
+  assert.equal(canRemoveFromFolder(list, 'odd', ME), false);
 });
