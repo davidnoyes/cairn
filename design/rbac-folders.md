@@ -1,7 +1,8 @@
 # Roles, groups, and folders
 
-Status: **plan, decisions agreed; R1 (viewer accounts), R2 (managers), R3
-(groups), F1 (folders), and F2 (shared folders) are built**; F3 is not yet.
+Status: **plan, decisions agreed; every milestone is built** — R1 (viewer
+accounts), R2 (managers), R3 (groups), F1 (folders), F2 (shared folders),
+and F3 (folders with other people's items).
 It extends the [trust model](e2e-trust-model.md) and builds on
 [Google sign-in and passkey unlock](google-signin.md).
 
