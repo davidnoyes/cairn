@@ -46,6 +46,7 @@ func (o *owned) shareVia(folder *owned, role string, users ...actor) {
 	for _, u := range users {
 		b.Members = append(b.Members, viaMember(u, role, folder.id))
 	}
+	b.Folder = folder.id
 	sortMembers(b.Members)
 	o.apply(b)
 }
@@ -199,6 +200,7 @@ func TestCreatingAnItemInASharedFolderNeedsTheFoldersEntries(t *testing.T) {
 	}
 	id, req := itemRequest(t, w.alice, "", w.folder.id)
 	b := firstRecord(t, w.alice, id)
+	b.Folder = w.folder.id
 	b.Members = []e2e.Member{viaMember(w.bob, "viewer", w.folder.id)}
 	req["membership"] = signRecord(t, w.alice, b)
 	req["wraps"] = []any{map[string]any{"user": w.bob.id, "epoch": 1, "wrapped": e2e.B64(fakeWrap)}}

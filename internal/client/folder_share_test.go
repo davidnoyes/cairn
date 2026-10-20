@@ -87,9 +87,9 @@ func wantStatus(t *testing.T, c *Client, artifact string, want int) {
 }
 
 // fanOutOK runs FanOut and fails on an error, returning the result.
-func fanOutOK(t *testing.T, c *Client, root string, includeRoot bool) *FanOutResult {
+func fanOutOK(t *testing.T, c *Client, root string, placing *Placing) *FanOutResult {
 	t.Helper()
-	res, err := c.FanOut(root, includeRoot, nil)
+	res, err := c.FanOut(root, placing, nil)
 	if err != nil {
 		t.Fatalf("FanOut: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestSharingAFolderFansOutToEveryItem(t *testing.T) {
 		wantStatus(t, w.bob, id, http.StatusNotFound)
 	}
 	var done, total []int
-	res, err := w.ada.FanOut(w.f, false, func(d, n int) { done, total = append(done, d), append(total, n) })
+	res, err := w.ada.FanOut(w.f, nil, func(d, n int) { done, total = append(done, d), append(total, n) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestFanOutIsIdempotentAndResumes(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A run that stopped after the first item.
-	res := fanOutOK(t, w.ada, w.item1, true)
+	res := fanOutOK(t, w.ada, w.item1, &Placing{Parent: w.f})
 	if stateOf(res, w.item1) != FanOutUpdated {
 		t.Fatalf("item1: %+v", res.Items)
 	}
@@ -166,14 +166,14 @@ func TestFanOutIsIdempotentAndResumes(t *testing.T) {
 	seq := latestBody(t, w.ada, w.item1).Seq
 
 	// Running it again finishes the rest and leaves the finished alone.
-	res = fanOutOK(t, w.ada, w.f, false)
+	res = fanOutOK(t, w.ada, w.f, nil)
 	if stateOf(res, w.g) != FanOutUpdated || stateOf(res, w.item2) != FanOutUpdated || stateOf(res, w.item1) != FanOutCurrent {
 		t.Errorf("resumed: %+v", res.Items)
 	}
 	if got := latestBody(t, w.ada, w.item1).Seq; got != seq {
 		t.Errorf("a finished item got another record: seq %d, was %d", got, seq)
 	}
-	res = fanOutOK(t, w.ada, w.f, false)
+	res = fanOutOK(t, w.ada, w.f, nil)
 	if res.Count(FanOutCurrent) != 3 {
 		t.Errorf("a third run: %+v", res.Items)
 	}
@@ -190,7 +190,7 @@ func TestUnsharingAFolderStartsAnEpochForEachItem(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	fanOutOK(t, w.ada, w.f, false)
+	fanOutOK(t, w.ada, w.f, nil)
 	wantStatus(t, w.bob, w.item2, http.StatusOK)
 
 	if _, err := w.ada.Unshare(w.f, "bob@example.com"); err != nil {
@@ -204,7 +204,7 @@ func TestUnsharingAFolderStartsAnEpochForEachItem(t *testing.T) {
 		wantStates(t, pendingStates(t, w.ada, id), map[string]string{"bob@example.com": PendingLeft})
 	}
 
-	res := fanOutOK(t, w.ada, w.f, false)
+	res := fanOutOK(t, w.ada, w.f, nil)
 	if res.Count(FanOutNewEpoch) != 3 {
 		t.Fatalf("result: %+v", res.Items)
 	}
@@ -245,7 +245,7 @@ func TestUnsharingAFolderStartsAnEpochForEachItem(t *testing.T) {
 	if _, err := w.ada.Unshare(w.f, "bob@example.com"); !errors.Is(err, ErrNotMember) {
 		t.Errorf("Unshare again: %v, want ErrNotMember", err)
 	}
-	if res := fanOutOK(t, w.ada, w.f, false); res.Count(FanOutCurrent) != 3 {
+	if res := fanOutOK(t, w.ada, w.f, nil); res.Count(FanOutCurrent) != 3 {
 		t.Errorf("a second fan-out: %+v", res.Items)
 	}
 }
@@ -255,7 +255,7 @@ func TestMovingAnItemIntoAndOutOfASharedFolder(t *testing.T) {
 	if _, err := w.ada.Share(w.f, "bob@example.com", "editor", false); err != nil {
 		t.Fatal(err)
 	}
-	fanOutOK(t, w.ada, w.f, false)
+	fanOutOK(t, w.ada, w.f, nil)
 	loose := mustCreate(t, w.ada, "loose").ID
 	wantStatus(t, w.bob, loose, http.StatusNotFound)
 
@@ -263,7 +263,7 @@ func TestMovingAnItemIntoAndOutOfASharedFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantInherit(t, w.ada, loose, "pending")
-	res := fanOutOK(t, w.ada, loose, true)
+	res := fanOutOK(t, w.ada, loose, &Placing{Parent: w.g})
 	if stateOf(res, loose) != FanOutUpdated {
 		t.Fatalf("into: %+v", res.Items)
 	}
@@ -276,7 +276,7 @@ func TestMovingAnItemIntoAndOutOfASharedFolder(t *testing.T) {
 	}
 	wantStatus(t, w.bob, loose, http.StatusNotFound)
 	wantInherit(t, w.ada, loose, "pending")
-	res = fanOutOK(t, w.ada, loose, true)
+	res = fanOutOK(t, w.ada, loose, &Placing{})
 	if stateOf(res, loose) != FanOutNewEpoch || len(res.Items[0].Excluded) != 1 {
 		t.Fatalf("out: %+v", res.Items)
 	}
@@ -298,7 +298,7 @@ func TestDirectAndInheritedRolesMerge(t *testing.T) {
 	if _, err := w.ada.Share(w.f, "bob@example.com", "editor", false); err != nil {
 		t.Fatal(err)
 	}
-	fanOutOK(t, w.ada, w.f, false)
+	fanOutOK(t, w.ada, w.f, nil)
 	// A direct viewer is raised to the folder's role, and stays direct. A
 	// direct editor stays an editor. The folder with none is marked.
 	wantEntry(t, w, w.item1, "bob@example.com", "editor", "")
@@ -309,9 +309,17 @@ func TestDirectAndInheritedRolesMerge(t *testing.T) {
 	if _, err := w.ada.Unshare(w.f, "bob@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	res := fanOutOK(t, w.ada, w.f, false)
-	if stateOf(res, w.g) != FanOutNewEpoch || stateOf(res, w.item1) != FanOutCurrent && stateOf(res, w.item1) != FanOutUpdated {
-		t.Errorf("unshare: %+v", res.Items)
+	res := fanOutOK(t, w.ada, w.f, nil)
+	// The folder G held bob only through F, so it starts an epoch; the items
+	// list him directly, so each is already as the rule wants it.
+	want := map[string]string{w.g: FanOutNewEpoch, w.item1: FanOutCurrent, w.item2: FanOutCurrent}
+	for id, state := range want {
+		if got := stateOf(res, id); got != state {
+			t.Errorf("unshare: %s is %q, want %q (%+v)", id, got, state, res.Items)
+		}
+	}
+	if len(res.Items) != len(want) {
+		t.Errorf("unshare visited %d items: %+v", len(res.Items), res.Items)
 	}
 	wantStatus(t, w.bob, w.item1, http.StatusOK)
 	wantStatus(t, w.bob, w.item2, http.StatusOK)
@@ -326,11 +334,11 @@ func TestLoweringAFolderRoleStartsAnEpochForItsItems(t *testing.T) {
 	if _, err := w.ada.Share(w.f, "bob@example.com", "editor", false); err != nil {
 		t.Fatal(err)
 	}
-	fanOutOK(t, w.ada, w.f, false)
+	fanOutOK(t, w.ada, w.f, nil)
 	if _, err := w.ada.Share(w.f, "bob@example.com", "viewer", false); err != nil {
 		t.Fatal(err)
 	}
-	res := fanOutOK(t, w.ada, w.f, false)
+	res := fanOutOK(t, w.ada, w.f, nil)
 	if res.Count(FanOutNewEpoch) != 3 {
 		t.Fatalf("result: %+v", res.Items)
 	}
@@ -347,7 +355,7 @@ func TestAnItemCreatedInASharedFolderListsItsEntries(t *testing.T) {
 	if _, err := w.ada.Share(w.f, "bob@example.com", "editor", false); err != nil {
 		t.Fatal(err)
 	}
-	fanOutOK(t, w.ada, w.f, false)
+	fanOutOK(t, w.ada, w.f, nil)
 	// Two levels down: the entry is marked with the folder that lists bob.
 	n := mustCreate(t, w.ada, "new", InFolder(w.g)).ID
 	wantEntry(t, w, n, "bob@example.com", "editor", w.f)
@@ -372,7 +380,7 @@ func TestMembersNameTheFolderAnEntryComesFrom(t *testing.T) {
 	if _, err := w.ada.Share(w.item2, "cat@example.com", "viewer", false); err != nil {
 		t.Fatal(err)
 	}
-	fanOutOK(t, w.ada, w.f, false)
+	fanOutOK(t, w.ada, w.f, nil)
 	rows := func(c *Client) map[string]MemberView {
 		_, rs, err := c.Members(w.item2)
 		if err != nil {
@@ -406,7 +414,7 @@ func TestSharingAFolderWithAGroupApprovesItsMembersOnEveryItem(t *testing.T) {
 	if _, err := w.ada.ShareGroup(w.f, "Reviewers", "viewer", false); err != nil {
 		t.Fatal(err)
 	}
-	res := fanOutOK(t, w.ada, w.f, false)
+	res := fanOutOK(t, w.ada, w.f, nil)
 	for _, it := range res.Items {
 		if it.State != FanOutUpdated || len(it.Approved) != 1 || it.Approved[0].Email != "cat@example.com" {
 			t.Errorf("%s: %+v", it.ID, it)
@@ -429,7 +437,7 @@ func TestSharingAFolderWithAGroupApprovesItsMembersOnEveryItem(t *testing.T) {
 	}
 	wantStatus(t, w.cat, w.item1, http.StatusNotFound)
 	wantInherit(t, w.ada, w.item1, "pending")
-	res = fanOutOK(t, w.ada, w.f, false)
+	res = fanOutOK(t, w.ada, w.f, nil)
 	if res.Count(FanOutNewEpoch) != 4 {
 		t.Fatalf("result: %+v", res.Items)
 	}
@@ -446,13 +454,13 @@ func TestAManagerOfAFolderFansOutToItsItems(t *testing.T) {
 	if _, err := w.ada.Share(w.f, "bob@example.com", "manager", false); err != nil {
 		t.Fatal(err)
 	}
-	fanOutOK(t, w.ada, w.f, false)
+	fanOutOK(t, w.ada, w.f, nil)
 	// Bob manages the items through the folder, so his records for them are
 	// valid, and he shares the folder with cat.
 	if _, err := w.bob.Share(w.f, "cat@example.com", "viewer", false); err != nil {
 		t.Fatal(err)
 	}
-	res := fanOutOK(t, w.bob, w.f, false)
+	res := fanOutOK(t, w.bob, w.f, nil)
 	if res.Count(FanOutUpdated) != 3 {
 		t.Fatalf("bob's fan-out: %+v", res.Items)
 	}
@@ -470,7 +478,7 @@ func TestAFanOutThatCannotSignLeavesItemsPending(t *testing.T) {
 	if _, err := w.ada.Share(w.f, "bob@example.com", "editor", false); err != nil {
 		t.Fatal(err)
 	}
-	fanOutOK(t, w.ada, w.f, false)
+	fanOutOK(t, w.ada, w.f, nil)
 	// Bob is an editor, who cannot share, so the share itself is refused.
 	if _, err := w.bob.Share(w.f, "cat@example.com", "viewer", false); err == nil {
 		t.Fatal("an editor shared the folder")
@@ -480,7 +488,7 @@ func TestAFanOutThatCannotSignLeavesItemsPending(t *testing.T) {
 	if _, err := w.ada.Share(w.f, "cat@example.com", "viewer", false); err != nil {
 		t.Fatal(err)
 	}
-	res, err := w.bob.FanOut(w.f, false, nil)
+	res, err := w.bob.FanOut(w.f, nil, nil)
 	if !errors.Is(err, ErrFanOutIncomplete) || res.Count(FanOutFailed) != 2 {
 		t.Fatalf("FanOut = %+v, %v", res, err)
 	}
@@ -511,6 +519,10 @@ func TestPlanInherit(t *testing.T) {
 		out     []e2e.GroupShare
 		added   []string
 		epoch   bool
+		// unusable are users whose account is deactivated or not verified, and
+		// deleted the groups that were deleted; skipped are the ones the plan
+		// reports and does not add.
+		unusable, deleted, skippedUsers, skippedGroups []string
 	}{
 		{name: "everything is added, marked with its nearest folder, never the owner", item: e2e.MembershipBody{Owner: "owner"}, parent: parent,
 			members: []e2e.Member{m("a", "editor", f), m("b", "viewer", up)}, added: []string{"a", "b"}},
@@ -530,12 +542,29 @@ func TestPlanInherit(t *testing.T) {
 		{name: "groups follow the same rules", item: e2e.MembershipBody{Owner: "owner", Groups: []e2e.GroupShare{g("g1", "viewer", ""), g("g2", "editor", f), g("g9", "viewer", f)}},
 			parent: &e2e.MembershipBody{}, groups: []e2e.GroupShare{g("g1", "editor", ""), g("g2", "viewer", up), g("g3", "viewer", "")},
 			members: []e2e.Member{}, out: []e2e.GroupShare{g("g1", "editor", ""), g("g2", "viewer", up), g("g3", "viewer", f)}, epoch: true},
+		{name: "a deactivated user and a deleted group are skipped, and reported, not added", item: e2e.MembershipBody{Owner: "owner"},
+			parent: &e2e.MembershipBody{Members: []e2e.Member{m("a", "editor", ""), m("b", "viewer", "")}}, groups: []e2e.GroupShare{g("g1", "viewer", ""), g("g3", "viewer", "")},
+			members: []e2e.Member{m("a", "editor", f)}, out: []e2e.GroupShare{g("g1", "viewer", f)}, added: []string{"a"},
+			unusable: []string{"b"}, deleted: []string{"g3"}, skippedUsers: []string{"b"}, skippedGroups: []string{"g3"}},
+		{name: "a deactivated user and a deleted group the item already lists stay, with no epoch", item: e2e.MembershipBody{Owner: "owner", Members: []e2e.Member{m("b", "viewer", f)}, Groups: []e2e.GroupShare{g("g3", "viewer", f)}},
+			parent: &e2e.MembershipBody{Members: []e2e.Member{m("b", "viewer", "")}}, groups: []e2e.GroupShare{g("g3", "viewer", "")},
+			members: []e2e.Member{m("b", "viewer", f)}, out: []e2e.GroupShare{g("g3", "viewer", f)},
+			unusable: []string{"b"}, deleted: []string{"g3"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			p := planInherit(c.item, c.parent, f, c.groups)
-			if !slices.Equal(p.members, c.members) || !slices.Equal(p.groups, c.out) || !slices.Equal(p.added, c.added) || p.epoch != c.epoch {
-				t.Errorf("plan = %+v\nwant members %v groups %v added %v epoch %v", p, c.members, c.out, c.added, c.epoch)
+			parent := c.parent
+			if parent != nil && c.groups != nil {
+				withGroups := *parent
+				withGroups.Groups = c.groups
+				parent = &withGroups
+			}
+			usable := func(u string) bool { return !slices.Contains(c.unusable, u) }
+			live := func(g string) bool { return !slices.Contains(c.deleted, g) }
+			p := planInherit(c.item, parent, f, usable, live)
+			if !slices.Equal(p.members, c.members) || !slices.Equal(p.groups, c.out) || !slices.Equal(p.added, c.added) || p.epoch != c.epoch ||
+				!slices.Equal(p.skippedUsers, c.skippedUsers) || !slices.Equal(p.skippedGroups, c.skippedGroups) {
+				t.Errorf("plan = %+v\nwant members %v groups %v added %v epoch %v skipped %v %v", p, c.members, c.out, c.added, c.epoch, c.skippedUsers, c.skippedGroups)
 			}
 		})
 	}
@@ -546,12 +575,12 @@ func TestResharingAFolderAfterUnsharingListsTheUserAgainAtTheNewEpoch(t *testing
 	if _, err := w.ada.Share(w.f, "bob@example.com", "viewer", false); err != nil {
 		t.Fatal(err)
 	}
-	fanOutOK(t, w.ada, w.f, false)
+	fanOutOK(t, w.ada, w.f, nil)
 	res, err := w.ada.Unshare(w.f, "bob@example.com")
 	if err != nil || res.ResealErr != nil {
 		t.Fatalf("Unshare = %+v, %v: a folder holds no versions to seal again", res, err)
 	}
-	fanOutOK(t, w.ada, w.f, false)
+	fanOutOK(t, w.ada, w.f, nil)
 	wantStatus(t, w.bob, w.item2, http.StatusNotFound)
 
 	// The owner lists bob again by name, which drops the exclusions, in the
@@ -559,7 +588,7 @@ func TestResharingAFolderAfterUnsharingListsTheUserAgainAtTheNewEpoch(t *testing
 	if r, err := w.ada.Share(w.f, "bob@example.com", "viewer", false); err != nil || len(r.Dropped) != 1 {
 		t.Fatalf("Share again = %+v, %v", r, err)
 	}
-	res2 := fanOutOK(t, w.ada, w.f, false)
+	res2 := fanOutOK(t, w.ada, w.f, nil)
 	if res2.Count(FanOutUpdated) != 3 {
 		t.Fatalf("result: %+v", res2.Items)
 	}
@@ -588,14 +617,14 @@ func TestAManagerCannotAddAManagerOrListAnExcludedUserThroughAFanOut(t *testing.
 	if _, err := w.ada.Share(w.f, "bob@example.com", "manager", false); err != nil {
 		t.Fatal(err)
 	}
-	fanOutOK(t, w.ada, w.f, false)
+	fanOutOK(t, w.ada, w.f, nil)
 
 	// The owner makes cat a manager of the folder: only the owner lists a manager
 	// in the items, so bob's fan-out leaves them pending.
 	if _, err := w.ada.Share(w.f, "cat@example.com", "manager", false); err != nil {
 		t.Fatal(err)
 	}
-	res, err := w.bob.FanOut(w.f, false, nil)
+	res, err := w.bob.FanOut(w.f, nil, nil)
 	if !errors.Is(err, ErrFanOutIncomplete) {
 		t.Fatalf("FanOut = %+v, %v", res, err)
 	}
@@ -607,7 +636,7 @@ func TestAManagerCannotAddAManagerOrListAnExcludedUserThroughAFanOut(t *testing.
 	if res.Count(FanOutFailed) != 2 {
 		t.Errorf("failed: %+v", res.Items)
 	}
-	if res := fanOutOK(t, w.ada, w.f, false); res.Count(FanOutUpdated) != 3 {
+	if res := fanOutOK(t, w.ada, w.f, nil); res.Count(FanOutUpdated) != 3 {
 		t.Fatalf("the owner's fan-out: %+v", res.Items)
 	}
 
@@ -616,11 +645,11 @@ func TestAManagerCannotAddAManagerOrListAnExcludedUserThroughAFanOut(t *testing.
 	if _, err := w.ada.Unshare(w.f, "cat@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	fanOutOK(t, w.ada, w.f, false)
+	fanOutOK(t, w.ada, w.f, nil)
 	if _, err := w.ada.Share(w.f, "cat@example.com", "viewer", false); err != nil {
 		t.Fatal(err)
 	}
-	res, err = w.bob.FanOut(w.f, false, nil)
+	res, err = w.bob.FanOut(w.f, nil, nil)
 	if !errors.Is(err, ErrFanOutIncomplete) {
 		t.Fatalf("FanOut = %+v, %v", res, err)
 	}
@@ -629,7 +658,7 @@ func TestAManagerCannotAddAManagerOrListAnExcludedUserThroughAFanOut(t *testing.
 			t.Errorf("%s: %v", it.ID, it.Err)
 		}
 	}
-	if res := fanOutOK(t, w.ada, w.f, false); res.Count(FanOutUpdated) != 3 {
+	if res := fanOutOK(t, w.ada, w.f, nil); res.Count(FanOutUpdated) != 3 {
 		t.Fatalf("the owner's fan-out: %+v", res.Items)
 	}
 }
@@ -642,7 +671,7 @@ func TestAFolderEntryUnderChangedKeysIsNotInherited(t *testing.T) {
 	// Bob's keys change before the items list him, so the folder's entry is
 	// for keys that are no longer his.
 	w.resetBob(t)
-	res, err := w.ada.FanOut(w.f, false, nil)
+	res, err := w.ada.FanOut(w.f, nil, nil)
 	if !errors.Is(err, ErrFanOutIncomplete) {
 		t.Fatalf("FanOut = %+v, %v", res, err)
 	}
@@ -668,13 +697,13 @@ func TestAUserApprovedThroughAGroupIsListedByTheFolderWithoutNewWraps(t *testing
 	if _, err := w.ada.ShareGroup(w.f, "Reviewers", "viewer", false); err != nil {
 		t.Fatal(err)
 	}
-	fanOutOK(t, w.ada, w.f, false)
+	fanOutOK(t, w.ada, w.f, nil)
 	// Cat holds the wraps already, as an approved member of the group, so the
 	// folder's entry for them by name needs none.
 	if _, err := w.ada.Share(w.f, "cat@example.com", "editor", false); err != nil {
 		t.Fatal(err)
 	}
-	res := fanOutOK(t, w.ada, w.f, false)
+	res := fanOutOK(t, w.ada, w.f, nil)
 	if res.Count(FanOutUpdated) != 3 {
 		t.Fatalf("result: %+v", res.Items)
 	}
@@ -689,7 +718,7 @@ func TestAUserApprovedThroughAGroupIsListedByTheFolderWithoutNewWraps(t *testing
 
 func TestAFanOutOfAnUnknownRootIsRefused(t *testing.T) {
 	w := newFolderTree(t)
-	if _, err := w.ada.FanOut("00000000-0000-4000-8000-000000000000", false, nil); !errors.Is(err, ErrNoArtifact) {
+	if _, err := w.ada.FanOut("00000000-0000-4000-8000-000000000000", nil, nil); !errors.Is(err, ErrNoArtifact) {
 		t.Errorf("FanOut of a missing folder = %v", err)
 	}
 }

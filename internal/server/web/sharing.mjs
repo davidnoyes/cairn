@@ -341,7 +341,8 @@ const byUser = (a, b) => (a.user < b.user ? -1 : a.user > b.user ? 1 : 0);
 // fields in the order of the schema. transfer and handover are never set by
 // these commands. A manager's record is version 2 and names the manager and
 // their key's fingerprint last. groups follows team, and is left out while it
-// is empty, as Go's omitempty does. Mirrors signNext.
+// is empty, as Go's omitempty does. folder follows groups, and carries the
+// folder the latest record names, left out at the top level. Mirrors signNext.
 function membershipBody(va, next, manager) {
   const body = {
     v: manager ? 2 : 1,
@@ -355,6 +356,7 @@ function membershipBody(va, next, manager) {
     excluded: next.excluded.map((x) => ({ user: x.user, fp: x.fp, email: x.email })),
     team: next.team,
     ...((next.groups ?? []).length > 0 ? { groups: next.groups.map((g) => ({ group: g.group, role: g.role })) } : {}),
+    ...(va.latest.folder === undefined ? {} : { folder: va.latest.folder }),
     public: next.public,
     publicWrites: next.publicWrites,
     prev: va.chain.head,

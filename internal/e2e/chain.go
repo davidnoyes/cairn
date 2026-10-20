@@ -179,6 +179,9 @@ func openRecord(env Envelope, artifact string, owners map[string][]byte) (Member
 	if err := CheckGroupShares(b.Groups); err != nil {
 		return b, err
 	}
+	if b.Folder != "" && !isUUID(b.Folder) {
+		return b, fmt.Errorf("%w: folder is not a lowercase UUID", ErrChain)
+	}
 	if !isHex64(b.AKCommit) {
 		return b, fmt.Errorf("%w: akCommit is not 64 lowercase hex digits", ErrChain)
 	}
@@ -371,7 +374,8 @@ func checkNextRecord(c *Chain, in ChainInput, owners map[string][]byte, linked f
 // for them; the owner is unchanged, and no transfer or handover is set.
 // Every entry with role manager is the same in both records, so a manager
 // adds, removes, and changes none, and every excluded entry of prev, by user
-// ID, is still in b, so a manager cannot re-share anyone who was removed.
+// ID, is still in b, so a manager cannot re-share anyone who was removed. The
+// folder is the same in both, because only the owner moves an item.
 func checkManagerRecord(prev, b MembershipBody, linked func(user, fromFP, toFP string) bool) error {
 	var listed *Member
 	for i := range prev.Members {
@@ -392,6 +396,8 @@ func checkManagerRecord(prev, b MembershipBody, linked func(user, fromFP, toFP s
 		return fmt.Errorf("%w: a manager's record sets transfer or handover", ErrChain)
 	case !sameManagers(prev.Members, b.Members):
 		return fmt.Errorf("%w: a manager's record adds, removes, or changes a manager", ErrChain)
+	case b.Folder != prev.Folder:
+		return fmt.Errorf("%w: a manager's record changes the folder, which only the owner moves an item to", ErrChain)
 	}
 	for _, x := range prev.Excluded {
 		if !slices.ContainsFunc(b.Excluded, func(y ExcludedEntry) bool { return y.User == x.User }) {

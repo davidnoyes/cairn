@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"slices"
 )
@@ -173,16 +174,39 @@ func (t *ArtifactTx) LatestRecordOf(id string) (*Record, error) {
 	return r, err
 }
 
-// InheritPending reports whether artifact id's latest record is out of step
-// with its folder: it lacks a user or group the folder lists, or lists one
-// at a lower role, or holds an entry whose via no longer holds, or whose role
-// is above what its folder lists them as now. A group that
-// was deleted is not required, because it grants nothing, and neither is the
-// item's own owner.
-func (s *Store) InheritPending(id string) (bool, error) {
-	a, err := s.ArtifactByID(id)
+// recordNamesOtherFolder reports whether artifact a's latest record names a
+// folder other than the one the server's tree puts a in, which is so after a
+// move until the owner writes a record that names the new folder. An artifact
+// with no record yet names none.
+func recordNamesOtherFolder(q rowQuerier, a *Artifact) (bool, error) {
+	var body []byte
+	err := q.QueryRow(`SELECT body FROM artifact_records WHERE artifact_id = ? ORDER BY seq DESC LIMIT 1`, a.ID).Scan(&body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
 	if err != nil {
 		return false, err
+	}
+	var b struct {
+		Folder string `json:"folder"`
+	}
+	if err := json.Unmarshal(body, &b); err != nil {
+		return false, err
+	}
+	return b.Folder != a.ParentID, nil
+}
+
+// InheritPending reports whether artifact a's latest record is out of step
+// with its folder: it names another folder than a sits in, or lacks a user or
+// group the folder lists, or lists one at a lower role, or holds an entry
+// whose via no longer holds, or whose role is above what its folder lists
+// them as now. A group that was deleted is not required, because it grants
+// nothing, and neither is a user whose account is deactivated or not
+// verified, because a record may not add one, nor the item's own owner.
+func (s *Store) InheritPending(a *Artifact) (bool, error) {
+	id := a.ID
+	if moved, err := recordNamesOtherFolder(s.db, a); err != nil || moved {
+		return moved, err
 	}
 	users, groups, lowered, err := viaState(s.db, id)
 	if err != nil {
@@ -199,6 +223,7 @@ func (s *Store) InheritPending(id string) (bool, error) {
 			SELECT 1 FROM artifact_members p
 			LEFT JOIN artifact_members m ON m.artifact_id = ? AND m.user_id = p.user_id
 			WHERE p.artifact_id = ? AND p.user_id != ?
+			AND p.user_id IN (SELECT id FROM users WHERE disabled = 0 AND verified_at IS NOT NULL)
 			AND (m.user_id IS NULL OR (CASE m.role WHEN 'manager' THEN 3 WHEN 'editor' THEN 2 ELSE 1 END)
 				< (CASE p.role WHEN 'manager' THEN 3 WHEN 'editor' THEN 2 ELSE 1 END))
 		) OR EXISTS (

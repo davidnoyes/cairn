@@ -291,6 +291,10 @@ func TestTreeLeavesOutWhatIsSharedWithYou(t *testing.T) {
 	if _, err := s.ada.Move(s.artifact, f.ID); err != nil {
 		t.Fatal(err)
 	}
+	// The record names the new folder before anything else is written.
+	if _, err := s.ada.FanOut(s.artifact, &Placing{Parent: f.ID}, nil); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.ada.Share(s.artifact, "bob@example.com", "editor", false); err != nil {
 		t.Fatal(err)
 	}

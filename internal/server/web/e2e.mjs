@@ -1846,6 +1846,7 @@ export const BODY_SCHEMAS = {
     excluded: field('array', { item: EXCLUDED_SCHEMA }),
     team: field('string'),
     groups: field('array', { item: GROUP_SHARE_SCHEMA, omitEmpty: true }),
+    folder: field('string', { omitEmpty: true }),
     public: field('boolean'),
     publicWrites: field('boolean'),
     prev: field('string'),
@@ -2030,8 +2031,9 @@ function decodeValue(value, f) {
 // its zero value when absent. A field marked omitEmpty (newSig of
 // ENVELOPE_SCHEMA, matching Go's envelopeJSON, signer and signerFp of the
 // membership body, which a version 1 record does not carry, and its groups,
-// which a record that lists none omits, and the via of a member or a groups
-// entry, which a direct grant omits) is left out of the
+// which a record that lists none omits, its folder, which an item at the top
+// level omits, and the via of a member or a groups entry, which a direct grant
+// omits) is left out of the
 // result entirely when its decoded value is the zero value, mirroring Go's
 // `json:",omitempty"`, which drops a zero value on marshal. An absent field
 // therefore round-trips; one present with the zero value explicitly (such
@@ -2242,6 +2244,7 @@ async function openRecord(env, artifact, owners) {
   }
   if (b.team !== 'none' && b.team !== 'viewer' && b.team !== 'editor') throw new ChainError(`team ${b.team}`);
   checkGroupShares(b.groups ?? []);
+  if (b.folder !== undefined && !UUID_RE.test(b.folder)) throw new ChainError('folder is not a lowercase UUID');
   if (!isHex64(b.akCommit)) throw new ChainError('akCommit is not 64 lowercase hex digits');
   for (let i = 1; i < b.members.length; i++) {
     if (compareUtf8(b.members[i - 1].user, b.members[i].user) >= 0) {
@@ -2377,7 +2380,8 @@ async function checkNextRecord(input, owners, linked, prev, prevHash, b, handove
 // for them; the owner is unchanged, and no transfer or handover is set.
 // Every entry with role manager is the same in both records, so a manager
 // adds, removes, and changes none, and every user prev excludes stays
-// excluded, so a manager cannot undo a removal. Mirrors checkManagerRecord in
+// excluded, so a manager cannot undo a removal. The folder is the same in both,
+// because only the owner moves an item. Mirrors checkManagerRecord in
 // internal/e2e/chain.go.
 async function checkManagerRecord(prev, b, linked) {
   const listed = prev.members.find((m) => m.user === b.signer && m.role === 'manager');
@@ -2393,6 +2397,7 @@ async function checkManagerRecord(prev, b, linked) {
   if (!sameManagers(prev.members, b.members)) {
     throw new ChainError("a manager's record adds, removes, or changes a manager");
   }
+  if (b.folder !== prev.folder) throw new ChainError("a manager's record changes the folder, which only the owner moves an item to");
   for (const x of prev.excluded) {
     if (!b.excluded.some((y) => y.user === x.user)) throw new ChainError(`a manager's record drops ${x.user} from excluded`);
   }

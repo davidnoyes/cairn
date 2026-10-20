@@ -31,10 +31,11 @@ func fanOutProgress(done, total int) {
 // folder needs after the command changed it: a text report first, so the
 // change shows before the items are worked through, and a JSON one after,
 // so that it holds the fan-out's result. Anything but a folder is just
-// printed. A fan-out that left items pending ends in an error after the
-// report: running the same command again finishes it.
-func folderThen(c *client.Client, a *client.Artifact, includeRoot, jsonOut bool, print func() error) error {
-	if a.Kind != store.KindFolder && !includeRoot {
+// printed, unless placing says the command moved it. A fan-out that left items
+// pending ends in an error after the report: running the same command again
+// finishes it.
+func folderThen(c *client.Client, a *client.Artifact, placing *client.Placing, jsonOut bool, print func() error) error {
+	if a.Kind != store.KindFolder && placing == nil {
 		return print()
 	}
 	if !jsonOut {
@@ -42,7 +43,7 @@ func folderThen(c *client.Client, a *client.Artifact, includeRoot, jsonOut bool,
 			return err
 		}
 	}
-	res, err := c.FanOut(a.ID, includeRoot, fanOutProgress)
+	res, err := c.FanOut(a.ID, placing, fanOutProgress)
 	if res != nil {
 		fanOuts[a.ID] = res
 	}
@@ -81,6 +82,12 @@ func printFanOut(res *client.FanOutResult) {
 		}
 		if it.ResealErr != nil {
 			fmt.Printf("%s: sealing the data again under the new epoch failed: %v\nrun: cairn reseal %s\n", it.ID, it.ResealErr, it.ID)
+		}
+		for _, u := range it.SkippedUsers {
+			fmt.Printf("%s: not listed: the folder lists %s, whose account is deactivated or not verified\n", it.ID, u)
+		}
+		for _, g := range it.SkippedGroups {
+			fmt.Printf("%s: not listed: the folder lists the group %s, which was deleted\n", it.ID, g)
 		}
 		for _, d := range it.Approved {
 			fmt.Printf("%s: approved %s (%s)\n", it.ID, d.Email, d.Name)

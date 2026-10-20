@@ -233,7 +233,7 @@ func TestSuccessorRemoveAndNominateAgain(t *testing.T) {
 func TestSuccessorRequestWarnsTheUserOnStderr(t *testing.T) {
 	w := newSuccWorld(t)
 	w.nominate(t)
-	if out := w.request(t); !strings.Contains(out, "access starts on "+w.clk.Now().AddDate(0, 0, 14).UTC().Format("2006-01-02")) {
+	if out := w.request(t); !strings.Contains(out, "access starts on "+w.clk.Now().Add(14*24*time.Hour).UTC().Format("2006-01-02")) {
 		t.Errorf("request printed %q", out)
 	}
 	if _, _, err := w.run(t, "bob", runSuccessor, "request", "ada@example.com"); err == nil {
@@ -498,7 +498,7 @@ func TestSuccessorStatusSaysHowToEndAReleasedAccess(t *testing.T) {
 	w := newSuccWorld(t)
 	w.nominate(t)
 	w.request(t)
-	released := w.clk.Now().AddDate(0, 0, 14).UTC().Format("2006-01-02")
+	released := w.clk.Now().Add(14 * 24 * time.Hour).UTC().Format("2006-01-02")
 	w.clk.Advance(day14)
 	got := w.mustRun(t, "ada", runSuccessor, "status")
 	if !strings.Contains(got, "were released on "+released+"; run cairn rotate-keys to end their access") {

@@ -1468,6 +1468,22 @@ test('an item with a groups entry that comes from a folder is not changed from t
   noPuts(s);
 });
 
+test('a record the browser writes for an item in a folder names the folder, as a manager or the owner', async () => {
+  for (const who of ['owner', 'manager']) {
+    const s = await scene({ who, folder: FOLDER, members: [{ user: U.manager, role: 'manager' }, ...STD_MEMBERS] });
+    await share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer');
+    const body = bodyOf(lastPut(s).membership);
+    assert.equal(body.folder, FOLDER, who);
+    assert.deepEqual(Object.keys(body).slice(9, 12), ['team', 'folder', 'public'], who);
+  }
+});
+
+test('a record the browser writes for an item at the top level has no folder key', async () => {
+  const s = await scene();
+  await share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer');
+  assert.equal('folder' in bodyOf(lastPut(s).membership), false);
+});
+
 test('an artifact that is not a folder, with no inherited entry, is shared as before', async () => {
   const s = await scene();
   const res = await share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer');

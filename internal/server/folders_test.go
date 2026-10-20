@@ -25,8 +25,10 @@ type folderView struct {
 func itemRequest(t *testing.T, owner actor, kind, parent string) (string, map[string]any) {
 	t.Helper()
 	id := uuid.NewString()
+	first := firstRecord(t, owner, id)
+	first.Folder = parent
 	req := map[string]any{
-		"id": id, "membership": signRecord(t, owner, firstRecord(t, owner, id)),
+		"id": id, "membership": signRecord(t, owner, first),
 		"wraps": []any{}, "estate": []any{testEstate(t, id, 1)},
 	}
 	if kind != "" {
@@ -52,6 +54,7 @@ func newItem(t *testing.T, owner actor, kind, parent string) *owned {
 		t.Fatalf("created %s in %q answered %+v", kind, parent, v)
 	}
 	b := firstRecord(t, owner, id)
+	b.Folder = parent
 	return &owned{t: t, owner: owner, id: id, latest: b, hash: e2e.BodyHash(req["membership"].(e2e.Envelope).Body)}
 }
 

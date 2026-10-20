@@ -37,7 +37,10 @@ func (c *Client) CreateFolder(name, parent string) (*Artifact, error) {
 }
 
 // Move puts the item in the folder parent, or at the top level when parent is
-// empty, and returns its view with no name opened.
+// empty, and returns its view with no name opened. The item's latest record
+// still names its old folder, so it is pending, and the server refuses any
+// other record for it, until FanOut with a Placing writes one that names the
+// new folder.
 func (c *Client) Move(id, parent string) (*Artifact, error) {
 	var to any
 	if parent != "" {

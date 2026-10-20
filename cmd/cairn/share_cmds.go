@@ -287,14 +287,14 @@ func runShare(args []string) error {
 			if err != nil {
 				return explainRefusal(c, err)
 			}
-			return folderThen(c, a, false, *jsonOut, func() error { return printShareGroup(a, res, *jsonOut) })
+			return folderThen(c, a, nil, *jsonOut, func() error { return printShareGroup(a, res, *jsonOut) })
 		}
 	}
 	res, err := c.Share(a.ID, pos[1], *role, *acceptNewKey)
 	if err != nil {
 		return explainRefusal(c, err)
 	}
-	return folderThen(c, a, false, *jsonOut, func() error { return printShare(c, a, res, *jsonOut) })
+	return folderThen(c, a, nil, *jsonOut, func() error { return printShare(c, a, res, *jsonOut) })
 }
 
 // printShare prints what sharing with a user did.
@@ -463,22 +463,22 @@ func runUnshare(args []string) error {
 		res, err := c.UnshareGroup(a.ID, pos[1])
 		if !errors.Is(err, client.ErrNoGroup) {
 			if resumeFolder(a, err) {
-				return folderThen(c, a, false, *jsonOut, func() error { return printResumed(a, pos[1], *jsonOut) })
+				return folderThen(c, a, nil, *jsonOut, func() error { return printResumed(a, pos[1], *jsonOut) })
 			}
 			if err != nil {
 				return explainRefusal(c, err)
 			}
-			return folderThen(c, a, false, *jsonOut, func() error { return printUnshareGroup(c, a, res, *jsonOut) })
+			return folderThen(c, a, nil, *jsonOut, func() error { return printUnshareGroup(c, a, res, *jsonOut) })
 		}
 	}
 	res, err := c.Unshare(a.ID, pos[1])
 	if resumeFolder(a, err) {
-		return folderThen(c, a, false, *jsonOut, func() error { return printResumed(a, pos[1], *jsonOut) })
+		return folderThen(c, a, nil, *jsonOut, func() error { return printResumed(a, pos[1], *jsonOut) })
 	}
 	if err != nil {
 		return explainRefusal(c, err)
 	}
-	return folderThen(c, a, false, *jsonOut, func() error { return printUnshare(c, a, res, *jsonOut) })
+	return folderThen(c, a, nil, *jsonOut, func() error { return printUnshare(c, a, res, *jsonOut) })
 }
 
 // printResumed says that a folder no longer lists who, so only the items

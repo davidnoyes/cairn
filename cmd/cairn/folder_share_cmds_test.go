@@ -242,3 +242,49 @@ func TestMembersNameAFolderTheReaderCannotReadByItsID(t *testing.T) {
 		t.Errorf("bob's direct row names a folder: %v", rows["bob@example.com"])
 	}
 }
+
+// A group the folder lists that was deleted since is shown as deleted, via the
+// folder, on the folder and on the items that list it.
+func TestMembersShowADeletedGroupTheFolderListsViaTheFolder(t *testing.T) {
+	_, work, _, _, deep := folderShareWorld(t)
+	g := runJSON[groupOut](t, runGroup, "create", "Reviewers", "--member", "cat@example.com", "--json")
+	if _, err := runQuiet(t, runShare, "Work", "Reviewers"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runQuiet(t, runGroup, "delete", "Reviewers"); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{work, deep} {
+		members := runJSON[struct{ Groups []map[string]any }](t, runMembers, id, "--json")
+		if len(members.Groups) != 1 || members.Groups[0]["id"] != g.ID || members.Groups[0]["deleted"] != true {
+			t.Fatalf("groups of %s = %v", id, members.Groups)
+		}
+		if id == deep && (members.Groups[0]["via"] != work || members.Groups[0]["viaName"] != "Work") {
+			t.Errorf("the item's entry: %v", members.Groups[0])
+		}
+		text, err := runQuiet(t, runMembers, id)
+		if err != nil || !strings.Contains(text, "(deleted group)") {
+			t.Errorf("members of %s printed %q, %v", id, text, err)
+		}
+	}
+	if text, _ := runQuiet(t, runMembers, deep); !strings.Contains(text, "via Work ("+work+")") {
+		t.Errorf("members printed %q", text)
+	}
+}
+
+// printFanOut says which entries an item skipped, and why.
+func TestPrintFanOutNamesTheEntriesAnItemSkipped(t *testing.T) {
+	done := captureStdout(t)
+	printFanOut(&client.FanOutResult{Items: []client.FanOutItem{{
+		ID: "item-1", State: client.FanOutUpdated, SkippedUsers: []string{"user-9"}, SkippedGroups: []string{"group-7"},
+	}}})
+	out := done()
+	for _, want := range []string{
+		"item-1: not listed: the folder lists user-9, whose account is deactivated or not verified",
+		"item-1: not listed: the folder lists the group group-7, which was deleted",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("printed %q, missing %q", out, want)
+		}
+	}
+}

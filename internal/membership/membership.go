@@ -55,6 +55,7 @@ const (
 	RuleFolder        Rule = "folder"         // a folder keeps team none and stays private (409)
 	RuleVia           Rule = "via"            // an entry's via names a folder that contains the item and lists it (409)
 	RuleInherit       Rule = "inherit"        // every user and group the folder lists, at its role or more (409)
+	RulePlacement     Rule = "placement"      // the record's folder is the one the item sits in (409)
 )
 
 // Error is a refused record: the HTTP status to answer with, and the rule.
@@ -323,8 +324,22 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 		return nil, conflict(RuleFolder, "a folder lists users and groups only: its team share stays none and it stays private")
 	}
 
+	// Placement is signed: the record names the folder the item sits in, and
+	// a client that fans a folder's entries out into an item trusts that name,
+	// never the server's tree. An accepting record takes the item to the top
+	// level, because accepting sets its parent to none.
+	wantFolder := cur.Parent
+	if ch.Accept != nil {
+		wantFolder = ""
+	}
+	if body.Folder != wantFolder {
+		return nil, conflict(RulePlacement, "folder %q is not the folder the item sits in, %q (empty is the top level)", body.Folder, wantFolder)
+	}
+
 	// An accepting record is about to take the item out of its folder, so
-	// the folder's entries no longer bind it.
+	// the folder's entries no longer bind it. That is safe because accepting
+	// sets parent_id to none, so every via in the record lapses at once and
+	// grants nothing, however the record marks it.
 	if ch.Accept == nil {
 		if err := checkInherited(cur, &body, dir); err != nil {
 			return nil, err
@@ -373,6 +388,9 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 		if id := managerChange(prev.Members, body.Members); id != "" {
 			return nil, refuse(RuleManagerChange, "a manager's record adds, removes, or changes manager %s: only the owner does", id)
 		}
+	}
+	if manager != nil && body.Folder != prev.Folder {
+		return nil, refuse(RuleManagerChange, "a manager's record changes the folder from %q to %q: only the owner moves an item", prev.Folder, body.Folder)
 	}
 	if manager != nil {
 		kept := map[string]bool{}
@@ -727,6 +745,13 @@ func checkInherited(cur Current, body *e2e.MembershipBody, dir Directory) error 
 		if p.User == body.Owner {
 			continue
 		}
+		// A deactivated or unverified account, and one that no longer exists,
+		// is not required, because a record may not add it.
+		if u, err := dir.User(p.User); err != nil {
+			return err
+		} else if u == nil || !u.Active || !u.Verified {
+			continue
+		}
 		i := slices.IndexFunc(body.Members, func(m e2e.Member) bool { return m.User == p.User })
 		if i < 0 {
 			return conflict(RuleInherit, "member %s is missing: folder %s lists them as %s", p.User, cur.Parent, p.Role)
@@ -1043,9 +1068,12 @@ func Load(tx *store.ArtifactTx, dir Directory) (Current, error) {
 		return Current{}, err
 	}
 	for _, id := range ancestors {
+		// A folder is created with its first record, so one without is a
+		// broken tree. Skipping it would drop the entries it lists from every
+		// check below, which breaks more-never-fewer.
 		r, err := tx.LatestRecordOf(id)
 		if errors.Is(err, store.ErrNotFound) {
-			continue
+			return Current{}, fmt.Errorf("membership: the folder %s has no record", id)
 		}
 		if err != nil {
 			return Current{}, err

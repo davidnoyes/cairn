@@ -20,9 +20,12 @@ func folderRecord(id string, members []e2e.Member, groups []e2e.GroupShare) *e2e
 }
 
 // inFolder puts f's artifact in folder F, whose latest record lists members
-// and groups.
+// and groups, and whose item's latest record names it.
 func (f *fixture) inFolder(members []e2e.Member, groups ...e2e.GroupShare) {
 	f.cur.Parent = folderF
+	named := *f.cur.Latest
+	named.Folder = folderF
+	f.setLatest(&named)
 	f.cur.Folders = map[string]*e2e.MembershipBody{folderF: folderRecord(folderF, members, groups)}
 }
 
@@ -61,6 +64,12 @@ func TestCheckInheritedEntries(t *testing.T) {
 			edit:   func(f *fixture, b *e2e.MembershipBody) { b.Members = b.Members[:1] },
 			status: 409, rule: RuleInherit, msg: "member u-b is missing"},
 		{name: "the folder lists the owner", folder: []e2e.Member{{User: "u-o", Role: "manager"}}},
+		{name: "the folder lists a deactivated user", folder: []e2e.Member{{User: "u-c", Role: "viewer"}},
+			edit: func(f *fixture, b *e2e.MembershipBody) { f.dir["u-c"].Active = false }},
+		{name: "the folder lists a user who is not verified", folder: []e2e.Member{{User: "u-c", Role: "viewer"}},
+			edit: func(f *fixture, b *e2e.MembershipBody) { f.dir["u-c"].Verified = false }},
+		{name: "the folder lists a user whose account is gone", folder: []e2e.Member{{User: "u-c", Role: "viewer"}},
+			edit: func(f *fixture, b *e2e.MembershipBody) { delete(f.dir, "u-c") }},
 		{name: "the folder lists a group the record lacks", groups: []e2e.GroupShare{share(groupA, "viewer")},
 			status: 409, rule: RuleInherit, msg: "group " + groupA + " is missing"},
 		{name: "the folder lists a group at a higher role", groups: []e2e.GroupShare{share(groupA, "editor")},
@@ -134,16 +143,42 @@ func TestCheckViaOnAnItemInNoFolder(t *testing.T) {
 }
 
 // A record that accepts an ownership offer takes the item out of its folder,
-// so the folder's entries do not bind it.
+// so the folder's entries do not bind it, and it names no folder, because the
+// item is at the top level once the record lands.
 func TestCheckAcceptIgnoresTheFolder(t *testing.T) {
 	f := newFixture(t)
 	f.inFolder([]e2e.Member{{User: f.c.ID, Role: "viewer", FP: f.c.FP}})
-	if _, err := Check(f.cur, f.dir, f.accepting(t, f.takeOver(), wrapsFor(f.o, 1, 2), estates(2))); err != nil {
+	accepted := f.takeOver()
+	accepted.Folder = ""
+	if _, err := Check(f.cur, f.dir, f.accepting(t, accepted, wrapsFor(f.o, 1, 2), estates(2))); err != nil {
 		t.Fatalf("an accepting record: %v", err)
 	}
+	// An accepting record that still names the folder is not the one the
+	// item will have.
+	_, err := Check(f.cur, f.dir, f.accepting(t, f.takeOver(), wrapsFor(f.o, 1, 2), estates(2)))
+	refused(t, err, 409, RulePlacement, "folder")
 	b := f.next()
-	_, err := Check(f.cur, f.dir, f.change(t, b, nil, nil))
+	_, err = Check(f.cur, f.dir, f.change(t, b, nil, nil))
 	refused(t, err, 409, RuleInherit, "member u-c is missing")
+}
+
+// An accepting record skips the via checks, so one that carries a via the
+// folder does not honor is accepted. It grants nothing, because accepting
+// sets the item's parent to none, and an entry whose via names a folder that
+// does not contain the item counts for no one: see the server's test.
+func TestCheckAcceptAcceptsAForgedVia(t *testing.T) {
+	f := newFixture(t)
+	f.inFolder(nil)
+	forged := f.takeOver()
+	forged.Folder = ""
+	forged.Members[0].Via = folderG
+	res, err := Check(f.cur, f.dir, f.accepting(t, forged, wrapsFor(f.o, 1, 2), estates(2)))
+	if err != nil {
+		t.Fatalf("an accepting record with a via: %v", err)
+	}
+	if res.Members[0].Via != folderG {
+		t.Errorf("the via is stored as written: %+v", res.Members)
+	}
 }
 
 // A folder's own record is held to its parent's entries, and may list its

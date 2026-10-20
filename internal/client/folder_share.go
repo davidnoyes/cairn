@@ -40,17 +40,22 @@ const (
 // next-epoch record excluded, and Resealed and ResealErr what sealing the
 // item's data again under the new epoch did. Approved and Pending are the
 // members of a group the record added whom the client approved, or left
-// waiting.
+// waiting. SkippedUsers and SkippedGroups are the entries the folder lists
+// that the record did not add, because the account is deactivated or not
+// verified, or the group was deleted: a record may not add them, and the
+// folder's rule does not ask for them.
 type FanOutItem struct {
-	ID        string
-	Kind      string
-	State     string
-	Err       error
-	Excluded  []ExcludedUser
-	Resealed  *ResealResult
-	ResealErr error
-	Approved  []DirectoryUser
-	Pending   []UnlistedUser
+	ID            string
+	Kind          string
+	State         string
+	Err           error
+	Excluded      []ExcludedUser
+	Resealed      *ResealResult
+	ResealErr     error
+	Approved      []DirectoryUser
+	Pending       []UnlistedUser
+	SkippedUsers  []string
+	SkippedGroups []string
 }
 
 // FanOutResult is what FanOut did to the items inside a folder, in the order
@@ -70,20 +75,37 @@ func (r *FanOutResult) Count(state string) int {
 	return n
 }
 
+// Placing says the client itself put the root of a fan-out in a folder, by
+// moving it, so its user chose the folder: Parent is the folder's ID, empty
+// for the top level. The root's record then names Parent, whatever it named
+// before, and the entries Parent lists are copied into it. Everything else
+// that decides whose keys an item is sealed to comes from signed records.
+type Placing struct{ Parent string }
+
+// ErrPlacement means an item's latest verified record does not name the
+// folder the server lists the item in, so no entry of that folder is copied
+// into it: the server's tree is unsigned, and a hostile server could use it
+// to have an item's key sealed to the members of a folder it chose.
+var ErrPlacement = errors.New("the item's signed record does not name the folder the server lists it in")
+
 // FanOut brings every item in the subtree of the folder rootID up to date
 // with its own folder, parents before the items inside them: for each item
 // whose artifact view says inherit is pending, it writes the record that adds
 // the entries the folder lists, marked with the folder they come from, and
 // when an entry no longer holds, because its folder stopped listing the user
 // or the item left it, a next-epoch record that excludes the users who held
-// the item only through it, and seals its data again. includeRoot also
-// visits the folder itself, as a move does for the item it moved. It calls
-// progress, when not nil, after each item with how many are done of how many
-// the run visits; an item already current counts as done. An item that fails
-// is skipped, with the reason in the result, so that one item does not hold
-// the rest back, and ErrFanOutIncomplete is returned at the end; running the
-// same command again resumes with the items still pending.
-func (c *Client) FanOut(rootID string, includeRoot bool, progress func(done, total int)) (*FanOutResult, error) {
+// the item only through it, and seals its data again. The walk goes into an
+// item only when its latest verified record names the folder it was found
+// in; any other item the server lists there as pending is refused, by ID,
+// and never sealed to. placing, when not nil, also visits the folder itself,
+// as a move does for the item it moved, and writes its record naming
+// placing.Parent. It calls progress, when not nil, after each item with how
+// many are done of how many the run visits; an item already current counts
+// as done. An item that fails is skipped, with the reason in the result, so
+// that one item does not hold the rest back, and ErrFanOutIncomplete is
+// returned at the end; running the same command again resumes with the items
+// still pending.
+func (c *Client) FanOut(rootID string, placing *Placing, progress func(done, total int)) (*FanOutResult, error) {
 	k, err := c.Unlock()
 	if err != nil {
 		return nil, err
@@ -99,11 +121,19 @@ func (c *Client) FanOut(rootID string, includeRoot bool, progress func(done, tot
 	if err != nil {
 		return nil, err
 	}
-	order := subtreeOrder(all, rootID, includeRoot)
-	f := &fanOut{c: c, k: k, dir: dir, parents: map[string]*e2e.MembershipBody{}}
+	f := &fanOut{c: c, k: k, dir: dir, parents: map[string]*e2e.MembershipBody{}, verified: map[string]*VerifiedArtifact{}}
+	order := subtreeOrder(all, rootID, placing != nil, f.folderNamed)
 	res := &FanOutResult{}
-	for i, a := range order {
-		item := f.item(a)
+	for i, s := range order {
+		var item FanOutItem
+		switch {
+		case s.refused != nil:
+			item = FanOutItem{ID: s.a.ID, Kind: s.a.Kind, State: FanOutFailed, Err: s.refused}
+		case placing != nil && s.a.ID == rootID:
+			item = f.item(s.a, placing)
+		default:
+			item = f.item(s.a, nil)
+		}
 		res.Items = append(res.Items, item)
 		if fatalFetch(item.Err) {
 			return res, item.Err
@@ -118,13 +148,34 @@ func (c *Client) FanOut(rootID string, includeRoot bool, progress func(done, tot
 	return res, nil
 }
 
-// subtreeOrder lists the items inside the folder root, depth first, each
-// folder before the items inside it, folders before artifacts and each by
-// ID. includeRoot puts the root itself first.
-func subtreeOrder(all []*Artifact, root string, includeRoot bool) []*Artifact {
-	var out []*Artifact
+// subtreeItem is an item the walk visits. refused, when set, says why the
+// walk will not touch it: its signed record does not name the folder it was
+// found in, or its record cannot be verified.
+type subtreeItem struct {
+	a       *Artifact
+	refused error
+}
+
+// placeName is a folder ID as an error message says it.
+func placeName(id string) string {
+	if id == "" {
+		return "no folder (the top level)"
+	}
+	return "folder " + id
+}
+
+// subtreeOrder lists the items the server lists inside the folder root, depth
+// first, each folder before the items inside it, folders before artifacts and
+// each by ID. includeRoot puts the root itself first. The server's tree is
+// unsigned, so folderNamed reads the folder an item's latest verified record
+// names, and an item found in a folder that its record does not name is
+// refused, and the walk does not go into it. A folder is always checked, and
+// so is an artifact the server lists as pending; one it calls current is
+// visited without being read, because nothing is copied into it.
+func subtreeOrder(all []*Artifact, root string, includeRoot bool, folderNamed func(*Artifact) (string, error)) []subtreeItem {
+	var out []subtreeItem
 	if includeRoot {
-		out = append(out, byID(all, root))
+		out = append(out, subtreeItem{a: byID(all, root)})
 	}
 	var walk func(parent string, depth int)
 	walk = func(parent string, depth int) {
@@ -141,8 +192,18 @@ func subtreeOrder(all []*Artifact, root string, includeRoot bool) []*Artifact {
 			return kids[i].ID < kids[j].ID
 		})
 		for _, a := range kids {
-			out = append(out, a)
-			if a.Kind == store.KindFolder && depth < store.MaxFolderDepth {
+			item := subtreeItem{a: a}
+			if a.Kind == store.KindFolder || a.Inherit == "pending" {
+				named, err := folderNamed(a)
+				switch {
+				case err != nil:
+					item.refused = err
+				case named != parent:
+					item.refused = fmt.Errorf("%w: it is listed in %s, and its record names %s", ErrPlacement, placeName(parent), placeName(named))
+				}
+			}
+			out = append(out, item)
+			if item.refused == nil && a.Kind == store.KindFolder && depth < store.MaxFolderDepth {
 				walk(a.ID, depth+1)
 			}
 		}
@@ -151,24 +212,43 @@ func subtreeOrder(all []*Artifact, root string, includeRoot bool) []*Artifact {
 	return out
 }
 
-// fanOut is one FanOut run: the caller's keys, the directory, and the latest
-// record of each folder the run has read. A folder is visited before the
-// items inside it, so a record read for an item is never one the run is yet
-// to change.
+// fanOut is one FanOut run: the caller's keys, the directory, the latest
+// record of each folder the run has read, and the chain the walk verified
+// for each item it checked, which sync uses once, before it writes the item.
+// A folder is visited before the items inside it, so a record read for an
+// item is never one the run is yet to change.
 type fanOut struct {
-	c       *Client
-	k       *UnlockedKeys
-	dir     []DirectoryUser
-	parents map[string]*e2e.MembershipBody
+	c        *Client
+	k        *UnlockedKeys
+	dir      []DirectoryUser
+	parents  map[string]*e2e.MembershipBody
+	verified map[string]*VerifiedArtifact
 }
 
-// item brings one item up to date.
-func (f *fanOut) item(a *Artifact) FanOutItem {
+// folderNamed verifies the item a and returns the folder its latest record
+// names, empty at the top level.
+func (f *fanOut) folderNamed(a *Artifact) (string, error) {
+	va, err := f.c.VerifyArtifact(f.k, a.ID, "")
+	if err != nil {
+		return "", err
+	}
+	f.verified[a.ID] = va
+	return va.Chain.Latest.Folder, nil
+}
+
+// item brings one item up to date. placing is set for the root of a move.
+func (f *fanOut) item(a *Artifact, placing *Placing) FanOutItem {
 	out := FanOutItem{ID: a.ID, Kind: a.Kind, State: FanOutCurrent}
-	if err := f.sync(a.ID, &out); err != nil {
+	if err := f.sync(a.ID, placing, &out); err != nil {
 		out.State, out.Err = FanOutFailed, err
 	}
 	return out
+}
+
+// usable reports whether the directory holds the user, which it does for an
+// active, verified account only: a record may add no other.
+func (f *fanOut) usable(user string) bool {
+	return slices.ContainsFunc(f.dir, func(u DirectoryUser) bool { return u.ID == user })
 }
 
 // parentRecord is the latest verified record of the folder id.
@@ -186,8 +266,11 @@ func (f *fanOut) parentRecord(id string) (*e2e.MembershipBody, error) {
 }
 
 // sync writes the record that brings item id up to date, if it is pending,
-// and notes in out what it did.
-func (f *fanOut) sync(id string, out *FanOutItem) error {
+// and notes in out what it did. The folder whose entries it copies in is the
+// one the item's latest verified record names, or placing.Parent when the
+// client put the item there itself; the server's own word for where the item
+// sits must agree, or nothing is written.
+func (f *fanOut) sync(id string, placing *Placing, out *FanOutItem) error {
 	c, k := f.c, f.k
 	view, err := c.getArtifact(id)
 	if err != nil {
@@ -196,23 +279,38 @@ func (f *fanOut) sync(id string, out *FanOutItem) error {
 	if view.Inherit != "pending" {
 		return nil
 	}
-	va, err := c.VerifyArtifact(k, id, "")
-	if err != nil {
-		return err
+	va := f.verified[id]
+	delete(f.verified, id)
+	if va == nil {
+		if va, err = c.VerifyArtifact(k, id, ""); err != nil {
+			return err
+		}
 	}
 	latest := va.Chain.Latest
+	folder := latest.Folder
+	if placing != nil {
+		folder = placing.Parent
+	}
+	if view.ParentID != folder {
+		return fmt.Errorf("%w: it is listed in %s, and its record names %s", ErrPlacement, placeName(view.ParentID), placeName(folder))
+	}
 	var parent *e2e.MembershipBody
-	groups := []e2e.GroupShare(nil)
-	if view.ParentID != "" {
-		if parent, err = f.parentRecord(view.ParentID); err != nil {
+	live := func(string) bool { return false }
+	if folder != "" {
+		if parent, err = f.parentRecord(folder); err != nil {
 			return err
 		}
-		if groups, _, err = c.liveGroups(parent.Groups); err != nil {
+		kept, _, err := c.liveGroups(parent.Groups)
+		if err != nil {
 			return err
+		}
+		live = func(g string) bool {
+			return slices.ContainsFunc(kept, func(s e2e.GroupShare) bool { return s.Group == g })
 		}
 	}
-	plan := planInherit(latest, parent, view.ParentID, groups)
-	if slices.Equal(plan.members, latest.Members) && slices.Equal(plan.groups, latest.Groups) {
+	plan := planInherit(latest, parent, folder, f.usable, live)
+	out.SkippedUsers, out.SkippedGroups = plan.skippedUsers, plan.skippedGroups
+	if slices.Equal(plan.members, latest.Members) && slices.Equal(plan.groups, latest.Groups) && folder == latest.Folder {
 		return nil
 	}
 	if err := c.checkHandover(k, id, va); err != nil {
@@ -222,8 +320,9 @@ func (f *fanOut) sync(id string, out *FanOutItem) error {
 		return err
 	}
 	next := latest
-	next.Members, next.Groups = plan.members, plan.groups
-	if !isOwner(latest, k) && !slices.Equal(managersOf(latest.Members), managersOf(next.Members)) {
+	next.Members, next.Groups, next.Folder = plan.members, plan.groups, folder
+	// Moving is the owner's, so a manager's record keeps the folder.
+	if !isOwner(latest, k) && (!slices.Equal(managersOf(latest.Members), managersOf(next.Members)) || folder != latest.Folder) {
 		return ErrManagerOwnerOnly
 	}
 	byID := map[string]DirectoryUser{}
@@ -234,11 +333,7 @@ func (f *fanOut) sync(id string, out *FanOutItem) error {
 	// now, which must be the ones the folder lists them under.
 	for _, uid := range plan.added {
 		i := slices.IndexFunc(next.Members, func(m e2e.Member) bool { return m.User == uid })
-		u, ok := byID[uid]
-		switch {
-		case !ok:
-			return fmt.Errorf("the account of %s was deleted, so the folder's entry for them cannot be inherited", uid)
-		case u.FP != next.Members[i].FP:
+		if u := byID[uid]; u.FP != next.Members[i].FP {
 			return fmt.Errorf("%w: %s (%s) was listed by the folder under another fingerprint than the directory serves now; share the folder with them again with cairn share --accept-new-key", ErrMemberKeyChanged, u.Email, u.ID)
 		}
 	}
@@ -381,6 +476,11 @@ type inheritPlan struct {
 	// same-epoch record cannot do.
 	added, addedGroups []string
 	epoch              bool
+	// skippedUsers and skippedGroups are the users and groups the folder lists
+	// that the plan does not add: a deactivated or unverified account and a
+	// deleted group, which a record may not add and the folder's rule does not
+	// require.
+	skippedUsers, skippedGroups []string
 }
 
 // nearestVia is the folder an entry that parent lists comes from: the folder
@@ -396,14 +496,15 @@ func nearestVia(via, parentID string) string {
 
 // planInherit works out the lists of the record that follows item, an item
 // in the folder parentID whose latest record is parent (nil for an item at
-// the top level) and whose live groups are parentGroups. An entry with no
-// via is a direct grant: it stays, at the higher of its role and the
-// folder's. An entry with a via exists only because of a folder: it follows
-// the folder's role and mark while the folder lists it, and leaves when the
-// folder does not, which takes a next epoch. A user or group the folder lists
-// and the item does not is added, marked with its nearest folder. The item's
-// owner is never listed.
-func planInherit(item e2e.MembershipBody, parent *e2e.MembershipBody, parentID string, parentGroups []e2e.GroupShare) inheritPlan {
+// the top level). An entry with no via is a direct grant: it stays, at the
+// higher of its role and the folder's. An entry with a via exists only
+// because of a folder: it follows the folder's role and mark while the folder
+// lists it, and leaves when the folder does not, which takes a next epoch. A
+// user or group the folder lists and the item does not is added, marked with
+// its nearest folder, unless usable says the user's account is deactivated or
+// not verified, or live says the group was deleted: those are skipped, and
+// kept if the item already lists them. The item's owner is never listed.
+func planInherit(item e2e.MembershipBody, parent *e2e.MembershipBody, parentID string, usable func(user string) bool, live func(group string) bool) inheritPlan {
 	p := inheritPlan{members: []e2e.Member{}}
 	wantMembers := map[string]e2e.Member{}
 	wantGroups := map[string]e2e.GroupShare{}
@@ -413,7 +514,7 @@ func planInherit(item e2e.MembershipBody, parent *e2e.MembershipBody, parentID s
 				wantMembers[m.User] = e2e.Member{User: m.User, Role: m.Role, FP: m.FP, Via: nearestVia(m.Via, parentID)}
 			}
 		}
-		for _, g := range parentGroups {
+		for _, g := range parent.Groups {
 			wantGroups[g.Group] = e2e.GroupShare{Group: g.Group, Role: g.Role, Via: nearestVia(g.Via, parentID)}
 		}
 	}
@@ -435,6 +536,10 @@ func planInherit(item e2e.MembershipBody, parent *e2e.MembershipBody, parentID s
 		p.members = append(p.members, m)
 	}
 	for _, w := range wantMembers {
+		if !usable(w.User) {
+			p.skippedUsers = append(p.skippedUsers, w.User)
+			continue
+		}
 		p.members = append(p.members, w)
 		p.added = append(p.added, w.User)
 	}
@@ -456,6 +561,10 @@ func planInherit(item e2e.MembershipBody, parent *e2e.MembershipBody, parentID s
 		p.groups = append(p.groups, g)
 	}
 	for _, w := range wantGroups {
+		if !live(w.Group) {
+			p.skippedGroups = append(p.skippedGroups, w.Group)
+			continue
+		}
 		p.groups = append(p.groups, w)
 		p.addedGroups = append(p.addedGroups, w.Group)
 	}
@@ -463,6 +572,8 @@ func planInherit(item e2e.MembershipBody, parent *e2e.MembershipBody, parentID s
 	slices.SortFunc(p.groups, func(a, b e2e.GroupShare) int { return strings.Compare(a.Group, b.Group) })
 	slices.Sort(p.added)
 	slices.Sort(p.addedGroups)
+	slices.Sort(p.skippedUsers)
+	slices.Sort(p.skippedGroups)
 	return p
 }
 

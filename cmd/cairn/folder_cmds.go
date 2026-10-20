@@ -229,7 +229,7 @@ func runMove(args []string) error {
 		return err
 	}
 	moved.Name, moved.Description = item.Name, item.Description
-	return folderThen(c, item, true, *jsonOut, func() error {
+	return folderThen(c, item, &client.Placing{Parent: parent}, *jsonOut, func() error {
 		if *jsonOut {
 			return printMoved(moved)
 		}

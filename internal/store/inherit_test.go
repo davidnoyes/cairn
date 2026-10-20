@@ -109,6 +109,15 @@ func TestAccessCountsAViaGroupOnlyWhileTheFolderListsIt(t *testing.T) {
 	}
 }
 
+// inheritPending is InheritPending for the artifact id.
+func inheritPending(w *inheritWorld, id string) (bool, error) {
+	a, err := w.s.ArtifactByID(id)
+	if err != nil {
+		return false, err
+	}
+	return w.s.InheritPending(a)
+}
+
 // lapsedOf reads LapsedVia for id.
 func lapsedOf(w *inheritWorld, id string) (users, groups map[string]bool, err error) {
 	err = w.s.WithArtifact(id, func(tx *ArtifactTx) (err error) { users, groups, err = tx.LapsedVia(); return })
@@ -122,7 +131,7 @@ func TestInheritPending(t *testing.T) {
 	}
 	pending := func(id string, want bool, why string) {
 		t.Helper()
-		p, err := w.s.InheritPending(id)
+		p, err := inheritPending(w, id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -205,7 +214,7 @@ func TestAccessCapsAViaMemberAtTheFoldersRole(t *testing.T) {
 	if got := role(); got != "editor" {
 		t.Errorf("an entry at the folder's role: %s", got)
 	}
-	pending, err := w.s.InheritPending(w.item)
+	pending, err := inheritPending(w, w.item)
 	if err != nil || pending {
 		t.Errorf("pending at the folder's role: %v, %v", pending, err)
 	}
@@ -215,7 +224,7 @@ func TestAccessCapsAViaMemberAtTheFoldersRole(t *testing.T) {
 	if got := role(); got != "viewer" {
 		t.Errorf("after the folder lowered bob: %s", got)
 	}
-	if pending, err := w.s.InheritPending(w.item); err != nil || !pending {
+	if pending, err := inheritPending(w, w.item); err != nil || !pending {
 		t.Errorf("pending after the folder lowered bob: %v, %v", pending, err)
 	}
 	// A direct grant is not capped.
@@ -223,4 +232,67 @@ func TestAccessCapsAViaMemberAtTheFoldersRole(t *testing.T) {
 	if got := role(); got != "editor" {
 		t.Errorf("a direct editor: %s", got)
 	}
+}
+
+// A move leaves the item's latest record naming the old folder, so the item is
+// pending until a record names the new one.
+func TestInheritPendingWhenTheRecordNamesAnotherFolder(t *testing.T) {
+	w := newInheritWorld(t)
+	appendRecord := func(seq int, prev, body string) string {
+		t.Helper()
+		r := record(seq, prev, 1, body)
+		if err := w.s.WithArtifact(w.item, func(tx *ArtifactTx) error { return tx.AppendRecord(r) }); err != nil {
+			t.Fatal(err)
+		}
+		return r.BodyHash
+	}
+	pending := func(want bool, why string) {
+		t.Helper()
+		if p, err := inheritPending(w, w.item); err != nil || p != want {
+			t.Errorf("%s: pending = %v, %v; want %v", why, p, err, want)
+		}
+	}
+	pending(false, "no record yet")
+	h := appendRecord(1, "", `{"folder":"`+w.nested+`"}`)
+	pending(false, "the record names the folder the item sits in")
+	if err := w.s.MoveItem(w.item, w.folder); err != nil {
+		t.Fatal(err)
+	}
+	pending(true, "moved to another folder")
+	h = appendRecord(2, h, `{"folder":"`+w.folder+`"}`)
+	pending(false, "a record names the new folder")
+	if err := w.s.MoveItem(w.item, ""); err != nil {
+		t.Fatal(err)
+	}
+	pending(true, "moved to the top level")
+	appendRecord(3, h, `{}`)
+	pending(false, "a record names no folder")
+}
+
+// A deactivated or unverified account is not required of an item, because a
+// record may not add one; one the item already lists is not affected.
+func TestInheritPendingDoesNotRequireAnInactiveAccount(t *testing.T) {
+	w := newInheritWorld(t)
+	w.listIn(t, w.folder, []Member{{UserID: w.bob.ID, Role: "viewer", FP: "fb"}, {UserID: w.carl.ID, Role: "viewer", FP: "fc"}}, nil)
+	pending := func(want bool, why string) {
+		t.Helper()
+		if p, err := inheritPending(w, w.item); err != nil || p != want {
+			t.Errorf("%s: pending = %v, %v; want %v", why, p, err, want)
+		}
+	}
+	// The nested folder lists both users, and the item neither.
+	w.listIn(t, w.nested, []Member{{UserID: w.bob.ID, Role: "viewer", FP: "fb", Via: w.folder}, {UserID: w.carl.ID, Role: "viewer", FP: "fc", Via: w.folder}}, nil)
+	pending(true, "the nested folder lists two active users")
+	if err := w.s.SetUserDisabled(w.bob.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	pending(true, "carl is still required")
+	if _, err := w.s.db.Exec(`UPDATE users SET verified_at = NULL WHERE id = ?`, w.carl.ID); err != nil {
+		t.Fatal(err)
+	}
+	pending(false, "bob is deactivated and carl is not verified")
+	if err := w.s.SetUserDisabled(w.bob.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	pending(true, "bob is active again")
 }

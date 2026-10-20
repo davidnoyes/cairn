@@ -413,6 +413,9 @@ func (c *Client) AcceptTransfer(artifactID string, opts AcceptTransferOptions) (
 	}
 	next := latest
 	next.Owner, next.OwnerFP = k.UserID, k.FP
+	// Accepting takes the item to the top level, and the server refuses a
+	// record that names a folder.
+	next.Folder = ""
 	switch open.By {
 	case "owner":
 		if open.Offer == nil {

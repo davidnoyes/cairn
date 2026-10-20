@@ -122,11 +122,12 @@ func estateFields(artifact string, epoch int) [][]byte {
 // server accepts it reads the chain back and verifies it, anchored at the
 // caller's own fingerprint. It then writes the artifact's name, and its
 // description unless that is empty, as encrypted fields. Options make it a
-// folder (AsFolder) or put it in one (InFolder). An item put in a shared
-// folder lists every user and group the folder lists, marked with the folder
-// they come from, because the server refuses a record without them; each
-// user gets a wrap of the first epoch's key, and the members of each group
-// are approved when the group's chain checks out.
+// folder (AsFolder) or put it in one (InFolder). An item put in a folder
+// names it in its first record, which the client's user chose, and an item
+// put in a shared folder lists every user and group the folder lists, marked
+// with the folder they come from, because the server refuses a record
+// without them; each user gets a wrap of the first epoch's key, and the
+// members of each group are approved when the group's chain checks out.
 func (c *Client) CreateArtifact(name, description string, opts ...CreateOption) (*Artifact, error) {
 	var o createOptions
 	for _, opt := range opts {
@@ -151,6 +152,7 @@ func (c *Client) CreateArtifact(name, description string, opts ...CreateOption) 
 	}
 	wraps := []map[string]any{}
 	if o.parent != "" {
+		first.Folder = o.parent
 		if wraps, err = c.inheritInto(k, &first, o.parent, ak); err != nil {
 			return nil, err
 		}
@@ -215,30 +217,35 @@ func (c *Client) CreateArtifact(name, description string, opts ...CreateOption) 
 // inheritInto lists in first, an item's first record, every user and group
 // the folder parent lists, marked with the folder they come from, and returns
 // the wraps of the item's first AK to those users. A user the folder lists
-// under keys other than the directory serves now is refused.
+// under keys other than the directory serves now is refused. A deactivated
+// or unverified account and a deleted group are left out, as a record may not
+// add them.
 func (c *Client) inheritInto(k *UnlockedKeys, first *e2e.MembershipBody, parent string, ak []byte) ([]map[string]any, error) {
 	pv, err := c.VerifyArtifact(k, parent, "")
 	if err != nil {
 		return nil, fmt.Errorf("the folder %s: %w", parent, err)
 	}
-	live, _, err := c.liveGroups(pv.Chain.Latest.Groups)
+	kept, _, err := c.liveGroups(pv.Chain.Latest.Groups)
 	if err != nil {
 		return nil, err
-	}
-	plan := planInherit(*first, &pv.Chain.Latest, parent, live)
-	first.Members, first.Groups = plan.members, plan.groups
-	wraps := []map[string]any{}
-	if len(plan.added) == 0 {
-		return wraps, nil
 	}
 	dir, err := c.Directory()
 	if err != nil {
 		return nil, err
 	}
+	usable := func(user string) bool {
+		return slices.ContainsFunc(dir, func(u DirectoryUser) bool { return u.ID == user })
+	}
+	live := func(g string) bool {
+		return slices.ContainsFunc(kept, func(s e2e.GroupShare) bool { return s.Group == g })
+	}
+	plan := planInherit(*first, &pv.Chain.Latest, parent, usable, live)
+	first.Members, first.Groups = plan.members, plan.groups
+	wraps := []map[string]any{}
 	for _, id := range plan.added {
 		i := slices.IndexFunc(dir, func(u DirectoryUser) bool { return u.ID == id })
 		j := slices.IndexFunc(first.Members, func(m e2e.Member) bool { return m.User == id })
-		if i < 0 || dir[i].FP != first.Members[j].FP {
+		if dir[i].FP != first.Members[j].FP {
 			return nil, fmt.Errorf("%w: %s was listed by the folder under another fingerprint than the directory serves now; share the folder with them again with cairn share --accept-new-key", ErrMemberKeyChanged, id)
 		}
 		w, err := wrapsTo(first.Artifact, map[int][]byte{1: ak}, 1, dir[i])

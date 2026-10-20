@@ -283,7 +283,7 @@ func (s *Server) viewOf(a *store.Artifact, level access.Level) (*artifactView, e
 	v := &artifactView{ID: a.ID, Kind: a.Kind, Owner: a.OwnerID, Access: level,
 		Epoch: a.Epoch, Team: a.Team, Public: a.Public, PublicWrites: a.PublicWrites,
 		CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt, Inherit: inheritOK}
-	pending, err := s.store.InheritPending(a.ID)
+	pending, err := s.store.InheritPending(a)
 	if err != nil {
 		return nil, err
 	}

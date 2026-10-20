@@ -53,11 +53,13 @@ type GroupShare struct {
 
 // MembershipBody is signed by the owner, or, as version 2, by a manager:
 // Signer and SignerFP then name the manager and the key that signed. They
-// and Groups are the only fields with `omitempty`, because a version 1 body
-// has no signer fields, and a record that lists no groups has no groups key:
-// see checkVersion. Via, on a member or a groups entry, is the same: left out
-// for a direct grant. An explicit empty value still fails DecodeStrict's round
-// trip.
+// and Groups and Folder are the only fields with `omitempty`, because a
+// version 1 body has no signer fields, a record that lists no groups has no
+// groups key, and an item at the top level has no folder key: see
+// checkVersion. Via, on a member or a groups entry, is the same: left out for
+// a direct grant. An explicit empty value still fails DecodeStrict's round
+// trip. Folder is the ID of the folder the item sits in, which the server
+// checks against its own tree and a fan-out trusts instead of it.
 type MembershipBody struct {
 	V            int             `json:"v"`
 	Artifact     string          `json:"artifact"`
@@ -70,6 +72,7 @@ type MembershipBody struct {
 	Excluded     []ExcludedEntry `json:"excluded"`
 	Team         string          `json:"team"`
 	Groups       []GroupShare    `json:"groups,omitempty"`
+	Folder       string          `json:"folder,omitempty"`
 	Public       bool            `json:"public"`
 	PublicWrites bool            `json:"publicWrites"`
 	Prev         string          `json:"prev"`
