@@ -110,3 +110,48 @@ test("others' items: place in someone's folder, a stub until applied, and delete
     await rd.context.close();
   }
 });
+
+test("others' items: an editor makes a folder inside someone's folder, and takes the owner's item out", async ({ browser, browserName }) => {
+  const s = loadState();
+  const domain = s.users.owner.email.split('@')[1];
+  const stamp = `${browserName}-${Date.now()}`;
+  const editor = await freshUser(`of-ed2-${stamp}`, domain);
+  const top = `others2-${stamp}`;
+  const sub = `of-sub-${stamp}`;
+  const doc = `of-own-${stamp}`;
+  cli('owner', ['folder', 'create', top]);
+  cli('owner', ['push', path.join(s.fixturesDir, 'marker'), '--artifact', doc, '--create', '--in', top]);
+  const listed = () => cliJson('owner', ['artifact', 'list']);
+  const topId = listed().find((a) => a.name === top).id;
+  const docId = listed().find((a) => a.name === doc).id;
+  cli('owner', ['share', topId, editor.email, '--role', 'editor']);
+
+  const ed = await signedIn(browser, editor);
+  try {
+    await artifacts(ed.page);
+    await ed.page.locator(`#shared tr[data-id="${topId}"]`).getByRole('button', { name: top }).click();
+    await expect(ed.page.locator('#shared-crumbs')).toContainText(top);
+
+    // The editor's new folder is theirs, inside the owner's folder, and the
+    // owner reads it as the folder's owner.
+    await ed.page.getByLabel('New folder name in the shared folder').fill(sub);
+    await ed.page.getByRole('button', { name: 'New folder here' }).click();
+    await expect(ed.page.locator('#artifacts-status')).toHaveText('Folder created.', { timeout: 60_000 });
+    await settled(ed.page);
+    await expect(ed.page.locator('#shared tr').filter({ hasText: sub })).toHaveCount(1);
+    const made = listed().find((a) => a.name === sub);
+    expect(made, 'the owner reads the editor\'s folder').toBeTruthy();
+    expect(made.parent).toBe(topId);
+    expect(made.owner).not.toBe(listed().find((a) => a.id === topId).owner);
+
+    // The editor takes the owner's item out of the folder: it goes to the
+    // owner's top level.
+    await ed.page.locator(`#shared tr[data-id="${docId}"]`).getByRole('button', { name: 'Remove from folder' }).click();
+    await expect(ed.page.locator('#artifacts-status')).toHaveText("Removed from the folder. It is at its owner's top level now.", { timeout: 60_000 });
+    await settled(ed.page);
+    await expect(ed.page.locator(`#shared tr[data-id="${docId}"]`)).toHaveCount(0);
+    expect(listed().find((a) => a.id === docId).parent ?? null).toBeNull();
+  } finally {
+    await ed.context.close();
+  }
+});

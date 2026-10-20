@@ -19,7 +19,7 @@ async function settled(page) {
 
 // newFolder creates a folder in the one in view and waits for its row.
 async function newFolder(page, name) {
-  await page.getByLabel('New folder name').fill(name);
+  await page.getByLabel('New folder name', { exact: true }).fill(name);
   await page.getByRole('button', { name: 'New folder' }).click();
   await expect(page.locator('#own tr').filter({ hasText: name })).toHaveCount(1, { timeout: 30_000 });
   await settled(page);
