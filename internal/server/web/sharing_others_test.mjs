@@ -546,8 +546,9 @@ test('the folder owner shares the folder: the item lists her as a manager, so sh
 test('the folder owner lists a manager on the folder: that changes the item\'s managers, which only its owner signs, so the item stays pending and apply says it waits on its owner', async () => {
   const s = await scene({ who: 'owner', items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ members: [listed(U.owner, 'manager', F)] })] });
   const res = await share(s.deps, F, 'outsider@example.com', 'manager');
-  assert.deepEqual(res.fanOut.items.map((i) => [i.id, i.state, i.error?.code]), [[AP, 'failed', 'owner-only']]);
-  assert.equal(res.fanOut.failed, 1);
+  assert.deepEqual(res.fanOut.items.map((i) => [i.id, i.state, i.error?.code]), [[AP, 'waits', undefined]]);
+  assert.equal(res.fanOut.failed, 0);
+  assert.equal(fanOutNote(res, (e) => e.message), ` 0 of 1 items up to date. 1 item waits on its owner, who applies it: ${AP} (other@example.com).`);
   assert.equal(entry(s, AP, U.outsider), undefined, 'no record was written for it');
   assert.equal(s.server.inheritOf(AP), 'pending');
   const waits = await apply(s.deps);

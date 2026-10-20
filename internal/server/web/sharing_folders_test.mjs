@@ -228,7 +228,9 @@ test('a manager signs the records of a fan-out, and cannot add a manager through
   });
   const res = await fanOut(t.deps, F);
   // A2 is not in the manager's list but as a stub: the owner's to apply.
-  assert.deepEqual(res.items.map((i) => [i.id, i.state, i.error?.code]), [[G, 'failed', 'owner-only'], [A2, 'waits', undefined], [A1, 'failed', 'owner-only']]);
+  assert.deepEqual(res.items.map((i) => [i.id, i.state, i.error?.code]), [[G, 'waits', undefined], [A2, 'waits', undefined], [A1, 'waits', undefined]]);
+  assert.equal(res.failed, 0);
+  assert.deepEqual(res.items.map((i) => [i.owner, i.ownerEmail]), res.items.map(() => [U.owner.id, 'owner@example.com']), 'each waits on the owner');
   assert.equal(t.server.records.length, 0);
 });
 
@@ -620,7 +622,9 @@ test('a manager cannot list again someone removed from an item through a fan-out
   s.server.who = U.manager;
   s.server.primary.keyring = { rev: 0, keyring: '' };
   const res = await share(depsFor(s.server, records.manager), F, 'viewer@example.com', 'viewer');
-  assert.equal(res.fanOut.items.find((i) => i.id === A1).error.code, 'owner-only');
+  const item = res.fanOut.items.find((i) => i.id === A1);
+  assert.deepEqual([item.state, item.error, item.owner], ['waits', null, U.owner.id]);
+  assert.equal(res.fanOut.failed, 0);
   assert.deepEqual(latest(s, A1).excluded.map((x) => x.user), [U.viewer.id]);
 });
 
@@ -931,7 +935,9 @@ test('a manager may move an item, and cannot place it: only its owner signs wher
   const s = await scene({ who: 'manager', spec: { [F]: mgr, [TOP]: { members: [{ user: U.manager, role: 'manager' }] } } });
   const res = await moveAndPlace(s.deps, sender(s), itemsOf(s), TOP, F);
   assert.deepEqual(s.server.moves.map((m) => [m.id, m.target]), [[TOP, F]], 'the server took the move');
-  assert.deepEqual(res.items.map((i) => [i.id, i.state, i.error?.code]), [[TOP, 'failed', 'owner-only']], 'the placement is the owner\'s to sign');
+  assert.deepEqual(res.items.map((i) => [i.id, i.state, i.error?.code]), [[TOP, 'waits', undefined]], 'the placement is the owner\'s to sign');
+  assert.equal(res.failed, 0);
+  assert.equal(res.items[0].owner, U.owner.id);
   assert.equal(s.server.records.length, 0);
   assert.equal(latest(s, TOP).folder, undefined);
   assert.equal(s.server.inheritOf(TOP), 'pending', 'the item shows as pending until its owner places it');

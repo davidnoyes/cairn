@@ -110,7 +110,9 @@ var ErrPlacement = errors.New("the item's signed record does not name the folder
 // item only when its latest verified record names the folder it was found
 // in; any other item the server lists there as pending is refused, by ID,
 // and never sealed to. A pending item the caller can neither own nor manage,
-// whether a stub or one they can read, waits on its owner and is left alone.
+// whether a stub or one they can read, waits on its owner and is left alone,
+// as does an item whose write only its owner may sign: a manager adds or
+// changes, or lists a user an earlier epoch excluded.
 // placing, when not nil, also visits the folder itself,
 // as a move does for the item it moved, and writes its record naming
 // placing.Parent. It calls progress, when not nil, after each item with how
@@ -149,6 +151,9 @@ func (c *Client) FanOut(rootID string, placing *Placing, progress func(done, tot
 			item = f.item(s.a, placing)
 		default:
 			item = f.item(s.a, nil)
+		}
+		if errors.Is(item.Err, ErrManagerOwnerOnly) || errors.Is(item.Err, ErrExcludedOwnerOnly) {
+			item = waitingItem(s.a, dir)
 		}
 		res.Items = append(res.Items, item)
 		if fatalFetch(item.Err) {

@@ -67,21 +67,16 @@ func applyOK(t *testing.T, c *Client) *ApplyResult {
 
 // shareManagerLeavingPending lists cat as a manager of Work and fans it out.
 // That adds a manager to every item inside, which only an item's owner signs,
-// so ada's fan-out leaves bob's items pending: they fail with
-// ErrManagerOwnerOnly, which Apply reports as waiting on bob.
+// so ada's fan-out leaves bob's items pending: they wait on bob, as Apply
+// reports them.
 func shareManagerLeavingPending(t *testing.T, w *othersTree) *FanOutResult {
 	t.Helper()
 	if _, err := w.ada.Share(w.work, "cat@example.com", "manager", false); err != nil {
 		t.Fatal(err)
 	}
 	res, err := w.ada.FanOut(w.work, nil, nil)
-	if !errors.Is(err, ErrFanOutIncomplete) {
-		t.Fatalf("FanOut = %+v, %v; want it incomplete", res, err)
-	}
-	for _, it := range res.Items {
-		if it.State == FanOutFailed && !errors.Is(it.Err, ErrManagerOwnerOnly) {
-			t.Fatalf("%s: %v", it.ID, it.Err)
-		}
+	if err != nil || res.Count(FanOutFailed) != 0 || res.Count(FanOutWaits) == 0 {
+		t.Fatalf("FanOut = %+v, %v; want items waiting and none failed", res, err)
 	}
 	return res
 }
@@ -134,7 +129,7 @@ func TestAFanOutLeavesOtherPeoplesItemsWaitingOnTheirOwners(t *testing.T) {
 	}
 	// Bob manages cat's items as the folder's owner, but cat is the only
 	// manager they list, so his fan-out leaves them to her.
-	if _, err := w.bob.FanOut(inner, &Placing{Parent: w.work}, nil); !errors.Is(err, ErrFanOutIncomplete) {
+	if _, err := w.bob.FanOut(inner, &Placing{Parent: w.work}, nil); err != nil {
 		t.Fatalf("bob's placement: %v", err)
 	}
 	if _, err := w.ada.Share(w.work, "dan@example.com", "viewer", false); err != nil {
@@ -269,7 +264,7 @@ func TestUnsharingTakesAnotherOwnersItemAtOnceAndApplyExcludesIt(t *testing.T) {
 	}
 	// Cat is a manager of bob's items, and only their owner removes one.
 	fan, err := w.ada.FanOut(w.work, nil, nil)
-	if !errors.Is(err, ErrFanOutIncomplete) {
+	if err != nil {
 		t.Fatalf("FanOut = %+v, %v", fan, err)
 	}
 	// Cat loses bob's items before anyone applies: removal is immediate.
@@ -279,8 +274,8 @@ func TestUnsharingTakesAnotherOwnersItemAtOnceAndApplyExcludesIt(t *testing.T) {
 	if got := stateOf(fan, w.mine); got != FanOutNewEpoch {
 		t.Errorf("ada's item: %q, want newEpoch", got)
 	}
-	if it := itemResult(fan, w.theirs); it == nil || it.State != FanOutFailed || !errors.Is(it.Err, ErrManagerOwnerOnly) {
-		t.Errorf("bob's item in ada's fan-out: %+v, want failed with ErrManagerOwnerOnly", it)
+	if it := itemResult(fan, w.theirs); it == nil || it.State != FanOutWaits || it.OwnerEmail != "bob@example.com" || fan.Count(FanOutFailed) != 0 {
+		t.Errorf("bob's item in ada's fan-out: %+v, want waits on bob and none failed", it)
 	}
 	wantInherit(t, w.bob, w.theirs, "pending")
 	// Bob's apply starts the next epoch without cat.

@@ -667,10 +667,10 @@ func TestAManagerCannotPlaceAnItem(t *testing.T) {
 	}
 	before := latestBody(t, w.ada, w.item1)
 	res, err := w.bob.FanOut(w.item1, &Placing{}, nil)
-	if !errors.Is(err, ErrFanOutIncomplete) {
+	if err != nil {
 		t.Fatalf("FanOut = %v", err)
 	}
-	if it := itemResult(res, w.item1); it == nil || !errors.Is(it.Err, ErrManagerOwnerOnly) {
+	if it := itemResult(res, w.item1); it == nil || it.State != FanOutWaits || it.OwnerEmail != "ada@example.com" || res.Count(FanOutFailed) != 0 {
 		t.Fatalf("item1: %+v", it)
 	}
 	if after := latestBody(t, w.ada, w.item1); after.Seq != before.Seq {

@@ -1,7 +1,6 @@
 package client
 
 import (
-	"errors"
 	"net/http"
 	"slices"
 	"testing"
@@ -139,8 +138,8 @@ func TestTheFoldersOwnerSharingAManagerWaitsOnTheItemsOwner(t *testing.T) {
 	w := newOthersTree(t)
 	res := shareManagerLeavingPending(t, w)
 	for _, id := range []string{w.theirs, w.theirFolder} {
-		if it := itemResult(res, id); it == nil || it.State != FanOutFailed || !errors.Is(it.Err, ErrManagerOwnerOnly) {
-			t.Errorf("%s: %+v, want failed with ErrManagerOwnerOnly", id, it)
+		if it := itemResult(res, id); it == nil || it.State != FanOutWaits || it.Err != nil || it.Owner == "" || it.OwnerEmail != "bob@example.com" {
+			t.Errorf("%s: %+v, want waits on bob", id, it)
 		}
 		wantInherit(t, w.bob, id, "pending")
 		wantStatus(t, w.cat, id, http.StatusNotFound)

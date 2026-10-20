@@ -633,6 +633,23 @@ func TestResharingAFolderAfterUnsharingListsTheUserAgainAtTheNewEpoch(t *testing
 	}
 }
 
+// wantWaitsOnAda checks that the fan-out of a manager, bob, reports n items as
+// waiting on their owner, ada, and none as failed.
+func wantWaitsOnAda(t *testing.T, w *folderTree, res *FanOutResult, n int) {
+	t.Helper()
+	if res.Count(FanOutFailed) != 0 || res.Count(FanOutWaits) != n {
+		t.Fatalf("failed %d, waits %d, want 0 and %d: %+v", res.Count(FanOutFailed), res.Count(FanOutWaits), n, res.Items)
+	}
+	for _, it := range res.Items {
+		if it.State != FanOutWaits {
+			continue
+		}
+		if it.Err != nil || it.Owner != latestBody(t, w.ada, it.ID).Owner || it.OwnerEmail != "ada@example.com" {
+			t.Errorf("%s: %+v, want waits on ada", it.ID, it)
+		}
+	}
+}
+
 func TestAManagerCannotAddAManagerOrListAnExcludedUserThroughAFanOut(t *testing.T) {
 	w := newFolderTree(t)
 	if _, err := w.ada.Share(w.f, "bob@example.com", "manager", false); err != nil {
@@ -646,17 +663,10 @@ func TestAManagerCannotAddAManagerOrListAnExcludedUserThroughAFanOut(t *testing.
 		t.Fatal(err)
 	}
 	res, err := w.bob.FanOut(w.f, nil, nil)
-	if !errors.Is(err, ErrFanOutIncomplete) {
+	if err != nil {
 		t.Fatalf("FanOut = %+v, %v", res, err)
 	}
-	for _, it := range res.Items {
-		if it.State == FanOutFailed && !errors.Is(it.Err, ErrManagerOwnerOnly) {
-			t.Errorf("%s: %v", it.ID, it.Err)
-		}
-	}
-	if res.Count(FanOutFailed) != 2 {
-		t.Errorf("failed: %+v", res.Items)
-	}
+	wantWaitsOnAda(t, w, res, 2)
 	if res := fanOutOK(t, w.ada, w.f, nil); res.Count(FanOutUpdated) != 3 {
 		t.Fatalf("the owner's fan-out: %+v", res.Items)
 	}
@@ -671,14 +681,10 @@ func TestAManagerCannotAddAManagerOrListAnExcludedUserThroughAFanOut(t *testing.
 		t.Fatal(err)
 	}
 	res, err = w.bob.FanOut(w.f, nil, nil)
-	if !errors.Is(err, ErrFanOutIncomplete) {
+	if err != nil {
 		t.Fatalf("FanOut = %+v, %v", res, err)
 	}
-	for _, it := range res.Items {
-		if it.State == FanOutFailed && !errors.Is(it.Err, ErrExcludedOwnerOnly) {
-			t.Errorf("%s: %v", it.ID, it.Err)
-		}
-	}
+	wantWaitsOnAda(t, w, res, 2)
 	if res := fanOutOK(t, w.ada, w.f, nil); res.Count(FanOutUpdated) != 3 {
 		t.Fatalf("the owner's fan-out: %+v", res.Items)
 	}

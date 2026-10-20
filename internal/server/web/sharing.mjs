@@ -1711,8 +1711,11 @@ export async function fanOut(deps, rootId, { includeRoot = false, placing, progr
       else await syncItem(run, item, a.id === rootId ? placing : undefined);
     } catch (err) {
       if (fatalFetch(err)) throw Object.assign(err, { result: res });
-      Object.assign(item, { state: FAN_OUT_STATES.failed, error: err });
-      res.failed++;
+      if (err.waitsOnOwner) Object.assign(item, waitingItem(a, run.dir));
+      else {
+        Object.assign(item, { state: FAN_OUT_STATES.failed, error: err });
+        res.failed++;
+      }
     }
     res.items.push(item);
     if (progress) progress(i + 1, order.length);
@@ -1821,7 +1824,7 @@ async function syncItem(run, item, placing) {
     for (let epoch = 1; epoch <= latest.epoch; epoch++) wraps.push(await wrapTo(u, item.id, epoch, needAK(aks, epoch, `share with ${u.email}, who needs it`)));
   }
   const { kept: keptExcluded, dropped } = dropExcluded(latest.excluded, next.members, dir);
-  if (manager && dropped.length > 0) checkOwnerOnly(manager, 'list again someone removed from the artifact');
+  if (manager && dropped.length > 0) checkOwnerOnly(manager, 'list again someone removed from the artifact', true);
   next.excluded = keptExcluded;
   await putRecord(deps, caller, va, next, wraps, [], '');
   await storePins(deps, caller, pins);

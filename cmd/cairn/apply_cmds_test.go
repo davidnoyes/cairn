@@ -43,12 +43,12 @@ func newOthersWorld(t *testing.T) (w *teamWorld, work, theirs string) {
 
 // shareManagerOfOthersItems shares Work with email as a manager. That changes
 // the managers of bob's item, which only bob signs, so ada's fan-out leaves it
-// pending, and the share says so by failing.
+// pending, and the share says it waits on bob and does not fail.
 func shareManagerOfOthersItems(t *testing.T, email string) string {
 	t.Helper()
 	text, err := runQuiet(t, runShare, "Work", email, "--role", "manager")
-	if err == nil || !strings.Contains(err.Error(), "not up to date with their folder yet") {
-		t.Fatalf("share: %v, want the fan-out to be incomplete", err)
+	if err != nil {
+		t.Fatalf("share: %v, want the item to wait on its owner and the share to succeed", err)
 	}
 	return text
 }
@@ -98,8 +98,11 @@ func TestShareAFolderReportsItemsThatWaitOnTheirOwners(t *testing.T) {
 }
 
 func TestShareAFolderAsManagerLeavesOthersItemsPendingForTheirOwners(t *testing.T) {
-	newOthersWorld(t)
-	shareManagerOfOthersItems(t, "cat@example.com")
+	_, _, theirs := newOthersWorld(t)
+	text := shareManagerOfOthersItems(t, "cat@example.com")
+	if !strings.Contains(text, "0 still pending, 1 wait on their owners") || !strings.Contains(text, theirs+": waits on bob@example.com") || strings.Contains(text, ": still pending:") {
+		t.Errorf("share printed %q", text)
+	}
 }
 
 func TestFolderListShowsAStubForAnItemNotSharedYet(t *testing.T) {
