@@ -278,10 +278,9 @@ type fanOut struct {
 	dir      []DirectoryUser
 	parents  map[string]*e2e.MembershipBody
 	verified map[string]*VerifiedArtifact
-	// topWhenOrphaned is set by the explicit Apply, not by the automatic one
-	// (ApplyInherited), which never signs on the server's word: an item the
-	// server lists at the top level whose record still names a folder is
-	// written as naming none. The
+	// topWhenOrphaned is set by Apply and ApplyInherited: an item the server
+	// lists at the top level whose record still names a folder is written as
+	// naming none. The
 	// server moved it there, because the folder was deleted or an editor of
 	// it removed the item, and the item's owner signs the record, so the move
 	// is theirs to confirm; it only ever lowers what the folder's members hold.

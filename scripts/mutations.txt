@@ -3799,7 +3799,7 @@ internal/server/web/sharing.mjs	checkOwnerOnly(manager, 'list again someone remo
 internal/client/apply.go	if !approve || !slices.Contains([]string{"owner", "manager", "editor"}, a.Access) {	if !slices.Contains([]string{"owner", "manager", "editor"}, a.Access) {	go test ./internal/client -count=1 -run 'TestApplyInherited'
 internal/client/apply.go	if !approve && !slices.ContainsFunc(all, func(a *Artifact) bool { return a.Inherit == "pending" && canSign(a) }) {	if false {	go test ./internal/client -count=1 -run 'TestApplyInherited'
 internal/client/apply.go	a.Inherit == "pending" && canSign(a) }) {	a.Inherit == "pending" }) {	go test ./internal/client -count=1 -run 'TestApplyInherited'
-internal/client/apply.go	topWhenOrphaned: approve}	topWhenOrphaned: true}	go test ./internal/client -count=1 -run 'TestApplyInherited'
+internal/client/apply.go	topWhenOrphaned: true}	topWhenOrphaned: false}	go test ./internal/client -count=1 -run 'TestApplyInherited'
 internal/client/apply.go	func (c *Client) ApplyInherited() (*ApplyResult, error) { return c.apply(false) }	func (c *Client) ApplyInherited() (*ApplyResult, error) { return c.apply(true) }	go test ./internal/client -count=1 -run 'TestApplyInherited'
 cmd/cairn/autoapply.go	if c.Key == nil {	if false {	go test ./cmd/cairn -count=1 -run 'TestACommand|TestApplyDoesNot|TestAnAutoApply|TestARefused|TestFolderDeleteShows|TestAHeadless|TestARepeated'
 cmd/cairn/autoapply.go	api.Status == http.StatusUnauthorized	api.Status == http.StatusTeapot	go test ./cmd/cairn -count=1 -run 'TestACommand|TestApplyDoesNot|TestAnAutoApply|TestARefused|TestFolderDeleteShows|TestAHeadless|TestARepeated'
@@ -3818,7 +3818,7 @@ cmd/cairn/autoapply.go	if n := res.FanOut.Count(client.FanOutNeedsMove); n > 0 {
 cmd/cairn/autoapply.go	if n > 1 {	if false {	go test ./cmd/cairn -count=1 -run 'TestACommand|TestApplyDoesNot|TestAnAutoApply|TestARefused|TestFolderDeleteShows|TestAHeadless|TestARepeated'
 internal/server/web/sharing.mjs	return res.fanOut.items.length + res.waiting.length === 0 ? '' : applyNote(res, describe, 'Reload the page to try again.');	return res.waiting.length === 0 ? '' : applyNote(res, describe, 'Reload the page to try again.');	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/sharing.mjs	return res.fanOut.items.length + res.waiting.length === 0 ? '' : applyNote(res, describe, 'Reload the page to try again.');	return res.fanOut.items.length + res.waiting.length === 0 ? 'x' : applyNote(res, describe, 'Reload the page to try again.');	node --test internal/server/web/sharing_others_test.mjs
-internal/server/web/sharing.mjs	verified: new Map(), topWhenOrphaned: approve };	verified: new Map(), topWhenOrphaned: true };	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	verified: new Map(), topWhenOrphaned: true };	verified: new Map(), topWhenOrphaned: false };	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/sharing.mjs	applyNote(res, describe, 'Reload the page to try again.');	applyNote(res, describe, 'Choose Finish sharing to try again.');	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/sharing.mjs	describe, retry).trim()	describe).trim()	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/sharing.mjs	note += ` ${retry}`;	note += ' Choose Finish sharing to try again.';	node --test internal/server/web/sharing_others_test.mjs

@@ -99,27 +99,24 @@ test('shared folder: share a tree, browse it as the reader, move an artifact in,
     const laterRow = ownerPage.locator(`#own tr[data-id="${ids[later]}"]`);
     await laterRow.getByRole('button', { name: 'Move to…' }).click();
     await laterRow.getByLabel(`Move ${later} to`).selectOption({ label: top });
-    await expect(ownerPage.locator('#artifacts-status')).toContainText('items up to date', { timeout: 60_000 });
+    await expect(ownerPage.locator('#artifacts-status')).toContainText(/^Moved\..*items up to date/, { timeout: 60_000 });
     await reads(page, ids[later], true);
 
-    // A move nobody placed (as one made by another client) leaves the item
-    // pending, and the reader loses it at once. Moving it there again from
-    // the page places it, and the pending mark goes.
+    // A move nobody placed (as one made by another client) cuts the reader
+    // off at once, and the page signs the move by itself when it next loads:
+    // the item is no longer pending, with no click.
     await ownerPage.evaluate(async (id) => {
       const r = await fetch(`/api/artifacts/${id}/parent`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parent: null }) });
       if (!r.ok) throw new Error(`move: ${r.status}`);
     }, ids[later]);
+    await reads(page, ids[later], false);
     await ownerPage.reload();
     await ownerPage.getByRole('tab', { name: 'Artifacts' }).click();
     await settled(ownerPage);
-    const pendingRow = ownerPage.locator(`#own tr[data-id="${ids[later]}"]`);
-    await expect(pendingRow.locator('span.pill.pending')).toBeVisible();
+    const movedRow = ownerPage.locator(`#own tr[data-id="${ids[later]}"]`);
+    await expect(movedRow).toHaveCount(1);
+    await expect(movedRow.locator('span.pill.pending')).toBeHidden();
     await reads(page, ids[later], false);
-    await pendingRow.getByRole('button', { name: 'Move to…' }).click();
-    await pendingRow.getByLabel(`Move ${later} to`).selectOption({ label: 'Top level' });
-    await expect(ownerPage.locator('#artifacts-status')).toContainText('items up to date', { timeout: 60_000 });
-    await settled(ownerPage);
-    await expect(pendingRow.locator('span.pill.pending')).toBeHidden();
 
     // Unsharing the folder ends the reader's access to everything inside.
     dialog = await openDialog(ownerPage, ids[top]);

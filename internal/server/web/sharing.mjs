@@ -1930,7 +1930,7 @@ export async function apply(deps, { approve = true } = {}) {
   const caller = await unlock(deps);
   const all = await call(deps, null, 'GET', '/api/artifacts');
   if (!Array.isArray(all)) throw new e2e.FormatError('the artifact list is not a list');
-  const run = { deps, caller, dir: await directory(deps), folders: new Map(), verified: new Map(), topWhenOrphaned: approve };
+  const run = { deps, caller, dir: await directory(deps), folders: new Map(), verified: new Map(), topWhenOrphaned: true };
   const res = { fanOut: { items: [], total: 0, failed: 0 }, waiting: [], approvals: [] };
   const newItem = (a) => ({ id: a.id, kind: a.kind ?? 'artifact', state: FAN_OUT_STATES.current, error: null, excluded: [], reseal: null, approved: [], pending: [], skippedUsers: [], skippedGroups: [] });
   const changed = new Set();

@@ -35,6 +35,9 @@ async function openTab(page, name) {
   const s = loadState();
   if (!page.url().startsWith(`${s.appOrigin}/app`)) await page.goto(`${s.appOrigin}/app`);
   await page.getByRole('tab', { name }).click();
+  // The Artifacts lists load, and may apply folder sharing and load again:
+  // wait until they are done, so a row is not replaced while it is read.
+  if (name === 'Artifacts') await expect(page.locator('#own')).not.toHaveAttribute('aria-busy', 'true', { timeout: 60_000 });
 }
 
 test('app: / and /admin open /app when signed in, and /app sends a visitor with no session to /login', async ({ ownerPage, browser }) => {

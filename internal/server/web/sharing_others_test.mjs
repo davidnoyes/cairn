@@ -321,15 +321,11 @@ test('apply writes a record naming no folder for an own item the server lists at
   assert.deepEqual(s.server.moves, [], 'nothing was moved: only the record was written');
 });
 
-test('the automatic apply does not sign for an own item the server lists at the top level: it needs a move, and nothing is written', async () => {
+test('the automatic apply signs an own item the server lists at the top level, as the explicit one does: the accepted server-moved case', async () => {
   const s = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ parent: null, folder: F, members: [listed(U.owner, 'manager', F)] })] });
   const res = await apply(s.deps, { approve: false });
-  assert.deepEqual(res.fanOut.items.map((i) => [i.id, i.state, i.error?.code]), [[AP, 'needsMove', 'placement']]);
-  assert.equal(s.server.records.length, 0);
-  assert.equal(s.server.inheritOf(AP), 'pending');
-  // Asking, with the default approve, still signs it.
-  const explicit = await apply(s.deps);
-  assert.deepEqual(explicit.fanOut.items.map((i) => [i.id, i.state]), [[AP, 'newEpoch']]);
+  assert.deepEqual(res.fanOut.items.map((i) => [i.id, i.state]), [[AP, 'newEpoch']]);
+  assert.equal(latest(s, AP).folder, undefined);
   assert.equal(s.server.inheritOf(AP), 'ok');
 });
 

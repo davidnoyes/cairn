@@ -1,7 +1,6 @@
 package client
 
 import (
-	"errors"
 	"net/http"
 	"testing"
 )
@@ -72,32 +71,29 @@ func TestApplyInheritedWithNothingPendingReturnsAnEmptyResult(t *testing.T) {
 }
 
 // An item the server lists at the top level while its signed record names a
-// folder is the server's word alone, so the automatic apply signs nothing for
-// it and reports it as needing a move; the explicit Apply, which the owner
-// runs by asking, still signs it.
-func TestApplyInheritedDoesNotSignAnItemTheServerMovedToTheTopLevel(t *testing.T) {
+// folder was moved out by the server: its folder was deleted, or an editor
+// removed it. The automatic apply signs the record naming no folder, on the
+// server's word, as the explicit Apply does. That is accepted: the server
+// controls the item's folder anyway, and the new record only removes what the
+// folder's members held (see "An item the server moved to the top level" in
+// design/e2e-api.md).
+func TestApplyInheritedSignsAnItemTheServerMovedToTheTopLevel(t *testing.T) {
 	w := newOthersTree(t)
 	if _, err := w.bob.Move(w.theirs, ""); err != nil {
 		t.Fatal(err)
 	}
 	wantInherit(t, w.bob, w.theirs, "pending")
-	bob, sent := claiming(w.bob, nil)
-	res, err := bob.ApplyInherited()
+	res, err := w.bob.ApplyInherited()
 	if err != nil {
 		t.Fatalf("ApplyInherited: %v", err)
 	}
-	it := itemResult(&res.FanOut, w.theirs)
-	if it == nil || it.State != FanOutNeedsMove || !errors.Is(it.Err, ErrPlacement) {
+	if it := itemResult(&res.FanOut, w.theirs); it == nil || (it.State != FanOutNewEpoch && it.State != FanOutUpdated) {
 		t.Fatalf("the item: %+v", res.FanOut.Items)
 	}
-	if writesTo(*sent, w.theirs) {
-		t.Errorf("a record was written for the item: %v", *sent)
-	}
-	wantInherit(t, w.bob, w.theirs, "pending")
-	if res = applyOK(t, w.bob); res.FanOut.Count(FanOutNewEpoch)+res.FanOut.Count(FanOutUpdated) == 0 {
-		t.Fatalf("Apply signed nothing: %+v", res.FanOut.Items)
-	}
 	wantInherit(t, w.bob, w.theirs, "ok")
+	if f := latestBody(t, w.bob, w.theirs).Folder; f != "" {
+		t.Errorf("the record names folder %q, want none", f)
+	}
 }
 
 // A user whose only pending items wait on someone else pays one list call:
