@@ -151,6 +151,9 @@ func runMembers(args []string) error {
 		out := make([]map[string]string, 0, len(rows))
 		for _, r := range rows {
 			row := map[string]string{"user": r.User, "name": r.Name, "email": r.Email, "role": r.Role, "fp": r.FP, "state": r.State}
+			if r.Via != "" {
+				row["via"], row["viaName"] = r.Via, r.ViaName
+			}
 			if r.State == e2e.PinRotated {
 				row["wasVerified"] = strconv.FormatBool(r.WasVerified)
 			}
@@ -171,10 +174,10 @@ func runMembers(args []string) error {
 		if who == "" {
 			who = r.User
 		}
-		fmt.Printf("%-6s  %-32s  %-10s  %s\n", r.Role, who, priorLabel(r.State, r.WasVerified), showFP(r.FP))
+		fmt.Printf("%-6s  %-32s  %-10s  %s%s\n", r.Role, who, priorLabel(r.State, r.WasVerified), showFP(r.FP), viaLabel(r.Via, r.ViaName))
 	}
 	for _, g := range groups {
-		fmt.Printf("%-6s  %-32s  group %s\n", g.Role, groupLabel(g), g.ID)
+		fmt.Printf("%-6s  %-32s  group %s%s\n", g.Role, groupLabel(g), g.ID, viaLabel(g.Via, g.ViaName))
 	}
 	if by := signedBy(va.Chain.Latest, rows); by != nil {
 		fmt.Printf("record %d was signed by manager %s\n", va.Chain.Latest.Seq, by["email"])
@@ -284,14 +287,19 @@ func runShare(args []string) error {
 			if err != nil {
 				return explainRefusal(c, err)
 			}
-			return printShareGroup(a, res, *jsonOut)
+			return folderThen(c, a, false, *jsonOut, func() error { return printShareGroup(a, res, *jsonOut) })
 		}
 	}
 	res, err := c.Share(a.ID, pos[1], *role, *acceptNewKey)
 	if err != nil {
 		return explainRefusal(c, err)
 	}
-	if *jsonOut {
+	return folderThen(c, a, false, *jsonOut, func() error { return printShare(c, a, res, *jsonOut) })
+}
+
+// printShare prints what sharing with a user did.
+func printShare(c *client.Client, a *client.Artifact, res *client.ShareResult, jsonOut bool) error {
+	if jsonOut {
 		listed, unlisted := listingJSON(res.Listed, res.Unlisted)
 		dropped := []string{}
 		for _, x := range res.Dropped {
@@ -454,17 +462,38 @@ func runUnshare(args []string) error {
 	case !strings.Contains(pos[1], "@"):
 		res, err := c.UnshareGroup(a.ID, pos[1])
 		if !errors.Is(err, client.ErrNoGroup) {
+			if resumeFolder(a, err) {
+				return folderThen(c, a, false, *jsonOut, func() error { return printResumed(a, pos[1], *jsonOut) })
+			}
 			if err != nil {
 				return explainRefusal(c, err)
 			}
-			return printUnshareGroup(c, a, res, *jsonOut)
+			return folderThen(c, a, false, *jsonOut, func() error { return printUnshareGroup(c, a, res, *jsonOut) })
 		}
 	}
 	res, err := c.Unshare(a.ID, pos[1])
+	if resumeFolder(a, err) {
+		return folderThen(c, a, false, *jsonOut, func() error { return printResumed(a, pos[1], *jsonOut) })
+	}
 	if err != nil {
 		return explainRefusal(c, err)
 	}
-	if *jsonOut {
+	return folderThen(c, a, false, *jsonOut, func() error { return printUnshare(c, a, res, *jsonOut) })
+}
+
+// printResumed says that a folder no longer lists who, so only the items
+// inside it are left to work through.
+func printResumed(a *client.Artifact, who string, jsonOut bool) error {
+	if jsonOut {
+		return printArtifactJSON(a.ID, map[string]any{"artifact": a.ID, "unchanged": true})
+	}
+	fmt.Printf("%s no longer lists %s; working through the items inside it\n", a.Name, who)
+	return nil
+}
+
+// printUnshare prints what unsharing a user did.
+func printUnshare(c *client.Client, a *client.Artifact, res *client.UnshareResult, jsonOut bool) error {
+	if jsonOut {
 		listed, _ := listingJSON(res.Listed, nil)
 		out := map[string]any{
 			"artifact": a.ID, "user": res.User.ID, "email": res.User.Email, "epoch": res.Epoch, "listed": listed,
@@ -641,7 +670,7 @@ func listPending(c *client.Client, id, name string, jsonOut bool) error {
 			left = append(left, p)
 		}
 	}
-	fmt.Println("new: waiting for approval; approved: approved, not yet listed by the owner; left: left every group that held them, and the server no longer lets them read; keyChanged: keys changed since they were wrapped to or listed; rotated: keys rotated since they were listed; the owner's next record lists the new keys")
+	fmt.Println("new: waiting for approval; approved: approved, not yet listed by the owner; left: left every group that held them, or lost the folder that shared the item with them, and the server no longer lets them read; keyChanged: keys changed since they were wrapped to or listed; rotated: keys rotated since they were listed; the owner's next record lists the new keys")
 	for _, p := range left {
 		fmt.Printf("left: %s still holds the key; to start a new epoch that excludes them, run: cairn unshare %s %s\n", p.User.Email, id, p.User.Email)
 	}

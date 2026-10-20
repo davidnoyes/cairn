@@ -99,9 +99,16 @@ func (c *Client) reseal(k *UnlockedKeys, va *VerifiedArtifact, artifactID string
 	if err != nil {
 		return res, err
 	}
-	views, err := c.listVersions(artifactID)
+	// A folder holds no versions, only its metadata fields.
+	art, err := c.getArtifact(artifactID)
 	if err != nil {
 		return res, err
+	}
+	var views []*Version
+	if art.Kind != store.KindFolder {
+		if views, err = c.listVersions(artifactID); err != nil {
+			return res, err
+		}
 	}
 	versions := make([]*store.Version, len(views))
 	for i, v := range views {

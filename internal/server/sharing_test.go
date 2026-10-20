@@ -1220,7 +1220,7 @@ func TestPendingStateStaleWrap(t *testing.T) {
 		{"approved under the new key", nil, &store.Approval{UserID: "u", FP: "new", Epoch: 2}, never, pendingKeyChanged},
 	}
 	for _, c := range cases {
-		if got := pendingState(latest, u, c.listed, stale, c.approval, true, c.explain); got != c.want {
+		if got := pendingState(latest, u, c.listed, stale, c.approval, true, false, c.explain); got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}
 	}

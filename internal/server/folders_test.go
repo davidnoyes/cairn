@@ -329,7 +329,7 @@ func TestFolderTakesNoResources(t *testing.T) {
 	}
 }
 
-func TestFolderIsPrivateInF1(t *testing.T) {
+func TestFolderKeepsTeamNoneAndStaysPrivate(t *testing.T) {
 	a, b := folderWorld(t)
 	f := newItem(t, a, "folder", "")
 	put := func(edit func(*e2e.MembershipBody)) (int, string) {
@@ -338,9 +338,6 @@ func TestFolderIsPrivateInF1(t *testing.T) {
 		return status(a.testClient, "PUT", "/api/artifacts/"+f.id+"/membership", f.change(body))
 	}
 	for name, edit := range map[string]func(*e2e.MembershipBody){
-		"a member": func(m *e2e.MembershipBody) {
-			m.Members = []e2e.Member{{User: b.id, Role: "viewer", FP: b.keys.fp()}}
-		},
 		"a team": func(m *e2e.MembershipBody) { m.Team = "viewer" },
 		"public": func(m *e2e.MembershipBody) { m.Public = true },
 		"public writes": func(m *e2e.MembershipBody) {
@@ -349,17 +346,15 @@ func TestFolderIsPrivateInF1(t *testing.T) {
 		"public writes alone": func(m *e2e.MembershipBody) { m.PublicWrites = true },
 	} {
 		got, msg := put(edit)
-		if got != http.StatusConflict || !strings.Contains(msg, "folders cannot be shared yet") {
-			t.Errorf("%s: %d %q, want 409 folders cannot be shared yet", name, got, msg)
+		if got != http.StatusConflict || !strings.Contains(msg, "a folder lists users and groups only") {
+			t.Errorf("%s: %d %q, want 409 a folder lists users and groups only", name, got, msg)
 		}
 	}
-	// A record that changes nothing is fine, and so is a next epoch.
+	// A member is now allowed, and so is a record that changes nothing.
+	f.share("viewer", b)
 	if got, msg := put(func(*e2e.MembershipBody) {}); got != http.StatusOK {
 		t.Errorf("an unchanged record: %d %q", got, msg)
 	}
-	// Artifacts are unaffected.
-	art := newArtifact(t, a, "plain")
-	art.share("viewer", b)
 }
 
 func TestFolderCannotBeOffered(t *testing.T) {

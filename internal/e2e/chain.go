@@ -202,6 +202,9 @@ func openRecord(env Envelope, artifact string, owners map[string][]byte) (Member
 		if !isHex64(m.FP) {
 			return b, fmt.Errorf("%w: member %q fp is not 64 lowercase hex digits", ErrChain, m.User)
 		}
+		if m.Via != "" && !isUUID(m.Via) {
+			return b, fmt.Errorf("%w: member %q via is not a lowercase UUID", ErrChain, m.User)
+		}
 		for _, e := range b.Excluded {
 			if e.User == m.User || e.FP == m.FP {
 				return b, fmt.Errorf("%w: excluded entry %q matches member %q", ErrChain, e.User, m.User)
@@ -222,7 +225,7 @@ const maxGroupShares = 100
 // CheckGroupShares checks the groups of a membership record, as openRecord and
 // the server do: at most
 // maxGroupShares entries, each a lowercase UUID with role viewer or editor,
-// sorted by group ID and unique.
+// sorted by group ID and unique, and a via, when set, a lowercase UUID.
 func CheckGroupShares(gs []GroupShare) error {
 	if len(gs) > maxGroupShares {
 		return fmt.Errorf("%w: %d groups, at most %d", ErrChain, len(gs), maxGroupShares)
@@ -233,6 +236,9 @@ func CheckGroupShares(gs []GroupShare) error {
 		}
 		if g.Role != "viewer" && g.Role != "editor" {
 			return fmt.Errorf("%w: group %q has role %q", ErrChain, g.Group, g.Role)
+		}
+		if g.Via != "" && !isUUID(g.Via) {
+			return fmt.Errorf("%w: group %q via is not a lowercase UUID", ErrChain, g.Group)
 		}
 		if i > 0 && gs[i-1].Group >= g.Group {
 			return fmt.Errorf("%w: groups not sorted by group ID, or duplicated", ErrChain)
@@ -396,8 +402,8 @@ func checkManagerRecord(prev, b MembershipBody, linked func(user, fromFP, toFP s
 }
 
 // sameManagers reports whether the members with role manager are identical,
-// in user, role, and fp, in a and b. Both lists are sorted by user ID, so the
-// managers come out in the same order.
+// in user, role, fp, and via, in a and b. Both lists are sorted by user ID, so
+// the managers come out in the same order.
 func sameManagers(a, b []Member) bool {
 	managers := func(ms []Member) []Member {
 		var out []Member

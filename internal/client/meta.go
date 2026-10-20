@@ -49,6 +49,9 @@ type Artifact struct {
 	// Access is the level the server gave the caller, such as "owner" or
 	// "successor".
 	Access string `json:"-"`
+	// Inherit is "ok", or "pending" while the artifact's record is out of
+	// step with its folder's: see FanOut.
+	Inherit string `json:"inherit,omitempty"`
 }
 
 // Title is the name the artifact displays under: its name, or its ID when it
@@ -73,8 +76,9 @@ type Version struct {
 // own fields, and the sealed fields beside them.
 type artifactWire struct {
 	store.Artifact
-	Access string              `json:"access"`
-	Meta   map[string]MetaItem `json:"meta"`
+	Access  string              `json:"access"`
+	Inherit string              `json:"inherit"`
+	Meta    map[string]MetaItem `json:"meta"`
 }
 
 type versionWire struct {
@@ -83,7 +87,7 @@ type versionWire struct {
 }
 
 func (w artifactWire) artifact() *Artifact {
-	return &Artifact{Artifact: w.Artifact, Meta: w.Meta, Access: w.Access}
+	return &Artifact{Artifact: w.Artifact, Meta: w.Meta, Access: w.Access, Inherit: w.Inherit}
 }
 func (w versionWire) version() *Version { return &Version{Version: w.Version, Meta: w.Meta} }
 

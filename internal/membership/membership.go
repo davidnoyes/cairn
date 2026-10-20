@@ -52,7 +52,9 @@ const (
 	RuleStaleFP       Rule = "stale fp"       // a next epoch lists every member under their current fp
 	RuleEstate        Rule = "estate"         // the new epoch's estate copy
 	RuleLinkToken     Rule = "linkTokenHash"  // with a public record, and only then
-	RuleFolder        Rule = "folder"         // a folder lists no members and is not shared (409)
+	RuleFolder        Rule = "folder"         // a folder keeps team none and stays private (409)
+	RuleVia           Rule = "via"            // an entry's via names a folder that contains the item and lists it (409)
+	RuleInherit       Rule = "inherit"        // every user and group the folder lists, at its role or more (409)
 )
 
 // Error is a refused record: the HTTP status to answer with, and the rule.
@@ -143,6 +145,12 @@ type Current struct {
 	Latest     *e2e.MembershipBody
 	LatestHash string
 	Wraps      []store.Wrap
+	// Parent is the folder the artifact sits in, empty at the top level.
+	// Folders holds the latest record of that folder and of every folder
+	// above it, by ID: the records a via is checked against, and the one the
+	// artifact's own record must match.
+	Parent  string
+	Folders map[string]*e2e.MembershipBody
 }
 
 // Result is what an accepted change writes.
@@ -309,9 +317,18 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 		return nil, err
 	}
 
-	// A folder is private to its owner until folders can be shared.
-	if cur.Kind == store.KindFolder && (len(body.Members) > 0 || body.Team != access.TeamNone || len(body.Groups) > 0 || body.Public || body.PublicWrites) {
-		return nil, conflict(RuleFolder, "folders cannot be shared yet")
+	// A folder lists users and groups, but neither a team share nor a public
+	// link, because neither carries a mark of where it came from.
+	if cur.Kind == store.KindFolder && (body.Team != access.TeamNone || body.Public || body.PublicWrites) {
+		return nil, conflict(RuleFolder, "a folder lists users and groups only: its team share stays none and it stays private")
+	}
+
+	// An accepting record is about to take the item out of its folder, so
+	// the folder's entries no longer bind it.
+	if ch.Accept == nil {
+		if err := checkInherited(cur, &body, dir); err != nil {
+			return nil, err
+		}
 	}
 
 	// Rule 7.
@@ -655,15 +672,85 @@ func Check(cur Current, dir Directory, ch Change) (*Result, error) {
 		Envelope: store.Envelope{Body: ch.Envelope.Body, Sig: ch.Envelope.Sig, Signer: ch.Envelope.Signer},
 	}
 	for _, m := range body.Members {
-		res.Members = append(res.Members, store.Member{UserID: m.User, Role: m.Role, FP: m.FP})
+		res.Members = append(res.Members, store.Member{UserID: m.User, Role: m.Role, FP: m.FP, Via: m.Via})
 	}
 	for _, x := range body.Excluded {
 		res.Excluded = append(res.Excluded, store.Excluded{UserID: x.User, FP: x.FP, Email: x.Email})
 	}
 	for _, g := range body.Groups {
-		res.Groups = append(res.Groups, store.ArtifactGroup{GroupID: g.Group, Role: g.Role})
+		res.Groups = append(res.Groups, store.ArtifactGroup{GroupID: g.Group, Role: g.Role, Via: g.Via})
 	}
 	return res, nil
+}
+
+// rank orders the roles an entry grants, so an item's role can be compared
+// with its folder's.
+func rank(role string) int {
+	switch role {
+	case access.RoleManager:
+		return 3
+	case access.RoleEditor:
+		return 2
+	}
+	return 1
+}
+
+// checkInherited is the folder rules for a record of an item: every via is
+// true, and the record lists every user and group the item's folder lists,
+// at that role or higher. The folder's own record already holds its
+// ancestors' entries, so one level covers every level. A refusal is a 409
+// that names the entry at fault.
+func checkInherited(cur Current, body *e2e.MembershipBody, dir Directory) error {
+	for _, m := range body.Members {
+		if m.Via == "" {
+			continue
+		}
+		f := cur.Folders[m.Via]
+		if f == nil || !slices.ContainsFunc(f.Members, func(x e2e.Member) bool { return x.User == m.User }) {
+			return conflict(RuleVia, "member %s via %s: that folder does not contain the item and list them", m.User, m.Via)
+		}
+	}
+	for _, g := range body.Groups {
+		if g.Via == "" {
+			continue
+		}
+		f := cur.Folders[g.Via]
+		if f == nil || !slices.ContainsFunc(f.Groups, func(x e2e.GroupShare) bool { return x.Group == g.Group }) {
+			return conflict(RuleVia, "group %s via %s: that folder does not contain the item and list it", g.Group, g.Via)
+		}
+	}
+	parent := cur.Folders[cur.Parent]
+	if parent == nil {
+		return nil
+	}
+	for _, p := range parent.Members {
+		if p.User == body.Owner {
+			continue
+		}
+		i := slices.IndexFunc(body.Members, func(m e2e.Member) bool { return m.User == p.User })
+		if i < 0 {
+			return conflict(RuleInherit, "member %s is missing: folder %s lists them as %s", p.User, cur.Parent, p.Role)
+		}
+		if rank(body.Members[i].Role) < rank(p.Role) {
+			return conflict(RuleInherit, "member %s is %s: folder %s lists them as %s", p.User, body.Members[i].Role, cur.Parent, p.Role)
+		}
+	}
+	for _, p := range parent.Groups {
+		// A deleted group grants nothing, so it is not required.
+		if ok, err := dir.GroupExists(p.Group); err != nil {
+			return err
+		} else if !ok {
+			continue
+		}
+		i := slices.IndexFunc(body.Groups, func(g e2e.GroupShare) bool { return g.Group == p.Group })
+		if i < 0 {
+			return conflict(RuleInherit, "group %s is missing: folder %s lists it as %s", p.Group, cur.Parent, p.Role)
+		}
+		if rank(body.Groups[i].Role) < rank(p.Role) {
+			return conflict(RuleInherit, "group %s is %s: folder %s lists it as %s", p.Group, body.Groups[i].Role, cur.Parent, p.Role)
+		}
+	}
+	return nil
 }
 
 // covered reports whether an unlisted holder reads under a record with this
@@ -950,7 +1037,28 @@ func Load(tx *store.ArtifactTx, dir Directory) (Current, error) {
 	if err != nil {
 		return Current{}, err
 	}
-	cur := Current{ArtifactID: tx.ArtifactID(), Kind: a.Kind, Owner: owner}
+	cur := Current{ArtifactID: tx.ArtifactID(), Kind: a.Kind, Owner: owner, Parent: a.ParentID}
+	ancestors, err := tx.Ancestors()
+	if err != nil {
+		return Current{}, err
+	}
+	for _, id := range ancestors {
+		r, err := tx.LatestRecordOf(id)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return Current{}, err
+		}
+		var fb e2e.MembershipBody
+		if err := e2e.DecodeStrict(r.Envelope.Body, &fb); err != nil {
+			return Current{}, err
+		}
+		if cur.Folders == nil {
+			cur.Folders = map[string]*e2e.MembershipBody{}
+		}
+		cur.Folders[id] = &fb
+	}
 	rec, err := tx.LatestRecord()
 	switch {
 	case errors.Is(err, store.ErrNotFound):

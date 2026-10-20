@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/aloisdeniel/cairn/internal/e2e"
@@ -121,7 +122,11 @@ func estateFields(artifact string, epoch int) [][]byte {
 // server accepts it reads the chain back and verifies it, anchored at the
 // caller's own fingerprint. It then writes the artifact's name, and its
 // description unless that is empty, as encrypted fields. Options make it a
-// folder (AsFolder) or put it in one (InFolder).
+// folder (AsFolder) or put it in one (InFolder). An item put in a shared
+// folder lists every user and group the folder lists, marked with the folder
+// they come from, because the server refuses a record without them; each
+// user gets a wrap of the first epoch's key, and the members of each group
+// are approved when the group's chain checks out.
 func (c *Client) CreateArtifact(name, description string, opts ...CreateOption) (*Artifact, error) {
 	var o createOptions
 	for _, opt := range opts {
@@ -140,10 +145,17 @@ func (c *Client) CreateArtifact(name, description string, opts ...CreateOption) 
 	if err != nil {
 		return nil, err
 	}
-	body, err := json.Marshal(e2e.MembershipBody{
+	first := e2e.MembershipBody{
 		V: 1, Artifact: id, Epoch: 1, Seq: 1, Owner: k.UserID, OwnerFP: k.FP, AKCommit: commit,
 		Members: []e2e.Member{}, Excluded: []e2e.ExcludedEntry{}, Team: "none",
-	})
+	}
+	wraps := []map[string]any{}
+	if o.parent != "" {
+		if wraps, err = c.inheritInto(k, &first, o.parent, ak); err != nil {
+			return nil, err
+		}
+	}
+	body, err := json.Marshal(first)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +173,7 @@ func (c *Client) CreateArtifact(name, description string, opts ...CreateOption) 
 	}
 	req := map[string]any{
 		"id": id, "membership": env,
-		"wraps":  []any{},
+		"wraps":  wraps,
 		"estate": []map[string]any{{"epoch": 1, "sealed": e2e.B64(sealed)}},
 	}
 	if o.folder {
@@ -186,9 +198,56 @@ func (c *Client) CreateArtifact(name, description string, opts ...CreateOption) 
 			return nil, fmt.Errorf("artifact %s was created, but writing its %s failed: %w", id, f.field, err)
 		}
 	}
+	for _, g := range first.Groups {
+		vg, err := c.VerifyGroup(k, g.Group, false)
+		if err != nil {
+			continue // its members are approved later, by whoever approves them
+		}
+		if err := c.approveGroupMembers(k, id, vg.Chain, false, &ShareGroupResult{}); err != nil {
+			return nil, fmt.Errorf("artifact %s was created, but approving the members of group %s failed: %w", id, g.Group, err)
+		}
+	}
 	a := out.artifact()
 	a.Name, a.Description = name, description
 	return a, nil
+}
+
+// inheritInto lists in first, an item's first record, every user and group
+// the folder parent lists, marked with the folder they come from, and returns
+// the wraps of the item's first AK to those users. A user the folder lists
+// under keys other than the directory serves now is refused.
+func (c *Client) inheritInto(k *UnlockedKeys, first *e2e.MembershipBody, parent string, ak []byte) ([]map[string]any, error) {
+	pv, err := c.VerifyArtifact(k, parent, "")
+	if err != nil {
+		return nil, fmt.Errorf("the folder %s: %w", parent, err)
+	}
+	live, _, err := c.liveGroups(pv.Chain.Latest.Groups)
+	if err != nil {
+		return nil, err
+	}
+	plan := planInherit(*first, &pv.Chain.Latest, parent, live)
+	first.Members, first.Groups = plan.members, plan.groups
+	wraps := []map[string]any{}
+	if len(plan.added) == 0 {
+		return wraps, nil
+	}
+	dir, err := c.Directory()
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range plan.added {
+		i := slices.IndexFunc(dir, func(u DirectoryUser) bool { return u.ID == id })
+		j := slices.IndexFunc(first.Members, func(m e2e.Member) bool { return m.User == id })
+		if i < 0 || dir[i].FP != first.Members[j].FP {
+			return nil, fmt.Errorf("%w: %s was listed by the folder under another fingerprint than the directory serves now; share the folder with them again with cairn share --accept-new-key", ErrMemberKeyChanged, id)
+		}
+		w, err := wrapsTo(first.Artifact, map[int][]byte{1: ak}, 1, dir[i])
+		if err != nil {
+			return nil, err
+		}
+		wraps = append(wraps, w...)
+	}
+	return wraps, nil
 }
 
 // Membership is an artifact's membership chain and the keys needed to check

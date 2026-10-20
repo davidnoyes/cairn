@@ -457,6 +457,11 @@ type ListedGroup struct {
 	Name    string
 	Role    string
 	Deleted bool
+	// Via is the ID of the folder the entry comes from, empty for a direct
+	// grant, and ViaName its name when the caller can read the folder, or
+	// else its ID.
+	Via     string
+	ViaName string
 }
 
 // ListedGroups returns the groups va's latest record lists, in the record's
@@ -470,9 +475,14 @@ func (c *Client) ListedGroups(va *VerifiedArtifact) ([]ListedGroup, error) {
 	if err != nil {
 		return nil, err
 	}
+	var vias []string
+	for _, g := range gs {
+		vias = append(vias, g.Via)
+	}
+	names := c.folderLabels(vias)
 	out := make([]ListedGroup, 0, len(gs))
 	for _, g := range gs {
-		row := ListedGroup{ID: g.Group, Role: g.Role, Deleted: true}
+		row := ListedGroup{ID: g.Group, Role: g.Role, Deleted: true, Via: g.Via, ViaName: names[g.Via]}
 		if i := slices.IndexFunc(all, func(s GroupSummary) bool { return s.ID == g.Group }); i >= 0 {
 			row.Name, row.Deleted = all[i].Name, false
 		}

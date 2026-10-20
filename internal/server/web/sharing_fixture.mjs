@@ -32,8 +32,9 @@ function wireUser(u) {
 // accepted, by kind), failPut (a function (kind) => Response|null that fails
 // a write), onKeyringGet, approvals (a user's stored approval), approves (every
 // POST .../keys the server accepted), groups (the group records, by group ID,
-// served as groups_fixture.mjs serves them) and groupServer (whose own directory
-// serves the keys of a group's signers). The server answers GET .../pending
+// served as groups_fixture.mjs serves them), groupServer (whose own directory
+// serves the keys of a group's signers) and kind (the artifact's kind in its
+// view: artifact, or folder). The server answers GET .../pending
 // as the server's pendingState does, and refuses a record that leaves an
 // unlisted holder without a reason to read, or a next epoch that neither lists
 // nor excludes one.
@@ -229,7 +230,7 @@ export function makeShareServer(world, { who, users = [] }) {
       s.estate.push(put);
       return jsonResponse(200, { epoch: put.epoch });
     }
-    if (rest === '') return jsonResponse(200, { id: ARTIFACT, meta: s.artifactMeta });
+    if (rest === '') return jsonResponse(200, { id: ARTIFACT, kind: s.kind ?? 'artifact', parent: null, meta: s.artifactMeta });
     if (rest === 'versions') return jsonResponse(200, [...s.versions.values()].map((v) => ({ ...v.json, meta: v.meta })));
 
     const meta = /^(?:versions\/([^/]+)\/)?meta\/([^/]+)$/.exec(rest);

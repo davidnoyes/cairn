@@ -1433,3 +1433,44 @@ test('the owner removes a manager with two unreadable epochs, reads the new epoc
   assert.deepEqual(opened.unreadable, [2, 4]);
   assert.deepEqual(opened.aks.get(3), s.world.aks[3]);
 });
+
+// ---- folders ----
+
+const FOLDER = '33333333-3333-4333-8333-333333333333';
+
+test('a folder reads, and its member list is not changed from the browser', async () => {
+  const s = await scene();
+  s.server.kind = 'folder';
+  const refused = (e) => e instanceof SharingError && e.code === 'folders-unsupported';
+  await assert.rejects(share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer'), refused);
+  await assert.rejects(unshare(s.deps, ARTIFACT, 'viewer@example.com'), refused);
+  await assert.rejects(setPublic(s.deps, ARTIFACT, true), refused);
+  noPuts(s);
+  const rows = await members(s.deps, ARTIFACT);
+  assert.deepEqual(rows.members.map((m) => m.role), ['owner', 'editor', 'viewer']);
+});
+
+test('an item with an entry that comes from a folder reads, and its entries are not changed from the browser', async () => {
+  const s = await scene({ members: [{ user: U.editor, role: 'editor', via: FOLDER }, { user: U.viewer, role: 'viewer' }] });
+  const refused = (e) => e instanceof SharingError && e.code === 'folders-unsupported';
+  await assert.rejects(share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer'), refused);
+  await assert.rejects(unshare(s.deps, ARTIFACT, 'viewer@example.com'), refused);
+  noPuts(s);
+  const rows = await members(s.deps, ARTIFACT);
+  assert.deepEqual(rows.members.map((m) => m.role), ['owner', 'editor', 'viewer']);
+  assert.equal(bodyOf(s.world.records[1]).members.find((m) => m.user === U.editor.id).via, FOLDER);
+});
+
+test('an item with a groups entry that comes from a folder is not changed from the browser either', async () => {
+  const s = await scene({ groups: [{ group: '11111111-1111-4111-8111-111111111111', role: 'viewer', via: FOLDER }] });
+  const refused = (e) => e instanceof SharingError && e.code === 'folders-unsupported';
+  await assert.rejects(share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer'), refused);
+  noPuts(s);
+});
+
+test('an artifact that is not a folder, with no inherited entry, is shared as before', async () => {
+  const s = await scene();
+  const res = await share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer');
+  assert.equal(res.role, 'viewer');
+  assert.equal(lastPut(s).membership !== undefined, true);
+});

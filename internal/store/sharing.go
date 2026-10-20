@@ -42,18 +42,22 @@ type Record struct {
 	CreatedAt    string
 }
 
-// Member is a user listed by the latest record.
+// Member is a user listed by the latest record. Via is the folder the entry
+// comes from, empty for a direct grant.
 type Member struct {
 	UserID string
 	Role   string
 	FP     string
+	Via    string
 }
 
 // ArtifactGroup is a group the latest record lists, and the role it grants:
-// viewer or editor.
+// viewer or editor. Via is the folder the entry comes from, empty for a
+// direct grant.
 type ArtifactGroup struct {
 	GroupID string
 	Role    string
+	Via     string
 }
 
 // Excluded is an entry of the latest record's excluded list.
@@ -103,7 +107,9 @@ type Offer struct {
 // not listed), every wrap the caller holds, and the artifact owner's
 // nomination when it names the caller (nil otherwise). HasGroups is true when
 // the artifact's latest record lists a group, and InGroup when the caller is
-// a member, in its latest record, of one.
+// a member, in its latest record, of one. An entry whose via no longer holds
+// counts for none of these, and one that holds grants no more than its folder
+// lists the user as.
 type AccessState struct {
 	Artifact       *Artifact
 	Member         *Member
@@ -226,28 +232,69 @@ func (s *Store) AccessState(artifactID, userID string) (*AccessState, error) {
 		return nil, err
 	}
 	st := &AccessState{Artifact: a}
-	if err := tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM artifact_groups WHERE artifact_id = ?)`, artifactID).Scan(&st.HasGroups); err != nil {
+	check := &viaCheck{q: tx, id: artifactID}
+	var listed []ArtifactGroup
+	rows, err := tx.Query(`SELECT group_id, via FROM artifact_groups WHERE artifact_id = ?`, artifactID)
+	if err != nil {
 		return nil, err
 	}
+	for rows.Next() {
+		var g ArtifactGroup
+		if err := rows.Scan(&g.GroupID, &g.Via); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		listed = append(listed, g)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	var counted []string
+	for _, g := range listed {
+		ok, _, err := check.holds(g.Via, true, g.GroupID)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			counted = append(counted, g.GroupID)
+		}
+	}
+	st.HasGroups = len(counted) > 0
 	if userID == "" {
 		return st, nil
 	}
 	var m Member
-	err = tx.QueryRow(`SELECT user_id, role, fp FROM artifact_members WHERE artifact_id = ? AND user_id = ?`,
-		artifactID, userID).Scan(&m.UserID, &m.Role, &m.FP)
+	err = tx.QueryRow(`SELECT user_id, role, fp, via FROM artifact_members WHERE artifact_id = ? AND user_id = ?`,
+		artifactID, userID).Scan(&m.UserID, &m.Role, &m.FP, &m.Via)
 	switch {
 	case err == nil:
-		st.Member = &m
+		ok, viaRole, err := check.holds(m.Via, false, userID)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			// An entry that comes from a folder grants no more than the folder
+			// lists them as now.
+			if m.Via != "" && roleRank(m.Role) > roleRank(viaRole) {
+				m.Role = viaRole
+			}
+			st.Member = &m
+		}
 	case !errors.Is(err, sql.ErrNoRows):
 		return nil, err
 	}
 	if st.Wraps, err = queryWraps(tx, `WHERE artifact_id = ? AND user_id = ? ORDER BY epoch`, artifactID, userID); err != nil {
 		return nil, err
 	}
-	if err := tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM artifact_groups ag
-		JOIN group_members gm ON gm.group_id = ag.group_id
-		WHERE ag.artifact_id = ? AND gm.user_id = ?)`, artifactID, userID).Scan(&st.InGroup); err != nil {
-		return nil, err
+	for _, g := range counted {
+		if err := tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?)`, g, userID).Scan(&st.InGroup); err != nil {
+			return nil, err
+		}
+		if st.InGroup {
+			break
+		}
 	}
 	sc, err := scanSuccessor(tx.QueryRow(`SELECT `+successorCols+successorFrom+`WHERE s.user_id = ? AND s.successor_id = ?`, a.OwnerID, userID))
 	switch {
@@ -488,8 +535,8 @@ func (t *ArtifactTx) SetMembers(members []Member) error {
 		return err
 	}
 	for _, m := range members {
-		if _, err := t.tx.Exec(`INSERT INTO artifact_members (artifact_id, user_id, role, fp) VALUES (?, ?, ?, ?)`,
-			t.id, m.UserID, m.Role, m.FP); err != nil {
+		if _, err := t.tx.Exec(`INSERT INTO artifact_members (artifact_id, user_id, role, fp, via) VALUES (?, ?, ?, ?, ?)`,
+			t.id, m.UserID, m.Role, m.FP, m.Via); err != nil {
 			return err
 		}
 	}
@@ -498,7 +545,7 @@ func (t *ArtifactTx) SetMembers(members []Member) error {
 
 // Members returns the member list, ordered by user ID.
 func (t *ArtifactTx) Members() ([]Member, error) {
-	rows, err := t.tx.Query(`SELECT user_id, role, fp FROM artifact_members WHERE artifact_id = ? ORDER BY user_id`, t.id)
+	rows, err := t.tx.Query(`SELECT user_id, role, fp, via FROM artifact_members WHERE artifact_id = ? ORDER BY user_id`, t.id)
 	if err != nil {
 		return nil, err
 	}
@@ -506,7 +553,7 @@ func (t *ArtifactTx) Members() ([]Member, error) {
 	var out []Member
 	for rows.Next() {
 		var m Member
-		if err := rows.Scan(&m.UserID, &m.Role, &m.FP); err != nil {
+		if err := rows.Scan(&m.UserID, &m.Role, &m.FP, &m.Via); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -520,8 +567,8 @@ func (t *ArtifactTx) SetGroups(groups []ArtifactGroup) error {
 		return err
 	}
 	for _, g := range groups {
-		if _, err := t.tx.Exec(`INSERT INTO artifact_groups (artifact_id, group_id, role) VALUES (?, ?, ?)`,
-			t.id, g.GroupID, g.Role); err != nil {
+		if _, err := t.tx.Exec(`INSERT INTO artifact_groups (artifact_id, group_id, role, via) VALUES (?, ?, ?, ?)`,
+			t.id, g.GroupID, g.Role, g.Via); err != nil {
 			return err
 		}
 	}
@@ -530,7 +577,7 @@ func (t *ArtifactTx) SetGroups(groups []ArtifactGroup) error {
 
 // Groups returns the groups the artifact is shared with, ordered by group ID.
 func (t *ArtifactTx) Groups() ([]ArtifactGroup, error) {
-	rows, err := t.tx.Query(`SELECT group_id, role FROM artifact_groups WHERE artifact_id = ? ORDER BY group_id`, t.id)
+	rows, err := t.tx.Query(`SELECT group_id, role, via FROM artifact_groups WHERE artifact_id = ? ORDER BY group_id`, t.id)
 	if err != nil {
 		return nil, err
 	}
@@ -538,7 +585,7 @@ func (t *ArtifactTx) Groups() ([]ArtifactGroup, error) {
 	var out []ArtifactGroup
 	for rows.Next() {
 		var g ArtifactGroup
-		if err := rows.Scan(&g.GroupID, &g.Role); err != nil {
+		if err := rows.Scan(&g.GroupID, &g.Role, &g.Via); err != nil {
 			return nil, err
 		}
 		out = append(out, g)

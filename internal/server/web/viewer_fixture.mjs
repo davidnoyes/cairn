@@ -73,6 +73,7 @@ function membershipBody(o) {
     members: [...o.members].sort((a, b) => (a.user < b.user ? -1 : 1)),
     excluded: [],
     team: 'none',
+    ...(o.groups?.length ? { groups: o.groups } : {}),
     public: o.public,
     publicWrites: o.publicWrites ?? false,
     prev: o.prev,
@@ -91,7 +92,7 @@ function membershipBody(o) {
 // adds a record for each epoch from 2 on, {by} a manager as above or {} the
 // owner. It also holds each epoch's estate
 // copy and every member's wrap, and owners, the keys of everyone who signed.
-export async function buildWorld({ owner, members = [], isPublic = false, epoch2 = false, epoch2By = null, laterEpochs = null, publicWrites = false }) {
+export async function buildWorld({ owner, members = [], isPublic = false, epoch2 = false, epoch2By = null, laterEpochs = null, publicWrites = false, groups = [] }) {
   const later = laterEpochs ?? (epoch2By ? [{ by: epoch2By }] : epoch2 ? [{}] : []);
   const aks = {};
   const commits = {};
@@ -100,12 +101,12 @@ export async function buildWorld({ owner, members = [], isPublic = false, epoch2
     aks[e] = randomBytes(32);
     commits[e] = await e2e.akCommit(aks[e], ARTIFACT, e);
   }
-  const listed = members.map((m) => ({ user: m.user.id, role: m.role, fp: m.fp ?? m.user.fp }));
+  const listed = members.map((m) => ({ user: m.user.id, role: m.role, fp: m.fp ?? m.user.fp, ...(m.via ? { via: m.via } : {}) }));
   const specs = [
     { epoch: 1, seq: 1, members: [], public: false },
-    { epoch: 1, seq: 2, members: listed, public: isPublic, publicWrites },
+    { epoch: 1, seq: 2, members: listed, groups, public: isPublic, publicWrites },
   ];
-  later.forEach((l, i) => specs.push({ epoch: i + 2, seq: i + 3, members: listed, public: isPublic, publicWrites, signer: l.by ?? null }));
+  later.forEach((l, i) => specs.push({ epoch: i + 2, seq: i + 3, members: listed, groups, public: isPublic, publicWrites, signer: l.by ?? null }));
   const records = [];
   let prev = '';
   for (const s of specs) {

@@ -15,7 +15,7 @@ func TestArtifactGroupsAreReplacedWholesale(t *testing.T) {
 	o := testAccount(t, s, "o@x.y")
 	a := ownedArtifact(t, s, o)
 	other := "7f1d2c3a-0b4e-4c5d-8e7f-0123456789ab"
-	shareWith(t, s, a.ID, ArtifactGroup{testGroup, "viewer"}, ArtifactGroup{other, "editor"})
+	shareWith(t, s, a.ID, ArtifactGroup{GroupID: testGroup, Role: "viewer"}, ArtifactGroup{GroupID: other, Role: "editor"})
 	list := func() []ArtifactGroup {
 		var got []ArtifactGroup
 		if err := s.WithArtifact(a.ID, func(tx *ArtifactTx) (err error) { got, err = tx.Groups(); return }); err != nil {
@@ -26,7 +26,7 @@ func TestArtifactGroupsAreReplacedWholesale(t *testing.T) {
 	if got := list(); len(got) != 2 || got[0].GroupID != testGroup || got[0].Role != "viewer" || got[1].GroupID != other || got[1].Role != "editor" {
 		t.Fatalf("groups = %+v", got)
 	}
-	shareWith(t, s, a.ID, ArtifactGroup{other, "viewer"})
+	shareWith(t, s, a.ID, ArtifactGroup{GroupID: other, Role: "viewer"})
 	if got := list(); len(got) != 1 || got[0].GroupID != other || got[0].Role != "viewer" {
 		t.Errorf("groups after the replacement = %+v", got)
 	}
@@ -59,7 +59,7 @@ func TestAccessStateSaysWhetherTheCallerIsInAListedGroup(t *testing.T) {
 	if st := state(m.ID); st.InGroup || st.HasGroups {
 		t.Errorf("before listing: %+v", st)
 	}
-	shareWith(t, s, a.ID, ArtifactGroup{testGroup, "viewer"})
+	shareWith(t, s, a.ID, ArtifactGroup{GroupID: testGroup, Role: "viewer"})
 	if st := state(m.ID); !st.InGroup || !st.HasGroups {
 		t.Errorf("a member: %+v", st)
 	}

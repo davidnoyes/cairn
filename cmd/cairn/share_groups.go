@@ -29,6 +29,9 @@ func groupsJSON(groups []client.ListedGroup) []map[string]any {
 		if g.Role != "" {
 			row["role"] = g.Role
 		}
+		if g.Via != "" {
+			row["via"], row["viaName"] = g.Via, g.ViaName
+		}
 		out = append(out, row)
 	}
 	return out

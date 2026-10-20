@@ -116,15 +116,30 @@ func TestCheckKeepsAGroupThatWasDeleted(t *testing.T) {
 	}
 }
 
-func TestCheckGroupsAreNotForAFolder(t *testing.T) {
+// A folder lists users and groups like any artifact, but keeps team none and
+// stays private.
+func TestCheckAFolderListsUsersAndGroupsOnly(t *testing.T) {
 	f := newFixture(t)
 	f.creation()
 	f.cur.Kind = store.KindFolder
-	b, _, _ := f.first()
-	b.Members = []e2e.Member{}
+	b, w, e := f.first()
 	b.Groups = []e2e.GroupShare{share(groupA, "viewer")}
-	_, err := Check(f.cur, f.groupsOf(nil, nil), f.change(t, b, nil, nil))
-	refused(t, err, 409, RuleFolder, "")
+	if _, err := Check(f.cur, f.groupsOf(nil, nil), f.change(t, b, w, e)); err != nil {
+		t.Fatalf("a folder that lists a user and a group: %v", err)
+	}
+	for name, edit := range map[string]func(*e2e.MembershipBody){
+		"a team share":  func(b *e2e.MembershipBody) { b.Team = "viewer" },
+		"public":        func(b *e2e.MembershipBody) { b.Public = true },
+		"public writes": func(b *e2e.MembershipBody) { b.PublicWrites = true },
+	} {
+		b, w, e := f.first()
+		edit(b)
+		_, err := Check(f.cur, f.groupsOf(nil, nil), f.change(t, b, w, e))
+		if err == nil {
+			t.Fatalf("%s: accepted", name)
+		}
+		refused(t, err, 409, RuleFolder, "folder")
+	}
 }
 
 // tm holds wraps and is unlisted. A same-epoch record may not leave tm with no

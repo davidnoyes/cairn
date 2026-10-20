@@ -52,23 +52,23 @@ func groupChainCases() []chainCase {
 	}
 	return []chainCase{
 		{name: "groups-listed", why: "alice lists two groups, sorted by group ID, in her second record", seq: 2, epoch: 1,
-			build: listed(groups(GroupShare{chainGroupA, "viewer"}, GroupShare{chainGroupB, "editor"}))},
+			build: listed(groups(GroupShare{Group: chainGroupA, Role: "viewer"}, GroupShare{Group: chainGroupB, Role: "editor"}))},
 		{name: "groups-first-record", why: "alice's first record lists a group", seq: 1, epoch: 1,
 			build: func(t testing.TB, u chainUsers) ChainInput {
-				return newChain(t, u.alice, []Member{}, groups(GroupShare{chainGroupA, "editor"})).input()
+				return newChain(t, u.alice, []Member{}, groups(GroupShare{Group: chainGroupA, Role: "editor"})).input()
 			}},
 		{name: "groups-limit", why: "a record that lists 100 groups, the most it may", seq: 2, epoch: 1,
 			build: listed(func(b *MembershipBody) { b.Groups = groupIDs(100) })},
 		{name: "groups-manager-changes", why: "bob, a manager, lists a group, then changes its role in a second version 2 record", seq: 3, epoch: 1,
 			build: func(t testing.TB, u chainUsers) ChainInput {
 				return base(t, u).
-					addByManager(u.bob, groups(GroupShare{chainGroupA, "viewer"})).
-					addByManager(u.bob, groups(GroupShare{chainGroupA, "editor"})).input()
+					addByManager(u.bob, groups(GroupShare{Group: chainGroupA, Role: "viewer"})).
+					addByManager(u.bob, groups(GroupShare{Group: chainGroupA, Role: "editor"})).input()
 			}},
 		{name: "groups-unsorted", why: "groups out of group ID order", err: ErrChain,
-			build: listed(groups(GroupShare{chainGroupB, "viewer"}, GroupShare{chainGroupA, "viewer"}))},
+			build: listed(groups(GroupShare{Group: chainGroupB, Role: "viewer"}, GroupShare{Group: chainGroupA, Role: "viewer"}))},
 		{name: "groups-duplicate", why: "the same group listed twice", err: ErrChain,
-			build: listed(groups(GroupShare{chainGroupA, "viewer"}, GroupShare{chainGroupA, "viewer"}))},
+			build: listed(groups(GroupShare{Group: chainGroupA, Role: "viewer"}, GroupShare{Group: chainGroupA, Role: "viewer"}))},
 		{name: "groups-empty-explicit", why: "a record with an explicit empty groups list, which the format leaves out", err: ErrFormat,
 			build: func(t testing.TB, u chainUsers) ChainInput {
 				f := base(t, u)
@@ -86,9 +86,9 @@ func groupChainCases() []chainCase {
 		{name: "groups-not-array", why: "a record whose groups is an object, not an array", err: ErrFormat,
 			build: rawGroups(`{}`)},
 		{name: "groups-role-manager", why: "a group listed with role manager", err: ErrChain,
-			build: listed(groups(GroupShare{chainGroupA, "manager"}))},
+			build: listed(groups(GroupShare{Group: chainGroupA, Role: "manager"}))},
 		{name: "groups-id-not-uuid", why: "a group ID in uppercase, which is not a lowercase UUID", err: ErrChain,
-			build: listed(groups(GroupShare{"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA", "viewer"}))},
+			build: listed(groups(GroupShare{Group: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA", Role: "viewer"}))},
 		{name: "groups-too-many", why: "a record that lists 101 groups", err: ErrChain,
 			build: listed(func(b *MembershipBody) { b.Groups = groupIDs(101) })},
 	}

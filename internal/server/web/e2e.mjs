@@ -1795,15 +1795,21 @@ const KEY_PAIR_SCHEMA = {
   ed25519: field('string'),
 };
 
+// VIA_FIELD is the via of a member or a groups entry: the ID of the folder
+// the entry comes from, left out for a direct grant.
+const VIA_FIELD = field('string', { omitEmpty: true });
+
 const MEMBER_SCHEMA = {
   user: field('string'),
   role: field('string'),
   fp: field('string'),
+  via: VIA_FIELD,
 };
 
 const GROUP_SHARE_SCHEMA = {
   group: field('string'),
   role: field('string'),
+  via: VIA_FIELD,
 };
 
 const GROUP_MEMBER_SCHEMA = {
@@ -2024,7 +2030,8 @@ function decodeValue(value, f) {
 // its zero value when absent. A field marked omitEmpty (newSig of
 // ENVELOPE_SCHEMA, matching Go's envelopeJSON, signer and signerFp of the
 // membership body, which a version 1 record does not carry, and its groups,
-// which a record that lists none omits) is left out of the
+// which a record that lists none omits, and the via of a member or a groups
+// entry, which a direct grant omits) is left out of the
 // result entirely when its decoded value is the zero value, mirroring Go's
 // `json:",omitempty"`, which drops a zero value on marshal. An absent field
 // therefore round-trips; one present with the zero value explicitly (such
@@ -2252,6 +2259,7 @@ async function openRecord(env, artifact, owners) {
       throw new ChainError(`member ${m.user} has role ${m.role}`);
     }
     if (!isHex64(m.fp)) throw new ChainError(`member ${m.user} fp is not 64 lowercase hex digits`);
+    if (m.via !== undefined && !UUID_RE.test(m.via)) throw new ChainError(`member ${m.user} via is not a lowercase UUID`);
     for (const e of b.excluded) {
       if (e.user === m.user || e.fp === m.fp) {
         throw new ChainError(`excluded entry ${e.user} matches member ${m.user}`);
@@ -2276,6 +2284,7 @@ function checkGroupShares(gs) {
   gs.forEach((g, i) => {
     if (!UUID_RE.test(g.group)) throw new ChainError(`group ${g.group} is not a lowercase UUID`);
     if (g.role !== 'viewer' && g.role !== 'editor') throw new ChainError(`group ${g.group} has role ${g.role}`);
+    if (g.via !== undefined && !UUID_RE.test(g.via)) throw new ChainError(`group ${g.group} via is not a lowercase UUID`);
     if (i > 0 && gs[i - 1].group >= g.group) throw new ChainError('groups not sorted by group ID, or duplicated');
   });
 }
@@ -2390,14 +2399,14 @@ async function checkManagerRecord(prev, b, linked) {
 }
 
 // sameManagers reports whether the members with role manager are identical,
-// in user, role, and fp, in a and b. Both lists are sorted by user ID, so the
-// managers come out in the same order. Mirrors sameManagers in
+// in user, role, fp, and via, in a and b. Both lists are sorted by user ID, so
+// the managers come out in the same order. Mirrors sameManagers in
 // internal/e2e/chain.go.
 function sameManagers(a, b) {
   const managers = (ms) => ms.filter((m) => m.role === 'manager');
   const x = managers(a);
   const y = managers(b);
-  return x.length === y.length && x.every((m, i) => m.user === y[i].user && m.role === y[i].role && m.fp === y[i].fp);
+  return x.length === y.length && x.every((m, i) => m.user === y[i].user && m.role === y[i].role && m.fp === y[i].fp && m.via === y[i].via);
 }
 
 // checkSuccessor checks the successor record served for the handover b: it

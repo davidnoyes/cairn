@@ -25,10 +25,13 @@ type KeyPair struct {
 	Ed25519 string `json:"ed25519"`
 }
 
+// Member is a user a membership record lists. Via, when set, is the ID of
+// the folder the entry comes from; a direct grant leaves it empty.
 type Member struct {
 	User string `json:"user"`
 	Role string `json:"role"`
 	FP   string `json:"fp"`
+	Via  string `json:"via,omitempty"`
 }
 
 // ExcludedEntry is a user an owner removed, listed in the membership record
@@ -40,17 +43,20 @@ type ExcludedEntry struct {
 }
 
 // GroupShare is a group a membership record lists, and the role it grants:
-// viewer or editor.
+// viewer or editor. Via is the ID of the folder the entry comes from, empty
+// for a direct grant.
 type GroupShare struct {
 	Group string `json:"group"`
 	Role  string `json:"role"`
+	Via   string `json:"via,omitempty"`
 }
 
 // MembershipBody is signed by the owner, or, as version 2, by a manager:
 // Signer and SignerFP then name the manager and the key that signed. They
 // and Groups are the only fields with `omitempty`, because a version 1 body
 // has no signer fields, and a record that lists no groups has no groups key:
-// see checkVersion. An explicit empty value still fails DecodeStrict's round
+// see checkVersion. Via, on a member or a groups entry, is the same: left out
+// for a direct grant. An explicit empty value still fails DecodeStrict's round
 // trip.
 type MembershipBody struct {
 	V            int             `json:"v"`

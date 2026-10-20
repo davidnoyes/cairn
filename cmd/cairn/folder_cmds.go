@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -228,13 +229,32 @@ func runMove(args []string) error {
 		return err
 	}
 	moved.Name, moved.Description = item.Name, item.Description
-	if *jsonOut {
-		return printJSON(moved)
-	}
-	if parent == "" {
-		fmt.Printf("moved %s (%s) to the top level\n", item.Title(), item.ID)
+	return folderThen(c, item, true, *jsonOut, func() error {
+		if *jsonOut {
+			return printMoved(moved)
+		}
+		if parent == "" {
+			fmt.Printf("moved %s (%s) to the top level\n", item.Title(), item.ID)
+			return nil
+		}
+		fmt.Printf("moved %s (%s) into %s\n", item.Title(), item.ID, *to)
 		return nil
+	})
+}
+
+// printMoved prints the moved item's view in JSON, with the fan-out that
+// followed the move when there was one.
+func printMoved(moved *client.Artifact) error {
+	raw, err := json.Marshal(moved)
+	if err != nil {
+		return err
 	}
-	fmt.Printf("moved %s (%s) into %s\n", item.Title(), item.ID, *to)
-	return nil
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	if r, ok := fanOuts[moved.ID]; ok {
+		out["fanOut"] = fanOutJSON(r)
+	}
+	return printJSON(out)
 }

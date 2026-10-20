@@ -38,7 +38,8 @@ const encoder = new TextEncoder();
 // owner-only, owner-missing, not-approver, no-team, excluded, changed-key,
 // already-listed, already-approved, not-waiting, pending-keys-differ,
 // approval-unverified, not-in-group, group-unverified, unknown-group,
-// not-shared-with-group, bad-team, rotations-unreadable, wrap-key-unknown.
+// not-shared-with-group, bad-team, rotations-unreadable, wrap-key-unknown,
+// folders-unsupported.
 export class SharingError extends Error {
   constructor(code, message, options) {
     super(message, options);
@@ -301,14 +302,29 @@ function checkOwnerOnly(manager, what) {
   if (manager) throw new SharingError('owner-only', `Only the artifact's owner can ${what}.`);
 }
 
+// checkNoFolders refuses a change to the member list of a folder, and to that
+// of an item with an entry that comes from a folder. The browser cannot change
+// either yet: a folder's change is followed by a record for each item inside
+// it, and a record it signed would drop the marks of the entries that name a
+// folder. The marks decide first, so a folder whose record carries any is
+// refused without a request.
+async function checkNoFolders(deps, va) {
+  const inherited = va.latest.members.some((m) => m.via !== undefined) || (va.latest.groups ?? []).some((g) => g.via !== undefined);
+  const kind = inherited ? '' : (await call(deps, null, 'GET', `/api/artifacts/${va.artifact}`)).kind;
+  if (inherited || kind === 'folder') {
+    throw new SharingError('folders-unsupported', 'This is a folder, or has entries that come from a folder, which the browser cannot change yet. Use the cairn tool.');
+  }
+}
+
 // adminAction is the start of every member-list change: the caller, the
 // verified artifact, whether the caller is a manager rather than the owner,
-// and the two refusals Share, Unshare and Public make before anything else.
+// and the refusals Share, Unshare and Public make before anything else.
 async function adminAction(deps, artifactId) {
   const caller = await unlock(deps);
   const va = await verifyArtifact(deps, caller, artifactId);
   checkHandover(va);
   const manager = adminRole(caller, va) === 'manager';
+  await checkNoFolders(deps, va);
   return { caller, va, manager };
 }
 

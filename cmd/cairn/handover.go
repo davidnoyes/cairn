@@ -44,5 +44,8 @@ func printArtifactJSON(artifactID string, out map[string]any) error {
 	if n, ok := handovers[artifactID]; ok {
 		out["handover"] = map[string]any{"date": n.Date, "acked": n.Acked}
 	}
+	if r, ok := fanOuts[artifactID]; ok {
+		out["fanOut"] = fanOutJSON(r)
+	}
 	return printJSON(out)
 }

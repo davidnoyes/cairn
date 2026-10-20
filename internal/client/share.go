@@ -354,6 +354,11 @@ type MemberView struct {
 	FP          string // hex, as the latest verified record lists it
 	State       string
 	WasVerified bool
+	// Via is the ID of the folder the entry comes from, empty for a direct
+	// grant, and ViaName is the folder's name when the caller can read it, or
+	// else its ID.
+	Via     string
+	ViaName string
 }
 
 // Members verifies an artifact's chain and lists its owner and members.
@@ -376,9 +381,12 @@ func (c *Client) Members(artifactID string) (*VerifiedArtifact, []MemberView, er
 	}
 	latest := va.Chain.Latest
 	rows := []MemberView{{User: latest.Owner, Role: "owner", FP: latest.OwnerFP}}
+	var vias []string
 	for _, m := range latest.Members {
-		rows = append(rows, MemberView{User: m.User, Role: m.Role, FP: m.FP})
+		rows = append(rows, MemberView{User: m.User, Role: m.Role, FP: m.FP, Via: m.Via})
+		vias = append(vias, m.Via)
 	}
+	names := c.folderLabels(vias)
 	for i := range rows {
 		r := &rows[i]
 		u, ok := byID[r.User]
@@ -400,8 +408,30 @@ func (c *Client) Members(artifactID string) (*VerifiedArtifact, []MemberView, er
 		if ok {
 			r.Name, r.Email = u.Name, u.Email
 		}
+		if r.Via != "" {
+			r.ViaName = names[r.Via]
+		}
 	}
 	return va, rows, nil
+}
+
+// folderLabels names each folder in ids, skipping empty ones, by its name
+// when the caller can read the folder and by its ID otherwise.
+func (c *Client) folderLabels(ids []string) map[string]string {
+	out := map[string]string{}
+	for _, id := range ids {
+		if id == "" || out[id] != "" {
+			continue
+		}
+		out[id] = id
+		if a, err := c.getArtifact(id); err == nil {
+			c.OpenNames(a) // a name that does not open leaves the ID
+			if a.Name != "" {
+				out[id] = a.Name
+			}
+		}
+	}
+	return out
 }
 
 // ShareResult is what Share did.

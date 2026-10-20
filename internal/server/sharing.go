@@ -254,26 +254,42 @@ type artifactView struct {
 	Kind string `json:"kind"`
 	// Parent is the ID of the folder the item sits in, when the caller can
 	// read that folder, and null otherwise.
-	Parent       *string           `json:"parent"`
-	Owner        string            `json:"owner"`
-	Access       access.Level      `json:"access"`
-	Epoch        int               `json:"epoch"`
-	Team         string            `json:"team"`
-	Public       bool              `json:"public"`
-	PublicWrites bool              `json:"publicWrites"`
-	Transfer     *transferView     `json:"transfer"`
-	CreatedAt    string            `json:"createdAt"`
-	UpdatedAt    string            `json:"updatedAt"`
-	Resources    []*store.Resource `json:"resources,omitempty"`
+	Parent       *string       `json:"parent"`
+	Owner        string        `json:"owner"`
+	Access       access.Level  `json:"access"`
+	Epoch        int           `json:"epoch"`
+	Team         string        `json:"team"`
+	Public       bool          `json:"public"`
+	PublicWrites bool          `json:"publicWrites"`
+	Transfer     *transferView `json:"transfer"`
+	// Inherit is "ok", or "pending" while the item's record lacks an entry its
+	// folder requires, or holds one whose via no longer holds.
+	Inherit   string            `json:"inherit"`
+	CreatedAt string            `json:"createdAt"`
+	UpdatedAt string            `json:"updatedAt"`
+	Resources []*store.Resource `json:"resources,omitempty"`
 	// Meta holds the artifact's encrypted fields; a field nobody wrote is
 	// absent.
 	Meta map[string]metaItemView `json:"meta"`
 }
 
+// The values of an artifact view's inherit field.
+const (
+	inheritOK      = "ok"
+	inheritPending = "pending"
+)
+
 func (s *Server) viewOf(a *store.Artifact, level access.Level) (*artifactView, error) {
 	v := &artifactView{ID: a.ID, Kind: a.Kind, Owner: a.OwnerID, Access: level,
 		Epoch: a.Epoch, Team: a.Team, Public: a.Public, PublicWrites: a.PublicWrites,
-		CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
+		CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt, Inherit: inheritOK}
+	pending, err := s.store.InheritPending(a.ID)
+	if err != nil {
+		return nil, err
+	}
+	if pending {
+		v.Inherit = inheritPending
+	}
 	o, err := s.store.OpenOffer(a.ID)
 	switch {
 	case err == nil:
@@ -733,7 +749,9 @@ type pendingView struct {
 // user's rotation records explains; keyChanged is any other change. Like
 // approved, rotated is for the owner only. left is an unlisted user who holds
 // a wrap for the current epoch and is covered by neither the team share nor
-// a listed group, so the server no longer lets them read.
+// a listed group, so the server no longer lets them read, and a listed user
+// whose entry's via no longer holds: their folder stopped listing them or the
+// item left it.
 const (
 	pendingNew        = "new"
 	pendingApproved   = "approved"
@@ -788,6 +806,10 @@ func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
 		for _, m := range latest.Members {
 			listed[m.User] = m
 		}
+		lapsedUsers, lapsedGroups, err := tx.LapsedVia()
+		if err != nil {
+			return err
+		}
 		wraps := map[string][]store.Wrap{}
 		for _, wr := range cur.Wraps {
 			wraps[wr.UserID] = append(wraps[wr.UserID], wr)
@@ -807,6 +829,9 @@ func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
 			}
 			holding := []string{}
 			for _, g := range latest.Groups {
+				if lapsedGroups[g.Group] {
+					continue
+				}
 				in, err := tx.IsGroupMember(g.Group, u.ID)
 				if err != nil {
 					return err
@@ -816,7 +841,7 @@ func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			covered := latest.Team != access.TeamNone || len(holding) > 0
-			state := pendingState(latest, u, listed, wraps[u.ID], approval[u.ID], covered, explained)
+			state := pendingState(latest, u, listed, wraps[u.ID], approval[u.ID], covered, lapsedUsers[u.ID], explained)
 			if rotErr != nil {
 				return rotErr
 			}
@@ -851,9 +876,12 @@ func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
 // An unlisted user with a wrap for the current epoch is approved while
 // covered, which is while the record shares with a team or a listed group
 // holds them, and has left otherwise; an unlisted user with none is new while
-// covered.
+// covered. A listed user whose entry's via no longer holds, because the folder
+// no longer contains the item or no longer lists them, is lapsed: the record
+// still lists them and they still hold the key, but the server no longer lets
+// them read through it, so they have left too.
 func pendingState(latest *e2e.MembershipBody, u *store.KeyedUser, listed map[string]e2e.Member, wraps []store.Wrap,
-	approval *store.Approval, covered bool, explained func(oldFP string) bool) string {
+	approval *store.Approval, covered, lapsed bool, explained func(oldFP string) bool) string {
 	changed := func(oldFP string) string {
 		if explained(oldFP) {
 			return pendingRotated
@@ -870,6 +898,9 @@ func pendingState(latest *e2e.MembershipBody, u *store.KeyedUser, listed map[str
 		}
 	}
 	if isListed {
+		if lapsed {
+			return pendingLeft
+		}
 		return ""
 	}
 	// A member of the team who rotated re-made their wraps under the new
