@@ -34,9 +34,19 @@ const (
 	FanOutNewEpoch = "newEpoch"
 	// FanOutFailed: the item is still pending, and Err says why.
 	FanOutFailed = "failed"
+	// FanOutWaits: the item is pending, and only its owner, or a manager of
+	// it, can sign its record; the caller is neither. It is not a failure:
+	// the owner applies it, as "Inheritance others have to apply" says.
+	FanOutWaits = "waits"
+	// FanOutNeedsMove: an item the caller can sign whose record names another
+	// folder than the server lists it in, which Apply does not decide; Err
+	// names the move that settles it. It is not counted as a failure.
+	FanOutNeedsMove = "needsMove"
 )
 
-// FanOutItem is what FanOut did for one item. Excluded are the users a
+// FanOutItem is what FanOut did for one item. Owner is the owner's ID, and
+// OwnerEmail their address when the directory holds them, set for an item
+// that waits on its owner. Excluded are the users a
 // next-epoch record excluded, and Resealed and ResealErr what sealing the
 // item's data again under the new epoch did. Approved and Pending are the
 // members of a group the record added whom the client approved, or left
@@ -49,6 +59,8 @@ type FanOutItem struct {
 	Kind          string
 	State         string
 	Err           error
+	Owner         string
+	OwnerEmail    string
 	Excluded      []ExcludedUser
 	Resealed      *ResealResult
 	ResealErr     error
@@ -97,7 +109,9 @@ var ErrPlacement = errors.New("the item's signed record does not name the folder
 // the item only through it, and seals its data again. The walk goes into an
 // item only when its latest verified record names the folder it was found
 // in; any other item the server lists there as pending is refused, by ID,
-// and never sealed to. placing, when not nil, also visits the folder itself,
+// and never sealed to. A pending item the caller can neither own nor manage,
+// whether a stub or one they can read, waits on its owner and is left alone.
+// placing, when not nil, also visits the folder itself,
 // as a move does for the item it moved, and writes its record naming
 // placing.Parent. It calls progress, when not nil, after each item with how
 // many are done of how many the run visits; an item already current counts
@@ -110,7 +124,7 @@ func (c *Client) FanOut(rootID string, placing *Placing, progress func(done, tot
 	if err != nil {
 		return nil, err
 	}
-	all, err := c.listArtifacts()
+	all, err := c.listWithStubs()
 	if err != nil {
 		return nil, err
 	}
@@ -127,6 +141,8 @@ func (c *Client) FanOut(rootID string, placing *Placing, progress func(done, tot
 	for i, s := range order {
 		var item FanOutItem
 		switch {
+		case s.waits:
+			item = waitingItem(s.a, dir)
 		case s.refused != nil:
 			item = FanOutItem{ID: s.a.ID, Kind: s.a.Kind, State: FanOutFailed, Err: s.refused}
 		case placing != nil && s.a.ID == rootID:
@@ -150,10 +166,28 @@ func (c *Client) FanOut(rootID string, placing *Placing, progress func(done, tot
 
 // subtreeItem is an item the walk visits. refused, when set, says why the
 // walk will not touch it: its signed record does not name the folder it was
-// found in, or its record cannot be verified.
+// found in, or its record cannot be verified. waits is set for a pending item
+// the caller cannot sign, which the walk leaves to its owner and does not
+// enter.
 type subtreeItem struct {
 	a       *Artifact
 	refused error
+	waits   bool
+}
+
+// canSign reports whether the caller signs records of a: the server gave them
+// the owner's or a manager's access, which is what the access level of a
+// stub, an editor's, and a viewer's are not.
+func canSign(a *Artifact) bool { return a.Access == "owner" || a.Access == "manager" }
+
+// waitingItem is the FanOutWaits entry for a, with its owner's address when
+// the directory holds them.
+func waitingItem(a *Artifact, dir []DirectoryUser) FanOutItem {
+	it := FanOutItem{ID: a.ID, Kind: a.Kind, State: FanOutWaits, Owner: a.OwnerID}
+	if i := slices.IndexFunc(dir, func(u DirectoryUser) bool { return u.ID == a.OwnerID }); i >= 0 {
+		it.OwnerEmail = dir[i].Email
+	}
+	return it
 }
 
 // placeName is a folder ID as an error message says it.
@@ -204,6 +238,11 @@ func subtreeOrder(all []*Artifact, root string, includeRoot bool, folderNamed fu
 		})
 		for _, a := range kids {
 			item := subtreeItem{a: a}
+			if a.Inherit == "pending" && !canSign(a) {
+				item.waits = true
+				out = append(out, item)
+				continue
+			}
 			if a.Kind == store.KindFolder || a.Inherit == "pending" {
 				named, err := folderNamed(a)
 				switch {
@@ -234,6 +273,12 @@ type fanOut struct {
 	dir      []DirectoryUser
 	parents  map[string]*e2e.MembershipBody
 	verified map[string]*VerifiedArtifact
+	// topWhenOrphaned is set by Apply: an item the server lists at the top
+	// level whose record still names a folder is written as naming none. The
+	// server moved it there, because the folder was deleted or an editor of
+	// it removed the item, and the item's owner signs the record, so the move
+	// is theirs to confirm; it only ever lowers what the folder's members hold.
+	topWhenOrphaned bool
 }
 
 // folderNamed verifies the item a and returns the folder its latest record
@@ -299,8 +344,11 @@ func (f *fanOut) sync(id string, placing *Placing, out *FanOutItem) error {
 	}
 	latest := va.Chain.Latest
 	folder := latest.Folder
-	if placing != nil {
+	switch {
+	case placing != nil:
 		folder = placing.Parent
+	case f.topWhenOrphaned && view.ParentID == "":
+		folder = ""
 	}
 	if view.ParentID != folder {
 		return placementError(id, view.ParentID, folder)

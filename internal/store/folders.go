@@ -16,9 +16,9 @@ const (
 // down to an item's parent.
 const MaxFolderDepth = 16
 
-// ErrNotFolder is returned when an item's parent is missing, is not a folder,
-// or belongs to someone other than the item's owner.
-var ErrNotFolder = errors.New("the parent is not a folder of the item's owner")
+// ErrNotFolder is returned when an item's parent is missing or is not a
+// folder.
+var ErrNotFolder = errors.New("the parent is not a folder")
 
 // ErrCycle is returned when a folder would move into itself or into a folder
 // inside it.
@@ -36,19 +36,20 @@ type queryRower interface {
 	QueryRow(query string, args ...any) *sql.Row
 }
 
-// checkParent refuses parent as the place for an item owned by owner whose
-// own subtree holds height levels of folders (0 for an artifact, 1 for an
-// empty folder), unless parent is a folder of the same owner and the result
-// stays within MaxFolderDepth. An empty parent is the top level, always
-// allowed. movingID is the folder being moved, or empty for a create; parent
-// may not be it or inside it.
-func checkParent(q queryRower, movingID, owner, parent string, height int) error {
+// checkParent refuses parent as the place for an item whose own subtree
+// holds height levels of folders (0 for an artifact, 1 for an empty folder),
+// unless parent is a folder and the result stays within MaxFolderDepth. Whose
+// folder it is, and whether the caller may place the item there, is the
+// server's to decide. An empty parent is the top level, always allowed.
+// movingID is the folder being moved, or empty for a create; parent may not
+// be it or inside it.
+func checkParent(q queryRower, movingID, parent string, height int) error {
 	if parent == "" {
 		return nil
 	}
-	var kind, parentOwner string
-	err := q.QueryRow(`SELECT kind, COALESCE(owner_id, '') FROM artifacts WHERE id = ?`, parent).Scan(&kind, &parentOwner)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && (kind != KindFolder || parentOwner != owner) {
+	var kind string
+	err := q.QueryRow(`SELECT kind FROM artifacts WHERE id = ?`, parent).Scan(&kind)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && kind != KindFolder {
 		return ErrNotFolder
 	}
 	if err != nil {
@@ -75,9 +76,9 @@ func checkParent(q queryRower, movingID, owner, parent string, height int) error
 }
 
 // CreateOwnedItem is CreateOwnedArtifact for either kind, placed in the
-// folder parent (empty for the top level). The parent must be a folder the
-// owner owns, within the depth limit, or the answer is ErrNotFolder or
-// ErrTooDeep and nothing is written.
+// folder parent (empty for the top level), which may belong to someone else.
+// The parent must be a folder, within the depth limit, or the answer is
+// ErrNotFolder or ErrTooDeep and nothing is written.
 func (s *Store) CreateOwnedItem(id, ownerID, kind, parentID string, fn func(*ArtifactTx) error) (*Artifact, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -88,7 +89,7 @@ func (s *Store) CreateOwnedItem(id, ownerID, kind, parentID string, fn func(*Art
 	if kind == KindFolder {
 		height = 1
 	}
-	if err := checkParent(tx, "", ownerID, parentID, height); err != nil {
+	if err := checkParent(tx, "", parentID, height); err != nil {
 		return nil, err
 	}
 	t := now()
@@ -115,7 +116,7 @@ func (s *Store) CreateOwnedItem(id, ownerID, kind, parentID string, fn func(*Art
 }
 
 // MoveItem puts the item in the folder parent, or at the top level when
-// parent is empty. The parent must be a folder of the item's owner; a folder
+// parent is empty. The parent must be a folder, whoever owns it; a folder
 // may not move into itself or a folder inside it (ErrCycle), and the deepest
 // folder of a moved subtree must stay within MaxFolderDepth (ErrTooDeep). A
 // missing item is ErrNotFound. The checks and the write share one
@@ -137,8 +138,8 @@ func (s *Store) MoveItem(id, parent string) error {
 	} else if n == 0 {
 		return ErrNotFound
 	}
-	var kind, owner string
-	if err := tx.QueryRow(`SELECT kind, COALESCE(owner_id, '') FROM artifacts WHERE id = ?`, id).Scan(&kind, &owner); err != nil {
+	var kind string
+	if err := tx.QueryRow(`SELECT kind FROM artifacts WHERE id = ?`, id).Scan(&kind); err != nil {
 		return err
 	}
 	height := 0
@@ -152,7 +153,7 @@ func (s *Store) MoveItem(id, parent string) error {
 			return err
 		}
 	}
-	if err := checkParent(tx, id, owner, parent, height); err != nil {
+	if err := checkParent(tx, id, parent, height); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`UPDATE artifacts SET parent_id = NULLIF(?, '') WHERE id = ?`, parent, id); err != nil {
@@ -161,11 +162,12 @@ func (s *Store) MoveItem(id, parent string) error {
 	return tx.Commit()
 }
 
-// DeleteFolderIfEmpty deletes the folder id unless an item sits in it
-// (ErrFolderNotEmpty), checking and deleting under one write lock so an item
-// created or moved in meanwhile is not orphaned. It is ErrNotFound if there
-// is no such artifact.
-func (s *Store) DeleteFolderIfEmpty(id string) error {
+// DeleteFolderIfNoneOwned deletes the folder id unless an item its owner owns
+// sits in it (ErrFolderNotEmpty). An item someone else owns does not stop it:
+// the foreign key moves it to the top level, which is its owner's. The check
+// and the delete share one write lock so an item created or moved in
+// meanwhile is not orphaned. It is ErrNotFound if there is no such artifact.
+func (s *Store) DeleteFolderIfNoneOwned(id string) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -176,7 +178,8 @@ func (s *Store) DeleteFolderIfEmpty(id string) error {
 		return err
 	}
 	var n int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM artifacts WHERE parent_id = ?`, id).Scan(&n); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM artifacts c JOIN artifacts f ON f.id = c.parent_id
+		WHERE c.parent_id = ? AND c.owner_id = f.owner_id`, id).Scan(&n); err != nil {
 		return err
 	}
 	if n > 0 {

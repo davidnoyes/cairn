@@ -110,19 +110,41 @@ func folderList(args []string) error {
 	if *jsonOut {
 		return printJSON(nodes)
 	}
-	printTree(nodes, "")
+	printTree(nodes, "", ownerNames(c))
 	return nil
 }
 
-// printTree prints nodes and what is inside them, indented by depth.
-func printTree(nodes []*client.TreeNode, indent string) {
+// ownerNames returns a function that names the owner with the ID it is given
+// by address, from the directory, or by the ID when the directory does not
+// hold them or cannot be read.
+func ownerNames(c *client.Client) func(id string) string {
+	var dir []client.DirectoryUser
+	loaded := false
+	return func(id string) string {
+		if !loaded {
+			dir, _ = c.Directory()
+			loaded = true
+		}
+		if u, err := client.FindUser(dir, id); err == nil {
+			return u.Email
+		}
+		return id
+	}
+}
+
+// printTree prints nodes and what is inside them, indented by depth. An item
+// the caller cannot read yet has no name: it shows as not shared yet, with
+// its owner, as owner names them.
+func printTree(nodes []*client.TreeNode, indent string, owner func(id string) string) {
 	for _, n := range nodes {
 		title := n.Title()
-		if n.Kind == "folder" {
+		if n.Stub {
+			title = "(not shared with you yet, owned by " + owner(n.OwnerID) + ")"
+		} else if n.Kind == "folder" {
 			title += "/"
 		}
 		fmt.Printf("%s%s  %s\n", indent, title, n.ID)
-		printTree(n.Children, indent+"  ")
+		printTree(n.Children, indent+"  ", owner)
 	}
 }
 
@@ -173,6 +195,14 @@ func folderDelete(args []string) error {
 	plan := fmt.Sprintf("Deleting %s (%s) removes %s, itself included, and %s.",
 		f.Title(), f.ID, plural(len(contents.Folders), "folder", "folders"), plural(len(contents.Artifacts), "artifact", "artifacts"))
 	fmt.Fprintln(os.Stderr, plan)
+	if len(contents.Moved) > 0 {
+		owner := ownerNames(c)
+		fmt.Fprintf(os.Stderr, "%s someone else owns move to their owners' top levels, with everything inside them, and wait for their owners to place them again (cairn apply, or cairn move):\n",
+			plural(len(contents.Moved), "item", "items"))
+		for _, m := range contents.Moved {
+			fmt.Fprintf(os.Stderr, "  %s  %s, owned by %s\n", m.ID, m.Kind, owner(m.OwnerID))
+		}
+	}
 	if !*yes {
 		if !stdinIsTerminal() {
 			return errors.New("not deleting: there is no terminal to ask on; run it again with --yes")
@@ -189,13 +219,21 @@ func folderDelete(args []string) error {
 		return fmt.Errorf("%w\nrun the command again to finish the delete", err)
 	}
 	if *jsonOut {
+		moved := []map[string]string{}
+		for _, m := range contents.Moved {
+			moved = append(moved, map[string]string{"id": m.ID, "kind": m.Kind, "owner": m.OwnerID})
+		}
 		return printJSON(map[string]any{
 			"folder":  f.ID,
 			"deleted": map[string]int{"folders": counts.Folders, "artifacts": counts.Artifacts},
+			"moved":   moved,
 		})
 	}
 	fmt.Printf("deleted folder %s (%s): %s and %s\n", f.Title(), f.ID,
 		plural(counts.Folders, "folder", "folders"), plural(counts.Artifacts, "artifact", "artifacts"))
+	if counts.Moved > 0 {
+		fmt.Printf("%s of other owners moved to their owners' top levels\n", plural(counts.Moved, "item", "items"))
+	}
 	return nil
 }
 

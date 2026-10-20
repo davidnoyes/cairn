@@ -89,7 +89,7 @@ func (s *Server) routes() {
 	handle("GET /api/artifacts/{id}", s.artifactRoute(access.ReadContent, s.handleGetArtifact))
 	handle("PUT /api/artifacts/{id}/meta/{field}", s.artifactRoute(access.Rename, s.handlePutArtifactMeta))
 	handle("DELETE /api/artifacts/{id}", s.artifactRoute(access.Delete, s.handleDeleteArtifact))
-	handle("PUT /api/artifacts/{id}/parent", s.artifactRoute(access.Move, s.handlePutParent))
+	handle("PUT /api/artifacts/{id}/parent", s.moveRoute(s.handlePutParent))
 	handle("GET /api/artifacts/{id}/membership", s.artifactRoute(access.ReadMembership, s.handleGetMembership))
 	handle("PUT /api/artifacts/{id}/membership", s.artifactRoute(access.Share, s.handlePutMembership))
 	handle("POST /api/artifacts/{id}/content-token", s.requireSession(s.artifactRoute(access.ReadContent, refuseFolder(s.handleContentToken))))

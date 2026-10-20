@@ -84,7 +84,6 @@ func TestKindCheckRejectsUnknownKind(t *testing.T) {
 func TestCreateItemParentRules(t *testing.T) {
 	s := testStore(t)
 	u := testAccount(t, s, "o@x.y")
-	other := testAccount(t, s, "p@x.y")
 	if _, err := s.CreateOwnedItem(folderA, u.ID, KindFolder, "", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +93,6 @@ func TestCreateItemParentRules(t *testing.T) {
 	cases := []struct{ name, owner, parent string }{
 		{"parent is an artifact", u.ID, itemC},
 		{"parent missing", u.ID, missingID},
-		{"parent owned by another", other.ID, folderA},
 	}
 	for i, c := range cases {
 		id := strings.Repeat(string(rune('d'+i)), 8) + "-dddd-4ddd-8ddd-dddddddddddd"
@@ -188,7 +186,7 @@ func TestMoveItemRules(t *testing.T) {
 	}
 }
 
-func TestDeleteFolderIfEmpty(t *testing.T) {
+func TestDeleteFolderIfNoneOwned(t *testing.T) {
 	s := testStore(t)
 	u := testAccount(t, s, "o@x.y")
 	if _, err := s.CreateOwnedItem(folderA, u.ID, KindFolder, "", nil); err != nil {
@@ -197,7 +195,7 @@ func TestDeleteFolderIfEmpty(t *testing.T) {
 	if _, err := s.CreateOwnedItem(itemC, u.ID, KindArtifact, folderA, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DeleteFolderIfEmpty(folderA); !errors.Is(err, ErrFolderNotEmpty) {
+	if err := s.DeleteFolderIfNoneOwned(folderA); !errors.Is(err, ErrFolderNotEmpty) {
 		t.Fatalf("a folder with an item: %v, want ErrFolderNotEmpty", err)
 	}
 	if _, err := s.ArtifactByID(folderA); err != nil {
@@ -206,20 +204,52 @@ func TestDeleteFolderIfEmpty(t *testing.T) {
 	if err := s.DeleteArtifact(itemC); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DeleteFolderIfEmpty(folderA); err != nil {
+	if err := s.DeleteFolderIfNoneOwned(folderA); err != nil {
 		t.Fatalf("an empty folder: %v", err)
 	}
 	if _, err := s.ArtifactByID(folderA); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("the folder after delete: %v, want ErrNotFound", err)
 	}
-	if err := s.DeleteFolderIfEmpty(folderA); !errors.Is(err, ErrNotFound) {
+	if err := s.DeleteFolderIfNoneOwned(folderA); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("a missing folder: %v, want ErrNotFound", err)
+	}
+}
+
+// Someone else's item in a folder is placed there by its owner, and does not
+// stop the folder's owner deleting it: the item lands at its owner's top
+// level.
+func TestForeignItemsInAFolder(t *testing.T) {
+	s := testStore(t)
+	o := testAccount(t, s, "o@x.y")
+	p := testAccount(t, s, "p@x.y")
+	if _, err := s.CreateOwnedItem(folderA, o.ID, KindFolder, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateOwnedItem(itemC, p.ID, KindArtifact, folderA, nil); err != nil {
+		t.Fatalf("an item of another owner in the folder: %v", err)
+	}
+	own := uuid.NewString()
+	if _, err := s.CreateOwnedItem(own, o.ID, KindArtifact, folderA, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteFolderIfNoneOwned(folderA); !errors.Is(err, ErrFolderNotEmpty) {
+		t.Fatalf("an item of the folder's owner remains: %v, want ErrFolderNotEmpty", err)
+	}
+	if err := s.DeleteArtifact(own); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteFolderIfNoneOwned(folderA); err != nil {
+		t.Fatalf("only another owner's item remains: %v", err)
+	}
+	got, err := s.ArtifactByID(itemC)
+	if err != nil || got.ParentID != "" {
+		t.Fatalf("the foreign item after the delete: %+v, %v; want the top level", got, err)
 	}
 }
 
 // A create racing the delete either lands before it (the delete is refused)
 // or is refused itself; it is never left pointing at a deleted folder.
-func TestDeleteFolderIfEmptyRacesCreate(t *testing.T) {
+func TestDeleteFolderIfNoneOwnedRacesCreate(t *testing.T) {
 	s := testStore(t)
 	u := testAccount(t, s, "o@x.y")
 	for i := 0; i < 20; i++ {
@@ -230,7 +260,7 @@ func TestDeleteFolderIfEmptyRacesCreate(t *testing.T) {
 		var wg sync.WaitGroup
 		var delErr, addErr error
 		wg.Add(2)
-		go func() { defer wg.Done(); delErr = s.DeleteFolderIfEmpty(folder) }()
+		go func() { defer wg.Done(); delErr = s.DeleteFolderIfNoneOwned(folder) }()
 		go func() {
 			defer wg.Done()
 			_, addErr = s.CreateOwnedItem(item, u.ID, KindArtifact, folder, nil)

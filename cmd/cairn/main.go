@@ -25,6 +25,7 @@ Client:
   cairn artifact         Manage artifacts (list|create NAME [--in FOLDER]|show|update|delete)
   cairn folder           Manage folders (create NAME [--in FOLDER]|list [FOLDER]|delete FOLDER [--yes])
   cairn move             Move an item into a folder, or to the top level (ITEM --to FOLDER|--top)
+  cairn apply            Apply what others shared to the items you own or manage, and approve group members ([--json])
   cairn members          List an artifact's owner and members, with pin states, from its verified chain
   cairn share            Add a member, or change a role (ARTIFACT USER --role viewer|editor|manager)
   cairn unshare          Remove a member and start a new epoch (ARTIFACT USER)
@@ -81,6 +82,8 @@ func main() {
 		err = runFolder(args)
 	case "move":
 		err = runMove(args)
+	case "apply":
+		err = runApply(args)
 	case "members":
 		err = runMembers(args)
 	case "share":

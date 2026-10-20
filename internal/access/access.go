@@ -70,7 +70,7 @@ const (
 	Transfer       Action = "transfer"   // offer ownership
 	AnswerTransfer Action = "answer"     // accept, decline, or withdraw an offer
 	Estate         Action = "estate"     // PUT an epoch's estate copy: the owner only
-	Move           Action = "move"       // put the item in a folder, or at the top level: the owner only
+	Move           Action = "move"       // put the item in a folder, or at the top level: the owner or a manager
 )
 
 // Decision is the outcome of a check.
@@ -334,9 +334,9 @@ func allowed(m matches, a Artifact, act Action) bool {
 			return true
 		}
 	}
-	// A manager also signs member lists. Delete, Transfer, ReviewVersions,
-	// and Estate stay with the owner.
-	if m.managerPower && act == Share {
+	// A manager also signs member lists and places the item in a folder.
+	// Delete, Transfer, ReviewVersions, and Estate stay with the owner.
+	if m.managerPower && (act == Share || act == Move) {
 		return true
 	}
 	// A signed-in link holder writes while public writes are on.

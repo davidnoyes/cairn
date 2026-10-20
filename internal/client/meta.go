@@ -91,8 +91,24 @@ func (w artifactWire) artifact() *Artifact {
 }
 func (w versionWire) version() *Version { return &Version{Version: w.Version, Meta: w.Meta} }
 
-// listArtifacts reads the artifacts the caller can see, with no field opened.
+// accessNone is the access of a stub: an item inside a folder the caller
+// reads, which they cannot read yet.
+const accessNone = "none"
+
+// listArtifacts reads the artifacts the caller can read, with no field
+// opened.
 func (c *Client) listArtifacts() ([]*Artifact, error) {
+	all, err := c.listWithStubs()
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(all, func(a *Artifact) bool { return a.Access == accessNone }), nil
+}
+
+// listWithStubs is listArtifacts with the stubs the server lists as well: the
+// items inside a folder the caller reads that they cannot read yet, which carry
+// an ID, a kind, an owner, and a parent, and no name.
+func (c *Client) listWithStubs() ([]*Artifact, error) {
 	var wire []artifactWire
 	if err := c.doJSON("GET", "/api/artifacts", nil, &wire); err != nil {
 		return nil, err

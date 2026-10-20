@@ -125,7 +125,7 @@ func TestCreateRefusals(t *testing.T) {
 	plain := newArtifact(t, a, "plain")
 	theirFolder := newItem(t, b, "folder", "")
 	shared := newArtifact(t, b, "shared")
-	shared.share("editor", a)
+	shared.share("viewer", a)
 
 	for _, c := range []struct {
 		name, kind, parent string

@@ -483,18 +483,18 @@ func TestAFanOutThatCannotSignLeavesItemsPending(t *testing.T) {
 	if _, err := w.bob.Share(w.f, "cat@example.com", "viewer", false); err == nil {
 		t.Fatal("an editor shared the folder")
 	}
-	// A fan-out by someone who signs none of the records fails on each item,
-	// names it, and leaves it pending.
+	// A fan-out by someone who signs none of the records is no failure: each
+	// pending item waits on its owner, who is named, and is left pending. The
+	// walk does not go into the nested folder, which waits for its own record.
 	if _, err := w.ada.Share(w.f, "cat@example.com", "viewer", false); err != nil {
 		t.Fatal(err)
 	}
 	res, err := w.bob.FanOut(w.f, nil, nil)
-	if !errors.Is(err, ErrFanOutIncomplete) || res.Count(FanOutFailed) != 2 {
+	if err != nil || res.Count(FanOutWaits) != 2 || len(res.Items) != 2 {
 		t.Fatalf("FanOut = %+v, %v", res, err)
 	}
 	for _, it := range res.Items {
-		// The items in the nested folder wait for that folder's record.
-		if it.ID == w.item2 && it.State != FanOutCurrent || it.ID != w.item2 && !errors.Is(it.Err, ErrNotOwner) {
+		if it.State != FanOutWaits || it.Owner == "" || it.OwnerEmail != "ada@example.com" {
 			t.Errorf("%s: %+v", it.ID, it)
 		}
 	}

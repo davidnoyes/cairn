@@ -15,7 +15,7 @@ func asManager(r Request, listed, current string) Request {
 
 // TestManagerByAction checks every action for a listed manager whose
 // fingerprint is current, whose fingerprint is stale, and who is a viewer
-// account: a manager has every editor action plus Share, and not Delete,
+// account: a manager has every editor action plus Share and Move, and not Delete,
 // Transfer, ReviewVersions, or Estate.
 func TestManagerByAction(t *testing.T) {
 	fresh := asManager(base(), "fp-m", "fp-m")
@@ -38,7 +38,7 @@ func TestManagerByAction(t *testing.T) {
 		Transfer:       {Forbidden, Forbidden, Forbidden},
 		AnswerTransfer: {Allow, Allow, Allow},
 		Estate:         {Forbidden, Forbidden, Forbidden},
-		Move:           {Forbidden, Forbidden, Forbidden},
+		Move:           {Allow, Forbidden, Forbidden},
 	}
 	for _, a := range allActions {
 		w, ok := want[a]

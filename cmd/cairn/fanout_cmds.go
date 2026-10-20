@@ -73,9 +73,16 @@ func printFanOut(res *client.FanOutResult) {
 	if len(res.Items) == 0 {
 		return
 	}
-	fmt.Printf("%s: %d updated, %d at a new epoch, %d already up to date, %d still pending\n",
+	fmt.Printf("%s: %d updated, %d at a new epoch, %d already up to date, %d still pending",
 		plural(len(res.Items), "item", "items"), res.Count(client.FanOutUpdated), res.Count(client.FanOutNewEpoch),
 		res.Count(client.FanOutCurrent), res.Count(client.FanOutFailed))
+	if n := res.Count(client.FanOutNeedsMove); n > 0 {
+		fmt.Printf(", %d need a move", n)
+	}
+	if n := res.Count(client.FanOutWaits); n > 0 {
+		fmt.Printf(", %d wait on their owners", n)
+	}
+	fmt.Println()
 	for _, it := range res.Items {
 		for _, x := range it.Excluded {
 			fmt.Printf("%s: new epoch, excluded %s\n", it.ID, excludedLabel(x.User))
@@ -95,8 +102,13 @@ func printFanOut(res *client.FanOutResult) {
 		for _, x := range it.Pending {
 			fmt.Printf("%s: pending: %s: %v\n", it.ID, x.User.Email, x.Err)
 		}
-		if it.State == client.FanOutFailed {
+		switch it.State {
+		case client.FanOutFailed:
 			fmt.Printf("%s: still pending: %v\n", it.ID, it.Err)
+		case client.FanOutNeedsMove:
+			fmt.Printf("%s: needs a move: %v\n", it.ID, it.Err)
+		case client.FanOutWaits:
+			fmt.Printf("%s: waits on %s\n", it.ID, ownerLabel(it))
 		}
 	}
 }
@@ -123,15 +135,21 @@ func fanOutJSON(res *client.FanOutResult) map[string]any {
 		if len(pending) > 0 {
 			row["pending"] = pending
 		}
+		if it.State == client.FanOutWaits {
+			row["owner"], row["ownerEmail"] = it.Owner, it.OwnerEmail
+		}
 		if it.Err != nil {
 			row["error"] = it.Err.Error()
-			failed = append(failed, map[string]string{"id": it.ID, "error": it.Err.Error()})
+			if it.State == client.FanOutFailed {
+				failed = append(failed, map[string]string{"id": it.ID, "error": it.Err.Error()})
+			}
 		}
 		items = append(items, row)
 	}
 	return map[string]any{
 		"total": len(res.Items), "current": res.Count(client.FanOutCurrent), "updated": res.Count(client.FanOutUpdated),
-		"newEpoch": res.Count(client.FanOutNewEpoch), "failed": failed, "items": items,
+		"newEpoch": res.Count(client.FanOutNewEpoch), "waiting": res.Count(client.FanOutWaits),
+		"needsMove": res.Count(client.FanOutNeedsMove), "failed": failed, "items": items,
 	}
 }
 

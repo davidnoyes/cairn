@@ -177,6 +177,20 @@ func decisionMessage(d access.Decision) string {
 // caller to the request. On a content host, the {id} must be the host's
 // artifact itself, not a resource reference, or the answer is 404.
 func (s *Server) artifactRoute(act access.Action, next http.HandlerFunc) http.HandlerFunc {
+	return s.route(&act, next)
+}
+
+// moveRoute is artifactRoute for moving an item, which checks no action: the
+// caller may be a folder's editor who cannot read the item, and removes it, so
+// an item the caller cannot read is passed on when it sits in a folder, and
+// the handler decides what the caller may do.
+func (s *Server) moveRoute(next http.HandlerFunc) http.HandlerFunc {
+	return s.route(nil, next)
+}
+
+// route is artifactRoute and moveRoute: act is the action to check, or nil to
+// leave the decision to the handler.
+func (s *Server) route(act *access.Action, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if host, ok := r.Context().Value(contentHostCtxKey).(string); ok && r.PathValue("id") != host {
 			writeError(w, http.StatusNotFound, "artifact not found")
@@ -195,6 +209,13 @@ func (s *Server) artifactRoute(act access.Action, next http.HandlerFunc) http.Ha
 			return
 		}
 		a, req, err := s.resolveReadable(c, r.PathValue("id"), linkToken(r))
+		if act == nil && errors.Is(err, store.ErrNotFound) {
+			// An item the caller cannot read, in a folder: the folder's
+			// editor may remove it, which the handler decides.
+			if a2, req2, err2 := s.accessRequest(c, r.PathValue("id"), nil); err2 == nil && a2.ParentID != "" {
+				a, req, err = a2, req2, nil
+			}
+		}
 		if err != nil {
 			var ambiguous errAmbiguousResource
 			if errors.As(err, &ambiguous) {
@@ -204,11 +225,11 @@ func (s *Server) artifactRoute(act access.Action, next http.HandlerFunc) http.Ha
 			s.writeStoreError(w, err, "artifact")
 			return
 		}
-		if d := access.Check(req, act); d != access.Allow {
+		if d := checkAction(req, act); d != access.Allow {
 			msg := decisionMessage(d)
 			// A viewer account is told why, rather than that its access is
 			// too low, since no member list could give it more.
-			if d == access.Forbidden && req.Caller.ReadOnly && access.WritesArtifact(act) {
+			if d == access.Forbidden && req.Caller.ReadOnly && access.WritesArtifact(*act) {
 				msg = errViewerAccount
 			}
 			writeError(w, d.Status(), msg)
@@ -224,6 +245,14 @@ func (s *Server) artifactRoute(act access.Action, next http.HandlerFunc) http.Ha
 		}
 		next(w, r)
 	}
+}
+
+// checkAction is access.Check for act, or Allow when act is nil.
+func checkAction(req access.Request, act *access.Action) access.Decision {
+	if act == nil {
+		return access.Allow
+	}
+	return access.Check(req, *act)
 }
 
 // Artifact JSON

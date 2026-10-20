@@ -53,28 +53,35 @@ func (c *Client) Move(id, parent string) (*Artifact, error) {
 	return out.artifact(), nil
 }
 
-// TreeNode is an item and the items that sit in it.
+// TreeNode is an item and the items that sit in it. Stub is set for an item
+// the caller cannot read yet, which has no name: it sits in a folder the
+// caller reads, and its owner has yet to apply the folder's sharing to it.
 type TreeNode struct {
 	*Artifact
+	Stub     bool        `json:"stub,omitempty"`
 	Children []*TreeNode `json:"children"`
 }
 
-// Tree reads the caller's own items as a tree: the items at the top level
-// when root is empty, otherwise those inside the folder root, which must be
-// one of the caller's own. Folders come first and then artifacts, each sorted
-// by name, with names opened.
+// Tree reads the items as a tree: the caller's own items at the top level
+// when root is empty, otherwise the items inside the folder root, which must
+// be a folder the caller can read. Inside a folder, every item the server
+// lists is shown, whoever owns it, and one the caller cannot read yet is a
+// stub with no name. Folders come first and then artifacts, each sorted by
+// name, with names opened.
 func (c *Client) Tree(root string) ([]*TreeNode, error) {
-	all, err := c.listArtifacts()
+	all, err := c.listWithStubs()
 	if err != nil {
 		return nil, err
 	}
-	all = slices.DeleteFunc(all, func(a *Artifact) bool { return a.Access != "owner" })
 	if root != "" {
-		if f := byID(all, root); f == nil || f.Kind != store.KindFolder {
+		if f := byID(all, root); f == nil || f.Kind != store.KindFolder || f.Access == accessNone {
 			return nil, fmt.Errorf("%w: no folder of yours has the id %s", ErrNoArtifact, root)
 		}
+	} else {
+		// Only the caller's own items start the tree.
+		all = slices.DeleteFunc(all, func(a *Artifact) bool { return a.ParentID == "" && a.Access != "owner" })
 	}
-	c.OpenNames(all...) // an item whose chain fails shows under its ID
+	c.OpenNames(all...) // a stub has no fields; an item whose chain fails shows under its ID
 	return branch(all, root), nil
 }
 
@@ -94,7 +101,7 @@ func branch(all []*Artifact, parent string) []*TreeNode {
 	nodes := []*TreeNode{}
 	for _, a := range all {
 		if a.ParentID == parent {
-			nodes = append(nodes, &TreeNode{Artifact: a, Children: branch(all, a.ID)})
+			nodes = append(nodes, &TreeNode{Artifact: a, Stub: a.Access == accessNone, Children: branch(all, a.ID)})
 		}
 	}
 	sort.SliceStable(nodes, func(i, j int) bool {
@@ -122,29 +129,43 @@ func FolderPaths(all []*Artifact) map[string]string {
 	return paths
 }
 
-// FolderContents is what deleting a folder removes: every artifact inside it,
-// at any depth, and every folder, deepest first and the folder itself last.
+// FolderContents is what deleting a folder does to what is inside it. The
+// caller's own items go: every artifact of theirs at any depth, and every
+// folder of theirs, deepest first and the folder itself last. The walk stops
+// at an item someone else owns, which Moved lists: it lands at its owner's top
+// level, with everything inside it, when the folder it sits in goes. A stub
+// is such an item, and has no name.
 type FolderContents struct {
 	Folders   []*Artifact
 	Artifacts []*Artifact
+	Moved     []*Artifact
 }
 
-// DeleteCounts is how many folders and artifacts a delete removed.
+// DeleteCounts is how many folders and artifacts a delete removed, and how
+// many items of other owners it left at their owners' top levels.
 type DeleteCounts struct {
 	Folders   int
 	Artifacts int
+	Moved     int
 }
 
-// FolderContents lists what deleting the folder id removes, with no name
-// opened.
+// ErrNotFolderOwner means the caller tried to delete a folder someone else
+// owns: only its owner does.
+var ErrNotFolderOwner = errors.New("only the folder's owner deletes it")
+
+// FolderContents lists what deleting the folder id does, with no name opened.
+// The folder must be the caller's own.
 func (c *Client) FolderContents(id string) (*FolderContents, error) {
-	all, err := c.listArtifacts()
+	all, err := c.listWithStubs()
 	if err != nil {
 		return nil, err
 	}
 	root := byID(all, id)
-	if root == nil || root.Kind != store.KindFolder {
+	if root == nil || root.Kind != store.KindFolder || root.Access == accessNone {
 		return nil, fmt.Errorf("%w: no folder has the id %s", ErrNoArtifact, id)
+	}
+	if root.Access != "owner" {
+		return nil, fmt.Errorf("%w: %s belongs to someone else", ErrNotFolderOwner, id)
 	}
 	out := &FolderContents{}
 	depth := map[string]int{id: 0}
@@ -153,14 +174,15 @@ func (c *Client) FolderContents(id string) (*FolderContents, error) {
 		f := queue[0]
 		queue = queue[1:]
 		for _, a := range all {
-			if a.ParentID != f.ID {
-				continue
-			}
-			if a.Kind == store.KindFolder {
+			switch {
+			case a.ParentID != f.ID:
+			case a.Access != "owner":
+				out.Moved = append(out.Moved, a)
+			case a.Kind == store.KindFolder:
 				depth[a.ID] = depth[f.ID] + 1
 				out.Folders = append(out.Folders, a)
 				queue = append(queue, a)
-			} else {
+			default:
 				out.Artifacts = append(out.Artifacts, a)
 			}
 		}
@@ -170,18 +192,22 @@ func (c *Client) FolderContents(id string) (*FolderContents, error) {
 	return out, nil
 }
 
-// DeleteFolder deletes every artifact in the folder id, at any depth, then
-// each folder in it from the deepest up, and the folder itself last. It
-// calls progress, when not nil, after each deletion with how many are done
+// DeleteFolder deletes every artifact of the caller's in the folder id, at any
+// depth, then each folder of theirs in it from the deepest up, and the folder
+// itself last: the server refuses to delete a folder that still holds an item
+// its owner owns, and moves the items of other owners it holds to their
+// owners' top levels, which they have to place again. It calls progress, when not nil, after each deletion with how many are done
 // of how many the run has. An item already gone is skipped, and the folder
 // goes last, so running it again finishes a run that was interrupted. The
-// counts are what this run removed.
+// counts are what this run removed, and Moved is how many items of other
+// owners the folder held when it began.
 func (c *Client) DeleteFolder(id string, progress func(done, total int)) (DeleteCounts, error) {
 	var counts DeleteCounts
 	contents, err := c.FolderContents(id)
 	if err != nil {
 		return counts, err
 	}
+	counts.Moved = len(contents.Moved)
 	total := len(contents.Artifacts) + len(contents.Folders)
 	done := 0
 	remove := func(a *Artifact, n *int) error {

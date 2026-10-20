@@ -50,6 +50,7 @@ func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 		level access.Level
 	}
 	var visible []listed
+	var hidden []*store.Artifact
 	readableIDs := map[string]bool{}
 	for _, a := range as {
 		a, req, err := s.accessRequest(c, a.ID, nil)
@@ -62,6 +63,7 @@ func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 		}
 		level := access.LevelOf(req)
 		if level == access.LevelNone {
+			hidden = append(hidden, a)
 			continue
 		}
 		visible = append(visible, listed{a, level})
@@ -70,7 +72,7 @@ func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 	// The list already holds what the caller can read, so a parent is shown
 	// when it is in it: no access query per item.
 	inList := func(id string) (bool, error) { return readableIDs[id], nil }
-	out := []*artifactView{}
+	out := []any{}
 	for _, l := range visible {
 		v, err := s.viewOf(l.a, l.level)
 		if err == nil {
@@ -81,6 +83,13 @@ func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out = append(out, v)
+	}
+	// An item inside a folder the caller reads, which they cannot read yet,
+	// is listed as a stub: the page shows it as waiting on its owner.
+	for _, a := range hidden {
+		if a.ParentID != "" && readableIDs[a.ParentID] {
+			out = append(out, stubOf(a))
+		}
 	}
 	writeJSON(w, http.StatusOK, paginate(r, out))
 }
@@ -102,7 +111,7 @@ func (s *Server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 	a := requestArtifact(r)
 	del := s.store.DeleteArtifact
 	if a.Kind == store.KindFolder {
-		del = s.store.DeleteFolderIfEmpty
+		del = s.store.DeleteFolderIfNoneOwned
 	}
 	s.deleteArtifact(w, a, requestUser(r).Email, del)
 }
