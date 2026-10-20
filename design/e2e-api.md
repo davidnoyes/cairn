@@ -2769,8 +2769,9 @@ it comes from. An entry without `via` is a direct grant. See
   editor to viewer, therefore takes effect on every item at once, before
   their records catch up.
 - **Which folder a mark names.** `via` names the nearest folder that lists
-  the user or group itself, which may be above the item's parent. A change
-  to that folder's record then reaches the whole subtree at once.
+  the user or group itself, which may hold the item's parent rather than be
+  it. A change to that folder's record then reaches the whole subtree at
+  once.
 
 ### Fan-out
 
