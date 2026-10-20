@@ -190,5 +190,5 @@ export async function freshUser(local, domain) {
   runCli(s.bin, config, ['signup', '--host', s.appOrigin, '--email', email, '--password-stdin'], { input: `${password}\n` });
   runCli(s.bin, config, ['confirm-email', await mailedLink(new RegExp(`${s.appOrigin}/verify#token=[A-Za-z0-9_-]+`), before)]);
   runCli(s.bin, config, ['login', '--host', s.appOrigin, '--email', email, '--password-stdin'], { input: `${password}\n` });
-  return { email, password };
+  return { email, password, config };
 }
