@@ -64,7 +64,7 @@ export function fakeStorage() {
 function membershipBody(o) {
   return enc.encode(JSON.stringify({
     v: o.signer ? 2 : 1,
-    artifact: ARTIFACT,
+    artifact: o.artifact,
     epoch: o.epoch,
     seq: o.seq,
     owner: o.owner.id,
@@ -93,14 +93,15 @@ function membershipBody(o) {
 // adds a record for each epoch from 2 on, {by} a manager as above or {} the
 // owner. It also holds each epoch's estate
 // copy and every member's wrap, and owners, the keys of everyone who signed.
-export async function buildWorld({ owner, members = [], isPublic = false, epoch2 = false, epoch2By = null, laterEpochs = null, publicWrites = false, groups = [], folder = '' }) {
+// artifact is its ID, ARTIFACT unless a test needs more than one.
+export async function buildWorld({ owner, members = [], isPublic = false, epoch2 = false, epoch2By = null, laterEpochs = null, publicWrites = false, groups = [], folder = '', artifact = ARTIFACT }) {
   const later = laterEpochs ?? (epoch2By ? [{ by: epoch2By }] : epoch2 ? [{}] : []);
   const aks = {};
   const commits = {};
   // Epoch 2's AK exists even when no record starts it, which tests use to seal under an epoch the chain lacks.
   for (let e = 1; e <= Math.max(later.length, 1) + 1; e++) {
     aks[e] = randomBytes(32);
-    commits[e] = await e2e.akCommit(aks[e], ARTIFACT, e);
+    commits[e] = await e2e.akCommit(aks[e], artifact, e);
   }
   const listed = members.map((m) => ({ user: m.user.id, role: m.role, fp: m.fp ?? m.user.fp, ...(m.via ? { via: m.via } : {}) }));
   const specs = [
@@ -111,7 +112,7 @@ export async function buildWorld({ owner, members = [], isPublic = false, epoch2
   const records = [];
   let prev = '';
   for (const s of specs) {
-    const body = membershipBody({ ...s, owner, prev, akCommit: commits[s.epoch] });
+    const body = membershipBody({ ...s, artifact, owner, prev, akCommit: commits[s.epoch] });
     const by = s.signer ?? owner;
     records.push(await e2e.newEnvelope(by.ed.seed, by.id, 'membership', body));
     prev = await e2e.bodyHash(body);
@@ -121,13 +122,13 @@ export async function buildWorld({ owner, members = [], isPublic = false, epoch2
   for (let e = 1; e <= top; e++) {
     if (later[e - 2]?.by) continue;
     const ekKey = await e2e.ekSealCryptoKey(owner.ek);
-    estate.push({ epoch: e, sealed: e2e.b64(await e2e.seal(ekKey, ['estate', ARTIFACT, String(e)], aks[e])) });
+    estate.push({ epoch: e, sealed: e2e.b64(await e2e.seal(ekKey, ['estate', artifact, String(e)], aks[e])) });
   }
   const wraps = {};
   for (const m of members) {
     wraps[m.user.id] = [];
     for (let e = 1; e <= top; e++) {
-      const wrapped = await e2e.wrap({ purpose: 'ak', artifact: ARTIFACT, epoch: e, recipientId: m.user.id, recipientPub: m.user.x.pub }, aks[e]);
+      const wrapped = await e2e.wrap({ purpose: 'ak', artifact, epoch: e, recipientId: m.user.id, recipientPub: m.user.x.pub }, aks[e]);
       wraps[m.user.id].push({ epoch: e, wrapped: e2e.b64(wrapped), fp: m.user.fp });
     }
   }
@@ -135,10 +136,10 @@ export async function buildWorld({ owner, members = [], isPublic = false, epoch2
   for (const [i, l] of later.entries()) {
     if (!l.by) continue;
     owners[l.by.fp] = l.by.pair;
-    const wrapped = await e2e.wrap({ purpose: 'ak', artifact: ARTIFACT, epoch: i + 2, recipientId: owner.id, recipientPub: owner.x.pub }, aks[i + 2]);
+    const wrapped = await e2e.wrap({ purpose: 'ak', artifact, epoch: i + 2, recipientId: owner.id, recipientPub: owner.x.pub }, aks[i + 2]);
     (wraps[owner.id] ??= []).push({ epoch: i + 2, wrapped: e2e.b64(wrapped), fp: owner.fp });
   }
-  return { owner, aks, commits, records, estate, wraps, owners, members, top, isPublic };
+  return { artifact, owner, aks, commits, records, estate, wraps, owners, members, top, isPublic };
 }
 
 // manifestFor seals a manifest for version vid at epoch under the world's

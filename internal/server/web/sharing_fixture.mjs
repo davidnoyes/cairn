@@ -34,7 +34,9 @@ function wireUser(u) {
 // POST .../keys the server accepted), groups (the group records, by group ID,
 // served as groups_fixture.mjs serves them), groupServer (whose own directory
 // serves the keys of a group's signers) and kind (the artifact's kind in its
-// view: artifact, or folder). The server answers GET .../pending
+// view: artifact, or folder), parent (its folder's ID in the view) and lapsed (a
+// function giving the {users, groups} whose via no longer holds, which
+// folder_fixture.mjs sets). The server answers GET .../pending
 // as the server's pendingState does, and refuses a record that leaves an
 // unlisted holder without a reason to read, or a next epoch that neither lists
 // nor excludes one.
@@ -83,7 +85,7 @@ export function makeShareServer(world, { who, users = [] }) {
   // levelOf is how the signed-in user stands in the latest record.
   const levelOf = (latest) => (s.who.id === latest.owner ? 'owner' : latest.members.find((m) => m.user === s.who.id)?.role ?? '');
   // pendingState is the server's: see pendingState in internal/server/sharing.go.
-  const pendingState = async (latest, w, fp, covered) => {
+  const pendingState = async (latest, w, fp, covered, lapsed) => {
     const explained = (oldFp) => e2e.rotationLinker({ [w.id]: s.rotations[w.id] ?? [] })(w.id, oldFp, fp);
     const changed = async (oldFp) => ((await explained(oldFp)) ? 'rotated' : 'keyChanged');
     const listed = latest.members.find((m) => m.user === w.id);
@@ -91,7 +93,8 @@ export function makeShareServer(world, { who, users = [] }) {
     const approval = s.approvals.get(w.id);
     if (listed && listed.fp !== fp) return changed(listed.fp);
     for (const wr of wraps) if (wr.fp !== fp) return changed(wr.fp);
-    if (listed) return '';
+    // A listed user whose via no longer holds has left, as the server says.
+    if (listed) return lapsed ? 'left' : '';
     if (approval && approval.fp !== fp) return changed(approval.fp);
     if (wraps.some((wr) => wr.epoch === latest.epoch)) return covered ? 'approved' : 'left';
     return covered ? 'new' : '';
@@ -143,7 +146,7 @@ export function makeShareServer(world, { who, users = [] }) {
     if (usr) return s.directory.has(usr[1]) ? jsonResponse(200, s.directory.get(usr[1])) : jsonResponse(404, { error: 'user not found' });
 
     const m = /^\/api\/artifacts\/([^/]+)(?:\/(.*))?$/.exec(p);
-    if (!m || m[1] !== ARTIFACT) return jsonResponse(404, { error: `no route ${method} ${p}` });
+    if (!m || m[1] !== world.artifact) return jsonResponse(404, { error: `no route ${method} ${p}` });
     const rest = m[2] ?? '';
     const fail = (kind) => s.failPut?.(kind) ?? null;
 
@@ -177,8 +180,9 @@ export function makeShareServer(world, { who, users = [] }) {
       for (const w of s.directory.values()) {
         const fp = await fpOfWire(w);
         if (w.id === latest.owner || e2e.excludedMatch(latest.excluded, w.id, fp, w.email)) continue;
-        const holding = (latest.groups ?? []).filter((g) => inGroup(g.group, w.id)).map((g) => g.group);
-        const state = await pendingState(latest, w, fp, latest.team !== 'none' || holding.length > 0);
+        const lapsed = s.lapsed?.() ?? { users: new Set(), groups: new Set() };
+        const holding = (latest.groups ?? []).filter((g) => !lapsed.groups.has(g.group) && inGroup(g.group, w.id)).map((g) => g.group);
+        const state = await pendingState(latest, w, fp, latest.team !== 'none' || holding.length > 0, lapsed.users.has(w.id));
         if (state === '' || (['approved', 'left', 'rotated'].includes(state) && !mayDecide)) continue;
         const view = { id: w.id, name: w.name, email: w.email, x25519Pub: w.x25519Pub, ed25519Pub: w.ed25519Pub, state, group: [] };
         if (state === 'new' || state === 'approved') view.group = holding;
@@ -207,7 +211,7 @@ export function makeShareServer(world, { who, users = [] }) {
       }
       if (body.fp !== fp) return jsonResponse(409, { error: 'fp is not the current fingerprint' });
       const signed = JSON.parse(new TextDecoder().decode(e2e.unb64(body.approval.body)));
-      if (body.approval.signer !== s.who.id || signed.artifact !== ARTIFACT || signed.epoch !== latest.epoch || signed.user !== w.id || signed.fp !== fp) return jsonResponse(400, { error: 'the approval does not match' });
+      if (body.approval.signer !== s.who.id || signed.artifact !== world.artifact || signed.epoch !== latest.epoch || signed.user !== w.id || signed.fp !== fp) return jsonResponse(400, { error: 'the approval does not match' });
       // A wrap is 81 bytes (membership.wrapSize), one per epoch, none twice.
       const epochs = body.wraps.map((x) => x.epoch).sort((a, b) => a - b);
       if (body.wraps.some((x) => e2e.unb64(x.wrapped).length !== 81)) return jsonResponse(400, { error: 'a wrap is not 81 bytes' });
@@ -230,7 +234,7 @@ export function makeShareServer(world, { who, users = [] }) {
       s.estate.push(put);
       return jsonResponse(200, { epoch: put.epoch });
     }
-    if (rest === '') return jsonResponse(200, { id: ARTIFACT, kind: s.kind ?? 'artifact', parent: null, meta: s.artifactMeta });
+    if (rest === '') return jsonResponse(200, { id: world.artifact, kind: s.kind ?? 'artifact', parent: s.parent ?? null, meta: s.artifactMeta });
     if (rest === 'versions') return jsonResponse(200, [...s.versions.values()].map((v) => ({ ...v.json, meta: v.meta })));
 
     const meta = /^(?:versions\/([^/]+)\/)?meta\/([^/]+)$/.exec(rest);
@@ -354,8 +358,8 @@ const sha256 = (bytes) => e2e.bodyHash(bytes);
 // seedDatabase stores the latest revision of version's database: sealed under
 // the world's AK of epoch and signed by signer.
 export async function seedDatabase(s, { version, revision = 1, epoch = 1, signer = s.world.owner, plain = enc.encode('db') }) {
-  const blob = await e2e.sealBlob(s.world.aks[epoch], { artifact: ARTIFACT, version, kind: 'database', name: String(revision) }, plain);
-  const body = enc.encode(JSON.stringify({ v: 1, artifact: ARTIFACT, version, revision, epoch, sha256: await sha256(blob) }));
+  const blob = await e2e.sealBlob(s.world.aks[epoch], { artifact: s.world.artifact, version, kind: 'database', name: String(revision) }, plain);
+  const body = enc.encode(JSON.stringify({ v: 1, artifact: s.world.artifact, version, revision, epoch, sha256: await sha256(blob) }));
   const env = await e2e.newEnvelope(signer.ed.seed, signer.id, 'revision', body);
   s.dbs.set(version, { revision, epoch, blob, env, signerKey: e2e.b64(signer.ed.pub) });
 }
@@ -363,11 +367,11 @@ export async function seedDatabase(s, { version, revision = 1, epoch = 1, signer
 // seedFile stores a file of version at path under epoch, signed by signer.
 export async function seedFile(s, { version, path, plain = enc.encode('file'), epoch = 1, signer = s.world.owner }) {
   const ak = s.world.aks[epoch];
-  const address = await e2e.fileAddress(await e2e.fileKey(ak, ARTIFACT, epoch), path);
-  const ctx = (kind) => ({ artifact: ARTIFACT, version, kind, name: address });
+  const address = await e2e.fileAddress(await e2e.fileKey(ak, s.world.artifact, epoch), path);
+  const ctx = (kind) => ({ artifact: s.world.artifact, version, kind, name: address });
   const blob = await e2e.sealBlob(ak, ctx('file'), plain);
   const meta = await e2e.sealBlob(ak, ctx('file-meta'), enc.encode(JSON.stringify({ v: 1, path, size: plain.length, modifiedAt: '2026-01-01T00:00:00.000Z' })));
-  const sign = async (kind, b) => e2e.newEnvelope(signer.ed.seed, signer.id, 'record', enc.encode(JSON.stringify({ v: 1, artifact: ARTIFACT, version, kind, name: address, epoch, sha256: await sha256(b) })));
+  const sign = async (kind, b) => e2e.newEnvelope(signer.ed.seed, signer.id, 'record', enc.encode(JSON.stringify({ v: 1, artifact: s.world.artifact, version, kind, name: address, epoch, sha256: await sha256(b) })));
   const entry = { address, epoch, size: plain.length, record: await sign('file', blob), blob, metaRecord: await sign('file-meta', meta), meta, signerKey: e2e.b64(signer.ed.pub) };
   if (!s.files.has(version)) s.files.set(version, new Map());
   s.files.get(version).set(address, entry);
@@ -384,23 +388,23 @@ export async function seedVersion(s, { id, seq = 1, epoch = 1, signer = s.world.
   for (const [path, text] of Object.entries(files)) {
     const blobId = e2e.toHex(crypto.getRandomValues(new Uint8Array(16)));
     const plain = enc.encode(text);
-    const blob = await e2e.sealBlob(ak, { artifact: ARTIFACT, version: id, kind: 'content', name: path }, plain);
+    const blob = await e2e.sealBlob(ak, { artifact: s.world.artifact, version: id, kind: 'content', name: path }, plain);
     entries.push({ path, blob: blobId, size: plain.length, sha256: await sha256(blob) });
-    blobs.set(blobId, badBlob === path ? await e2e.sealBlob(ak, { artifact: ARTIFACT, version: id, kind: 'content', name: path }, enc.encode('tampered')) : blob);
+    blobs.set(blobId, badBlob === path ? await e2e.sealBlob(ak, { artifact: s.world.artifact, version: id, kind: 'content', name: path }, enc.encode('tampered')) : blob);
   }
-  const body = enc.encode(JSON.stringify({ v: 1, artifact: ARTIFACT, version: id, epoch, files: entries }));
+  const body = enc.encode(JSON.stringify({ v: 1, artifact: s.world.artifact, version: id, epoch, files: entries }));
   const env = await e2e.newEnvelope(signer.ed.seed, signer.id, 'manifest', body);
-  const manifest = await e2e.sealBlob(ak, { artifact: ARTIFACT, version: id, kind: 'manifest', name: '' }, enc.encode(JSON.stringify(env)));
+  const manifest = await e2e.sealBlob(ak, { artifact: s.world.artifact, version: id, kind: 'manifest', name: '' }, enc.encode(JSON.stringify(env)));
   s.blobs.set(id, blobs);
   s.manifests.set(id, manifest);
-  s.versions.set(id, { json: { id, artifactId: ARTIFACT, name: '', seq, epoch, manifestHash: await sha256(body), vouch }, meta: {} });
+  s.versions.set(id, { json: { id, artifactId: s.world.artifact, name: '', seq, epoch, manifestHash: await sha256(body), vouch }, meta: {} });
 }
 
 // metaItem is a meta item as the server serves it: value sealed under the
 // world's AK of epoch, signed by signer.
 export async function metaItem(s, { version = '', field, value, epoch = 1, signer = s.world.owner }) {
-  const blob = await e2e.sealBlob(s.world.aks[epoch], { artifact: ARTIFACT, version, kind: 'meta', name: field }, enc.encode(value));
-  const body = enc.encode(JSON.stringify({ v: 1, artifact: ARTIFACT, version, kind: 'meta', name: field, epoch, sha256: await sha256(blob) }));
+  const blob = await e2e.sealBlob(s.world.aks[epoch], { artifact: s.world.artifact, version, kind: 'meta', name: field }, enc.encode(value));
+  const body = enc.encode(JSON.stringify({ v: 1, artifact: s.world.artifact, version, kind: 'meta', name: field, epoch, sha256: await sha256(blob) }));
   return { record: await e2e.newEnvelope(signer.ed.seed, signer.id, 'record', body), signerKey: e2e.b64(signer.ed.pub), blob: e2e.b64(blob) };
 }
 

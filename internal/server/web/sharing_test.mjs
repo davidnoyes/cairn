@@ -11,8 +11,8 @@ import { ApiError } from './account.mjs';
 import { V1, V2, buildWorld, readServerKeyring, rotationRecord, seedKeyring, makeUser } from './viewer_fixture.mjs';
 import { openArtifact } from './viewer.mjs';
 import { readMeta } from './meta.mjs';
-import { ARTIFACT, ORIGIN, depsFor, extraUser, keyStoreRecord, makeShareServer, metaItem, seedDatabase, seedFile, seedMeta, seedVersion } from './sharing_fixture.mjs';
-import { KeyChangedError, SharingError, memberControls, members, pin, publicLinkFor, reseal, setPublic, share, unshare } from './sharing.mjs';
+import { ARTIFACT, ORIGIN, depsFor, extraUser, keyStoreRecord, makeShareServer, metaItem, seedDatabase, seedFile, seedGroup, seedMeta, seedVersion } from './sharing_fixture.mjs';
+import { KeyChangedError, SharingError, memberControls, members, pin, publicLinkFor, reseal, setPublic, setTeam, share, unshare, unshareGroup } from './sharing.mjs';
 
 const U = {};
 for (const name of ['owner', 'editor', 'viewer', 'outsider']) U[name] = await makeUser(name);
@@ -36,6 +36,7 @@ async function scene({ who = 'owner', members: m = STD_MEMBERS, users = [U.outsi
 
 const bodyOf = (env) => JSON.parse(dec.decode(e2e.unb64(env.body)));
 const lastPut = (s) => s.server.puts.membership.at(-1);
+const lastBody = (s) => bodyOf(lastPut(s).membership);
 const noPuts = (s) => assert.deepEqual(s.server.puts, { membership: [], meta: [], db: [], file: [], version: [], estate: [] });
 const headOf = (world, i) => e2e.bodyHash(e2e.unb64(world.records[i].body));
 
@@ -1438,34 +1439,37 @@ test('the owner removes a manager with two unreadable epochs, reads the new epoc
 
 const FOLDER = '33333333-3333-4333-8333-333333333333';
 
-test('a folder reads, and its member list is not changed from the browser', async () => {
+test('a folder reads, and keeps its team share at none and stays private', async () => {
   const s = await scene();
   s.server.kind = 'folder';
-  const refused = (e) => e instanceof SharingError && e.code === 'folders-unsupported';
-  await assert.rejects(share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer'), refused);
-  await assert.rejects(unshare(s.deps, ARTIFACT, 'viewer@example.com'), refused);
+  const refused = (e) => e instanceof SharingError && e.code === 'folder-private';
+  await assert.rejects(setTeam(s.deps, ARTIFACT, 'viewer'), refused);
   await assert.rejects(setPublic(s.deps, ARTIFACT, true), refused);
   noPuts(s);
   const rows = await members(s.deps, ARTIFACT);
   assert.deepEqual(rows.members.map((m) => m.role), ['owner', 'editor', 'viewer']);
+  // Turning the team share off, on a folder that has none, is not a change.
+  assert.equal((await setTeam(s.deps, ARTIFACT, 'none')).unchanged, true);
 });
 
-test('an item with an entry that comes from a folder reads, and its entries are not changed from the browser', async () => {
+test('an item with an entry that comes from a folder reads, keeps the entry\'s mark in the records it signs, and does not remove the entry', async () => {
   const s = await scene({ members: [{ user: U.editor, role: 'editor', via: FOLDER }, { user: U.viewer, role: 'viewer' }] });
-  const refused = (e) => e instanceof SharingError && e.code === 'folders-unsupported';
-  await assert.rejects(share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer'), refused);
-  await assert.rejects(unshare(s.deps, ARTIFACT, 'viewer@example.com'), refused);
-  noPuts(s);
   const rows = await members(s.deps, ARTIFACT);
-  assert.deepEqual(rows.members.map((m) => m.role), ['owner', 'editor', 'viewer']);
+  assert.deepEqual(rows.members.map((m) => [m.role, m.via]), [['owner', undefined], ['editor', FOLDER], ['viewer', undefined]]);
+  await assert.rejects(unshare(s.deps, ARTIFACT, 'editor@example.com'), (e) => e instanceof SharingError && e.code === 'inherited');
+  noPuts(s);
+  await share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer');
+  assert.equal(lastBody(s).members.find((m) => m.user === U.editor.id).via, FOLDER);
   assert.equal(bodyOf(s.world.records[1]).members.find((m) => m.user === U.editor.id).via, FOLDER);
 });
 
-test('an item with a groups entry that comes from a folder is not changed from the browser either', async () => {
+test('an item with a groups entry that comes from a folder keeps its mark, and the entry is not removed from the item', async () => {
   const s = await scene({ groups: [{ group: '11111111-1111-4111-8111-111111111111', role: 'viewer', via: FOLDER }] });
-  const refused = (e) => e instanceof SharingError && e.code === 'folders-unsupported';
-  await assert.rejects(share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer'), refused);
+  await seedGroup(s.server, { id: '11111111-1111-4111-8111-111111111111', name: 'Design' });
+  await assert.rejects(unshareGroup(s.deps, ARTIFACT, '11111111-1111-4111-8111-111111111111'), (e) => e instanceof SharingError && e.code === 'inherited');
   noPuts(s);
+  await share(s.deps, ARTIFACT, 'outsider@example.com', 'viewer');
+  assert.equal(lastBody(s).groups[0].via, FOLDER);
 });
 
 test('a record the browser writes for an item in a folder names the folder, as a manager or the owner', async () => {

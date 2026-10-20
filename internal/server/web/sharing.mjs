@@ -20,13 +20,16 @@
 // keys rotated is still shared again by name, and a next epoch refuses them
 // until then), and acknowledging a handover, which is refused until the owner
 // does so with the CLI. The team share and groups (approve.go, groupshare.go)
-// are ported.
+// are ported, and so are shared folders (folder_share.go): fanOut brings the
+// records of the items inside a folder in step with the folder's, after the
+// folder is shared or unshared or when an item is pending. Moving an item is
+// not ported: the page has no move that shares.
 import * as e2e from './e2e.mjs';
 import { ApiError } from './account.mjs';
 import { UntrustedVersionError, call, callerAKs, checkArtifact, readKeyring, recordChain, signedInCaller, trustVersionManifest, updateKeyring, writerKeys } from './viewer.mjs';
 import { checkSigned, openEntry } from './data.mjs';
 import { listGroups, verifyGroup } from './groups.mjs';
-import { META_FIELDS, openMetaItem, writeMeta } from './meta.mjs';
+import { META_FIELDS, describeArtifact, openMetaItem, writeMeta } from './meta.mjs';
 
 const encoder = new TextEncoder();
 
@@ -39,7 +42,7 @@ const encoder = new TextEncoder();
 // already-listed, already-approved, not-waiting, pending-keys-differ,
 // approval-unverified, not-in-group, group-unverified, unknown-group,
 // not-shared-with-group, bad-team, rotations-unreadable, wrap-key-unknown,
-// folders-unsupported.
+// folder-private, inherited, no-artifact.
 export class SharingError extends Error {
   constructor(code, message, options) {
     super(message, options);
@@ -302,30 +305,24 @@ function checkOwnerOnly(manager, what) {
   if (manager) throw new SharingError('owner-only', `Only the artifact's owner can ${what}.`);
 }
 
-// checkNoFolders refuses a change to the member list of a folder, and to that
-// of an item with an entry that comes from a folder. The browser cannot change
-// either yet: a folder's change is followed by a record for each item inside
-// it, and a record it signed would drop the marks of the entries that name a
-// folder. The marks decide first, so a folder whose record carries any is
-// refused without a request.
-async function checkNoFolders(deps, va) {
-  const inherited = va.latest.members.some((m) => m.via !== undefined) || (va.latest.groups ?? []).some((g) => g.via !== undefined);
-  const kind = inherited ? '' : (await call(deps, null, 'GET', `/api/artifacts/${va.artifact}`)).kind;
-  if (inherited || kind === 'folder') {
-    throw new SharingError('folders-unsupported', 'This is a folder, or has entries that come from a folder, which the browser cannot change yet. Use the cairn tool.');
-  }
-}
-
 // adminAction is the start of every member-list change: the caller, the
 // verified artifact, whether the caller is a manager rather than the owner,
-// and the refusals Share, Unshare and Public make before anything else.
+// whether the artifact is a folder, and the refusals Share, Unshare and Public
+// make before anything else. A folder lists users and groups, and keeps its
+// team share at none and stays private.
 async function adminAction(deps, artifactId) {
   const caller = await unlock(deps);
   const va = await verifyArtifact(deps, caller, artifactId);
   checkHandover(va);
   const manager = adminRole(caller, va) === 'manager';
-  await checkNoFolders(deps, va);
-  return { caller, va, manager };
+  const { kind } = await call(deps, null, 'GET', `/api/artifacts/${artifactId}`);
+  return { caller, va, manager, folder: kind === 'folder' };
+}
+
+// folderOnlyUsersAndGroups refuses the team share and a public link for a
+// folder: neither carries a mark of where it came from.
+function folderOnlyUsersAndGroups(folder, what) {
+  if (folder) throw new SharingError('folder-private', `A folder is shared with people and groups only, so it cannot have ${what}.`);
 }
 
 const epochPinOf = (kr, artifact) => (Object.hasOwn(kr.epochs, artifact) ? kr.epochs[artifact] : null);
@@ -341,8 +338,10 @@ const byUser = (a, b) => (a.user < b.user ? -1 : a.user > b.user ? 1 : 0);
 // fields in the order of the schema. transfer and handover are never set by
 // these commands. A manager's record is version 2 and names the manager and
 // their key's fingerprint last. groups follows team, and is left out while it
-// is empty, as Go's omitempty does. folder follows groups, and carries the
-// folder the latest record names, left out at the top level. Mirrors signNext.
+// is empty, as Go's omitempty does. An entry keeps its via, the folder it comes
+// from, which is left out of a direct grant. folder follows groups: the folder
+// next names, which a caller keeps from the latest record unless it is placing
+// the item, and left out at the top level. Mirrors signNext.
 function membershipBody(va, next, manager) {
   const body = {
     v: manager ? 2 : 1,
@@ -352,11 +351,11 @@ function membershipBody(va, next, manager) {
     owner: next.owner,
     ownerFp: next.ownerFp,
     akCommit: next.akCommit,
-    members: next.members.map((m) => ({ user: m.user, role: m.role, fp: m.fp })),
+    members: next.members.map((m) => ({ user: m.user, role: m.role, fp: m.fp, ...(m.via ? { via: m.via } : {}) })),
     excluded: next.excluded.map((x) => ({ user: x.user, fp: x.fp, email: x.email })),
     team: next.team,
-    ...((next.groups ?? []).length > 0 ? { groups: next.groups.map((g) => ({ group: g.group, role: g.role })) } : {}),
-    ...(va.latest.folder === undefined ? {} : { folder: va.latest.folder }),
+    ...((next.groups ?? []).length > 0 ? { groups: next.groups.map((g) => ({ group: g.group, role: g.role, ...(g.via ? { via: g.via } : {}) })) } : {}),
+    ...(next.folder ? { folder: next.folder } : {}),
     public: next.public,
     publicWrites: next.publicWrites,
     prev: va.chain.head,
@@ -737,9 +736,10 @@ async function storePins(deps, caller, pins) {
 // entry is read-only, and whether the entry may be removed. callerRole is
 // members()'s. Only the owner offers or changes manager, and a viewer account
 // is offered only viewer unless it keeps the editor or manager entry it had
-// before its account changed.
+// before its account changed. An entry that comes from a folder is read-only
+// here: the folder's own list is where it changes.
 export function memberControls(callerRole, m) {
-  if (m.role === 'owner' || (m.role === 'manager' && callerRole !== 'owner')) return { roles: [], removable: false };
+  if (m.via || m.role === 'owner' || (m.role === 'manager' && callerRole !== 'owner')) return { roles: [], removable: false };
   const offered = callerRole === 'owner' ? ['viewer', 'editor', 'manager'] : ['viewer', 'editor'];
   const roles = m.account === 'viewer' ? offered.filter((r) => ROLE_RANK.get(r) === 0 || ROLE_RANK.get(r) <= ROLE_RANK.get(m.role)) : offered;
   return { roles, removable: true };
@@ -755,20 +755,25 @@ export function memberControls(callerRole, m) {
 // the record's team share (none, viewer, or editor), groups the listed groups
 // with their roles and the names the server holds for them, and canApprove
 // says whether the caller may approve newcomers: the owner, a manager, or an
-// editor. Mirrors Members and ListedGroups.
+// editor. A member and a group carry via and viaName: the ID of the folder an
+// inherited entry comes from, and its name when the caller can read the folder,
+// else its ID; a direct grant has neither. Mirrors Members and
+// ListedGroups.
 export async function members(deps, artifactId) {
   const caller = await unlock(deps);
   const va = await verifyArtifact(deps, caller, artifactId);
   const dir = await directory(deps);
   const byId = new Map(dir.map((u) => [u.id, u]));
   const latest = va.latest;
-  const rows = [{ user: latest.owner, role: 'owner', fp: latest.ownerFp }, ...latest.members.map((m) => ({ user: m.user, role: m.role, fp: m.fp }))];
+  const rows = [{ user: latest.owner, role: 'owner', fp: latest.ownerFp }, ...latest.members.map((m) => ({ user: m.user, role: m.role, fp: m.fp, ...(m.via ? { via: m.via } : {}) }))];
+  const viaNames = await folderLabels(deps, [...latest.members.map((m) => m.via), ...(latest.groups ?? []).map((g) => g.via)]);
   for (const r of rows) {
     const u = byId.get(r.user);
     r.name = '';
     r.email = '';
     r.state = '';
     r.wasVerified = false;
+    if (r.via) r.viaName = viaNames.get(r.via);
     if (r.user === caller.record.userId) {
       r.state = 'self';
     } else if (!u) {
@@ -790,8 +795,25 @@ export async function members(deps, artifactId) {
   }
   return {
     artifact: artifactId, epoch: latest.epoch, seq: latest.seq, public: latest.public, publicWrites: latest.publicWrites,
-    callerRole: callerRoleOf(caller, va), canApprove: mayApprove(caller, latest), team: latest.team, groups: await listedGroups(deps, latest.groups ?? []), members: rows,
+    callerRole: callerRoleOf(caller, va), canApprove: mayApprove(caller, latest), team: latest.team, groups: (await listedGroups(deps, latest.groups ?? [])).map((g, i) => (latest.groups[i].via ? { ...g, via: latest.groups[i].via, viaName: viaNames.get(latest.groups[i].via) } : g)), members: rows,
   };
+}
+
+// folderLabels names each folder in ids, skipping empty ones, by its name when
+// the caller can read the folder and by its ID otherwise. Mirrors folderLabels.
+async function folderLabels(deps, ids) {
+  const out = new Map();
+  for (const id of ids) {
+    if (!id || out.has(id)) continue;
+    out.set(id, id);
+    try {
+      const got = await describeArtifact(deps, await call(deps, null, 'GET', `/api/artifacts/${id}`));
+      if (got.named) out.set(id, got.name);
+    } catch (err) {
+      if (fatalFetch(err)) throw err;
+    }
+  }
+  return out;
 }
 
 // listedGroups is the groups of a record, in its order, with the names the
@@ -824,17 +846,24 @@ async function listedGroups(deps, gs) {
 // unchanged, dropped, wasVerified, listed and unlisted (approved team and
 // group members the record also lists, and those whose approval failed a
 // check), droppedGroups, and for a new epoch excluded and link. A user who is
-// approved or left holds their wraps already, so they get none. Mirrors Share.
-export async function share(deps, artifactId, who, role, { acceptNewKey = false } = {}) {
+// approved or left holds their wraps already, so they get none. A user the
+// artifact lists through a folder is listed directly, at the higher of the
+// two roles. Sharing a folder is followed by fanOut, which progress, a
+// function (done, total), reports to, and the result has fanOut. Mirrors Share.
+export async function share(deps, artifactId, who, role, { acceptNewKey = false, progress } = {}) {
+  return thenFanOut(deps, artifactId, progress, await shareOne(deps, artifactId, who, role, { acceptNewKey }));
+}
+
+async function shareOne(deps, artifactId, who, role, { acceptNewKey }) {
   if (!ROLE_RANK.has(role)) throw new SharingError('bad-role', `The role must be viewer, editor, or manager, not ${JSON.stringify(role)}.`);
-  const { caller, va, manager } = await adminAction(deps, artifactId);
+  const { caller, va, manager, folder } = await adminAction(deps, artifactId);
   const latest = va.latest;
   const dir = await directory(deps);
   const u = findUser(dir, who);
   if (u.id === latest.owner) throw new SharingError('share-self', 'The owner already has access to the artifact.');
   const { prior, pin: decided } = await checkPin(deps, va.keyring, u, acceptNewKey, va.membership.rotations);
   const res = {
-    user: u, prior, wasVerified: wasVerified(va.keyring, u.id, prior), role, epoch: latest.epoch, reseal: null,
+    user: u, prior, wasVerified: wasVerified(va.keyring, u.id, prior), role, epoch: latest.epoch, reseal: null, folder,
     promoted: false, lowered: false, demoted: false, unchanged: false, dropped: [], excluded: [], link: '',
     listed: [], unlisted: [], droppedGroups: [],
   };
@@ -869,6 +898,9 @@ export async function share(deps, artifactId, who, role, { acceptNewKey = false 
     list.push({ user: u.id, role, fp: u.fp });
     needsWraps = !holder;
   } else {
+    // An entry from a folder is made direct, at no less than the folder gave.
+    const inherited = Boolean(list[i].via);
+    if (inherited && ROLE_RANK.get(role) < ROLE_RANK.get(list[i].role)) role = list[i].role;
     const from = ROLE_RANK.get(list[i].role);
     const to = ROLE_RANK.get(role);
     demote = from > 0 && to === 0;
@@ -877,7 +909,7 @@ export async function share(deps, artifactId, who, role, { acceptNewKey = false 
     res.lowered = to < from && !demote;
     const relist = list[i].fp !== u.fp;
     needsWraps = relist;
-    res.unchanged = !res.promoted && !res.demoted && !res.lowered && !relist;
+    res.unchanged = !res.promoted && !res.demoted && !res.lowered && !relist && !inherited;
     list[i] = { user: u.id, role, fp: u.fp };
   }
   const basedOn = pinOf(va.keyring, u.id)?.fp ?? '';
@@ -1107,9 +1139,15 @@ async function coverEndsNextEpoch(deps, caller, va, pending, next, manager) {
 // and who is excluded is listed in the result. who may also be a team or group
 // member who holds a wrap and is not listed, as a user who left every group
 // is. The caller must be the owner or a manager. Returns {epoch, reseal, user,
-// excluded, link, listed, droppedGroups}. Mirrors Unshare.
-export async function unshare(deps, artifactId, who) {
-  const { caller, va, manager } = await adminAction(deps, artifactId);
+// excluded, link, listed, droppedGroups}. An entry that comes from a folder is
+// removed from that folder, and is refused here with inherited. Unsharing a
+// folder is followed by fanOut, as sharing is. Mirrors Unshare.
+export async function unshare(deps, artifactId, who, { progress } = {}) {
+  return thenFanOut(deps, artifactId, progress, await unshareOne(deps, artifactId, who));
+}
+
+async function unshareOne(deps, artifactId, who) {
+  const { caller, va, manager, folder } = await adminAction(deps, artifactId);
   const latest = va.latest;
   const dir = await directory(deps);
   let u;
@@ -1122,6 +1160,7 @@ export async function unshare(deps, artifactId, who) {
     u = { id: who, email: '', fp: m.fp };
   }
   if (u.id === latest.owner) throw new SharingError('unshare-owner', 'The owner cannot be removed from the artifact.');
+  checkNotInherited(latest.members.find((m) => m.user === u.id));
   const pending = await pendingFor(deps, caller, va);
   const kept = latest.members.filter((m) => m.user !== u.id);
   const holds = pending.some((p) => p.user.id === u.id && [PENDING_APPROVED, PENDING_LEFT, PENDING_KEY_CHANGED, PENDING_ROTATED].includes(p.state));
@@ -1131,7 +1170,20 @@ export async function unshare(deps, artifactId, who) {
   // user approved cannot get them listed again by the team.
   const change = await putNextEpoch(deps, caller, va, dir, pending, { ...latest, members: kept }, { exclude: u.id, manager });
   await readBack(deps, caller, va, change.link);
-  return { epoch: latest.epoch + 1, user: u, excluded: change.excluded, link: change.link, listed: change.listed, droppedGroups: change.dropped, reseal: await resealInto(deps, caller, artifactId) };
+  return { epoch: latest.epoch + 1, user: u, excluded: change.excluded, link: change.link, listed: change.listed, droppedGroups: change.dropped, reseal: await resealInto(deps, caller, artifactId), folder };
+}
+
+// checkNotInherited refuses to remove an entry that comes from a folder: the
+// folder's own list is where it goes, and a record that drops it is refused.
+function checkNotInherited(entry) {
+  if (entry?.via) throw new SharingError('inherited', `This entry comes from the folder ${entry.via}: remove it there.`);
+}
+
+// thenFanOut is what sharing or unsharing a folder ends with: res, with the
+// result of fanOut over the items inside it. Any other artifact has none.
+async function thenFanOut(deps, artifactId, progress, res) {
+  if (res.folder) res.fanOut = await fanOut(deps, artifactId, { progress });
+  return res;
 }
 
 // ---- approving, groups, and the team share ----
@@ -1210,22 +1262,29 @@ const byGroup = (a, b) => (a.group < b.group ? -1 : a.group > b.group ? 1 : 0);
 // listed, unlisted, droppedGroups}: approved are users, pending and unlisted
 // are {user, error}. A signer of the group whose key changed is a
 // KeyChangedError unless acceptSignerKey, which accepts that and nothing else:
-// a member whose own pinned key changed stays pending, to be approved by
-// approve with its own acceptNewKey. Mirrors ShareGroup.
-export async function shareGroup(deps, artifactId, groupId, role, { acceptSignerKey = false } = {}) {
-  const { caller, va } = await adminAction(deps, artifactId);
+// approve with its own acceptNewKey. A group the artifact lists through a folder
+// is listed directly, at the higher of the two roles. Sharing a folder is
+// followed by fanOut. Mirrors ShareGroup.
+export async function shareGroup(deps, artifactId, groupId, role, { acceptSignerKey = false, progress } = {}) {
+  return thenFanOut(deps, artifactId, progress, await shareGroupOne(deps, artifactId, groupId, role, { acceptSignerKey }));
+}
+
+async function shareGroupOne(deps, artifactId, groupId, role, { acceptSignerKey }) {
+  const { caller, va, folder } = await adminAction(deps, artifactId);
   const latest = va.latest;
   if (!(await listGroups(deps)).some((g) => g.id === groupId)) throw new SharingError('unknown-group', `There is no group with the ID ${groupId}.`);
   if (role !== 'viewer' && role !== 'editor') throw new SharingError('bad-role', `A group is shared as viewer or editor, not ${JSON.stringify(role)}.`);
   const vg = await verifyGroup(deps, groupId, { acceptSignerKey });
   va.keyring = await readKeyring(deps, caller);
-  const res = { group: { id: groupId, name: vg.chain.latest.name }, role, epoch: latest.epoch, unchanged: false, approved: [], pending: [], listed: [], unlisted: [], droppedGroups: [] };
+  const res = { group: { id: groupId, name: vg.chain.latest.name }, role, epoch: latest.epoch, unchanged: false, approved: [], pending: [], listed: [], unlisted: [], droppedGroups: [], folder };
   const pending = await pendingFor(deps, caller, va);
   const dir = await directory(deps);
   const next = { ...latest, groups: (latest.groups ?? []).map((g) => ({ ...g })) };
   const at = next.groups.findIndex((g) => g.group === groupId);
-  if (at >= 0) next.groups[at].role = role;
-  else next.groups = [...next.groups, { group: groupId, role }].sort(byGroup);
+  if (at >= 0) {
+    const { via, role: was } = next.groups[at];
+    next.groups[at] = { group: groupId, role: via && ROLE_RANK.get(was) > ROLE_RANK.get(role) ? was : role };
+  } else next.groups = [...next.groups, { group: groupId, role }].sort(byGroup);
   next.members = latest.members.map((m) => ({ ...m }));
   const lst = await listApproved(deps, caller, va, dir, pending, next, (id) => next.members.some((m) => m.user === id));
   Object.assign(res, { listed: lst.listed, unlisted: lst.unlisted });
@@ -1276,12 +1335,18 @@ async function approveGroupMembers(deps, artifactId, chain, res) {
 // only through that group, a next-epoch record drops it and excludes them.
 // Otherwise a same-epoch record does. The caller must be the owner or a
 // manager. Returns {group: {id, name}, epoch, reseal, excluded, link, listed,
-// droppedGroups}: reseal is null for a same-epoch record. Mirrors
-// UnshareGroup.
-export async function unshareGroup(deps, artifactId, groupId) {
-  const { caller, va, manager } = await adminAction(deps, artifactId);
+// droppedGroups}: reseal is null for a same-epoch record. A group listed
+// through a folder is removed from that folder, as unshare says. Unsharing a
+// folder is followed by fanOut. Mirrors UnshareGroup.
+export async function unshareGroup(deps, artifactId, groupId, { progress } = {}) {
+  return thenFanOut(deps, artifactId, progress, await unshareGroupOne(deps, artifactId, groupId));
+}
+
+async function unshareGroupOne(deps, artifactId, groupId) {
+  const { caller, va, manager, folder } = await adminAction(deps, artifactId);
   const latest = va.latest;
   if (!(latest.groups ?? []).some((g) => g.group === groupId)) throw new SharingError('not-shared-with-group', `The artifact is not shared with the group ${groupId}.`);
+  checkNotInherited(latest.groups.find((g) => g.group === groupId));
   let name = '';
   try {
     name = (await listGroups(deps)).find((s) => s.id === groupId)?.name ?? '';
@@ -1290,7 +1355,7 @@ export async function unshareGroup(deps, artifactId, groupId) {
   }
   const pending = await pendingFor(deps, caller, va);
   const next = { ...latest, groups: latest.groups.filter((g) => g.group !== groupId) };
-  const res = { group: { id: groupId, name }, epoch: latest.epoch, reseal: null, excluded: [], link: '', listed: [], droppedGroups: [] };
+  const res = { group: { id: groupId, name }, epoch: latest.epoch, reseal: null, excluded: [], link: '', listed: [], droppedGroups: [], folder };
   if (holdersLose(pending, latest, next)) {
     const change = await coverEndsNextEpoch(deps, caller, va, pending, next, manager);
     return { ...res, epoch: latest.epoch + 1, reseal: change.reseal, excluded: change.excluded, link: change.link, listed: change.listed, droppedGroups: change.dropped };
@@ -1309,7 +1374,8 @@ export async function unshareGroup(deps, artifactId, groupId) {
 // excluded, link, droppedGroups}. Mirrors Team.
 export async function setTeam(deps, artifactId, team) {
   if (team !== 'none' && team !== 'viewer' && team !== 'editor') throw new SharingError('bad-team', `Everyone is none, viewer, or editor, not ${JSON.stringify(team)}.`);
-  const { caller, va, manager } = await adminAction(deps, artifactId);
+  const { caller, va, manager, folder } = await adminAction(deps, artifactId);
+  if (team !== 'none') folderOnlyUsersAndGroups(folder, 'a team share');
   const latest = va.latest;
   const pending = await pendingFor(deps, caller, va);
   const res = { team, epoch: latest.epoch, unchanged: false, listed: [], unlisted: [], reseal: null, excluded: [], link: '', droppedGroups: [] };
@@ -1387,7 +1453,8 @@ export async function approvableCount(deps, artifactId) {
 // a new epoch lists), and droppedGroups. Mirrors Public.
 export async function setPublic(deps, artifactId, on, { writes } = {}) {
   if (!on && writes !== undefined) throw new SharingError('public-writes-with-off', 'Public writes set who can write through a public link, so they go with on, not off.');
-  const { caller, va, manager } = await adminAction(deps, artifactId);
+  const { caller, va, manager, folder } = await adminAction(deps, artifactId);
+  if (on) folderOnlyUsersAndGroups(folder, 'a public link');
   const latest = va.latest;
   const res = { link: null, epoch: latest.epoch, reseal: null, public: false, publicWrites: false, unchanged: false, newEpoch: false, excluded: [], listed: [], droppedGroups: [] };
   if (!on) {
@@ -1433,6 +1500,296 @@ export async function publicLinkFor(deps, artifactId) {
   const caller = await unlock(deps);
   const va = await verifyArtifact(deps, caller, artifactId);
   return va.latest.public ? linkOf(deps, caller, va) : null;
+}
+
+// ---- shared folders ----
+
+// offersFinishSharing says whether the page offers Finish sharing for an
+// artifact view: the item is pending, and the caller owns it or manages it,
+// who alone write its record.
+export const offersFinishSharing = (view) => view.inherit === 'pending' && (view.access === 'owner' || view.access === 'manager');
+
+// signedFolderOf is the folder an item sits in, from its latest verified
+// record: the ID its signed folder field names, or '' at the top level. The
+// server's own parent is unsigned, so a fan-out never takes a folder's entries
+// from it: it acts only when the record names the folder, or when this client
+// is placing the item there itself. inheritsFrom says whether a listed item
+// sits under folderId by the server's word, which only orders the walk.
+const signedFolderOf = (va) => va.latest.folder ?? '';
+const inheritsFrom = (view, folderId) => (view.parent ?? '') === folderId;
+
+// FOLDER_DEPTH bounds the walk down a folder's subtree, as MaxFolderDepth
+// does on the server.
+const FOLDER_DEPTH = 16;
+
+// nearestVia is the folder an entry that parent lists comes from: the folder
+// that lists the user or group itself, not by inheritance. An entry the parent
+// holds by inheritance already names it. Mirrors nearestVia.
+const nearestVia = (via, parentId) => via || parentId;
+
+const sameEntries = (a, b, key) => a.length === b.length && a.every((e, i) => e[key] === b[i][key] && e.role === b[i].role && e.fp === b[i].fp && (e.via ?? '') === (b[i].via ?? ''));
+
+// planInherit works out the lists of the record that follows item, an item in
+// the folder parentId whose latest record is parent (null for an item at the
+// top level) and whose live groups are parentGroups. An entry with no via is a
+// direct grant: it stays, at the higher of its role and the folder's. An entry
+// with a via exists only because of a folder: it follows the folder's role and
+// mark while the folder lists it, and leaves when the folder does not, which
+// takes a next epoch. A user or group the folder lists and the item does not
+// is added, marked with its nearest folder. The item's owner is never listed.
+// Returns {members, groups, added, addedGroups, epoch}. Mirrors planInherit.
+export function planInherit(item, parent, parentId, parentGroups) {
+  const plan = { members: [], groups: [], added: [], addedGroups: [], epoch: false };
+  const wantMembers = new Map();
+  const wantGroups = new Map();
+  if (parent) {
+    for (const m of parent.members) {
+      if (m.user !== item.owner) wantMembers.set(m.user, { user: m.user, role: m.role, fp: m.fp, via: nearestVia(m.via, parentId) });
+    }
+    for (const g of parentGroups) wantGroups.set(g.group, { group: g.group, role: g.role, via: nearestVia(g.via, parentId) });
+  }
+  // follow is the entry that stays for entry, or null when it leaves.
+  const follow = (entry, want) => {
+    if (!entry.via) {
+      return want && ROLE_RANK.get(want.role) > ROLE_RANK.get(entry.role) ? { ...entry, role: want.role } : entry;
+    }
+    if (!want) {
+      plan.epoch = true; // an entry the folder no longer lists leaves
+      return null;
+    }
+    plan.epoch = plan.epoch || ROLE_RANK.get(want.role) < ROLE_RANK.get(entry.role);
+    return { ...entry, role: want.role, via: want.via };
+  };
+  for (const m of item.members) {
+    const want = wantMembers.get(m.user);
+    wantMembers.delete(m.user);
+    const kept = follow(m, want);
+    if (kept) plan.members.push(kept);
+  }
+  for (const w of wantMembers.values()) {
+    plan.members.push(w);
+    plan.added.push(w.user);
+  }
+  for (const g of item.groups ?? []) {
+    const want = wantGroups.get(g.group);
+    wantGroups.delete(g.group);
+    const kept = follow(g, want);
+    if (kept) plan.groups.push(kept);
+  }
+  for (const w of wantGroups.values()) {
+    plan.groups.push(w);
+    plan.addedGroups.push(w.group);
+  }
+  plan.members.sort(byUser);
+  plan.groups.sort(byGroup);
+  plan.added.sort();
+  plan.addedGroups.sort();
+  return plan;
+}
+
+// The states of an item after fanOut: current (its record already matched its
+// folder's), updated (a same-epoch record added entries), newEpoch (a
+// next-epoch record removed an entry or lowered a role), and failed.
+export const FAN_OUT_STATES = { current: 'current', updated: 'updated', newEpoch: 'newEpoch', failed: 'failed' };
+
+// subtreeOrder lists the items inside the folder root, depth first, each
+// folder before the items inside it, folders before artifacts and each by ID.
+// includeRoot puts the root itself first. all is GET /api/artifacts. Mirrors
+// subtreeOrder.
+export function subtreeOrder(all, root, includeRoot) {
+  const out = includeRoot ? [all.find((a) => a.id === root)] : [];
+  const seen = new Set([root]);
+  const folderFirst = (a, b) => ((a.kind === 'folder') === (b.kind === 'folder') ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : (a.kind === 'folder' ? -1 : 1));
+  const walk = (parent, depth) => {
+    for (const a of all.filter((x) => inheritsFrom(x, parent) && !seen.has(x.id)).sort(folderFirst)) {
+      seen.add(a.id);
+      out.push(a);
+      if (a.kind === 'folder' && depth < FOLDER_DEPTH) walk(a.id, depth + 1);
+    }
+  };
+  walk(root, 1);
+  return out;
+}
+
+// fanOut brings every item in the subtree of the folder rootId up to date with
+// its own folder, folders before the items inside them: for each item whose
+// artifact view says inherit is pending, it writes the record that adds the
+// entries the folder lists, marked with the folder they come from, and, when
+// an entry no longer holds because its folder stopped listing the user or the
+// item left it, a next-epoch record that excludes the users who held the item
+// only through it, and seals its data again. includeRoot also visits the root
+// itself. placing, a folder ID or null for the top level, says this client has
+// just moved the root there: its record is written to name that folder, which
+// is left undefined for any other run. progress, a function (done, total), is called after each item; an
+// item already current counts as done. An item that fails is skipped, so that
+// one item does not hold the rest back: it is in the result with its error,
+// and running fanOut again resumes with the items still pending. Returns
+// {items, total, failed}: an item is {id, kind, state, error, excluded,
+// reseal, approved, pending}. Only a failure that ends the command, as
+// fatalFetch says, is thrown. Mirrors FanOut.
+export async function fanOut(deps, rootId, { includeRoot = false, placing, progress } = {}) {
+  const caller = await unlock(deps);
+  const all = await call(deps, null, 'GET', '/api/artifacts');
+  if (!Array.isArray(all)) throw new e2e.FormatError('the artifact list is not a list');
+  if (!all.some((a) => a.id === rootId)) throw new SharingError('no-artifact', `No artifact has the ID ${rootId}.`);
+  const order = subtreeOrder(all, rootId, includeRoot);
+  const run = { deps, caller, dir: await directory(deps), folders: new Map(), placed: new Set() };
+  const res = { items: [], total: order.length, failed: 0 };
+  // A folder whose own record does not name the folder it was listed under is
+  // refused, and so is everything the server lists inside it.
+  const refused = new Set();
+  for (const [i, a] of order.entries()) {
+    const item = { id: a.id, kind: a.kind ?? 'artifact', state: FAN_OUT_STATES.current, error: null, excluded: [], reseal: null, approved: [], pending: [] };
+    const root = a.id === rootId;
+    try {
+      if (!root && refused.has(a.parent ?? '')) throw new SharingError('placement', `${a.id} is listed in a folder whose own record does not place it there, so it was left alone.`);
+      // The root's folder is the one this client is placing it in, when it
+      // is; anything else must sit, by its own record, where it was listed.
+      await syncItem(run, item, root && placing !== undefined ? { placing } : { listedIn: root ? null : a.parent ?? '' });
+    } catch (err) {
+      // A folder that did not pass the placement check, or whose record cannot
+      // be verified, is not walked into.
+      if (a.kind === 'folder' && !run.placed.has(a.id)) refused.add(a.id);
+      if (fatalFetch(err)) throw Object.assign(err, { result: res });
+      Object.assign(item, { state: FAN_OUT_STATES.failed, error: err });
+      res.failed++;
+    }
+    res.items.push(item);
+    if (progress) progress(i + 1, order.length);
+  }
+  return res;
+}
+
+// folderRecord is the latest verified record of the folder id, as of this run.
+async function folderRecord(run, id) {
+  if (!run.folders.has(id)) {
+    run.folders.set(id, (await verifyArtifact(run.deps, run.caller, id)).latest);
+  }
+  return run.folders.get(id);
+}
+
+// syncItem writes the record that brings item.id up to date, if the server
+// says it is pending, and notes in item what it did. where is {placing}, the
+// folder this client is placing the item in (or null for the top level), or
+// {listedIn}, the folder the walk found it under (null for the root, which is
+// checked against nothing but the server). Mirrors sync.
+async function syncItem(run, item, where = { listedIn: null }) {
+  const { deps, caller, dir } = run;
+  const view = await call(deps, null, 'GET', `/api/artifacts/${item.id}`);
+  const placing = 'placing' in where;
+  // A folder met on the walk is checked even when it is current, for its
+  // place decides whether the walk goes into it.
+  const walked = where.listedIn !== undefined && where.listedIn !== null && item.kind === 'folder';
+  if (view.inherit !== 'pending' && !walked) return;
+  const va = await verifyArtifact(deps, caller, item.id);
+  const latest = va.latest;
+  const folderId = placing ? where.placing ?? '' : signedFolderOf(va);
+  // The server's parent must agree with the signed one, and, inside a walk,
+  // with the folder the item was listed under: otherwise the server is
+  // claiming a placement nobody signed, and no key is sealed on its word.
+  if ((view.parent ?? '') !== folderId || (!placing && where.listedIn !== null && where.listedIn !== folderId)) {
+    throw new SharingError('placement', `${item.id} is not placed in ${(view.parent ?? '') || 'the top level'} by its own record, so it was left alone; its owner can move it there to place it.`);
+  }
+  run.placed.add(item.id);
+  if (view.inherit !== 'pending') return;
+  checkHandover(va);
+  let parent = null;
+  let groups = [];
+  if (folderId) {
+    parent = await folderRecord(run, folderId);
+    groups = (await liveGroups(deps, parent.groups ?? [])).kept;
+  }
+  const plan = planInherit(latest, parent, folderId, groups);
+  const moved = folderId !== signedFolderOf(va);
+  if (!moved && sameEntries(plan.members, latest.members, 'user') && sameEntries(plan.groups, latest.groups ?? [], 'group')) return;
+  if (moved) checkOwnerOnly(adminRole(caller, va) === 'manager', 'place it in a folder');
+  const role = adminRole(caller, va);
+  const manager = role === 'manager';
+  const managersOf = (ms) => JSON.stringify(ms.filter((m) => m.role === 'manager'));
+  if (managersOf(latest.members) !== managersOf(plan.members)) checkOwnerOnly(manager, 'change the managers');
+  const byId = new Map(dir.map((u) => [u.id, u]));
+  // A user the item lists anew is listed under the keys the directory serves
+  // now, which must be the ones the folder lists them under.
+  for (const id of plan.added) {
+    const u = byId.get(id);
+    if (!u) throw new SharingError('member-deleted', `The account of ${id} was deleted, so the folder's entry for them cannot be inherited.`);
+    if (u.fp !== plan.members.find((m) => m.user === id).fp) {
+      throw new SharingError('member-key-changed', `${u.email} (${u.id}) was listed by the folder under another fingerprint than the directory serves now. Share the folder with them again and accept the new key.`);
+    }
+  }
+  const pending = await pendingFor(deps, caller, va);
+  const next = { ...latest, members: plan.members, groups: plan.groups, folder: folderId };
+  if (plan.epoch) {
+    const change = await putNextEpoch(deps, caller, va, dir, pending, next, { manager });
+    await readBack(deps, caller, va, change.link);
+    Object.assign(item, { state: FAN_OUT_STATES.newEpoch, excluded: change.excluded, reseal: await resealInto(deps, caller, item.id) });
+    return;
+  }
+  e2e.checkEncryptEpoch(epochPinOf(va.keyring, item.id), latest.epoch);
+  const wraps = [];
+  const pins = new Map();
+  let aks = null;
+  for (const id of plan.added) {
+    const u = byId.get(id);
+    const { pin: decided } = await checkPin(deps, va.keyring, u, false, va.membership.rotations);
+    if (decided) pins.set(id, { pin: decided, basedOn: pinOf(va.keyring, id)?.fp ?? '' });
+    // A user who holds wraps already, because an editor approved them or they
+    // rotated, needs none.
+    if (pending.some((p) => p.user.id === id && [PENDING_APPROVED, PENDING_LEFT, PENDING_ROTATED].includes(p.state))) continue;
+    aks ??= (await akSet(deps, caller, va)).aks;
+    for (let epoch = 1; epoch <= latest.epoch; epoch++) wraps.push(await wrapTo(u, item.id, epoch, needAK(aks, epoch, `share with ${u.email}, who needs it`)));
+  }
+  const { kept, dropped } = dropExcluded(latest.excluded, next.members, dir);
+  if (manager && dropped.length > 0) checkOwnerOnly(manager, 'list again someone removed from the artifact');
+  next.excluded = kept;
+  await putRecord(deps, caller, va, next, wraps, [], '');
+  await storePins(deps, caller, pins);
+  await readBack(deps, caller, va, '');
+  item.state = FAN_OUT_STATES.updated;
+  Object.assign(item, await approveListedGroups(deps, item.id, plan.addedGroups));
+}
+
+// approveListedGroups approves the waiting members of each group in ids, which
+// the artifact's latest record lists, as sharing with a group does. A group
+// that does not verify leaves its members waiting. Returns {approved, pending}.
+export async function approveListedGroups(deps, artifactId, ids) {
+  const res = { approved: [], pending: [] };
+  for (const g of ids) {
+    try {
+      await approveGroupMembers(deps, artifactId, (await verifyGroup(deps, g)).chain, res);
+    } catch (err) {
+      if (fatalFetch(err)) throw err;
+      res.pending.push({ user: { email: `group ${g}` }, error: err });
+    }
+  }
+  return res;
+}
+
+// inheritFirst lists in first, the first record of a new item in the folder
+// parentId, every user and group the folder lists, marked with the folder they
+// come from, and returns the wraps of the item's first AK to those users. A
+// user the folder lists under keys other than the directory serves now is
+// refused. Mirrors inheritInto.
+export async function inheritFirst(deps, first, parentId, ak) {
+  const caller = await unlock(deps);
+  const parent = (await verifyArtifact(deps, caller, parentId)).latest;
+  const { kept } = await liveGroups(deps, parent.groups ?? []);
+  const plan = planInherit(first, parent, parentId, kept);
+  first.members = plan.members;
+  if (plan.groups.length > 0) first.groups = plan.groups;
+  // The record names the folder the item sits in, which the server requires.
+  first.folder = parentId;
+  if (plan.added.length === 0) return [];
+  const byId = new Map((await directory(deps)).map((u) => [u.id, u]));
+  const wraps = [];
+  for (const id of plan.added) {
+    const u = byId.get(id);
+    if (!u || u.fp !== plan.members.find((m) => m.user === id).fp) {
+      throw new SharingError('member-key-changed', `${id} was listed by the folder under another fingerprint than the directory serves now. Share the folder with them again and accept the new key.`);
+    }
+    wraps.push(await wrapTo(u, first.artifact, 1, ak));
+  }
+  return wraps;
 }
 
 // ---- re-sealing ----
@@ -1705,8 +2062,7 @@ function recordEpoch(item) {
 // under the current epoch, signed by the caller, when it verifies under the
 // record before the change. One that does not is left as it is and noted in
 // skipped.
-async function resealMeta(deps, va, aks, opened, old, v, res) {
-  const view = await call(deps, null, 'GET', `/api/artifacts/${va.artifact}`);
+async function resealMeta(deps, va, aks, opened, old, v, res, view) {
   const keys = { artifact: va.artifact, epoch: 1, aks: akObject(aks), writers: old.writers, publicWrites: false };
   const scopes = [['', 'the artifact', view.meta]];
   if (v) scopes.push([v.id, `version ${v.id}`, v.meta]);
@@ -1741,7 +2097,9 @@ async function runReseal(deps, caller, va, res) {
   const { aks } = await akSet(deps, caller, va);
   const opened = { ...va, aks };
   const old = { writers: await writerKeys(deps, { ...opened, latest: before }) };
-  const versions = await call(deps, null, 'GET', `/api/artifacts/${va.artifact}/versions`);
+  // A folder holds no versions, only its metadata fields.
+  const view = await call(deps, null, 'GET', `/api/artifacts/${va.artifact}`);
+  const versions = view.kind === 'folder' ? [] : await call(deps, null, 'GET', `/api/artifacts/${va.artifact}/versions`);
   if (!Array.isArray(versions)) throw new e2e.FormatError('the version list is not a list');
   for (const v of versions) {
     const keys = { artifact: va.artifact, version: v.id, epoch: v.epoch, aks: akObject(aks), writers: old.writers, publicWrites: before.publicWrites };
@@ -1755,7 +2113,7 @@ async function runReseal(deps, caller, va, res) {
   let latestVersion = null;
   for (const v of versions) if (!latestVersion || v.seq > latestVersion.seq) latestVersion = v;
   await resealVersion(deps, caller, va, aks, opened, latestVersion, res);
-  await resealMeta(deps, va, aks, opened, old, latestVersion, res);
+  await resealMeta(deps, va, aks, opened, old, latestVersion, res, view);
 }
 
 // resealInto re-seals after the record that started a new epoch, and returns

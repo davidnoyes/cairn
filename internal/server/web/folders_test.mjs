@@ -181,6 +181,26 @@ test('an item whose folder is not in the list shows at the top level', () => {
   assert.deepEqual(ids(childrenOf(lost, null)), ['k']);
 });
 
+// Shared with you is this tree over the items the caller does not own. The
+// server gives an item no parent when the caller cannot read its folder, and
+// an item whose folder is the caller's own is not in the list at all, so both
+// show at the top.
+const sharedItems = [
+  { id: 'S', kind: 'folder', parent: null, name: 'Shared folder' },
+  { id: 'S2', kind: 'folder', parent: 'S', name: 'Inside' },
+  { id: 'i1', kind: 'artifact', parent: 'S', name: 'In S' },
+  { id: 'i2', kind: 'artifact', parent: 'S2', name: 'In S2' },
+  { id: 'hidden', kind: 'artifact', parent: null, name: 'Folder unreadable' },
+  { id: 'mine', kind: 'artifact', parent: 'ownFolder', name: 'Folder is mine' },
+];
+
+test('a shared folder opens to the items inside it that the caller can read, and an item whose folder is unreadable stays at the top', () => {
+  assert.deepEqual(ids(childrenOf(sharedItems, null)), ['S', 'mine', 'hidden']);
+  assert.deepEqual(ids(childrenOf(sharedItems, 'S')), ['S2', 'i1']);
+  assert.deepEqual(ids(childrenOf(sharedItems, 'S2')), ['i2']);
+  assert.deepEqual(breadcrumb(sharedItems, 'S2'), [{ id: null, name: 'Top' }, { id: 'S', name: 'Shared folder' }, { id: 'S2', name: 'Inside' }]);
+});
+
 test('breadcrumb runs from the top level down to the folder in view', () => {
   assert.deepEqual(breadcrumb(items, null), [{ id: null, name: 'Top' }]);
   assert.deepEqual(breadcrumb(items, 'D'), [

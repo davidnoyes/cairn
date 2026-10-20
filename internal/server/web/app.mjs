@@ -6,10 +6,10 @@
 import { changePassword, createApiKey, enrollPasskey, listPasskeys, newRecoveryCode, passkeysAvailable, removePasskey, signOut } from './account.mjs';
 import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { createGroupsTab } from './groups-tab.mjs';
-import { FolderError, breadcrumb, childrenOf, createFolder, deleteTree, makeDraggable, makeDropTarget, moveItem, moveTargets, renameFolder, subtree } from './folders.mjs';
+import { FolderError, breadcrumb, childrenOf, createFolder, deleteTree, makeDraggable, makeDropTarget, moveAndPlace, moveTargets, renameFolder, subtree } from './folders.mjs';
 import { listGroups, verifiedGroup } from './groups.mjs';
 import { describeArtifact } from './meta.mjs';
-import { GroupKeyChangedError, KeyChangedError, approvableCount, approve, canShare, memberControls, members, pin, publicLinkFor, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
+import { GroupKeyChangedError, KeyChangedError, approvableCount, approve, canShare, fanOut, memberControls, members, offersFinishSharing, pin, publicLinkFor, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
 import { bannerView, myCode, nominate, refuse, remove, requestAccess, setNoticeEmail, status as successorStatus, successions, who } from './successor.mjs';
 import { confirmRecoveryCode, describeError, describePasskeyError, pageDeps, watchStrength } from './ui.mjs';
 
@@ -141,10 +141,15 @@ $('signout').addEventListener('click', async (event) => {
 // Your own items show as a tree, one folder at a time: own is every item of
 // the caller's, as {id, kind, parent, name} for folders.mjs, ownRows the table
 // row of each, and viewFolder the folder in view (null for the top level).
-// Shared with you stays flat.
+// Shared with you is a tree the same way: shared, sharedRows and sharedFolder.
+// An item whose folder the caller cannot read has no parent in the list the
+// server serves, so it stays at the top.
 let own = [];
 let ownRows = new Map();
 let viewFolder = null;
+let shared = [];
+let sharedRows = new Map();
+let sharedFolder = null;
 
 // The server holds each name and description sealed, so a row shows the
 // artifact's ID until its own keys open them.
@@ -152,12 +157,15 @@ async function listArtifacts({ me }) {
   const list = await api('/api/artifacts');
   const rows = new Map(list.map((a) => [a.id, artifactRow(a, a.owner === me.id)]));
   const mine = list.filter((a) => a.owner === me.id);
+  const theirs = list.filter((a) => a.owner !== me.id);
   ownRows = new Map(mine.map((a) => [a.id, rows.get(a.id)]));
-  own = mine.map((a) => ({ id: a.id, kind: a.kind ?? 'artifact', parent: a.parent ?? null, name: a.id }));
-  const ownItem = new Map(own.map((i) => [i.id, i]));
+  sharedRows = new Map(theirs.map((a) => [a.id, rows.get(a.id)]));
+  const item = (a) => ({ id: a.id, kind: a.kind ?? 'artifact', parent: a.parent ?? null, name: a.id, inherit: a.inherit ?? 'ok' });
+  own = mine.map(item);
+  shared = theirs.map(item);
+  const ownItem = new Map([...own, ...shared].map((i) => [i.id, i]));
   renderOwn();
-  const trs = list.filter((a) => a.owner !== me.id).map((a) => rows.get(a.id).tr);
-  if (trs.length === 0) emptyRow($('shared'), 6, 'Nothing is shared with you yet.'); else $('shared').replaceChildren(...trs);
+  renderShared();
   // One at a time: opening an artifact for the first time pins its owner in
   // the keyring, and each pin is a write at the keyring's next revision.
   for (const a of list) {
@@ -179,8 +187,9 @@ async function listArtifacts({ me }) {
     // each, in turn, like the names.
     if (!row.folder && APPROVERS.includes(a.access)) await showWaiting(row);
   }
-  // Names sort the tree, so it is laid out again once they are all read.
+  // Names sort the trees, so they are laid out again once they are all read.
   renderOwn();
+  renderShared();
 }
 
 // One load at a time: two loads opening the same artifact for the first time
@@ -230,15 +239,20 @@ function artifactRow(a, mine) {
   const row = { id: a.id, folder, name: a.id, nameText: el(folder ? 'button' : 'a', 'clamp', a.id), descText: el('div', 'clamp', ''), actions: el('div', 'actions') };
   row.waitingPill = pill('', 'waiting');
   row.waitingPill.hidden = true;
+  // A pending item's record is out of step with its folder's: Finish sharing,
+  // in the share dialog, brings it up to date.
+  row.pendingPill = pill('sharing pending', 'waiting');
+  row.pendingPill.hidden = !offersFinishSharing(a);
   const tr = el('tr');
   tr.dataset.id = a.id;
   if (folder) {
     // Opening a folder shows what is in it; its own address has nothing to show.
     row.nameText.type = 'button';
     row.nameText.classList.add('link');
-    row.nameText.addEventListener('click', () => openFolder(a.id));
+    const open = mine ? openFolder : openSharedFolder;
+    row.nameText.addEventListener('click', () => open(a.id));
     tr.addEventListener('click', (event) => {
-      if (!event.target.closest('button, a, input, select, form')) openFolder(a.id);
+      if (!event.target.closest('button, a, input, select, form')) open(a.id);
     });
   } else {
     row.nameText.href = '/shared/' + a.id;
@@ -269,7 +283,7 @@ function artifactRow(a, mine) {
   // The pill sits in the actions cell, not the name cell: fillOwnActions
   // replaces what is in row.actions, and the name cell is the row's name.
   const actionsCell = td(row.actions);
-  actionsCell.prepend(row.waitingPill);
+  actionsCell.prepend(row.pendingPill, row.waitingPill);
   tr.appendChild(actionsCell);
   row.tr = tr;
   return row;
@@ -283,7 +297,7 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 // rows, folders first. A folder in view that is gone shows the top level.
 function renderOwn() {
   if (viewFolder !== null && !own.some((i) => i.id === viewFolder && i.kind === 'folder')) viewFolder = null;
-  renderCrumbs();
+  renderCrumbs($('crumbs'), own, viewFolder, openFolder, moveTo);
   const kids = childrenOf(own, viewFolder);
   if (kids.length === 0) {
     emptyRow($('own'), 6, viewFolder === null ? 'No artifacts yet.' : 'This folder is empty.');
@@ -304,10 +318,30 @@ function openFolder(id) {
   renderOwn();
 }
 
-// renderCrumbs shows Top, then each folder down to the one in view. Each
-// segment but the last opens that folder, and takes a dropped row.
-function renderCrumbs() {
-  const segs = breadcrumb(own, viewFolder);
+// renderShared lays out the shared folder in view the same way: the items the
+// caller can read inside it, folders first. Its rows are made once per load,
+// with their buttons, and are only put in order here.
+function renderShared() {
+  if (sharedFolder !== null && !shared.some((i) => i.id === sharedFolder && i.kind === 'folder')) sharedFolder = null;
+  renderCrumbs($('shared-crumbs'), shared, sharedFolder, openSharedFolder);
+  const kids = childrenOf(shared, sharedFolder);
+  if (kids.length === 0) {
+    emptyRow($('shared'), 6, sharedFolder === null ? 'Nothing is shared with you yet.' : 'This folder is empty.');
+    return;
+  }
+  $('shared').replaceChildren(...kids.map((i) => sharedRows.get(i.id).tr));
+}
+
+function openSharedFolder(id) {
+  sharedFolder = id;
+  renderShared();
+}
+
+// renderCrumbs shows Top, then each folder down to the one in view, in the
+// element where. Each segment but the last opens that folder with open, and
+// takes a dropped row when dropTo is given.
+function renderCrumbs(where, items, folder, open, dropTo) {
+  const segs = breadcrumb(items, folder);
   const nodes = [];
   segs.forEach((s, i) => {
     if (i > 0) nodes.push(el('span', 'sep', '›'));
@@ -317,11 +351,11 @@ function renderCrumbs() {
       nodes.push(here);
       return;
     }
-    const b = btn(s.name, '', () => openFolder(s.id));
-    makeDropTarget(b, s.id, moveTo);
+    const b = btn(s.name, '', () => open(s.id));
+    if (dropTo) makeDropTarget(b, s.id, dropTo);
     nodes.push(b);
   });
-  $('crumbs').replaceChildren(...nodes);
+  where.replaceChildren(...nodes);
 }
 
 // fillOwnActions sets the buttons of one own row, once per load: laying the
@@ -330,9 +364,8 @@ function renderCrumbs() {
 function fillOwnActions(row) {
   const { id } = row;
   const actions = [];
-  // A folder is private in this release, so it has no Share.
   if (row.folder) actions.push(btn('Rename', '', () => startRename(row)));
-  else actions.push(btn('Share', '', () => openShare(id, row.name)));
+  actions.push(btn('Share', '', () => openShare(id, row.name)));
   actions.push(moveButton(row));
   if (row.folder) {
     const again = () => {
@@ -377,8 +410,9 @@ function moveButton(row) {
 
 async function moveTo(id, target) {
   try {
-    if (await moveItem(send, own, id, target)) {
-      status('artifacts-status', 'Moved.');
+    const res = await moveAndPlace(deps, send, own, id, target, (done, total) => status('artifacts-status', `${done} of ${total} items up to date.`));
+    if (res) {
+      status('artifacts-status', 'Moved.' + fanOutNote({ fanOut: res }), res.failed > 0);
       await reloadArtifacts();
     }
   } catch (err) {
@@ -457,13 +491,15 @@ let sharing = null;
 // openShare opens the dialog on an artifact. approveOnly is the editor's: the
 // waiting newcomers and Approve, and nothing else.
 async function openShare(id, name, { approveOnly = false } = {}) {
-  sharing = { id, name, link: null, changed: false, approveOnly, callerRole: '', hasGroups: false, verifiedGroup: null };
+  sharing = { id, name, link: null, changed: false, approveOnly, callerRole: '', hasGroups: false, verifiedGroup: null, folder: false };
   $('share-group-check').textContent = '';
   $('share-title').textContent = name;
   status('share-status', '');
   $('accept-warning').hidden = true;
   $('approve-only-note').hidden = !approveOnly;
   for (const part of ['share-members-list', 'share-form', 'share-public']) $(part).hidden = approveOnly;
+  $('folder-note').hidden = true;
+  $('finish-section').hidden = true;
   $('waiting-section').hidden = true;
   $('waiting').replaceChildren();
   $('share-kind').value = 'user';
@@ -540,6 +576,11 @@ $('accept-cancel').addEventListener('click', () => { $('accept-warning').hidden 
 // syncShareForm shows the field the kind of share needs, and the roles it may
 // take: only the owner makes a manager, and only of a person.
 function syncShareForm() {
+  // A folder is shared with people and groups: neither Everyone nor a public
+  // link says which folder an entry comes from.
+  const everyone = $('share-kind').querySelector('option[value=everyone]');
+  everyone.hidden = everyone.disabled = Boolean(sharing?.folder);
+  if (everyone.disabled && $('share-kind').value === 'everyone') $('share-kind').value = 'user';
   const kind = $('share-kind').value;
   $('share-email').hidden = kind !== 'user';
   $('share-group').hidden = kind !== 'group';
@@ -588,7 +629,12 @@ async function checkChosenGroup(s) {
 async function listMembers(s) {
   if (!s.approveOnly) {
     const res = await members(deps, s.id);
+    const view = await api('/api/artifacts/' + s.id);
     if (s !== sharing) return;
+    s.folder = view.kind === 'folder';
+    $('share-public').hidden = s.folder;
+    $('folder-note').hidden = !s.folder;
+    $('finish-section').hidden = !offersFinishSharing(view);
     $('public').checked = res.public;
     $('public-writes').checked = res.publicWrites;
     s.callerRole = res.callerRole;
@@ -636,7 +682,7 @@ function leftRow(s, l) {
   tr.append(td(l.name, 'name'), td(l.email, 'email'), td(l.fp, 'fp mono'), td('', 'held'), td('left the group, still holds the key', 'pin'));
   const actions = el('div', 'actions');
   actions.appendChild(btn('Remove', 'danger', () => act(() => 'Removing the user and re-sealing…', async () => {
-    const res = await unshare(deps, s.id, l.user);
+    const res = await unshare(deps, s.id, l.user, { progress: showProgress });
     return `Removed ${l.email}.` + epochNote(res);
   })));
   tr.appendChild(td(actions));
@@ -665,20 +711,27 @@ function groupRow(s, g) {
   tr.dataset.group = g.id;
   const name = td(g.deleted ? '(deleted group)' : g.name, 'name');
   name.append(' ', pill('group'));
+  if (g.via) {
+    tr.classList.add('inherited');
+    tr.dataset.via = g.via;
+    name.append(' ', pill(`from ${g.viaName || g.via}`));
+  }
   const roleCell = td(g.role, 'role');
-  if (!g.deleted) {
+  if (!g.deleted && !g.via) {
     const setRole = (role, acceptSignerKey) => act(() => 'Changing the role…', async () => {
-      const res = await shareGroup(deps, s.id, g.id, role, { acceptSignerKey });
+      const res = await shareGroup(deps, s.id, g.id, role, { acceptSignerKey, progress: showProgress });
       return `${g.name} is now shared as ${role}.` + groupNote(res) + epochNote(res);
     }, acceptSignerKey ? undefined : () => setRole(role, true));
     roleCell.replaceChildren(roleSelect('Role of group ' + label, g.role, (role) => setRole(role, false)));
   }
   tr.append(name, td(g.deleted ? g.id : '', 'email mono'), roleCell, td('', 'fp mono'), td('', 'pin'));
   const actions = el('div', 'actions');
-  actions.appendChild(btn('Remove', 'danger', () => act(() => 'Removing the group…', async () => {
-    const res = await unshareGroup(deps, s.id, g.id);
-    return `Removed the group ${g.deleted ? g.id : g.name}.` + epochNote(res);
-  })));
+  if (!g.via) {
+    actions.appendChild(btn('Remove', 'danger', () => act(() => 'Removing the group…', async () => {
+      const res = await unshareGroup(deps, s.id, g.id, { progress: showProgress });
+      return `Removed the group ${g.deleted ? g.id : g.name}.` + epochNote(res);
+    })));
+  }
   tr.appendChild(td(actions));
   return tr;
 }
@@ -718,8 +771,16 @@ function memberRow(s, m) {
   tr.dataset.email = m.email;
   const roleCell = td(m.role, 'role');
   if (m.account === 'viewer') roleCell.appendChild(pill('viewer account'));
+  // An entry that comes from a folder is shown grayed with the folder: it
+  // changes in the folder's own list, so it has no role to pick and no Remove.
+  const nameCell = td(m.name, 'name');
+  if (m.via) {
+    tr.classList.add('inherited');
+    tr.dataset.via = m.via;
+    nameCell.append(' ', pill(`from ${m.viaName || m.via}`));
+  }
   tr.append(
-    td(m.name, 'name'),
+    nameCell,
     td(m.email, 'email'),
     roleCell,
     td(m.currentFp || m.fp, 'fp mono'),
@@ -737,7 +798,7 @@ function memberRow(s, m) {
       role.appendChild(o);
     }
     const setRole = (acceptNewKey) => act(() => 'Changing the role…', async () => {
-      const res = await share(deps, s.id, who, role.value, { acceptNewKey });
+      const res = await share(deps, s.id, who, role.value, { acceptNewKey, progress: showProgress });
       return `${who} is now ${role.value}.` + epochNote(res);
     }, acceptNewKey ? undefined : () => setRole(true));
     role.addEventListener('change', () => setRole(false));
@@ -756,7 +817,7 @@ function memberRow(s, m) {
       // share with the same role lists their new keys; without acceptNewKey
       // it refuses, and the refusal is the warning.
       const acceptKey = (acceptNewKey) => act(() => 'Checking the new key…', async () => {
-        const res = await share(deps, s.id, who, m.role, { acceptNewKey });
+        const res = await share(deps, s.id, who, m.role, { acceptNewKey, progress: showProgress });
         return `Accepted the new key of ${who}.` + epochNote(res);
       }, acceptNewKey ? undefined : () => acceptKey(true));
       actions.appendChild(btn('Accept new key', 'danger', () => acceptKey(false)));
@@ -767,7 +828,7 @@ function memberRow(s, m) {
       })));
     }
     if (removable) actions.appendChild(btn('Remove', 'danger', () => act(() => 'Removing the member and re-sealing…', async () => {
-      const res = await unshare(deps, s.id, who);
+      const res = await unshare(deps, s.id, who, { progress: showProgress });
       return `Removed ${who}.` + epochNote(res);
     })));
   }
@@ -775,12 +836,36 @@ function memberRow(s, m) {
   return tr;
 }
 
+// showProgress is the status while a folder's items are brought up to date.
+const showProgress = (done, total) => status('share-status', `${done} of ${total} items up to date.`);
+
+// fanOutNote says how many items inside a folder are up to date after a change
+// to the folder, which of them are not and why, and who still waits for approval
+// because a group was listed on them. Nothing for an artifact.
+function fanOutNote(res) {
+  const f = res.fanOut;
+  if (!f) return '';
+  let note = ` ${f.total - f.failed} of ${f.total} items up to date.`;
+  const failed = f.items.filter((i) => i.error);
+  if (failed.length > 0) {
+    note += ` ${plural(failed.length, 'item', 'items')} could not be brought up to date: ${failed.map((i) => `${i.id} (${describeError(i.error)})`).join('; ')}.`;
+    // An item its own record does not place is finished by moving it into
+    // its folder again; anything else, by Finish sharing.
+    note += failed.some((i) => i.error?.code === 'placement')
+      ? ' To place an item where it is shown, move it into that folder again.'
+      : ' Choose Finish sharing to try again.';
+  }
+  const waits = f.items.flatMap((i) => i.pending);
+  if (waits.length > 0) note += ` ${plural(waits.length, 'person', 'people')} still waiting for approval on the items inside.`;
+  return note;
+}
+
 // epochNote says what a change did beyond what the caller reports: which
 // approved people the record listed or left out, which deleted groups it
 // dropped, who it excluded besides the user removed, and, for a new epoch, what
 // it re-sealed and what it left alone and why.
 function epochNote(res) {
-  let note = '';
+  let note = fanOutNote(res);
   if (res.listed?.length > 0) note += ` Listed ${plural(res.listed.length, 'approved person', 'approved people')}: ${res.listed.map((u) => u.email).join(', ')}.`;
   if (res.unlisted?.length > 0) note += ` Not listed, because their approval does not check out: ${res.unlisted.map((x) => `${x.user.email} (${describeError(x.error)})`).join('; ')}.`;
   if (res.droppedGroups?.length > 0) note += ` Dropped ${plural(res.droppedGroups.length, 'deleted group', 'deleted groups')}: ${res.droppedGroups.join(', ')}.`;
@@ -845,7 +930,7 @@ $('share-form').addEventListener('submit', (event) => {
     if (!group) { status('share-status', 'Choose a group.', true); return; }
     if (!canShare(kind, s.verifiedGroup, group)) { status('share-status', 'The group has not been verified.', true); return; }
     const sendGroup = (acceptSignerKey) => act(() => 'Sharing with the group…', async () => {
-      const res = await shareGroup(deps, s.id, group, role, { acceptSignerKey });
+      const res = await shareGroup(deps, s.id, group, role, { acceptSignerKey, progress: showProgress });
       const name = res.group.name;
       return (res.unchanged ? `The group ${name} is already shared as ${role}.` : `Shared with the group ${name} as ${role}.`) + groupNote(res) + epochNote(res);
     }, acceptSignerKey ? undefined : () => sendGroup(true));
@@ -853,7 +938,7 @@ $('share-form').addEventListener('submit', (event) => {
     return;
   }
   const send = (acceptNewKey) => act(() => 'Sharing…', async () => {
-    const res = await share(deps, s.id, email.value, role, { acceptNewKey });
+    const res = await share(deps, s.id, email.value, role, { acceptNewKey, progress: showProgress });
     const said = `Shared with ${res.user.email} as ${res.role}.` + epochNote(res);
     if (s === sharing) email.value = '';
     return said;
@@ -893,6 +978,16 @@ $('copy-link').addEventListener('click', async () => {
   } catch (err) {
     status('share-status', describeError(err), true);
   }
+});
+
+// Finish sharing brings a pending item up to date with its folder, and a
+// pending folder with everything inside it.
+$('finish-sharing').addEventListener('click', () => {
+  const s = sharing;
+  act(() => 'Finishing…', async () => {
+    const res = await fanOut(deps, s.id, { includeRoot: true, progress: showProgress });
+    return 'Finished sharing.' + fanOutNote({ fanOut: res });
+  });
 });
 
 $('share-close').addEventListener('click', () => $('share').close());

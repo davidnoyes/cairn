@@ -11,6 +11,7 @@
 import * as e2e from './e2e.mjs';
 import { call, openArtifact, signedInCaller } from './viewer.mjs';
 import { writeMeta } from './meta.mjs';
+import { approveListedGroups, fanOut, inheritFirst } from './sharing.mjs';
 
 // FolderError is a refusal the page can show as it is. created is true when
 // the folder exists anyway, so the page must not offer to create it again.
@@ -36,14 +37,18 @@ function cleanName(name) {
 // ID and the first AK, signs the owner's first membership record (no members,
 // no team, private), and seals the estate copy of the AK under EK. It then
 // opens the folder, which checks the chain the server stored, and writes the
-// name under the AK. It returns {id}. Mirrors CreateArtifact.
+// name under the AK. Inside a shared folder it lists every user and group the
+// parent lists, marked with the parent's name for them, as the server refuses
+// a record without them, with a wrap of the first AK for each user; the
+// members of each group are approved once it exists. It returns {id}. Mirrors
+// CreateArtifact.
 export async function createFolder(deps, { name, parent = null }) {
   const clean = cleanName(name);
   const caller = await signedInCaller(deps);
   if (!caller?.record) throw new FolderError('Sign in to create a folder.');
   const id = crypto.randomUUID();
   const ak = crypto.getRandomValues(new Uint8Array(32));
-  const body = encoder.encode(JSON.stringify({
+  const first = {
     v: 1,
     artifact: id,
     epoch: 1,
@@ -54,6 +59,10 @@ export async function createFolder(deps, { name, parent = null }) {
     members: [],
     excluded: [],
     team: 'none',
+  };
+  const wraps = parent === null ? [] : await inheritFirst(deps, first, parent, ak);
+  const body = encoder.encode(JSON.stringify({
+    ...first,
     public: false,
     publicWrites: false,
     prev: '',
@@ -63,7 +72,7 @@ export async function createFolder(deps, { name, parent = null }) {
   const membership = await e2e.newEnvelope(caller.record.ed25519, caller.record.userId, 'membership', body);
   const ekKey = await e2e.ekSealCryptoKey(caller.record.ek);
   const estate = [{ epoch: 1, sealed: e2e.b64(await e2e.seal(ekKey, ['estate', id, '1'], ak)) }];
-  const req = { id, kind: 'folder', membership, wraps: [], estate };
+  const req = { id, kind: 'folder', membership, wraps, estate };
   if (parent !== null) req.parent = parent;
   await call(deps, null, 'POST', '/api/artifacts', { body: req });
   try {
@@ -71,6 +80,9 @@ export async function createFolder(deps, { name, parent = null }) {
   } catch (err) {
     throw new FolderError(`The folder was created without a name, and can be renamed. Writing the name failed: ${err.message}`, { created: true });
   }
+  // A member of a group the folder lists waits until someone approves them.
+  // A group that does not verify leaves its members to whoever can.
+  await approveListedGroups(deps, id, (first.groups ?? []).map((g) => g.group));
   return { id };
 }
 
@@ -169,6 +181,24 @@ export async function moveItem(send, items, id, target) {
   if (item && (item.parent ?? null) === target) return false;
   await send('PUT', `/api/artifacts/${id}/parent`, { parent: target });
   return true;
+}
+
+// moveAndPlace moves the item as moveItem does and, after a move, writes the
+// placement: the owner's record of the item names the new folder (null is the
+// top level), and fanOut copies that folder's entries into it, and into
+// everything inside it when it is a folder. send is app.mjs's (method, path,
+// body), deps what sharing.mjs takes, and progress (done, total) is called as
+// fanOut calls it. It returns null when nothing moved, else fanOut's result
+// {items, total, failed}.
+export async function moveAndPlace(deps, send, items, id, target, progress) {
+  if (!(await moveItem(send, items, id, target))) {
+    // Moving a pending item to the folder it already sits in places it there
+    // again: the caller chose the folder, so a placement that failed earlier
+    // can be finished this way. Anything else that moves nothing does nothing.
+    const it = items.find((i) => i.id === id);
+    if (!it || (it.parent ?? null) !== target || it.inherit !== 'pending') return null;
+  }
+  return fanOut(deps, id, { includeRoot: true, placing: target, progress });
 }
 
 // deleteTree deletes every artifact under folder, then the folders deepest

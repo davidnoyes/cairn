@@ -229,6 +229,9 @@ td select.role{
 .crumbs [aria-current]{color:var(--text)}
 .crumbs .btn{padding:3px 8px}
 #folder-form{margin-bottom:.8rem}
+/* an entry that comes from a folder, which the folder's own list changes */
+tr.inherited td, tr.inherited td .pill{color:var(--faint)}
+#finish-section .actions{justify-content:flex-start; margin-top:.6rem}
 button.link{
   font:inherit; cursor:pointer; background:none; border:0; padding:0; text-align:left;
   color:var(--accent); text-decoration:underline;
