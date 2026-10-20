@@ -67,26 +67,26 @@ const itemOfP = (extra = {}) => ({ id: AP, parent: F, owner: U.other, ...extra }
 
 // ---- the folder owner's entry, in the plan ----
 
-// The rule, worked by hand from the spec ("The folder's owner reads what is in
-// it"): an item someone else owns lists the owner of its folder as an editor,
+// The rule, worked by hand from the spec ("The folder's owner manages what is in
+// it"): an item someone else owns lists the owner of its folder as a manager,
 // via the folder, under the fingerprint the folder's latest record gives as
 // ownerFp, besides the folder's own entries.
 //
 // State 1. The folder P is owned by o0 (ownerFp fo) and lists a1 as viewer
 // (fp fa), and the group g1 as viewer. The item is owned by p0 and lists
 // nothing. The owners differ, so the item wants: a1 as viewer via P, g1 as
-// viewer via P, and o0 as editor via P with fo. Lists come out sorted by ID:
+// viewer via P, and o0 as manager via P with fo. Lists come out sorted by ID:
 // a1, then o0. Both users are added, and nothing leaves, so no new epoch.
 //
 // State 2. The same folder, and an item owned by o0 itself, which lists a1 as
 // viewer via P already: the owners are the same, so no entry for o0 is wanted,
 // and the owner is never listed on their own item. The item is as its folder
 // says: members a1 only, nothing added.
-test('planInherit lists the folder owner as an editor via the folder on an item someone else owns (state 1), and not on their own (state 2)', () => {
+test('planInherit lists the folder owner as a manager via the folder on an item someone else owns (state 1), and not on their own (state 2)', () => {
   const parent = { owner: 'o0', ownerFp: 'fo', members: [{ user: 'a1', role: 'viewer', fp: 'fa' }], groups: [{ group: 'g1', role: 'viewer' }] };
   const one = planInherit({ owner: 'p0', members: [], groups: [] }, parent, 'P', yes, yes);
   assert.deepEqual(one, {
-    members: [{ user: 'a1', role: 'viewer', fp: 'fa', via: 'P' }, { user: 'o0', role: 'editor', fp: 'fo', via: 'P' }],
+    members: [{ user: 'a1', role: 'viewer', fp: 'fa', via: 'P' }, { user: 'o0', role: 'manager', fp: 'fo', via: 'P' }],
     groups: [{ group: 'g1', role: 'viewer', via: 'P' }],
     added: ['a1', 'o0'],
     addedGroups: ['g1'],
@@ -101,13 +101,13 @@ test('planInherit lists the folder owner as an editor via the folder on an item 
 });
 
 // State 3. A owns the folder FA, C owns the folder FC, and FC sits in FA, so
-// FC's own record lists A as editor via FA (inherited). B's item sits in FC.
-// The item wants FC's entries: A as editor, still marked FA, the nearest folder
-// that lists them itself, and C, the owner of FC, as editor via FC.
+// FC's own record lists A as manager via FA (inherited). B's item sits in FC.
+// The item wants FC's entries: A as manager, still marked FA, the nearest folder
+// that lists them itself, and C, the owner of FC, as manager via FC.
 test('planInherit marks the entry inherited from the folder above with that folder, and the owner of the folder the item sits in with it (state 3)', () => {
-  const fc = { owner: 'c0', ownerFp: 'fc', members: [{ user: 'a0', role: 'editor', fp: 'fa', via: 'FA' }], groups: [] };
+  const fc = { owner: 'c0', ownerFp: 'fc', members: [{ user: 'a0', role: 'manager', fp: 'fa', via: 'FA' }], groups: [] };
   const plan = planInherit({ owner: 'b0', members: [], groups: [] }, fc, 'FC', yes, yes);
-  assert.deepEqual(plan.members, [{ user: 'a0', role: 'editor', fp: 'fa', via: 'FA' }, { user: 'c0', role: 'editor', fp: 'fc', via: 'FC' }]);
+  assert.deepEqual(plan.members, [{ user: 'a0', role: 'manager', fp: 'fa', via: 'FA' }, { user: 'c0', role: 'manager', fp: 'fc', via: 'FC' }]);
   assert.deepEqual(plan.added, ['a0', 'c0']);
 });
 
@@ -117,12 +117,12 @@ test('the folder owner\'s entry follows the role merge: a direct grant keeps the
   assert.deepEqual(direct.members, [{ user: 'o0', role: 'manager', fp: 'fo' }], 'a direct manager stays one, with no mark');
   assert.deepEqual(direct.added, []);
   const viewer = planInherit({ owner: 'p0', members: [{ user: 'o0', role: 'viewer', fp: 'fo' }] }, parent, 'P', yes, yes);
-  assert.deepEqual(viewer.members, [{ user: 'o0', role: 'editor', fp: 'fo' }], 'a direct viewer is raised to editor');
+  assert.deepEqual(viewer.members, [{ user: 'o0', role: 'manager', fp: 'fo' }], 'a direct viewer is raised to manager');
+  const editor = planInherit({ owner: 'p0', members: [{ user: 'o0', role: 'editor', fp: 'fo' }] }, parent, 'P', yes, yes);
+  assert.deepEqual(editor.members, [{ user: 'o0', role: 'manager', fp: 'fo' }], 'a direct editor is raised to manager');
   const old = planInherit({ owner: 'p0', members: [{ user: 'o0', role: 'editor', fp: 'fo', via: 'OLD' }] }, parent, 'P', yes, yes);
-  assert.deepEqual(old.members, [{ user: 'o0', role: 'editor', fp: 'fo', via: 'P' }]);
-  assert.equal(old.epoch, false);
-  const lowered = planInherit({ owner: 'p0', members: [{ user: 'o0', role: 'manager', fp: 'fo', via: 'P' }] }, parent, 'P', yes, yes);
-  assert.equal(lowered.epoch, true, 'an inherited manager entry above the folder\'s editor starts a next epoch');
+  assert.deepEqual(old.members, [{ user: 'o0', role: 'manager', fp: 'fo', via: 'P' }]);
+  assert.equal(old.epoch, false, 'a raised role takes no next epoch');
 });
 
 test('the folder owner is skipped, and named, while their account is not usable, and not wanted at the top level', () => {
@@ -136,14 +136,14 @@ test('the folder owner is skipped, and named, while their account is not usable,
 
 // ---- the folder owner's entry, on create and in the fixture ----
 
-test('a folder created inside someone else\'s folder lists the folder\'s owner as an editor via it, with a wrap of the key', async () => {
+test('a folder created inside someone else\'s folder lists the folder\'s owner as a manager via it, with a wrap of the key', async () => {
   const s = await scene({ items: [folderOf()] });
   const { id } = await createFolder(s.deps, { name: 'Mine', parent: F });
   const body = latest(s, id);
   assert.equal(body.owner, U.other.id);
   assert.deepEqual(body.members.map((m) => [m.user, m.role, m.via, m.fp]), [
     [U.viewer.id, 'viewer', F, U.viewer.fp],
-    [U.owner.id, 'editor', F, U.owner.fp],
+    [U.owner.id, 'manager', F, U.owner.fp],
   ].sort((a, b) => (a[0] < b[0] ? -1 : 1)));
   const post = s.server.posts[0];
   assert.deepEqual(post.wraps.map((w) => w.user).sort(), [U.owner.id, U.viewer.id].sort());
@@ -152,9 +152,9 @@ test('a folder created inside someone else\'s folder lists the folder\'s owner a
   assert.deepEqual(await unwrapFor('owner', id, w), ak, 'the folder\'s owner can open the new folder');
   assert.equal(s.server.inheritOf(id), 'ok');
   assert.equal((await list(s)).find((a) => a.id === id).owner, U.other.id);
-  // The folder's owner reads it, as an editor, from the view of the list.
+  // The folder's owner manages it, from the view of the list.
   s.as('owner');
-  assert.equal((await list(s)).find((a) => a.id === id).access, 'editor');
+  assert.equal((await list(s)).find((a) => a.id === id).access, 'manager');
 });
 
 test('the folder\'s owner creating inside their own folder lists no entry for themselves', async () => {
@@ -191,7 +191,7 @@ async function putAs(s, id, signer, patch) {
   return s.server.fetch(`/api/artifacts/${id}/membership`, { method: 'PUT', body: JSON.stringify({ membership, wraps: [], estate: [], linkTokenHash: '' }) });
 }
 
-test('the server refuses a record for an item someone else owns that leaves out the folder\'s owner, or lists them below editor', async () => {
+test('the server refuses a record for an item someone else owns that leaves out the folder\'s owner, or lists them below manager', async () => {
   const s = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP()] });
   assert.equal(s.server.inheritOf(AP), 'pending', 'the item lacks the folder owner\'s entry');
   const missing = await putAs(s, AP, U.other, {});
@@ -200,28 +200,43 @@ test('the server refuses a record for an item someone else owns that leaves out 
   const low = await putAs(s, AP, U.other, { members: [{ user: U.owner.id, role: 'viewer', fp: U.owner.fp, via: F }] });
   assert.equal(low.status, 409);
   assert.match((await low.json()).error, /is viewer/);
-  const ok = await putAs(s, AP, U.other, { members: [{ user: U.owner.id, role: 'editor', fp: U.owner.fp, via: F }] });
+  const ok = await putAs(s, AP, U.other, { members: [{ user: U.owner.id, role: 'manager', fp: U.owner.fp, via: F }] });
   assert.equal(ok.status, 200);
   assert.equal(s.server.inheritOf(AP), 'ok');
 });
 
-test('the server accepts a record that lists the folder\'s owner as manager via the folder, and the item shows pending, since access caps the entry at editor', async () => {
+test('the server refuses a record that lists the folder\'s owner as an editor via the folder, and says the folder lists them as manager', async () => {
   const s = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP()] });
-  const resp = await putAs(s, AP, U.other, { members: [{ user: U.owner.id, role: 'manager', fp: U.owner.fp, via: F }] });
-  assert.equal(resp.status, 200);
+  const resp = await putAs(s, AP, U.other, { members: [{ user: U.owner.id, role: 'editor', fp: U.owner.fp, via: F }] });
+  assert.equal(resp.status, 409);
+  assert.match((await resp.json()).error, /inherit: member .* is editor: folder .* lists them as manager/);
   assert.equal(s.server.inheritOf(AP), 'pending');
   const missing = await putAs(s, AP, U.other, { members: [] });
-  assert.match((await missing.json()).error, /member .* is missing: folder .* lists them as editor/);
+  assert.match((await missing.json()).error, /member .* is missing: folder .* lists them as manager/);
 });
 
 test('the owner entry of an item ends with the folder: the item is pending once it leaves', async () => {
-  const s = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ members: [listed(U.owner, 'editor', F)] })] });
+  const s = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ members: [listed(U.owner, 'manager', F)] })] });
   assert.equal(s.server.inheritOf(AP), 'ok');
+  s.as('owner');
+  assert.equal(s.server.levelOf(AP), 'manager', 'the folder\'s owner manages it while it is inside');
+  s.as('other');
   s.server.setParent(AP, null);
   assert.equal(s.server.inheritOf(AP), 'pending');
   assert.equal(s.server.levelOf(AP), 'owner');
   s.as('owner');
   assert.equal(s.server.levelOf(AP), '', 'the folder\'s owner reads it no longer');
+});
+
+test('an item that lists the folder\'s owner as an editor is pending, and its owner\'s apply raises the entry to manager without a next epoch', async () => {
+  const s = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ members: [listed(U.owner, 'editor', F)] })] });
+  assert.equal(s.server.inheritOf(AP), 'pending');
+  s.as('owner');
+  assert.equal(s.server.levelOf(AP), 'editor', 'until then the entry grants what it lists');
+  const res = await apply(s.as('other'));
+  assert.deepEqual(res.fanOut.items.map((i) => [i.id, i.state]), [[AP, 'updated']]);
+  assert.deepEqual(entry(s, AP, U.owner), { user: U.owner.id, role: 'manager', fp: U.owner.fp, via: F });
+  assert.equal(s.server.inheritOf(AP), 'ok');
 });
 
 // ---- stubs ----
@@ -240,12 +255,12 @@ test('the list gives a stub for an item in a folder the caller reads and cannot 
   assert.equal((await list(s)).find((a) => a.id === AP).access, 'owner');
 });
 
-test('once its owner applies, the folder owner reads the item: the stub becomes the item, at editor access', async () => {
+test('once its owner applies, the folder owner manages the item: the stub becomes the item, at manager access', async () => {
   const s = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP()] });
   await apply(s.deps);
   s.as('owner');
   const view = (await list(s)).find((a) => a.id === AP);
-  assert.equal(view.access, 'editor');
+  assert.equal(view.access, 'manager');
   assert.equal(view.inherit, 'ok');
   assert.equal(view.owner, U.other.id);
 });
@@ -272,7 +287,7 @@ test('apply adds the entries the folder lists, and the folder owner, with a wrap
   assert.equal(res.fanOut.failed, 0);
   assert.deepEqual(res.waiting, []);
   assert.deepEqual(entry(s, AP, U.viewer), { user: U.viewer.id, role: 'viewer', fp: U.viewer.fp, via: F });
-  assert.deepEqual(entry(s, AP, U.owner), { user: U.owner.id, role: 'editor', fp: U.owner.fp, via: F });
+  assert.deepEqual(entry(s, AP, U.owner), { user: U.owner.id, role: 'manager', fp: U.owner.fp, via: F });
   const put = s.server.records.find((r) => r.id === AP).put;
   assert.deepEqual(put.wraps.map((w) => [w.user, w.epoch]).sort(), [[U.owner.id, 1], [U.owner.id, 2], [U.viewer.id, 1], [U.viewer.id, 2]].sort());
   for (const w of put.wraps) assert.deepEqual(await unwrapFor(w.user === U.owner.id ? 'owner' : 'viewer', AP, w), s.server.kids.get(AP).world.aks[w.epoch]);
@@ -284,19 +299,19 @@ test('apply adds the entries the folder lists, and the folder owner, with a wrap
 
 test('apply starts the next epoch where a via no longer holds, and excludes who held the item only through it', async () => {
   const s = await scene({
-    items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ members: [listed(U.viewer, 'viewer', F), listed(U.owner, 'editor', F)] })],
+    items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ members: [listed(U.viewer, 'viewer', F), listed(U.owner, 'manager', F)] })],
   });
   const res = await apply(s.deps);
   assert.deepEqual(res.fanOut.items.map((i) => [i.id, i.state]), [[AP, 'newEpoch']]);
   assert.deepEqual(res.fanOut.items[0].excluded.map((x) => x.user.id), [U.viewer.id]);
   assert.equal(latest(s, AP).epoch, 2);
   assert.equal(entry(s, AP, U.viewer), undefined);
-  assert.deepEqual(entry(s, AP, U.owner), { user: U.owner.id, role: 'editor', fp: U.owner.fp, via: F });
+  assert.deepEqual(entry(s, AP, U.owner), { user: U.owner.id, role: 'manager', fp: U.owner.fp, via: F });
   assert.equal(s.server.inheritOf(AP), 'ok');
 });
 
 test('apply writes a record naming no folder for an own item the server lists at the top level, and the folder owner\'s entry ends with it', async () => {
-  const s = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ parent: null, folder: F, members: [listed(U.owner, 'editor', F)] })] });
+  const s = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ parent: null, folder: F, members: [listed(U.owner, 'manager', F)] })] });
   assert.equal(s.server.inheritOf(AP), 'pending', 'the record still names the folder');
   const res = await apply(s.deps);
   assert.deepEqual(res.fanOut.items.map((i) => [i.id, i.state]), [[AP, 'newEpoch']]);
@@ -328,7 +343,7 @@ test('apply leaves an item whose record names another folder than the one it sit
 });
 
 test('apply as a manager adds the folder\'s entries, and waits on the owner for a move of the folder', async () => {
-  const mgr = (extra = {}) => itemOfP({ members: [listed(U.manager, 'manager')], ...extra });
+  const mgr = (extra = {}) => itemOfP({ members: [listed(U.manager, 'manager'), listed(U.owner, 'manager', F)], ...extra });
   const base = folderOf({ members: [listed(U.other, 'editor'), listed(U.viewer, 'viewer'), listed(U.manager, 'editor')] });
   const s = await scene({ who: 'manager', items: [base, mgr()] });
   const res = await apply(s.deps);
@@ -345,7 +360,7 @@ test('apply as a manager adds the folder\'s entries, and waits on the owner for 
 
 test('apply as a manager waits on the owner when the folder lists another manager', async () => {
   const base = folderOf({ members: [listed(U.other, 'editor'), listed(U.manager, 'editor'), listed(U.editor, 'manager')] });
-  const s = await scene({ who: 'manager', items: [base, itemOfP({ members: [listed(U.manager, 'manager')] })] });
+  const s = await scene({ who: 'manager', items: [base, itemOfP({ members: [listed(U.manager, 'manager'), listed(U.owner, 'manager', F)] })] });
   const res = await apply(s.deps);
   assert.deepEqual(res.waiting.map((i) => i.id), [AP]);
   assert.deepEqual(res.fanOut.items, []);
@@ -391,8 +406,8 @@ test('apply visits an item inside a folder it wrote, because the folder\'s recor
 test('apply does not visit an item below a folder it did not write', async () => {
   const items = [
     { id: F, kind: 'folder', members: [listed(U.other, 'editor')] },
-    { id: F2, kind: 'folder', parent: F, owner: U.other, members: [listed(U.owner, 'editor', F)] },
-    { id: AP, parent: F2, owner: U.other, members: [listed(U.owner, 'editor', F)] },
+    { id: F2, kind: 'folder', parent: F, owner: U.other, members: [listed(U.owner, 'manager', F)] },
+    { id: AP, parent: F2, owner: U.other, members: [listed(U.owner, 'manager', F)] },
   ];
   const s = await scene({ items });
   const res = await apply(s.deps);
@@ -407,7 +422,7 @@ test('apply visits an item inside a folder it wrote at a next epoch too', async 
     { id: F, kind: 'folder', members: [listed(U.other, 'editor')] },
     // F2 lists a group through F that F no longer lists, which ends at a next epoch.
     { id: F2, kind: 'folder', parent: F, owner: U.other, groups: [{ group: GROUP, role: 'viewer', via: F }] },
-    { id: AP, parent: F2, owner: U.other, members: [listed(U.owner, 'editor', F)] },
+    { id: AP, parent: F2, owner: U.other, members: [listed(U.owner, 'manager', F)] },
   ];
   const s = await scene({ items });
   assert.equal(s.server.inheritOf(AP), 'ok');
@@ -418,7 +433,7 @@ test('apply visits an item inside a folder it wrote at a next epoch too', async 
 
 test('apply records an item that fails and carries on, and counts it', async () => {
   const bad = folderOf({ members: [listed(U.other, 'editor'), { user: U.viewer, role: 'viewer', fp: 'ab'.repeat(32) }] });
-  const s = await scene({ items: [bad, itemOfP(), { id: A2, parent: F, owner: U.other, members: [listed(U.owner, 'editor', F), listed(U.viewer, 'viewer', F)] }] });
+  const s = await scene({ items: [bad, itemOfP(), { id: A2, parent: F, owner: U.other, members: [listed(U.owner, 'manager', F), listed(U.viewer, 'viewer', F)] }] });
   const res = await apply(s.deps);
   const failed = stateOf(res, AP);
   assert.equal(failed.state, 'failed');
@@ -430,7 +445,7 @@ test('apply records an item that fails and carries on, and counts it', async () 
 test('apply approves the newcomers of a group an item lists whose checks pass, and leaves the others waiting with the reason', async () => {
   const items = [
     folderOf({ groups: [{ group: GROUP, role: 'viewer' }] }),
-    itemOfP({ members: [listed(U.owner, 'editor', F), listed(U.viewer, 'viewer', F)], groups: [{ group: GROUP, role: 'viewer', via: F }] }),
+    itemOfP({ members: [listed(U.owner, 'manager', F), listed(U.viewer, 'viewer', F)], groups: [{ group: GROUP, role: 'viewer', via: F }] }),
   ];
   const s = await scene({ items, users: [U.outsider, U.other, U.manager, U.editor, U.viewer] });
   await seedGroup(s.server.primary, { id: GROUP, name: 'Design', members: [{ user: U.outsider }, { user: U.editor, fp: 'cd'.repeat(32) }] });
@@ -460,7 +475,7 @@ test('apply never reads a stub', async () => {
 test('apply skips, without a word, an item whose chain does not verify and a group that does not, and carries on', async () => {
   const items = [
     folderOf({ members: [listed(U.other, 'editor')] }),
-    itemOfP({ members: [listed(U.owner, 'editor', F)] }),
+    itemOfP({ members: [listed(U.owner, 'manager', F)] }),
     { id: A2, parent: null, owner: U.other, groups: [{ group: GROUP, role: 'viewer' }] },
   ];
   const s = await scene({ items });
@@ -474,10 +489,10 @@ test('apply skips, without a word, an item whose chain does not verify and a gro
 test('apply ends with the failure that ends the command, and the result so far, whether it meets it on an item or on a group', async () => {
   const fail401 = (hit) => async (path, init) => (hit(path) ? new Response(`{"error":"unauthorized"}`, { status: 401 }) : fetch401base(path, init));
   let fetch401base;
-  const onItem = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP(), { id: A2, parent: F, owner: U.other, members: [listed(U.owner, 'editor', F)] }] });
+  const onItem = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP(), { id: A2, parent: F, owner: U.other, members: [listed(U.owner, 'manager', F)] }] });
   fetch401base = onItem.deps.fetch;
   await assert.rejects(apply({ ...onItem.deps, fetch: fail401((path) => path === `/api/artifacts/${AP}`) }), (e) => e.status === 401 && Array.isArray(e.result.fanOut.items));
-  const items = [folderOf({ members: [listed(U.other, 'editor')], groups: [{ group: GROUP, role: 'viewer' }] }), itemOfP({ members: [listed(U.owner, 'editor', F)], groups: [{ group: GROUP, role: 'viewer', via: F }] })];
+  const items = [folderOf({ members: [listed(U.other, 'editor')], groups: [{ group: GROUP, role: 'viewer' }] }), itemOfP({ members: [listed(U.owner, 'manager', F)], groups: [{ group: GROUP, role: 'viewer', via: F }] })];
   const onGroup = await scene({ items });
   await seedGroup(onGroup.server.primary, { id: GROUP, name: 'Design', members: [{ user: U.outsider }] });
   fetch401base = onGroup.deps.fetch;
@@ -485,7 +500,7 @@ test('apply ends with the failure that ends the command, and the result so far, 
 });
 
 test('a fan-out that is not apply does not rewrite an item at the top level whose record names a folder: its placement is refused', async () => {
-  const s = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ parent: null, folder: F, members: [listed(U.owner, 'editor', F)] })] });
+  const s = await scene({ items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ parent: null, folder: F, members: [listed(U.owner, 'manager', F)] })] });
   const res = await fanOut(s.deps, AP, { includeRoot: true });
   assert.deepEqual(res.items.map((i) => [i.id, i.state, i.error?.code]), [[AP, 'failed', 'placement']]);
   assert.equal(s.server.records.length, 0);
@@ -498,7 +513,7 @@ test('applyNote says nothing is waiting when nothing is', () => {
 // ---- fanOut and the note ----
 
 test('sharing a folder leaves an item someone else owns pending on its owner, and says so, then its owner applies it', async () => {
-  const s = await scene({ who: 'owner', items: [folderOf({ members: [listed(U.other, 'editor')] }), { id: AO, parent: F, owner: U.owner }, itemOfP({ members: [listed(U.owner, 'editor', F)] })] });
+  const s = await scene({ who: 'owner', items: [folderOf({ members: [listed(U.other, 'editor')] }), { id: AO, parent: F, owner: U.owner }, itemOfP()] });
   const res = await share(s.deps, F, 'viewer@example.com', 'viewer');
   assert.deepEqual(res.fanOut.items.map((i) => [i.id, i.state]), [[AP, 'waits'], [AO, 'updated']]);
   assert.equal(res.fanOut.failed, 0, 'waiting is not a failure');
@@ -512,6 +527,36 @@ test('sharing a folder leaves an item someone else owns pending on its owner, an
   const done = await apply(s.as('other'));
   assert.deepEqual(done.fanOut.items.map((i) => [i.id, i.state]), [[AP, 'updated']]);
   assert.equal(entry(s, AP, U.viewer).via, F);
+});
+
+test('the folder owner shares the folder: the item lists her as a manager, so she signs it herself with the newcomer added via the folder, and it does not wait', async () => {
+  const s = await scene({ who: 'owner', items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ members: [listed(U.owner, 'manager', F)] })] });
+  const res = await share(s.deps, F, 'outsider@example.com', 'viewer');
+  assert.deepEqual(res.fanOut.items.map((i) => [i.id, i.state]), [[AP, 'updated']]);
+  assert.equal(res.fanOut.failed, 0);
+  assert.deepEqual(entry(s, AP, U.outsider), { user: U.outsider.id, role: 'viewer', fp: U.outsider.fp, via: F });
+  assert.equal(latest(s, AP).v, 2, 'she signs as a manager');
+  assert.equal(s.server.inheritOf(AP), 'ok');
+  assert.deepEqual((await apply(s.deps)).waiting, []);
+  s.as('outsider');
+  assert.equal(s.server.levelOf(AP), 'viewer', 'the newcomer reads it');
+  assert.equal(fanOutNote(res, (e) => e.message), ' 1 of 1 items up to date.');
+});
+
+test('the folder owner lists a manager on the folder: that changes the item\'s managers, which only its owner signs, so the item stays pending and apply says it waits on its owner', async () => {
+  const s = await scene({ who: 'owner', items: [folderOf({ members: [listed(U.other, 'editor')] }), itemOfP({ members: [listed(U.owner, 'manager', F)] })] });
+  const res = await share(s.deps, F, 'outsider@example.com', 'manager');
+  assert.deepEqual(res.fanOut.items.map((i) => [i.id, i.state, i.error?.code]), [[AP, 'failed', 'owner-only']]);
+  assert.equal(res.fanOut.failed, 1);
+  assert.equal(entry(s, AP, U.outsider), undefined, 'no record was written for it');
+  assert.equal(s.server.inheritOf(AP), 'pending');
+  const waits = await apply(s.deps);
+  assert.deepEqual(waits.waiting.map((i) => [i.id, i.state, i.ownerEmail]), [[AP, 'waits', 'other@example.com']]);
+  // Its owner signs it.
+  const done = await apply(s.as('other'));
+  assert.deepEqual(done.fanOut.items.map((i) => [i.id, i.state]), [[AP, 'updated']]);
+  assert.deepEqual(entry(s, AP, U.outsider), { user: U.outsider.id, role: 'manager', fp: U.outsider.fp, via: F });
+  assert.equal(s.server.inheritOf(AP), 'ok');
 });
 
 test('a fan-out in which the walk meets a stub does not read it, and the walk does not go into a folder that waits', async () => {
@@ -564,11 +609,13 @@ test('an editor of a folder someone else owns places their own item in it, and i
   assert.deepEqual(res.items.map((i) => [i.id, i.state]), [[AP, 'updated']]);
   assert.equal(latest(s, AP).folder, F);
   assert.equal(entry(s, AP, U.viewer).via, F);
-  assert.deepEqual(entry(s, AP, U.owner), { user: U.owner.id, role: 'editor', fp: U.owner.fp, via: F });
+  assert.deepEqual(entry(s, AP, U.owner), { user: U.owner.id, role: 'manager', fp: U.owner.fp, via: F });
   assert.equal(s.server.kids.get(AP).parent, F);
   assert.equal(s.server.inheritOf(AP), 'ok');
+  // The placement adds a manager, which only the owner signs, and the owner did.
+  assert.equal(latest(s, AP).v, 1, 'the owner signs it as the owner');
   s.as('owner');
-  assert.equal((await list(s)).find((a) => a.id === AP).access, 'editor', 'the folder\'s owner reads it');
+  assert.equal((await list(s)).find((a) => a.id === AP).access, 'manager', 'the folder\'s owner manages it');
 });
 
 test('a viewer of the folder cannot place an item in it, and a stranger is told the folder does not exist', async () => {
@@ -602,7 +649,7 @@ test('a folder created in a folder someone else owns is the editor\'s, and belon
 // ---- removing someone else's item ----
 
 test('an editor of a folder removes someone else\'s item, which goes to its owner\'s top level, and nothing is written to its record', async () => {
-  const s = await scene({ who: 'editor', items: [folderOf({ members: [listed(U.editor, 'editor')] }), itemOfP({ members: [listed(U.editor, 'editor', F), listed(U.owner, 'editor', F)] })] });
+  const s = await scene({ who: 'editor', items: [folderOf({ members: [listed(U.editor, 'editor')] }), itemOfP({ members: [listed(U.editor, 'editor', F), listed(U.owner, 'manager', F)] })] });
   const items = await allOf(s);
   await removeFromFolder(sender(s), items, AP, U.editor.id);
   assert.equal(s.server.kids.get(AP).parent, null);
@@ -618,7 +665,7 @@ test('an editor of a folder removes someone else\'s item, which goes to its owne
 });
 
 test('a viewer of the folder cannot remove an item, and the owner of the folder may remove another\'s', async () => {
-  const s = await scene({ who: 'viewer', items: [folderOf(), itemOfP({ members: [listed(U.viewer, 'viewer', F), listed(U.owner, 'editor', F)] })] });
+  const s = await scene({ who: 'viewer', items: [folderOf(), itemOfP({ members: [listed(U.viewer, 'viewer', F), listed(U.owner, 'manager', F)] })] });
   const resp = await s.server.fetch(`/api/artifacts/${AP}/parent`, { method: 'PUT', body: JSON.stringify({ parent: null }) });
   assert.equal(resp.status, 403);
   assert.equal(s.server.kids.get(AP).parent, F);
@@ -651,7 +698,7 @@ test('deleting a folder deletes the owner\'s own items first, then the folder, a
   const items = [
     folderOf({ members: [listed(U.other, 'editor')] }),
     { id: AO, parent: F, owner: U.owner },
-    itemOfP({ members: [listed(U.owner, 'editor', F)] }),
+    itemOfP({ members: [listed(U.owner, 'manager', F)] }),
     { id: F2, kind: 'folder', parent: F, owner: U.owner },
     { id: A2, parent: F2, owner: U.owner },
   ];
@@ -687,7 +734,7 @@ test('the server refuses to delete a folder while an item its owner owns is insi
 test('a folder someone else owns, inside the deleted one, moves with what is inside it, and is not deleted', async () => {
   const items = [
     folderOf({ members: [listed(U.other, 'editor')] }),
-    { id: F2, kind: 'folder', parent: F, owner: U.other, members: [listed(U.owner, 'editor', F)] },
+    { id: F2, kind: 'folder', parent: F, owner: U.other, members: [listed(U.owner, 'manager', F)] },
     { id: AO, parent: F2, owner: U.owner, members: [listed(U.other, 'editor', F)] },
   ];
   const s = await scene({ who: 'owner', items });

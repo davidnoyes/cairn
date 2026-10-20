@@ -30,7 +30,7 @@ func itemRequest(t *testing.T, owner actor, kind, parent string) (string, map[st
 
 // itemRequestIn is itemRequest for an item in folder, whose first record
 // lists what the folder requires of it: the folder's members and, when the
-// folder is someone else's, its owner as an editor, all via the folder. It
+// folder is someone else's, its owner as a manager, all via the folder. It
 // also returns that record.
 func itemRequestIn(t *testing.T, owner actor, kind, parent string, folder *owned) (string, map[string]any, e2e.MembershipBody) {
 	t.Helper()
@@ -51,7 +51,7 @@ func itemRequestIn(t *testing.T, owner actor, kind, parent string, folder *owned
 			wraps = append(wraps, map[string]any{"user": m.User, "epoch": 1, "wrapped": e2e.B64(fakeWrap)})
 		}
 		if folder.owner.id != owner.id {
-			first.Members = append(first.Members, viaMember(folder.owner, "editor", folder.id))
+			first.Members = append(first.Members, viaMember(folder.owner, "manager", folder.id))
 			wraps = append(wraps, map[string]any{"user": folder.owner.id, "epoch": 1, "wrapped": e2e.B64(fakeWrap)})
 		}
 		sortMembers(first.Members)

@@ -565,7 +565,7 @@ func nearestVia(via, parentID string) string {
 // its nearest folder, unless usable says the user's account is deactivated or
 // not verified, or live says the group was deleted: those are skipped, and
 // kept if the item already lists them. The item's owner is never listed, and
-// the folder's owner is, as an editor via the folder, when someone else owns
+// the folder's owner is, as a manager via the folder, when someone else owns
 // the item.
 func planInherit(item e2e.MembershipBody, parent *e2e.MembershipBody, parentID string, usable func(user string) bool, live func(group string) bool) inheritPlan {
 	p := inheritPlan{members: []e2e.Member{}}
@@ -577,11 +577,11 @@ func planInherit(item e2e.MembershipBody, parent *e2e.MembershipBody, parentID s
 				wantMembers[m.User] = e2e.Member{User: m.User, Role: m.Role, FP: m.FP, Via: nearestVia(m.Via, parentID)}
 			}
 		}
-		// The folder's owner reads what is in it, as an editor, unless they own
+		// The folder's owner manages what is in it, as a manager, unless they own
 		// the item. The folder lists them as its owner, so it is the nearest
 		// folder to them.
 		if parent.Owner != item.Owner {
-			wantMembers[parent.Owner] = e2e.Member{User: parent.Owner, Role: "editor", FP: parent.OwnerFP, Via: parentID}
+			wantMembers[parent.Owner] = e2e.Member{User: parent.Owner, Role: "manager", FP: parent.OwnerFP, Via: parentID}
 		}
 		for _, g := range parent.Groups {
 			wantGroups[g.Group] = e2e.GroupShare{Group: g.Group, Role: g.Role, Via: nearestVia(g.Via, parentID)}

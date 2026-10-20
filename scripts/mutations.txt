@@ -3625,22 +3625,26 @@ cmd/cairn/folder_cmds.go	"moved":   moved,	"moved":   nil,	go test ./cmd/cairn -
 internal/membership/membership.go	f.Owner != m.User && !slices.ContainsFunc	!slices.ContainsFunc	go test ./internal/membership -count=1 -run TestCheckTheFoldersOwnerReadsWhatIsInIt
 internal/membership/membership.go	f == nil || f.Owner != m.User &&	f == nil || f.Owner != "" &&	go test ./internal/membership -count=1 -run TestCheckTheFoldersOwnerReadsWhatIsInIt
 internal/membership/membership.go	if parent.Owner != body.Owner {	if false {	go test ./internal/membership -count=1 -run TestCheckTheFoldersOwnerReadsWhatIsInIt
-internal/membership/membership.go	e2e.Member{User: parent.Owner, Role: access.RoleEditor}	e2e.Member{User: parent.Owner, Role: access.RoleViewer}	go test ./internal/membership -count=1 -run TestCheckTheFoldersOwnerReadsWhatIsInIt
-internal/store/inherit.go	errors.Is(err, sql.ErrNoRows) && !group {	errors.Is(err, sql.ErrNoRows) && false {	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
-internal/store/inherit.go	SELECT 'editor' FROM artifacts	SELECT 'viewer' FROM artifacts	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
-internal/store/inherit.go	SELECT 'editor' FROM artifacts	SELECT 'manager' FROM artifacts	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
-internal/store/inherit.go	WHERE id = ? AND owner_id = ?`, via, who	WHERE id = ? AND owner_id != ?`, via, who	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
-internal/store/inherit.go	WHERE f.id = ? AND f.owner_id != ?	WHERE f.id = ? AND f.owner_id = ?	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
-internal/store/inherit.go	WHERE verified_at IS NOT NULL AND disabled = 0)	WHERE verified_at IS NOT NULL)	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
-internal/store/inherit.go	WHERE verified_at IS NOT NULL AND disabled = 0)	WHERE disabled = 0)	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
-internal/store/inherit.go	AND (m.role IS NULL OR m.role = 'viewer')	AND (m.role IS NULL)	go test ./internal/store -count=1 -run TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor
+internal/membership/membership.go	e2e.Member{User: parent.Owner, Role: access.RoleManager}	e2e.Member{User: parent.Owner, Role: access.RoleViewer}	go test ./internal/membership -count=1 -run TestCheckTheFoldersOwnerReadsWhatIsInIt
+internal/membership/membership.go	e2e.Member{User: parent.Owner, Role: access.RoleManager}	e2e.Member{User: parent.Owner, Role: access.RoleEditor}	go test ./internal/membership -count=1 -run TestCheckTheFoldersOwnerReadsWhatIsInIt
+internal/store/inherit.go	errors.Is(err, sql.ErrNoRows) && !group {	errors.Is(err, sql.ErrNoRows) && false {	go test ./internal/store -count=1 -run TestTheFoldersOwnerManagesAndIsRequiredAsAManager
+internal/store/inherit.go	SELECT 'manager' FROM artifacts	SELECT 'viewer' FROM artifacts	go test ./internal/store -count=1 -run TestTheFoldersOwnerManagesAndIsRequiredAsAManager
+internal/store/inherit.go	SELECT 'manager' FROM artifacts	SELECT 'editor' FROM artifacts	go test ./internal/store -count=1 -run TestTheFoldersOwnerManagesAndIsRequiredAsAManager
+internal/store/inherit.go	WHERE id = ? AND owner_id = ?`, via, who	WHERE id = ? AND owner_id != ?`, via, who	go test ./internal/store -count=1 -run TestTheFoldersOwnerManagesAndIsRequiredAsAManager
+internal/store/inherit.go	WHERE f.id = ? AND f.owner_id != ?	WHERE f.id = ? AND f.owner_id = ?	go test ./internal/store -count=1 -run TestTheFoldersOwnerManagesAndIsRequiredAsAManager
+internal/store/inherit.go	WHERE verified_at IS NOT NULL AND disabled = 0)	WHERE verified_at IS NOT NULL)	go test ./internal/store -count=1 -run TestTheFoldersOwnerManagesAndIsRequiredAsAManager
+internal/store/inherit.go	WHERE verified_at IS NOT NULL AND disabled = 0)	WHERE disabled = 0)	go test ./internal/store -count=1 -run TestTheFoldersOwnerManagesAndIsRequiredAsAManager
+internal/store/inherit.go	AND (m.role IS NULL OR m.role != 'manager')	AND (m.role IS NULL OR m.role = 'viewer')	go test ./internal/store -count=1 -run TestTheFoldersOwnerManagesAndIsRequiredAsAManager
+internal/store/inherit.go	AND (m.role IS NULL OR m.role != 'manager')	AND (m.role IS NULL)	go test ./internal/store -count=1 -run TestTheFoldersOwnerManagesAndIsRequiredAsAManager
 internal/client/folder_share.go	if parent.Owner != item.Owner {	if false {	go test ./internal/client -count=1 -run 'TestPlanInherit|TestTheFoldersOwner|TestAFolderInsideAFolderListsBoth'
-internal/client/folder_share.go	Role: "editor", FP: parent.OwnerFP, Via: parentID	Role: "viewer", FP: parent.OwnerFP, Via: parentID	go test ./internal/client -count=1 -run 'TestPlanInherit|TestTheFoldersOwner|TestAFolderInsideAFolderListsBoth'
+internal/client/folder_share.go	Role: "manager", FP: parent.OwnerFP, Via: parentID	Role: "viewer", FP: parent.OwnerFP, Via: parentID	go test ./internal/client -count=1 -run 'TestPlanInherit|TestTheFoldersOwner|TestAFolderInsideAFolderListsBoth'
+internal/client/folder_share.go	Role: "manager", FP: parent.OwnerFP, Via: parentID	Role: "editor", FP: parent.OwnerFP, Via: parentID	go test ./internal/client -count=1 -run 'TestPlanInherit|TestTheFoldersOwner|TestAFolderInsideAFolderListsBoth'
 internal/client/folder_share.go	FP: parent.OwnerFP, Via: parentID}	FP: "", Via: parentID}	go test ./internal/client -count=1 -run 'TestPlanInherit|TestTheFoldersOwner|TestAFolderInsideAFolderListsBoth'
 internal/client/folder_share.go	FP: parent.OwnerFP, Via: parentID}	FP: parent.OwnerFP}	go test ./internal/client -count=1 -run 'TestPlanInherit|TestTheFoldersOwner|TestAFolderInsideAFolderListsBoth'
 internal/server/web/sharing.mjs	if (parent.owner && parent.owner !== item.owner) wantMembers.set(	if (false) wantMembers.set(	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/sharing.mjs	parent.owner && parent.owner !== item.owner	parent.owner && parent.owner === item.owner	node --test internal/server/web/sharing_others_test.mjs
-internal/server/web/sharing.mjs	role: 'editor', fp: parent.ownerFp, via: parentId }	role: 'viewer', fp: parent.ownerFp, via: parentId }	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	role: 'manager', fp: parent.ownerFp, via: parentId }	role: 'viewer', fp: parent.ownerFp, via: parentId }	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	role: 'manager', fp: parent.ownerFp, via: parentId }	role: 'editor', fp: parent.ownerFp, via: parentId }	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/sharing.mjs	fp: parent.ownerFp, via: parentId }	fp: '', via: parentId }	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/sharing.mjs	fp: parent.ownerFp, via: parentId }	fp: parent.ownerFp, via: '' }	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/sharing.mjs	export const canSign = (view) => view.access === 'owner' || view.access === 'manager';	export const canSign = (view) => view.access === 'owner';	node --test internal/server/web/sharing_others_test.mjs
@@ -3709,7 +3713,8 @@ internal/server/web/folder_fixture.mjs	for (const k of inside) kids.get(k).paren
 internal/server/web/folder_fixture.mjs	if (levelOf(id) === '' && parent && kids.has(parent) && levelOf(parent) !== '') out.push(stubOf(id));	if (false) out.push(stubOf(id));	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/folder_fixture.mjs	const ownerMissing = folder.owner !== latest.owner &&	const ownerMissing = false &&	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/folder_fixture.mjs	if (folder.owner !== body.owner && primary.directory.has(folder.owner)) {	if (false) {	node --test internal/server/web/sharing_others_test.mjs
-internal/server/web/folder_fixture.mjs	?? (latestOf(via).owner === user ? { user, role: 'editor' } : undefined);	?? undefined;	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folder_fixture.mjs	?? (latestOf(via).owner === user ? { user, role: 'manager' } : undefined);	?? undefined;	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folder_fixture.mjs	?? (latestOf(via).owner === user ? { user, role: 'manager' } : undefined);	?? (latestOf(via).owner === user ? { user, role: 'editor' } : undefined);	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/folder_fixture.mjs	if (levelOf(id) !== 'owner') return jsonResponse(levelOf(id) === '' ? 404 : 403, { error: 'only the owner deletes' });	if (false) return jsonResponse(403, { error: 'only the owner deletes' });	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/folder_fixture.mjs	if (!kids.has(body.parent) || levelOf(body.parent) === '') return jsonResponse(404, { error: 'folder not found' });	if (false) return jsonResponse(404, { error: 'folder not found' });	node --test internal/server/web/sharing_others_test.mjs
 
@@ -3745,3 +3750,11 @@ cmd/cairn/folder_cmds.go	(not shared with you yet, owned by 	(not shared, owned 
 
 internal/server/web/folders.mjs	if (item?.hiddenParent && item.owner === me) return true;	if (false) return true;	node --test internal/server/web/folders_test.mjs
 internal/server/web/folders.mjs	if (item?.hiddenParent && item.owner === me) return true;	if (item?.hiddenParent) return true;	node --test internal/server/web/folders_test.mjs
+internal/membership/membership.go	if rank(body.Members[i].Role) < rank(p.Role) {	if rank(body.Members[i].Role) < rank(p.Role)-1 {	go test ./internal/membership -count=1 -run TestCheckTheFoldersOwnerReadsWhatIsInIt
+internal/server/web/folder_fixture.mjs	if (rank(m.role) < rank('manager')) return `inherit	if (rank(m.role) < rank('editor')) return `inherit	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/folder_fixture.mjs	>= rank('manager'));	>= rank('editor'));	node --test internal/server/web/sharing_others_test.mjs
+internal/client/folder_share.go	return a.Access == "owner" || a.Access == "manager" }	return a.Access == "owner" }	go test ./internal/client -count=1 -run 'TestTheFoldersOwnerSharesTheFolder|TestTheFoldersOwnerSharingAManager|TestAFanOutLeaves'
+internal/client/folder_share.go	if a.Inherit == "pending" && !canSign(a) {	if a.Inherit == "pending" {	go test ./internal/client -count=1 -run 'TestTheFoldersOwnerSharesTheFolder|TestTheFoldersOwnerSharingAManager|TestAFanOutLeaves'
+internal/server/web/sharing.mjs	export const canSign = (view) => view.access === 'owner' || view.access === 'manager';	export const canSign = (view) => view.access === 'owner';	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/sharing.mjs	if (managersOf(latest.members) !== managersOf(plan.members)) checkOwnerOnly(manager, 'change the managers', true);	if (false) checkOwnerOnly(manager, 'change the managers', true);	node --test internal/server/web/sharing_others_test.mjs
+internal/client/folder_share.go	if !isOwner(latest, k) && (!slices.Equal(managersOf(latest.Members), managersOf(next.Members)) || folder != latest.Folder) {	if false {	go test ./internal/client -count=1 -run 'TestTheFoldersOwnerSharesTheFolder|TestTheFoldersOwnerSharingAManager|TestAFanOutLeaves'

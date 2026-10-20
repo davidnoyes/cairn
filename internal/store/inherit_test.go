@@ -297,11 +297,11 @@ func TestInheritPendingDoesNotRequireAnInactiveAccount(t *testing.T) {
 	pending(true, "bob is active again")
 }
 
-// The folder's owner reads what is in it: an item someone else owns lists
-// the folder's owner as an editor via the folder, which the folder's own
+// The folder's owner manages what is in it: an item someone else owns lists
+// the folder's owner as a manager via the folder, which the folder's own
 // record never lists as a member. The nested folder here is owned by owner
 // and sits in the folder, which bob owns.
-func TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor(t *testing.T) {
+func TestTheFoldersOwnerManagesAndIsRequiredAsAManager(t *testing.T) {
 	w := newInheritWorld(t)
 	if _, err := w.s.db.Exec(`UPDATE artifacts SET owner_id = ? WHERE id = ?`, w.bob.ID, w.folder); err != nil {
 		t.Fatal(err)
@@ -327,28 +327,24 @@ func TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor(t *testing.T) {
 	if m := access(); m != nil {
 		t.Errorf("an owner who is not listed reads: %+v", m)
 	}
-	// A viewer is below the editor the folder's owner is.
+	// A viewer, and an editor, are below the manager the folder's owner is.
 	w.listIn(t, w.nested, bob("viewer", ""), nil)
 	pending(true, "the folder's owner is a viewer")
-	// Listed as an editor via the folder, which lists them as its owner.
-	w.listIn(t, w.nested, bob("editor", w.folder), nil)
-	pending(false, "the folder's owner is an editor via the folder")
-	if m := access(); m == nil || m.Role != "editor" {
-		t.Errorf("the folder's owner reads: %+v, want an editor", m)
-	}
-	// A manager entry via the folder grants no more than editor.
+	w.listIn(t, w.nested, bob("editor", ""), nil)
+	pending(true, "the folder's owner is an editor")
+	// Listed as a manager via the folder, which lists them as its owner.
 	w.listIn(t, w.nested, bob("manager", w.folder), nil)
-	if m := access(); m == nil || m.Role != "editor" {
-		t.Errorf("a manager entry via the folder: %+v, want an editor", m)
+	pending(false, "the folder's owner is a manager via the folder")
+	if m := access(); m == nil || m.Role != "manager" {
+		t.Errorf("the folder's owner manages: %+v, want a manager", m)
 	}
-	pending(true, "the role is above what the folder gives its owner")
 	// The entry has not lapsed.
 	users, _, err := lapsedOf(w, w.nested)
 	if err != nil || len(users) != 0 {
 		t.Errorf("lapsed users: %v, %v", users, err)
 	}
 	// The same entry via a folder bob does not own, or list, lapses.
-	w.listIn(t, w.nested, bob("editor", w.nested), nil)
+	w.listIn(t, w.nested, bob("manager", w.nested), nil)
 	if m := access(); m != nil {
 		t.Errorf("via a folder that neither contains the item nor is bob's: %+v", m)
 	}
@@ -379,7 +375,7 @@ func TestTheFoldersOwnerReadsAndIsRequiredAsAnEditor(t *testing.T) {
 	if _, err := w.s.db.Exec(`UPDATE artifacts SET owner_id = ? WHERE id = ?`, w.owner.ID, w.nested); err != nil {
 		t.Fatal(err)
 	}
-	w.listIn(t, w.nested, bob("editor", w.folder), nil)
+	w.listIn(t, w.nested, bob("manager", w.folder), nil)
 	if m := access(); m == nil {
 		t.Fatal("the entry does not read while the item is in the folder")
 	}

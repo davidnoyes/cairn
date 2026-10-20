@@ -65,6 +65,27 @@ func applyOK(t *testing.T, c *Client) *ApplyResult {
 	return res
 }
 
+// shareManagerLeavingPending lists cat as a manager of Work and fans it out.
+// That adds a manager to every item inside, which only an item's owner signs,
+// so ada's fan-out leaves bob's items pending: they fail with
+// ErrManagerOwnerOnly, which Apply reports as waiting on bob.
+func shareManagerLeavingPending(t *testing.T, w *othersTree) *FanOutResult {
+	t.Helper()
+	if _, err := w.ada.Share(w.work, "cat@example.com", "manager", false); err != nil {
+		t.Fatal(err)
+	}
+	res, err := w.ada.FanOut(w.work, nil, nil)
+	if !errors.Is(err, ErrFanOutIncomplete) {
+		t.Fatalf("FanOut = %+v, %v; want it incomplete", res, err)
+	}
+	for _, it := range res.Items {
+		if it.State == FanOutFailed && !errors.Is(it.Err, ErrManagerOwnerOnly) {
+			t.Fatalf("%s: %v", it.ID, it.Err)
+		}
+	}
+	return res
+}
+
 func TestAnEditorCreatesAndMovesItemsInSomeoneElsesFolder(t *testing.T) {
 	w := newOthersTree(t)
 	// The records name the folder, and bob's items are current.
@@ -94,39 +115,55 @@ func TestAnEditorCreatesAndMovesItemsInSomeoneElsesFolder(t *testing.T) {
 	}
 }
 
+// An item whose record does not list the folder's owner is one she cannot
+// read, so she cannot sign it: the folder Inner, with cat's items in it, is
+// moved into ada's folder Work, and cat's items are not in step with Work yet.
+// Ada signs Inner, which lists her, and cat's items wait on cat.
 func TestAFanOutLeavesOtherPeoplesItemsWaitingOnTheirOwners(t *testing.T) {
 	w := newOthersTree(t)
-	if _, err := w.ada.Share(w.work, "cat@example.com", "viewer", false); err != nil {
+	inner := mustFolder(t, w.bob, "Inner", "")
+	if _, err := w.bob.Share(inner, "cat@example.com", "editor", false); err != nil {
 		t.Fatal(err)
 	}
-	res, err := w.ada.FanOut(w.work, nil, nil)
-	if err != nil {
-		t.Fatalf("FanOut: %v", err)
+	fanOutOK(t, w.bob, inner, nil)
+	catItem := mustCreate(t, w.cat, "catItem", InFolder(inner)).ID
+	catFolder := mustFolder(t, w.cat, "catFolder", inner)
+	deep := mustCreate(t, w.cat, "deep", InFolder(catFolder)).ID
+	if _, err := w.bob.Move(inner, w.work); err != nil {
+		t.Fatal(err)
 	}
-	if got := stateOf(res, w.mine); got != FanOutUpdated {
-		t.Errorf("ada's item: %q, want updated", got)
+	// Bob manages cat's items as the folder's owner, but cat is the only
+	// manager they list, so his fan-out leaves them to her.
+	if _, err := w.bob.FanOut(inner, &Placing{Parent: w.work}, nil); !errors.Is(err, ErrFanOutIncomplete) {
+		t.Fatalf("bob's placement: %v", err)
 	}
-	for _, id := range []string{w.theirs, w.theirFolder} {
-		it := itemResult(res, id)
-		if it == nil || it.State != FanOutWaits || it.Err != nil || it.OwnerEmail != "bob@example.com" {
-			t.Errorf("%s: %+v, want waits on bob", id, it)
+	if _, err := w.ada.Share(w.work, "dan@example.com", "viewer", false); err != nil {
+		t.Fatal(err)
+	}
+	res := fanOutOK(t, w.ada, w.work, nil)
+	for _, id := range []string{w.mine, w.theirs, inner} {
+		if got := stateOf(res, id); got != FanOutUpdated {
+			t.Errorf("%s: %q, want updated", id, got)
 		}
-		wantInherit(t, w.bob, id, "pending")
+	}
+	for _, id := range []string{catItem, catFolder} {
+		it := itemResult(res, id)
+		if it == nil || it.State != FanOutWaits || it.Err != nil || it.OwnerEmail != "cat@example.com" {
+			t.Errorf("%s: %+v, want waits on cat", id, it)
+		}
+		wantInherit(t, w.cat, id, "pending")
 	}
 	// The walk does not go into a folder that waits.
-	if it := itemResult(res, w.inside); it != nil {
+	if it := itemResult(res, deep); it != nil {
 		t.Errorf("the item inside the waiting folder was visited: %+v", it)
 	}
-	wantStatus(t, w.cat, w.mine, http.StatusOK)
-	wantStatus(t, w.cat, w.theirs, http.StatusNotFound)
+	wantStatus(t, w.dan, w.mine, http.StatusOK)
+	wantStatus(t, w.dan, catItem, http.StatusNotFound)
 }
 
 func TestAMemberSeesAnItemTheyCannotReadAsAStub(t *testing.T) {
 	w := newOthersTree(t)
-	if _, err := w.ada.Share(w.work, "cat@example.com", "viewer", false); err != nil {
-		t.Fatal(err)
-	}
-	fanOutOK(t, w.ada, w.work, nil)
+	shareManagerLeavingPending(t, w)
 	tree, err := w.cat.Tree(w.work)
 	if err != nil {
 		t.Fatal(err)
@@ -176,10 +213,7 @@ func TestAMemberSeesAnItemTheyCannotReadAsAStub(t *testing.T) {
 
 func TestApplyBringsTheItemsOfItsOwnerInStep(t *testing.T) {
 	w := newOthersTree(t)
-	if _, err := w.ada.Share(w.work, "cat@example.com", "viewer", false); err != nil {
-		t.Fatal(err)
-	}
-	fanOutOK(t, w.ada, w.work, nil)
+	shareManagerLeavingPending(t, w)
 
 	// Ada owns none of what is pending, so her apply only reports it.
 	res := applyOK(t, w.ada)
@@ -226,17 +260,18 @@ func TestApplyBringsTheItemsOfItsOwnerInStep(t *testing.T) {
 
 func TestUnsharingTakesAnotherOwnersItemAtOnceAndApplyExcludesIt(t *testing.T) {
 	w := newOthersTree(t)
-	if _, err := w.ada.Share(w.work, "cat@example.com", "viewer", false); err != nil {
-		t.Fatal(err)
-	}
-	fanOutOK(t, w.ada, w.work, nil)
+	shareManagerLeavingPending(t, w)
 	applyOK(t, w.bob)
 	wantStatus(t, w.cat, w.theirs, http.StatusOK)
 
 	if _, err := w.ada.Unshare(w.work, "cat@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	fan := fanOutOK(t, w.ada, w.work, nil)
+	// Cat is a manager of bob's items, and only their owner removes one.
+	fan, err := w.ada.FanOut(w.work, nil, nil)
+	if !errors.Is(err, ErrFanOutIncomplete) {
+		t.Fatalf("FanOut = %+v, %v", fan, err)
+	}
 	// Cat loses bob's items before anyone applies: removal is immediate.
 	for _, id := range []string{w.theirs, w.theirFolder, w.inside} {
 		wantStatus(t, w.cat, id, http.StatusNotFound)
@@ -244,8 +279,8 @@ func TestUnsharingTakesAnotherOwnersItemAtOnceAndApplyExcludesIt(t *testing.T) {
 	if got := stateOf(fan, w.mine); got != FanOutNewEpoch {
 		t.Errorf("ada's item: %q, want newEpoch", got)
 	}
-	if got := stateOf(fan, w.theirs); got != FanOutWaits {
-		t.Errorf("bob's item in ada's fan-out: %q, want waits", got)
+	if it := itemResult(fan, w.theirs); it == nil || it.State != FanOutFailed || !errors.Is(it.Err, ErrManagerOwnerOnly) {
+		t.Errorf("bob's item in ada's fan-out: %+v, want failed with ErrManagerOwnerOnly", it)
 	}
 	wantInherit(t, w.bob, w.theirs, "pending")
 	// Bob's apply starts the next epoch without cat.
@@ -266,10 +301,7 @@ func TestUnsharingTakesAnotherOwnersItemAtOnceAndApplyExcludesIt(t *testing.T) {
 
 func TestApplyAfterTheFolderIsDeletedNamesNoFolder(t *testing.T) {
 	w := newOthersTree(t)
-	if _, err := w.ada.Share(w.work, "cat@example.com", "viewer", false); err != nil {
-		t.Fatal(err)
-	}
-	fanOutOK(t, w.ada, w.work, nil)
+	shareManagerLeavingPending(t, w)
 	applyOK(t, w.bob)
 
 	// Ada sees what the delete does before it runs: her own item goes, bob's
@@ -282,7 +314,7 @@ func TestApplyAfterTheFolderIsDeletedNamesNoFolder(t *testing.T) {
 		t.Fatalf("contents: %+v", contents)
 	}
 	for _, m := range contents.Moved {
-		if m.Access != "editor" || m.OwnerID == "" {
+		if m.Access != "manager" || m.OwnerID == "" {
 			t.Errorf("moved %+v", m)
 		}
 	}
@@ -377,10 +409,7 @@ func TestAManagerCannotConfirmAnotherOwnersOrphan(t *testing.T) {
 
 func TestApplyReportsAnItemItCannotWrite(t *testing.T) {
 	w := newOthersTree(t)
-	if _, err := w.ada.Share(w.work, "cat@example.com", "viewer", false); err != nil {
-		t.Fatal(err)
-	}
-	fanOutOK(t, w.ada, w.work, nil)
+	shareManagerLeavingPending(t, w)
 	// The server refuses the write of one item's record.
 	failing := NewWithKey(w.bob.Host, *w.bob.Key)
 	failing.Anchors = w.bob.Anchors
@@ -471,11 +500,11 @@ func TestApplyApprovesGroupNewcomers(t *testing.T) {
 	if _, err := w.ada.ShareGroup(w.work, "Reviewers", "viewer", false); err != nil {
 		t.Fatal(err)
 	}
-	fanOutOK(t, w.ada, w.work, nil)
-	// Bob's apply lists the group and approves cat, who is in it now.
-	res := applyOK(t, w.bob)
-	if len(res.FanOut.Items) != 1 || !slices.Contains(emails(res.FanOut.Items[0].Approved), "cat@example.com") {
-		t.Fatalf("bob's apply: %+v", res.FanOut.Items)
+	// Ada manages bob's item as the folder's owner, so her fan-out lists the
+	// group in it and approves cat, who is in it now.
+	fan := fanOutOK(t, w.ada, w.work, nil)
+	if it := itemResult(fan, w.theirs); it == nil || !slices.Contains(emails(it.Approved), "cat@example.com") {
+		t.Fatalf("ada's fan-out: %+v", fan.Items)
 	}
 	wantStatus(t, w.cat, w.theirs, http.StatusOK)
 	// A newcomer to the group waits for an approver of the item, and bob's
@@ -485,10 +514,10 @@ func TestApplyApprovesGroupNewcomers(t *testing.T) {
 	}
 	wantStatus(t, w.dan, w.theirs, http.StatusNotFound)
 	// Cat only reads the item, so her apply approves no one.
-	if res = applyOK(t, w.cat); len(res.Approvals) != 0 {
+	if res := applyOK(t, w.cat); len(res.Approvals) != 0 {
 		t.Errorf("a viewer's apply approved: %+v", res.Approvals)
 	}
-	res = applyOK(t, w.bob)
+	res := applyOK(t, w.bob)
 	// He is an editor of the folder too, so he approves dan there as well.
 	approved := map[string][]string{}
 	for _, a := range res.Approvals {
@@ -510,10 +539,7 @@ func TestApplyLeavesAnItemInAFolderItsOwnerCannotRead(t *testing.T) {
 	if _, err := w.ada.Unshare(w.work, "bob@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.ada.Share(w.work, "cat@example.com", "viewer", false); err != nil {
-		t.Fatal(err)
-	}
-	fanOutOK(t, w.ada, w.work, nil)
+	shareManagerLeavingPending(t, w)
 	wantInherit(t, w.bob, w.theirs, "pending")
 	view, err := w.bob.getArtifact(w.theirs)
 	if err != nil || view.ParentID != "" || !view.HiddenParent {

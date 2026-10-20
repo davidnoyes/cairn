@@ -9,7 +9,7 @@
 // checkInherited and RulePlacement, and internal/store/inherit.go), and what
 // the server does for other people's items in a folder (internal/server/
 // folders.go, internal/store/folders.go): a folder's owner is listed on every
-// item inside it by someone else, as an editor via the folder; GET
+// item inside it by someone else, as a manager via the folder; GET
 // /api/artifacts lists an item the caller cannot read, in a folder they read,
 // as a stub; an item is placed in a folder by an editor of it, and taken out
 // by one, or by its owner; and a folder is deleted unless an item its owner
@@ -60,8 +60,8 @@ export async function makeFolderServer({ who, users = [], items }) {
   };
   const groupExists = (g) => primary.groups.has(g);
   // listing is the entry folder via gives user: their member entry, or, for
-  // the folder's owner, the editor entry every item of someone else lists.
-  const listing = (via, user) => latestOf(via).members.find((x) => x.user === user) ?? (latestOf(via).owner === user ? { user, role: 'editor' } : undefined);
+  // the folder's owner, the manager entry every item of someone else lists.
+  const listing = (via, user) => latestOf(via).members.find((x) => x.user === user) ?? (latestOf(via).owner === user ? { user, role: 'manager' } : undefined);
 
   // viaState is store.viaState: the users and groups whose via no longer
   // holds, and whether a via entry holds a higher role than its folder lists.
@@ -95,7 +95,7 @@ export async function makeFolderServer({ who, users = [], items }) {
     if (!parent || !kids.has(parent)) return 'ok';
     const latest = latestOf(id);
     const folder = latestOf(parent);
-    const ownerMissing = folder.owner !== latest.owner && primary.directory.has(folder.owner) && !(latest.members.find((m) => m.user === folder.owner) && rank(latest.members.find((m) => m.user === folder.owner).role) >= rank('editor'));
+    const ownerMissing = folder.owner !== latest.owner && primary.directory.has(folder.owner) && !(latest.members.find((m) => m.user === folder.owner) && rank(latest.members.find((m) => m.user === folder.owner).role) >= rank('manager'));
     const missing = ownerMissing || folder.members.some((p) => p.user !== latest.owner && !(latest.members.find((m) => m.user === p.user) && rank(latest.members.find((m) => m.user === p.user).role) >= rank(p.role)))
       || (folder.groups ?? []).some((p) => groupExists(p.group) && !((latest.groups ?? []).find((g) => g.group === p.group) && rank((latest.groups ?? []).find((g) => g.group === p.group).role) >= rank(p.role)));
     return missing ? 'pending' : 'ok';
@@ -131,12 +131,12 @@ export async function makeFolderServer({ who, users = [], items }) {
       if (!m) return `inherit: member ${p.user} is missing: folder ${parent} lists them as ${p.role}`;
       if (rank(m.role) < rank(p.role)) return `inherit: member ${p.user} is ${m.role}: folder ${parent} lists them as ${p.role}`;
     }
-    // The folder's owner reads what is in it: an editor entry, via the folder,
+    // The folder's owner manages what is in it: a manager entry, via the folder,
     // while their account is one the directory serves.
     if (folder.owner !== body.owner && primary.directory.has(folder.owner)) {
       const m = body.members.find((x) => x.user === folder.owner);
-      if (!m) return `inherit: member ${folder.owner} is missing: folder ${parent} lists them as editor`;
-      if (rank(m.role) < rank('editor')) return `inherit: member ${folder.owner} is ${m.role}: folder ${parent} lists them as editor`;
+      if (!m) return `inherit: member ${folder.owner} is missing: folder ${parent} lists them as manager`;
+      if (rank(m.role) < rank('manager')) return `inherit: member ${folder.owner} is ${m.role}: folder ${parent} lists them as manager`;
     }
     for (const p of folder.groups ?? []) {
       if (!groupExists(p.group)) continue;

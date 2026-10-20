@@ -41,13 +41,47 @@ func newOthersWorld(t *testing.T) (w *teamWorld, work, theirs string) {
 	return w, work, theirs
 }
 
+// shareManagerOfOthersItems shares Work with email as a manager. That changes
+// the managers of bob's item, which only bob signs, so ada's fan-out leaves it
+// pending, and the share says so by failing.
+func shareManagerOfOthersItems(t *testing.T, email string) string {
+	t.Helper()
+	text, err := runQuiet(t, runShare, "Work", email, "--role", "manager")
+	if err == nil || !strings.Contains(err.Error(), "not up to date with their folder yet") {
+		t.Fatalf("share: %v, want the fan-out to be incomplete", err)
+	}
+	return text
+}
+
+// An item whose record lacks the folder's owner is one the owner cannot read,
+// so a stub: bob's folder Inner, with cat's item in it, is moved into ada's
+// folder Work, and the item has not been brought in step with Work yet. Ada
+// signs Inner herself, as a manager, and the item waits on cat.
 func TestShareAFolderReportsItemsThatWaitOnTheirOwners(t *testing.T) {
-	_, _, theirs := newOthersWorld(t)
-	text, err := runQuiet(t, runShare, "Work", "cat@example.com", "--role", "viewer")
+	w := newTeamWorld(t)
+	w.as(t, "ada")
+	runJSON[client.Artifact](t, runFolder, "create", "Work", "--json")
+	if _, err := runQuiet(t, runShare, "Work", "bob@example.com", "--role", "editor"); err != nil {
+		t.Fatal(err)
+	}
+	w.as(t, "bob")
+	inner := runJSON[client.Artifact](t, runFolder, "create", "Inner", "--json").ID
+	if _, err := runQuiet(t, runShare, "Inner", "cat@example.com", "--role", "editor"); err != nil {
+		t.Fatal(err)
+	}
+	w.as(t, "cat")
+	theirs := runJSON[client.Artifact](t, runArtifact, "create", "theirs", "--in", inner, "--json").ID
+	w.as(t, "bob")
+	// Bob manages the item as the folder's owner, but only cat lists a manager.
+	if _, err := runQuiet(t, runMove, inner, "--to", "Work"); err != nil && !strings.Contains(err.Error(), "not up to date with their folder yet") {
+		t.Fatal(err)
+	}
+	w.as(t, "ada")
+	text, err := runQuiet(t, runShare, "Work", "dan@example.com", "--role", "viewer")
 	if err != nil {
 		t.Fatalf("share: %v", err)
 	}
-	if !strings.Contains(text, "1 wait on their owners") || !strings.Contains(text, theirs+": waits on bob@example.com") {
+	if !strings.Contains(text, "1 wait on their owners") || !strings.Contains(text, theirs+": waits on cat@example.com") {
 		t.Errorf("share printed %q", text)
 	}
 	// Sharing it again resumes, and prints it as JSON.
@@ -58,16 +92,19 @@ func TestShareAFolderReportsItemsThatWaitOnTheirOwners(t *testing.T) {
 			Items   []struct{ ID, State, Owner, OwnerEmail string }
 		}
 	}](t, runShare, "Work", "dan@example.com", "--role", "viewer", "--json")
-	if f := res.FanOut; f.Waiting != 1 || len(f.Failed) != 0 || len(f.Items) != 1 || f.Items[0].State != "waits" || f.Items[0].OwnerEmail != "bob@example.com" || f.Items[0].Owner == "" {
+	if f := res.FanOut; f.Waiting != 1 || len(f.Failed) != 0 || len(f.Items) != 2 || f.Items[1].State != "waits" || f.Items[1].OwnerEmail != "cat@example.com" || f.Items[1].Owner == "" {
 		t.Errorf("fanOut = %+v", res.FanOut)
 	}
 }
 
+func TestShareAFolderAsManagerLeavesOthersItemsPendingForTheirOwners(t *testing.T) {
+	newOthersWorld(t)
+	shareManagerOfOthersItems(t, "cat@example.com")
+}
+
 func TestFolderListShowsAStubForAnItemNotSharedYet(t *testing.T) {
 	w, work, theirs := newOthersWorld(t)
-	if _, err := runQuiet(t, runShare, "Work", "cat@example.com", "--role", "viewer"); err != nil {
-		t.Fatal(err)
-	}
+	shareManagerOfOthersItems(t, "cat@example.com")
 	w.as(t, "cat")
 	text, err := runQuiet(t, runFolder, "list", "Work")
 	if err != nil {
@@ -89,9 +126,7 @@ func TestFolderListShowsAStubForAnItemNotSharedYet(t *testing.T) {
 
 func TestApplyPrintsWhatItDidAndWhatWaits(t *testing.T) {
 	w, _, theirs := newOthersWorld(t)
-	if _, err := runQuiet(t, runShare, "Work", "cat@example.com", "--role", "viewer"); err != nil {
-		t.Fatal(err)
-	}
+	shareManagerOfOthersItems(t, "cat@example.com")
 	// Ada owns none of what is pending: it waits on bob.
 	text, err := runQuiet(t, runApply)
 	if err != nil || !strings.Contains(text, "1 item still waits on someone else:\n") || !strings.Contains(text, theirs+": waits on bob@example.com") {
@@ -126,9 +161,7 @@ func TestApplyCountsSeveralItemsThatWait(t *testing.T) {
 	w.as(t, "bob")
 	runJSON[client.Artifact](t, runArtifact, "create", "more", "--in", work, "--json")
 	w.as(t, "ada")
-	if _, err := runQuiet(t, runShare, "Work", "cat@example.com", "--role", "viewer"); err != nil {
-		t.Fatal(err)
-	}
+	shareManagerOfOthersItems(t, "cat@example.com")
 	text, err := runQuiet(t, runApply)
 	if err != nil || !strings.Contains(text, "2 items still wait on someone else:\n") {
 		t.Errorf("ada's apply printed %q, %v", text, err)

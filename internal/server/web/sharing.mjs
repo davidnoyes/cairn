@@ -1547,9 +1547,9 @@ const sameEntries = (a, b, key) => a.length === b.length && a.every((e, i) => e[
 // user's account is deactivated, not verified or deleted, or live(groupId)
 // says the group was deleted: those are skipped, and kept if the item already
 // lists them. The item's owner is never listed. When someone else owns the
-// item, the folder's owner is wanted too, as an editor marked with the folder,
+// item, the folder's owner is wanted too, as a manager marked with the folder,
 // under the fingerprint the folder's record gives them (ownerFp): as in Google
-// Drive, the owner of a folder opens what is inside it. They are added or
+// Drive, the owner of a folder manages what is inside it. They are added or
 // skipped like any user. Returns {members, groups, added, addedGroups,
 // skippedUsers, skippedGroups, epoch}. Mirrors planInherit.
 export function planInherit(item, parent, parentId, usable, live) {
@@ -1557,7 +1557,7 @@ export function planInherit(item, parent, parentId, usable, live) {
   const wantMembers = new Map();
   const wantGroups = new Map();
   if (parent) {
-    if (parent.owner && parent.owner !== item.owner) wantMembers.set(parent.owner, { user: parent.owner, role: 'editor', fp: parent.ownerFp, via: parentId });
+    if (parent.owner && parent.owner !== item.owner) wantMembers.set(parent.owner, { user: parent.owner, role: 'manager', fp: parent.ownerFp, via: parentId });
     for (const m of parent.members) {
       if (m.user !== item.owner) wantMembers.set(m.user, { user: m.user, role: m.role, fp: m.fp, via: nearestVia(m.via, parentId) });
     }

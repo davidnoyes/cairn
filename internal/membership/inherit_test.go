@@ -202,8 +202,8 @@ func (f *fixture) ownedBy(u *tUser) {
 	fr.Owner, fr.OwnerFP = u.ID, u.FP
 }
 
-// The folder's owner reads what is in it: an item someone else owns lists
-// the owner of its folder as an editor via that folder. The item in the
+// The folder's owner manages what is in it: an item someone else owns lists
+// the owner of its folder as a manager via that folder. The item in the
 // fixture is owned by u-o, and folder F by u-c.
 func TestCheckTheFoldersOwnerReadsWhatIsInIt(t *testing.T) {
 	ownerEntry := func(f *fixture, role, via string) e2e.Member {
@@ -216,16 +216,21 @@ func TestCheckTheFoldersOwnerReadsWhatIsInIt(t *testing.T) {
 		rule   Rule
 		msg    string
 	}{
-		{name: "the record lists the owner as an editor via the folder",
+		{name: "the record lists the owner as a manager via the folder",
 			edit: func(f *fixture, b *e2e.MembershipBody) {
-				b.Members = append(b.Members, ownerEntry(f, "editor", folderF))
+				b.Members = append(b.Members, ownerEntry(f, "manager", folderF))
 			}},
-		{name: "a direct grant at editor keeps no via",
+		{name: "a direct grant at manager keeps no via",
 			edit: func(f *fixture, b *e2e.MembershipBody) {
-				b.Members = append(b.Members, ownerEntry(f, "editor", ""))
+				b.Members = append(b.Members, ownerEntry(f, "manager", ""))
 			}},
 		{name: "the record omits the folder's owner",
 			status: 409, rule: RuleInherit, msg: "member u-c is missing"},
+		{name: "the record lists the folder's owner as an editor",
+			edit: func(f *fixture, b *e2e.MembershipBody) {
+				b.Members = append(b.Members, ownerEntry(f, "editor", folderF))
+			},
+			status: 409, rule: RuleInherit, msg: "member u-c is editor: folder " + folderF + " lists them as manager"},
 		{name: "the record lists the folder's owner as a viewer",
 			edit: func(f *fixture, b *e2e.MembershipBody) {
 				b.Members = append(b.Members, ownerEntry(f, "viewer", ""))
@@ -240,16 +245,16 @@ func TestCheckTheFoldersOwnerReadsWhatIsInIt(t *testing.T) {
 		{name: "a via naming a folder that someone else owns",
 			edit: func(f *fixture, b *e2e.MembershipBody) {
 				f.ownedBy(f.a)
-				b.Members = append(b.Members, ownerEntry(f, "editor", folderF))
+				b.Members = append(b.Members, ownerEntry(f, "manager", folderF))
 			},
 			status: 409, rule: RuleVia, msg: "member u-c via " + folderF},
 		{name: "a folder further up, whose owner its record lists via itself",
 			edit: func(f *fixture, b *e2e.MembershipBody) {
 				f.cur.Folders[folderG] = folderRecord(folderG, nil, nil)
 				f.cur.Folders[folderG].Owner = f.a.ID
-				f.cur.Folders[folderF].Members = []e2e.Member{{User: f.a.ID, Role: "editor", FP: f.a.FP, Via: folderG}}
-				b.Members = append(b.Members, ownerEntry(f, "editor", folderF))
-				b.Members[0].Via = folderG
+				f.cur.Folders[folderF].Members = []e2e.Member{{User: f.a.ID, Role: "manager", FP: f.a.FP, Via: folderG}}
+				b.Members = append(b.Members, ownerEntry(f, "manager", folderF))
+				b.Members[0].Role, b.Members[0].Via = "manager", folderG
 			}},
 	}
 	for _, c := range cases {

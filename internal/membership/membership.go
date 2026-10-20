@@ -715,7 +715,7 @@ func rank(role string) int {
 
 // checkInherited is the folder rules for a record of an item: every via is
 // true, and the record lists every user and group the item's folder lists,
-// at that role or higher, and the folder's owner as an editor. The folder's
+// at that role or higher, and the folder's owner as a manager. The folder's
 // own record already holds its ancestors' entries, so one level covers every
 // level. A refusal is a 409 that names the entry at fault.
 func checkInherited(cur Current, body *e2e.MembershipBody, dir Directory) error {
@@ -741,12 +741,12 @@ func checkInherited(cur Current, body *e2e.MembershipBody, dir Directory) error 
 	if parent == nil {
 		return nil
 	}
-	// The folder's owner reads what is in it, as an editor, unless they own
+	// The folder's owner manages what is in it, as a manager, unless they own
 	// the item. The folder lists them as its owner, not as a member, so this
 	// entry is not in parent.Members.
 	required := slices.Clone(parent.Members)
 	if parent.Owner != body.Owner {
-		required = append(required, e2e.Member{User: parent.Owner, Role: access.RoleEditor})
+		required = append(required, e2e.Member{User: parent.Owner, Role: access.RoleManager})
 	}
 	for _, p := range required {
 		if p.User == body.Owner {

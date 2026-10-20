@@ -50,7 +50,7 @@ type viaCheck struct {
 
 // holds reports whether the entry for who, a group ID when group is true and
 // a user ID otherwise, still counts under via, and the role via's latest
-// record lists them under, which is editor for the folder's owner. An empty
+// record lists them under, which is manager for the folder's owner. An empty
 // via is a direct grant, which always counts and has no folder's role to
 // report.
 func (v *viaCheck) holds(via string, group bool, who string) (ok bool, role string, err error) {
@@ -74,8 +74,8 @@ func (v *viaCheck) holds(via string, group bool, who string) (ok bool, role stri
 	err = v.q.QueryRow(query, via, who).Scan(&role)
 	if errors.Is(err, sql.ErrNoRows) && !group {
 		// A folder lists its owner as its owner, not as a member, and the
-		// owner reads what is in it as an editor.
-		err = v.q.QueryRow(`SELECT 'editor' FROM artifacts WHERE id = ? AND owner_id = ?`, via, who).Scan(&role)
+		// owner manages what is in it.
+		err = v.q.QueryRow(`SELECT 'manager' FROM artifacts WHERE id = ? AND owner_id = ?`, via, who).Scan(&role)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, "", nil
@@ -206,8 +206,8 @@ func recordNamesOtherFolder(q rowQuerier, a *Artifact) (bool, error) {
 // with its folder: it names another folder than a sits in, or lacks a user or
 // group the folder lists, or lists one at a lower role, or holds an entry
 // whose via no longer holds, or whose role is above what its folder lists
-// them as now, or lacks the owner of its folder as an editor. A group that was
-// deleted is not required, because it grants nothing, and neither is a user
+// them as now, or lacks the owner of its folder as a manager. A group that
+// was deleted is not required, because it grants nothing, and neither is a user
 // whose account is deactivated or not verified, because a record may not add
 // one, nor the item's own owner.
 func (s *Store) InheritPending(a *Artifact) (bool, error) {
@@ -246,7 +246,7 @@ func (s *Store) InheritPending(a *Artifact) (bool, error) {
 			LEFT JOIN artifact_members m ON m.artifact_id = ? AND m.user_id = f.owner_id
 			WHERE f.id = ? AND f.owner_id != ?
 			AND f.owner_id IN (SELECT id FROM users WHERE verified_at IS NOT NULL AND disabled = 0)
-			AND (m.role IS NULL OR m.role = 'viewer')
+			AND (m.role IS NULL OR m.role != 'manager')
 		)`, id, a.ParentID, a.OwnerID, id, a.ParentID, id, a.ParentID, a.OwnerID).Scan(&missing)
 	return missing, err
 }

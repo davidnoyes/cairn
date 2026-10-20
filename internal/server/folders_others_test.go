@@ -248,8 +248,8 @@ func TestAnItemYouCannotReadIsListedAsAStub(t *testing.T) {
 	if e := stubOfItem(t, w.carol.testClient, item.id); e == nil || e["access"] != "viewer" || e["meta"] == nil && e["team"] == nil {
 		t.Errorf("after bob's record the entry is %v, want the full view", e)
 	}
-	// The folder's owner reads what is in it, as an editor.
-	if s := stubOfItem(t, w.alice.testClient, item.id); s == nil || s["access"] != "editor" {
+	// The folder's owner manages what is in it.
+	if s := stubOfItem(t, w.alice.testClient, item.id); s == nil || s["access"] != "manager" {
 		t.Errorf("alice's entry for bob's item: %v", s)
 	}
 }
