@@ -2761,7 +2761,16 @@ it comes from. An entry without `via` is a direct grant. See
   contains the item and still lists the user or group. The server checks
   this on every request, so unsharing a folder, or moving an item out of it,
   stops access at once. Until the item's next epoch, such a user shows as
-  still holding the key, like a user who left a group.
+  `left` in the pending list, still holding the key, like a user who left a
+  group.
+- **The folder's role is the ceiling.** An entry with `via` grants no more
+  than the role the folder currently gives that user, and the item is
+  pending while its entry says more. Lowering someone on a folder, from
+  editor to viewer, therefore takes effect on every item at once, before
+  their records catch up.
+- **Which folder a mark names.** `via` names the nearest folder that lists
+  the user or group itself, which may be above the item's parent. A change
+  to that folder's record then reaches the whole subtree at once.
 
 ### Fan-out
 
