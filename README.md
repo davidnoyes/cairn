@@ -553,10 +553,13 @@ stopped part way shows as pending, with **Finish sharing** in the dialog.
 A folder can hold items that other people own, as in Google Drive:
 
 - **Placing items.** To put your own item in someone else's folder, you need
-  editor access to that folder. The folder's owner then reads the item as an
-  editor.
+  editor access to that folder. The folder's owner then manages the item:
+  they can edit it and share it.
 - **Waiting items.** When a folder is shared, only an item's owner or one of
-  its managers can sign that item's new member list. Until they do, the item
+  its managers can sign that item's new member list. A folder's owner manages
+  everything under it, so sharing your own folder covers every item at once.
+  When someone else shares it, or adds a manager, the items they cannot sign
+  wait on their owners. Until an owner signs, their item
   shows as a stub: you see its owner but not its name. To sign every item
   that waits on you, run `cairn apply` or click **Apply** on the
   **Artifacts** tab. Cairn never applies a share without that step.

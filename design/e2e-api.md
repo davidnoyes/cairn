@@ -2876,17 +2876,25 @@ other people own.
 - A manager of an item may move it, but only its owner signs where it is: a
   manager's record may not change `folder`. The item shows as pending until
   its owner places it, with `cairn apply` or a move.
-- **The folder's owner reads what is in it.** An item someone else owns lists
-  the owner of its folder as an inherited `editor`, with `via` naming that
-  folder, as a folder in Google Drive lets its owner open what is inside. The
-  more-never-fewer rule requires this entry like any other, and it ends when
-  the item leaves the folder.
+- **The folder's owner manages what is in it.** An item someone else owns
+  lists the owner of its folder as an inherited `manager`, with `via` naming
+  that folder, as a folder in Google Drive lets its owner edit and share what
+  is inside. The more-never-fewer rule requires this entry like any other, a
+  record listing them below `manager` is refused, and the entry ends when the
+  item leaves the folder. The item's owner adds the entry when placing the
+  item, because only an owner changes an item's managers.
 
 ### Inheritance others have to apply
 
 The client that shares a folder signs the records of the items it can sign:
-those its user owns or manages. Any other item inside stays pending, as in
-F2, until its owner or one of its managers applies the share.
+those its user owns or manages. Because a folder's owner manages everything
+under it, a share by the folder's owner signs every item at once. Two cases
+still wait on an item's owner, as in F2:
+
+- someone other than the folder's owner shares it, and the item is not theirs
+  to sign;
+- the share adds a manager, which changes the item's managers, so only its
+  owner signs it. A fan-out reports such an item as waiting on its owner.
 
 - **Listed, not readable.** A member of a folder sees each item inside it.
   An item they cannot read yet appears as a stub, with its ID, its kind, its
