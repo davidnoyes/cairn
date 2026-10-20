@@ -477,6 +477,17 @@ test('an item someone else owns can be removed from a folder the caller may edit
   assert.equal(can(own, 'nope'), false);
 });
 
+test('the caller\'s own item in a folder they cannot read can be removed from it, by its owner only', () => {
+  const hidden = { id: 'lost', kind: 'artifact', parent: null, hiddenParent: true, name: 'lost' };
+  const list = [...folderTree('viewer'), ...mine([hidden])];
+  assert.equal(canRemoveFromFolder(list, 'lost', ME), true);
+  assert.deepEqual(rowActions(list.find((i) => i.id === 'lost'), list, ME), ['share', 'move', 'delete', 'remove']);
+  const managed = [...folderTree('viewer'), ...them([{ ...hidden, access: 'manager' }])];
+  assert.equal(canRemoveFromFolder(managed, 'lost', ME), false, 'a manager needs editor access to the folder');
+  const top = [...folderTree('viewer'), ...mine([{ ...hidden, hiddenParent: undefined }])];
+  assert.equal(canRemoveFromFolder(top, 'lost', ME), false, 'at the top level already');
+});
+
 test('rowActions: a stub offers nothing but removal, the owner Share, Move and Delete', () => {
   const list = folderTree('viewer');
   const actions = (id) => rowActions(list.find((i) => i.id === id), list, ME);

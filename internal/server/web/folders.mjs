@@ -151,17 +151,20 @@ export const applicable = (items) => items.filter((a) => a.inherit === 'pending'
 // canRemoveFromFolder says whether the caller (user ID me) may take the item
 // id out of the folder it sits in, as an editor of the folder: it is someone
 // else's, a stub too, and the folder is one the caller may edit. The server
-// moves it to its owner's top level.
+// moves it to its owner's top level. Its owner may also take it out of a
+// folder they can no longer read, which the server marks hiddenParent, as
+// the server lets them.
 export function canRemoveFromFolder(items, id, me) {
   const item = items.find((i) => i.id === id);
+  if (item?.hiddenParent && item.owner === me) return true;
   const folder = items.find((i) => i.id === item?.parent && i.kind === 'folder');
   return Boolean(item && folder && item.owner !== me && canEdit(folder));
 }
 
 // rowActions is the controls a row offers, by name, for the entry a: the
 // owner's own item Share, Move and Delete, and Rename for a folder; Share for a
-// manager and Approve for an editor; and Remove from folder on someone else's
-// item in a folder the caller edits. A stub, whose access is none, has nothing
+// manager and Approve for an editor; and Remove from folder as
+// canRemoveFromFolder allows. A stub, whose access is none, has nothing
 // but the last: no Share, Move, Delete, nor Open.
 export function rowActions(a, items, me) {
   const out = [];
@@ -320,12 +323,12 @@ export async function moveAndPlace(deps, send, items, id, target, progress) {
   return fanOut(deps, id, { includeRoot: true, placing: target, progress });
 }
 
-// removeFromFolder takes the item id, which someone else owns, out of the
-// folder it sits in, as an editor of that folder: the server puts it at the top
-// level of its owner, and nothing is written to its record. send is app.mjs's
+// removeFromFolder takes the item id out of the folder it sits in, as
+// canRemoveFromFolder allows: the server puts it at the top level of its
+// owner, and nothing is written to its record. send is app.mjs's
 // (method, path, body), me the caller's user ID.
 export async function removeFromFolder(send, items, id, me) {
-  if (!canRemoveFromFolder(items, id, me)) throw new FolderError('You can only remove someone else\'s item from a folder you may edit.');
+  if (!canRemoveFromFolder(items, id, me)) throw new FolderError('You can only remove an item from a folder you may edit, or your own item from a folder you can no longer read.');
   await send('PUT', `/api/artifacts/${id}/parent`, { parent: null });
 }
 

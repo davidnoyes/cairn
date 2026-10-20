@@ -3742,3 +3742,6 @@ cmd/cairn/apply_cmds.go	verb = "waits"	verb = "wait"	go test ./cmd/cairn -count=
 cmd/cairn/apply_cmds.go	fmt.Println("nothing to apply")	fmt.Println("nothing")	go test ./cmd/cairn -count=1 -run 'TestApplyPrintsWhat|TestApplyCountsSeveral'
 cmd/cairn/apply_cmds.go	fmt.Printf("%s: waits on %s\n", it.ID, ownerLabel(it))	fmt.Printf("%s: awaits %s\n", it.ID, ownerLabel(it))	go test ./cmd/cairn -count=1 -run 'TestApplyPrintsWhat|TestApplyCountsSeveral'
 cmd/cairn/folder_cmds.go	(not shared with you yet, owned by 	(not shared, owned by 	go test ./cmd/cairn -count=1 -run 'TestFolderListShowsAStub'
+
+internal/server/web/folders.mjs	if (item?.hiddenParent && item.owner === me) return true;	if (false) return true;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	if (item?.hiddenParent && item.owner === me) return true;	if (item?.hiddenParent) return true;	node --test internal/server/web/folders_test.mjs

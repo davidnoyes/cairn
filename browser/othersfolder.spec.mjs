@@ -98,7 +98,7 @@ test("others' items: place in someone's folder, a stub until applied, and delete
     const row = ownerPage.locator(`#own tr[data-id="${topId}"]`);
     await row.getByRole('button', { name: 'Delete' }).click();
     await expect(row.getByRole('button', { name: /Delete/ })).toHaveText(
-      "Delete 1 folder and 0 artifacts of yours, and move 1 item other people own to their owners' top level?");
+      `Delete 1 folder and 0 artifacts of yours, and move 1 item other people own (${editor.email}) to their owners' top level?`);
     await row.getByRole('button', { name: /Delete/ }).click();
     await expect(row).toHaveCount(0, { timeout: 60_000 });
     const moved = JSON.parse(asEditor(['artifact', 'list', '--json'])).find((a) => a.id === docId);
