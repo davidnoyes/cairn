@@ -144,14 +144,30 @@ export async function readKeyring(deps, caller) {
   const anchor = e2e.loadKeyringAnchor(deps.storage, caller.record.userId, caller.fp);
   const resp = await call(deps, null, 'GET', '/api/me/keyring');
   const { keyring, anchor: next } = await e2e.openKeyring(caller.record.mkSeal, resp.rev, e2e.unb64(resp.keyring), anchor);
-  e2e.saveKeyringAnchor(deps.storage, caller.record.userId, caller.fp, next);
+  try {
+    e2e.saveKeyringAnchor(deps.storage, caller.record.userId, caller.fp, next);
+  } catch (err) {
+    // Another read or write of this page stored a newer anchor while this one
+    // was in flight. This keyring was opened against the anchor stored before
+    // the fetch, so a real rollback was refused above; the stored anchor stays.
+    if (!(err instanceof e2e.KeyringRollbackError)) throw err;
+  }
   return keyring;
 }
 
 // updateKeyring reads the keyring, applies change to a copy, and writes it at
 // the next rev, reading again and re-applying change when the server answers
-// 409, up to five times. Mirrors UpdateKeyring in keyring.go.
-export async function updateKeyring(deps, caller, change) {
+// 409, up to five times. Mirrors UpdateKeyring in keyring.go. The page runs
+// one at a time, so pages loading several artifacts at once, each pinning the
+// same owner, do not write against each other: the later one reads the pin.
+let keyringUpdates = Promise.resolve();
+export function updateKeyring(deps, caller, change) {
+  const run = keyringUpdates.then(() => updateKeyringNow(deps, caller, change));
+  keyringUpdates = run.catch(() => {});
+  return run;
+}
+
+async function updateKeyringNow(deps, caller, change) {
   for (let i = 0; i < KEYRING_RETRIES; i++) {
     const cur = await readKeyring(deps, caller);
     const next = structuredClone(cur);

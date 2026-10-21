@@ -134,14 +134,38 @@ export function splitTrees(list, me) {
   return { own, shared };
 }
 
-// describeList reads the name of each entry of the list with describe(a), in
-// turn, and passes it to each(a, got). A stub is skipped: its name is sealed
-// under a key the caller does not hold yet, so nothing in it can be read.
-export async function describeList(list, describe, each) {
-  for (const a of list) {
-    if (isStub(a)) continue;
-    await each(a, await describe(a));
-  }
+// DESCRIBE_LIMIT is how many names the page reads at once.
+export const DESCRIBE_LIMIT = 4;
+
+// mapLimit runs fn(item) over items, at most limit at a time, and
+// answers in the order of items: {value} for each that finished, {error} for
+// each that threw, so one failure does not stop the others.
+export async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      try {
+        out[i] = { value: await fn(items[i]) };
+      } catch (error) {
+        out[i] = { error };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+// describeList reads the name of each entry of the list with describe(a), up
+// to limit at a time, and answers [{a, value}] or [{a, error}] in list order,
+// so the page can draw once every name is in. A stub is skipped: its name is
+// sealed under a key the caller does not hold yet, so nothing in it can be
+// read.
+export async function describeList(list, describe, limit = DESCRIBE_LIMIT) {
+  const entries = list.filter((a) => !isStub(a));
+  const got = await mapLimit(entries, limit, describe);
+  return entries.map((a, i) => ({ a, ...got[i] }));
 }
 
 // applicable lists the entries the caller can apply: pending items they own

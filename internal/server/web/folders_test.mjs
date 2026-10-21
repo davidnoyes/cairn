@@ -10,7 +10,7 @@ import { openArtifact } from './viewer.mjs';
 import { readMeta } from './meta.mjs';
 import {
   FolderError, applicable, breadcrumb, canEdit, canMoveInto, canPlaceIn, canRemoveFromFolder, childrenOf, createFolder, deleteSummary, deleteTree,
-  describeList, isStub, makeDraggable, makeDropTarget, moveItem, moveTargets, nextAttempt, removeFromFolder, renameFolder, rowActions, splitTrees, stubLabel, subtree,
+  DESCRIBE_LIMIT, describeList, isStub, makeDraggable, makeDropTarget, mapLimit, moveItem, moveTargets, nextAttempt, removeFromFolder, renameFolder, rowActions, splitTrees, stubLabel, subtree,
 } from './folders.mjs';
 
 const owner = await makeUser('owner');
@@ -441,13 +441,51 @@ test('splitTrees treats a parent that is not a folder, or a loop, as no folder',
   assert.deepEqual(shared.map((i) => i.id), ['a']);
 });
 
-test('describeList reads every entry but a stub, in order, and never asks about a stub', async () => {
+test('describeList reads every entry but a stub, never asks about a stub, and answers in list order', async () => {
   const list = [{ id: 'a', access: 'owner' }, stub('s', 'F'), { id: 'b', access: 'viewer' }, stub('t', 'F')];
   const asked = [];
-  const got = [];
-  await describeList(list, async (a) => { asked.push(a.id); return `name of ${a.id}`; }, async (a, name) => { got.push([a.id, name]); });
+  const got = await describeList(list, async (a) => { asked.push(a.id); return `name of ${a.id}`; });
   assert.deepEqual(asked, ['a', 'b']);
-  assert.deepEqual(got, [['a', 'name of a'], ['b', 'name of b']]);
+  assert.deepEqual(got, [{ a: list[0], value: 'name of a' }, { a: list[2], value: 'name of b' }]);
+});
+
+test('describeList runs at most the limit at once, and answers in list order whichever finishes first', async () => {
+  const list = Array.from({ length: 10 }, (_, i) => ({ id: `x${i}`, access: 'owner' }));
+  let running = 0;
+  let peak = 0;
+  const got = await describeList(list, async (a) => {
+    running++;
+    peak = Math.max(peak, running);
+    // The later entries finish first.
+    await new Promise((resolve) => setTimeout(resolve, 20 - Number(a.id.slice(1)) * 2));
+    running--;
+    return a.id;
+  }, 4);
+  assert.equal(peak, 4);
+  assert.deepEqual(got.map((r) => r.value), list.map((a) => a.id));
+  // The page's own limit is four.
+  peak = 0;
+  await describeList(list, async () => {
+    running++;
+    peak = Math.max(peak, running);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    running--;
+  });
+  assert.equal(peak, DESCRIBE_LIMIT);
+  assert.equal(DESCRIBE_LIMIT, 4);
+});
+
+test('describeList reports one failure in its place and still reads the others', async () => {
+  const list = ['a', 'b', 'c'].map((id) => ({ id, access: 'owner' }));
+  const boom = new Error('boom');
+  const got = await describeList(list, async (a) => { if (a.id === 'b') throw boom; return a.id; }, 2);
+  assert.deepEqual(got, [{ a: list[0], value: 'a' }, { a: list[1], error: boom }, { a: list[2], value: 'c' }]);
+});
+
+test('mapLimit with a limit of one reads in turn', async () => {
+  const order = [];
+  await mapLimit([1, 2, 3], 1, async (n) => { order.push(`start ${n}`); await Promise.resolve(); order.push(`end ${n}`); });
+  assert.deepEqual(order, ['start 1', 'end 1', 'start 2', 'end 2', 'start 3', 'end 3']);
 });
 
 test('applicable lists the pending items the caller owns or manages, and no stub, editor item or current one', () => {

@@ -12,8 +12,8 @@ import {
 } from './viewer_fixture.mjs';
 import {
   KeyringBusyError, LinkError, LockedError, NoAccessError, UNTRUSTED_MESSAGE, UntrustedVersionError, VersionGoneError, WriteError, canWrite, keepToken,
-  keysMessage, listVersions, loadContext, mintToken, navigateTarget, openArtifact, prepareVersion, signBodies, takeLink, trustVersion,
-  writerKeys,
+  keysMessage, listVersions, loadContext, mintToken, navigateTarget, openArtifact, prepareVersion, readKeyring, signBodies, signedInCaller, takeLink, trustVersion,
+  updateKeyring, writerKeys,
 } from './viewer.mjs';
 
 const U = {};
@@ -227,6 +227,96 @@ test('the keyring write retries on 409 and keeps the other device change', async
   assert.ok(kr.pins['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'], "the other device's pin survives");
   assert.ok(kr.pins[U.owner.id]);
   assert.ok(kr.epochs[ARTIFACT]);
+});
+
+test('two concurrent keyring updates do not interleave their read and write', async () => {
+  const s = await scene({ who: 'editor' });
+  const events = [];
+  const inner = s.deps.fetch;
+  s.deps.fetch = async (path, init = {}) => {
+    const mine = path === '/api/me/keyring';
+    if (mine) events.push(`start ${init.method ?? 'GET'}`);
+    // Slow, so an update that did not wait would start its read in the gap.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const res = await inner(path, init);
+    if (mine) events.push(`end ${init.method ?? 'GET'}`);
+    return res;
+  };
+  const caller = await signedInCaller(s.deps);
+  await Promise.all([1, 2].map((n) => updateKeyring(s.deps, caller, (k) => { k.epochs[`a${n}`] = { epoch: 1, seq: 1, head: 'a'.repeat(64), ack: 0 }; })));
+  assert.deepEqual(events, ['start GET', 'end GET', 'start PUT', 'end PUT', 'start GET', 'end GET', 'start PUT', 'end PUT']);
+  assert.equal(s.server.putCount, 2, 'neither update needed a retry');
+  const kr = await readServerKeyring(s.server, U.editor);
+  assert.deepEqual(Object.keys(kr.epochs).sort(), ['a1', 'a2']);
+});
+
+test('a keyring update that fails does not stop the next one', async () => {
+  const s = await scene({ who: 'editor' });
+  const caller = await signedInCaller(s.deps);
+  const failed = updateKeyring(s.deps, caller, () => { throw new Error('refused'); });
+  const later = updateKeyring(s.deps, caller, (k) => { k.epochs.a = { epoch: 1, seq: 1, head: 'a'.repeat(64), ack: 0 }; });
+  await assert.rejects(failed, /refused/);
+  await later;
+  assert.equal(s.server.putCount, 1);
+});
+
+test('two artifacts opened at once for the first time pin their shared owner once', async () => {
+  const s = await scene({ who: 'editor' });
+  const [a, b] = await Promise.all([open(s), open(s)]);
+  assert.equal(a.mode, 'member');
+  assert.equal(b.mode, 'member');
+  const kr = await readServerKeyring(s.server, U.editor);
+  assert.deepEqual(Object.keys(kr.pins), [U.owner.id]);
+  assert.equal(s.server.putCount, 2, 'one write each, neither refused nor retried');
+});
+
+test('a keyring read that finished late does not lower the stored anchor or fail', async () => {
+  const s = await scene({ who: 'editor' });
+  const k = e2e.newKeyring();
+  k.rev = 1;
+  await seedKeyring(s.server, U.editor, k);
+  const caller = await signedInCaller(s.deps);
+  // The first read has its answer, at rev 1, and waits to store it.
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const inner = s.deps.fetch;
+  let holdNext = true;
+  s.deps.fetch = async (path, init = {}) => {
+    const res = await inner(path, init);
+    if (holdNext && path === '/api/me/keyring') {
+      holdNext = false;
+      await held;
+    }
+    return res;
+  };
+  const late = readKeyring(s.deps, caller);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  s.deps.fetch = inner;
+  await updateKeyring(s.deps, caller, (kr) => { kr.epochs.a = { epoch: 1, seq: 1, head: 'a'.repeat(64), ack: 0 }; });
+  release();
+  assert.equal((await late).rev, 1);
+  assert.equal(e2e.loadKeyringAnchor(s.deps.storage, U.editor.id, U.editor.fp).rev, 2);
+});
+
+test('a keyring read that finished late still refuses a fork of the anchor stored meanwhile', async () => {
+  const s = await scene({ who: 'editor' });
+  const k = e2e.newKeyring();
+  k.rev = 1;
+  await seedKeyring(s.server, U.editor, k);
+  const caller = await signedInCaller(s.deps);
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const inner = s.deps.fetch;
+  s.deps.fetch = async (path, init = {}) => {
+    const res = await inner(path, init);
+    await held;
+    return res;
+  };
+  const late = readKeyring(s.deps, caller);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  e2e.saveKeyringAnchor(s.deps.storage, U.editor.id, U.editor.fp, { rev: 1, hash: 'f'.repeat(64) });
+  release();
+  await assert.rejects(late, e2e.KeyringForkError);
 });
 
 test('the keyring write gives up after five conflicts', async () => {

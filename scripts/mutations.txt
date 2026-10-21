@@ -2944,6 +2944,15 @@ internal/server/web/folders.mjs	if (!id) return;	if (false) return;	node --test 
 internal/server/web/folders.mjs	if (!ours(event)) return;	if (false) return;	node --test internal/server/web/folders_test.mjs
 internal/server/web/shell.mjs	if (info.kind === 'folder') {	if (info.kind === 'folderx') {	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	tab.href = '/app';	tab.href = '/apps';	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (shown) return;	if (false) return;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	loaded: () => { if (answered) reveal(); },	loaded: () => { reveal(); },	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	answered: () => { answered = true; },	answered: () => {},	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	timeout: reveal,	timeout: () => {},	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	        gate.answered();	        void gate;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	frame.className = 'pending';	void frame;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	frame.addEventListener('load', gate.loaded);	void gate;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	window.setTimeout(gate.timeout, REVEAL_MS);	void gate;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	revealGate(() => { frame.className = ''; })	revealGate(() => { frame.className = 'pending'; })	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/e2e.mjs	if (!UUID_RE.test(b.group)) throw ruled(	if (false) throw ruled(	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	if (!isHex64(m.fp)) {	if (false) {	node --test internal/server/web/e2e_test.mjs
 internal/server/web/groups.mjs	for (const pair of [b.old, b.new]) {	for (const pair of [b.new]) {	node --test internal/server/web/groups_test.mjs
@@ -3287,6 +3296,10 @@ internal/server/web/viewer.mjs	if (err instanceof e2e.ChainError || err instance
 internal/server/web/viewer.mjs	if (err instanceof e2e.ChainError ||	if (false ||	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	|| err instanceof e2e.FormatError ||	|| false ||	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	|| err instanceof e2e.DecryptError) return null;	|| false) return null;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!(err instanceof e2e.KeyringRollbackError)) throw err;	if (false) throw err;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!(err instanceof e2e.KeyringRollbackError)) throw err;	if (true) throw err;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	keyringUpdates = run.catch(() => {});	keyringUpdates = run;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	const run = keyringUpdates.then(() => updateKeyringNow(deps, caller, change));	const run = updateKeyringNow(deps, caller, change);	node --test internal/server/web/viewer_test.mjs
 internal/server/web/sharing_fixture.mjs	if (approver && approver.fp !==	if (false && approver.fp !==	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/sharing_fixture.mjs	if (!w || w.verified === false || w.active === false)	if (!w || w.active === false)	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/sharing_fixture.mjs	if (!w || w.verified === false || w.active === false)	if (!w || w.verified === false)	node --test internal/server/web/sharing_groups_test.mjs
@@ -3713,7 +3726,15 @@ internal/server/web/folders.mjs	?? a.owner}`;	?? ''}`;	node --test internal/serv
 internal/server/web/folders.mjs	if (!folder || folder.kind !== 'folder' || seen.has(a.id)) return a.owner === me;	if (!folder || seen.has(a.id)) return a.owner === me;	node --test internal/server/web/folders_test.mjs
 internal/server/web/folders.mjs	if (!folder || folder.kind !== 'folder' || seen.has(a.id)) return a.owner === me;	if (!folder || folder.kind !== 'folder') return a.owner === me;	node --test internal/server/web/folders_test.mjs
 internal/server/web/folders.mjs	|| seen.has(a.id)) return a.owner === me;	|| seen.has(a.id)) return true;	node --test internal/server/web/folders_test.mjs
-internal/server/web/folders.mjs	    if (isStub(a)) continue;	    if (false) continue;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	const entries = list.filter((a) => !isStub(a));	const entries = list;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	while (next < items.length) {	while (false) {	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	Array.from({ length: Math.min(limit, items.length) }, worker)	Array.from({ length: items.length }, worker)	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	Math.min(limit, items.length)	Math.min(limit + 1, items.length)	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	Math.min(limit, items.length)	Math.min(1, items.length)	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	out[i] = { error };	out[i] = { error: null };	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	entries.map((a, i) => ({ a, ...got[i] }))	entries.map((a) => ({ a, ...got[0] }))	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	export const DESCRIBE_LIMIT = 4;	export const DESCRIBE_LIMIT = 5;	node --test internal/server/web/folders_test.mjs
+internal/server/web/folders.mjs	out[i] = { error };	throw error;	node --test internal/server/web/folders_test.mjs
 internal/server/web/folders.mjs	a.inherit === 'pending' && canSign(a)	a.inherit === 'pending'	node --test internal/server/web/folders_test.mjs
 internal/server/web/folders.mjs	Boolean(item && folder && item.owner !== me && canEdit(folder))	Boolean(item && folder && canEdit(folder))	node --test internal/server/web/folders_test.mjs
 internal/server/web/folders.mjs	Boolean(item && folder && item.owner !== me && canEdit(folder))	Boolean(item && folder && item.owner !== me)	node --test internal/server/web/folders_test.mjs

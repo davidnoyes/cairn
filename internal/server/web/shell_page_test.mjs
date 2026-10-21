@@ -11,7 +11,7 @@ import {
   vouchFor,
 } from './viewer_fixture.mjs';
 import { UNTRUSTED_MESSAGE } from './viewer.mjs';
-import { downloadName, run } from './shell.mjs';
+import { REVEAL_MS, downloadName, revealGate, run } from './shell.mjs';
 import { metaItem } from './sharing_fixture.mjs';
 
 const CONTENT = `http://${ARTIFACT}.localhost:8080`;
@@ -171,6 +171,55 @@ test('a member sees the artifact, and the frame holds the boot page, sandboxed',
   });
   assert.equal(p.dom.els['frame-host'].children.length, 1);
   assert.deepEqual(p.dom.violations, []);
+});
+
+test('the frame stays hidden until its first load after the keys were sent, and is never hidden again', async () => {
+  const p = await page({ who: 'viewer' });
+  const f = p.frame();
+  assert.equal(f.className, 'pending', 'hidden from the start');
+  // The boot page loads before the shell has answered: still hidden.
+  f.listeners.load();
+  assert.equal(f.className, 'pending');
+  await p.post({ cairn: 'ready', version: null, path: null });
+  await p.waitPosted();
+  assert.equal(f.className, 'pending', 'the keys alone do not show it');
+  f.listeners.load();
+  assert.equal(f.className, '');
+  // A later load, or a version switch, leaves it shown.
+  await p.post({ cairn: 'need-keys', version: V1 });
+  f.listeners.load();
+  assert.equal(f.className, '');
+});
+
+test('the frame is shown after a few seconds even when no keys were asked for', async () => {
+  const p = await page({ who: 'viewer' });
+  assert.equal(p.frame().className, 'pending');
+  const timer = p.timers.find((t) => t.ms === REVEAL_MS);
+  assert.ok(timer, 'a timer was set');
+  timer.fn();
+  assert.equal(p.frame().className, '');
+});
+
+test('revealGate shows once: on the first load after an answer, or on the timeout', () => {
+  const run = () => {
+    const shown = [];
+    return { shown, gate: revealGate(() => shown.push('show')) };
+  };
+  let t = run();
+  t.gate.loaded();
+  t.gate.loaded();
+  assert.deepEqual(t.shown, [], 'a load with no answer shows nothing');
+  t.gate.answered();
+  assert.deepEqual(t.shown, [], 'an answer alone shows nothing');
+  t.gate.loaded();
+  t.gate.loaded();
+  t.gate.timeout();
+  assert.deepEqual(t.shown, ['show']);
+  t = run();
+  t.gate.timeout();
+  t.gate.answered();
+  t.gate.loaded();
+  assert.deepEqual(t.shown, ['show'], 'the timeout shows it, and nothing shows it twice');
 });
 
 test('the name, description, and version names come from the sealed fields, never from plaintext the server adds', async () => {
@@ -596,7 +645,7 @@ test('login goes to sign in and back to this page, carrying a public link but no
 
 test('the content token is renewed and posted to the frame', async () => {
   const p = await page({ who: 'viewer' });
-  assert.equal(p.timers.length, 1);
+  assert.equal(p.timers.filter((t) => t.ms !== REVEAL_MS).length, 1);
   p.timers[0].fn();
   await settle();
   const [msg, origin] = (await p.waitPosted()).at(-1);

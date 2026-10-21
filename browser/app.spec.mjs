@@ -79,6 +79,22 @@ test('app: the owner lists their artifacts by name, and a viewer finds the share
   } finally {
     await context.close();
   }
+
+  // After a reload the rows are drawn once, with names: the page shows a
+  // Loading row while it reads them, and never a row under its ID.
+  await ownerPage.addInitScript(() => {
+    window.__seen = { ids: [], loading: false };
+    new MutationObserver(() => {
+      for (const tr of document.querySelectorAll('#own tr[data-id]')) {
+        if (tr.querySelector('td.name')?.textContent === tr.dataset.id) window.__seen.ids.push(tr.dataset.id);
+      }
+      if ([...document.querySelectorAll('#own td.empty')].some((td) => td.textContent === 'Loading…')) window.__seen.loading = true;
+    }).observe(document, { childList: true, subtree: true, characterData: true });
+  });
+  await ownerPage.reload();
+  await openTab(ownerPage, 'Artifacts');
+  await expect(ownerPage.locator(`#own tr[data-id="${plain}"] td.name`)).toHaveText('plain-doc');
+  expect(await ownerPage.evaluate(() => window.__seen)).toEqual({ ids: [], loading: true });
 });
 
 test('app: Account holds API keys, passkeys, and the successor, and only an admin has the Admin tab, with Users in it', async ({ ownerPage, browser }) => {

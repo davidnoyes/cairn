@@ -7,8 +7,19 @@ import { MARKER, PAGE2_MARKER, TEAM_MARKER, cli, cliJson, contentFrame, files, l
 
 test('renders: a private artifact shows its content, and no stored file holds the plaintext', async ({ ownerPage }) => {
   const s = loadState();
+  // The frame is white until its document loads, so the shell keeps it hidden:
+  // sample it when it is added, before anything has loaded in it.
+  await ownerPage.addInitScript(() => {
+    window.__frameAtStart = null;
+    new MutationObserver(() => {
+      const f = document.querySelector('iframe');
+      if (f && window.__frameAtStart === null) window.__frameAtStart = getComputedStyle(f).visibility;
+    }).observe(document, { childList: true, subtree: true });
+  });
   const frame = await openShared(ownerPage, s.artifacts['plain-doc'].id);
   await expect(frame.locator('#marker')).toHaveText(MARKER);
+  expect(await ownerPage.evaluate(() => window.__frameAtStart), 'the frame before its document loaded').toBe('hidden');
+  await expect(ownerPage.locator('#frame-host iframe')).toBeVisible();
 
   const needle = Buffer.from(MARKER);
   const leaks = files(s.dataDir).filter((f) => readFileSync(f).includes(needle));

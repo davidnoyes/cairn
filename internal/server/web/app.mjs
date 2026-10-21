@@ -6,7 +6,7 @@
 import { changePassword, createApiKey, enrollPasskey, listPasskeys, newRecoveryCode, passkeysAvailable, removePasskey, signOut } from './account.mjs';
 import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { createGroupsTab } from './groups-tab.mjs';
-import { FolderError, breadcrumb, canEdit, childrenOf, createFolder, deleteSummary, deleteTree, describeList, isStub, makeDraggable, makeDropTarget, moveAndPlace, moveTargets, nextAttempt, removeFromFolder, renameFolder, rowActions, splitTrees, stubLabel, subtree } from './folders.mjs';
+import { FolderError, breadcrumb, canEdit, childrenOf, createFolder, deleteSummary, deleteTree, DESCRIBE_LIMIT, describeList, isStub, makeDraggable, makeDropTarget, mapLimit, moveAndPlace, moveTargets, nextAttempt, removeFromFolder, renameFolder, rowActions, splitTrees, stubLabel, subtree } from './folders.mjs';
 import { listGroups, verifiedGroup } from './groups.mjs';
 import { describeArtifact } from './meta.mjs';
 import { GroupKeyChangedError, KeyChangedError, apply, autoApplyNote, approvableCount, approve, canShare, directory, fanOut, fanOutNote, memberControls, members, offersFinishSharing, pin, publicLinkFor, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
@@ -160,8 +160,11 @@ let sharedFolder = null;
 // people's items for a folder's Delete.
 let ownerDir = [];
 
-// The server holds each name and description sealed, so a row shows the
-// artifact's ID until its own keys open them.
+// The server holds each name and description sealed, so the page reads them
+// all, a few at a time, before it draws anything: the rows on screen stay as
+// they are until the new ones are ready, and the first load shows one
+// Loading row, so neither shows IDs that names then replace.
+let artifactsDrawn = false;
 async function listArtifacts({ me }) {
   myId = me.id;
   const list = await api('/api/artifacts');
@@ -170,22 +173,22 @@ async function listArtifacts({ me }) {
   // Deleting a folder names the owners of the items it moves from it too.
   const dir = list.some((a) => isStub(a) || (a.owner !== me.id && a.parent)) ? await directory(deps).catch(() => []) : [];
   ownerDir = dir;
+  if (!artifactsDrawn) {
+    emptyRow($('own'), 6, 'Loading…');
+    emptyRow($('shared'), 6, 'Loading…');
+  }
   const trees = splitTrees(list, me.id);
-  own = trees.own;
-  shared = trees.shared;
-  ownIds = new Set(own.map((i) => i.id));
+  ownIds = new Set(trees.own.map((i) => i.id));
   const rows = new Map(list.map((a) => [a.id, artifactRow(a, dir)]));
-  ownRows = new Map(own.map((i) => [i.id, rows.get(i.id)]));
-  sharedRows = new Map(shared.map((i) => [i.id, rows.get(i.id)]));
-  for (const i of [...own, ...shared]) fillActions(rows.get(i.id), i);
-  const ownItem = new Map([...own, ...shared].map((i) => [i.id, i]));
-  renderOwn();
-  renderShared();
-  // One at a time: opening an artifact for the first time pins its owner in
-  // the keyring, and each pin is a write at the keyring's next revision. A
-  // stub is not asked about: its name is sealed under a key the caller does
-  // not hold yet.
-  await describeList(list, (a) => describeArtifact(deps, a), async (a, got) => {
+  const items = [...trees.own, ...trees.shared];
+  for (const i of items) fillActions(rows.get(i.id), i);
+  const ownItem = new Map(items.map((i) => [i.id, i]));
+  // A few at a time: opening an artifact for the first time pins its owner in
+  // the keyring, and updateKeyring takes the pins one at a time. A stub is not
+  // asked about: its name is sealed under a key the caller does not hold yet.
+  const described = await describeList(list, (a) => describeArtifact(deps, a));
+  for (const { a, value, error } of described) {
+    const got = value ?? { name: a.id, description: '', error };
     const row = rows.get(a.id);
     row.name = got.name;
     row.nameText.textContent = got.name;
@@ -199,13 +202,20 @@ async function listArtifacts({ me }) {
       sharing.name = got.name;
       $('share-title').textContent = got.name;
     }
-    // How many newcomers the caller can approve, where they may: one request
-    // each, in turn, like the names.
-    if (!row.folder && APPROVERS.includes(a.access)) await showWaiting(row);
-  });
-  // Names sort the trees, so they are laid out again once they are all read.
+  }
+  // How many newcomers the caller can approve, where they may: one request
+  // each, a few at a time.
+  const approvable = list.filter((a) => !isStub(a) && !rows.get(a.id).folder && APPROVERS.includes(a.access));
+  await mapLimit(approvable, DESCRIBE_LIMIT, (a) => showWaiting(rows.get(a.id)));
+  // Everything is read: the page takes the new lists, and draws them once,
+  // sorted by name.
+  own = trees.own;
+  shared = trees.shared;
+  ownRows = new Map(own.map((i) => [i.id, rows.get(i.id)]));
+  sharedRows = new Map(shared.map((i) => [i.id, rows.get(i.id)]));
   renderOwn();
   renderShared();
+  artifactsDrawn = true;
 }
 
 // One load at a time: two loads opening the same artifact for the first time

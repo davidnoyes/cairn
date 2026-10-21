@@ -43,6 +43,30 @@ function versionLabel(seq, name) {
   return name ? `#${seq} ${name}` : `#${seq}`;
 }
 
+// REVEAL_MS is how long the frame stays hidden when the shell is never asked
+// for keys, or the document never loads, so a boot page that shows an error is
+// still seen.
+export const REVEAL_MS = 4000;
+
+// revealGate decides when the hidden frame is shown, by calling show() once:
+// on the first load after answered(), which is the version's page, since the
+// boot page loads before the shell answers; or on timeout(). Nothing hides it
+// again.
+export function revealGate(show) {
+  let answered = false;
+  let shown = false;
+  const reveal = () => {
+    if (shown) return;
+    shown = true;
+    show();
+  };
+  return {
+    answered: () => { answered = true; },
+    loaded: () => { if (answered) reveal(); },
+    timeout: reveal,
+  };
+}
+
 const MAX_NAME = 200;
 const REVOKE_MS = 60000;
 
@@ -167,11 +191,15 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
         const { version, signer } = await verify(versionId);
         const { token, tokenExpires } = keeper.current();
         send(keysMessage(opened, version, { signer, token, tokenExpires, path, context, writers }));
+        gate.answered();
       } catch (err) {
         if (err instanceof VersionGoneError && versionId !== chosen) return;
         showStatus(describe(err));
       }
     };
+    // The frame is white until its document has loaded, against the dark page,
+    // so it stays out of sight until then.
+    const gate = revealGate(() => { frame.className = ''; });
     const validVersion = (v) => typeof v === 'string' && UUID_RE.test(v);
 
     window.addEventListener('message', (event) => {
@@ -210,6 +238,9 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
     frame.setAttribute('src', `${contentOrigin}/_cairn/boot`);
     frame.setAttribute('title', name);
     frame.setAttribute('sandbox', SANDBOX);
+    frame.className = 'pending';
+    frame.addEventListener('load', gate.loaded);
+    window.setTimeout(gate.timeout, REVEAL_MS);
     $('frame-host').appendChild(frame);
   } catch (err) {
     if (err instanceof LockedError) {
