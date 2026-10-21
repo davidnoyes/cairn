@@ -42,12 +42,14 @@
     </div>
 
     <section id="artifacts" role="tabpanel" aria-labelledby="tab-artifacts" class="active">
+      <p class="status-line pinned" id="artifacts-status" role="status"></p>
       <h2>Your artifacts</h2>
       <p class="hint" id="create-hint">Create one with <span class="mono">cairn push DIR --create</span>.</p>
       <nav class="crumbs" id="crumbs" aria-label="Folder in view"></nav>
       <form class="bar" id="folder-form" method="dialog">
         <input id="folder-name" placeholder="folder name" aria-label="New folder name" autocomplete="off">
-        <button class="btn primary" type="submit">New folder</button>
+        <button class="btn primary" type="submit" disabled>New folder</button>
+        <span class="status-line" id="folder-status" role="status"></span>
       </form>
       <div class="list">
         <table>
@@ -59,7 +61,8 @@
       <nav class="crumbs" id="shared-crumbs" aria-label="Shared folder in view"></nav>
       <form class="bar" id="shared-folder-form" method="dialog" hidden>
         <input id="shared-folder-name" placeholder="folder name" aria-label="New folder name in the shared folder" autocomplete="off">
-        <button class="btn primary" type="submit">New folder here</button>
+        <button class="btn primary" type="submit" disabled>New folder here</button>
+        <span class="status-line" id="shared-folder-status" role="status"></span>
       </form>
       <div class="list">
         <table>
@@ -67,7 +70,6 @@
           <tbody id="shared"></tbody>
         </table>
       </div>
-      <p class="status-line" id="artifacts-status" role="status"></p>
     </section>
 
     <section id="account" role="tabpanel" aria-labelledby="tab-account">

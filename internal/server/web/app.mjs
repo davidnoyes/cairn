@@ -35,9 +35,18 @@ function status(id, msg, bad = false) {
   const el = $(id);
   el.textContent = msg;
   el.classList.toggle('bad', bad);
-  // A message can sit below the fold of a long tab; bring it into view.
-  if (msg) el.scrollIntoView({ block: 'nearest' });
+  // A message can sit below the fold of a long tab; bring it into view. A
+  // pinned line is always in view, so the page does not move for it.
+  if (msg && !el.classList.contains('pinned')) el.scrollIntoView({ block: 'nearest' });
 }
+
+// The pinned status line sits just under the top bar, whose height wraps
+// with the window's width.
+function pinUnderHeader() {
+  document.documentElement.style.setProperty('--header-h', `${document.querySelector('header').offsetHeight}px`);
+}
+pinUnderHeader();
+window.addEventListener('resize', pinUnderHeader);
 function failIn(id) {
   return (err) => { if (!(err instanceof UnauthenticatedError)) status(id, describeError(err), true); };
 }
@@ -536,14 +545,15 @@ async function removeFolder(id) {
 // owns it is the caller's, and lists the folder's entries and its owner.
 async function newFolder(form, name, parent) {
   const button = form.querySelector('button');
+  const said = form.querySelector('.status-line').id;
   button.disabled = true;
   try {
     await createFolder(deps, { name: name.value, parent });
     name.value = '';
-    status('artifacts-status', 'Folder created.');
+    status(said, 'Folder created.');
     await reloadArtifacts();
   } catch (err) {
-    failIn('artifacts-status')(err);
+    failIn(said)(err);
     // The folder exists even though its name did not write: clear the name so
     // a retry does not make a second one.
     if (err instanceof FolderError && err.created) {
@@ -551,19 +561,22 @@ async function newFolder(form, name, parent) {
       await reloadArtifacts();
     }
   } finally {
-    button.disabled = false;
+    button.disabled = name.value.trim() === '';
   }
 }
 
-$('folder-form').addEventListener('submit', (event) => {
-  event.preventDefault();
-  newFolder($('folder-form'), $('folder-name'), viewFolder);
-});
-
-$('shared-folder-form').addEventListener('submit', (event) => {
-  event.preventDefault();
-  newFolder($('shared-folder-form'), $('shared-folder-name'), sharedFolder);
-});
+// A folder form's button waits for a name, and typing clears what the last
+// attempt said.
+for (const [form, name, parent] of [['folder-form', 'folder-name', () => viewFolder], ['shared-folder-form', 'shared-folder-name', () => sharedFolder]]) {
+  $(name).addEventListener('input', () => {
+    $(form).querySelector('button').disabled = $(name).value.trim() === '';
+    status($(form).querySelector('.status-line').id, '');
+  });
+  $(form).addEventListener('submit', (event) => {
+    event.preventDefault();
+    if ($(name).value.trim() !== '') newFolder($(form), $(name), parent());
+  });
+}
 
 // ----------------------------------------------------------------- share
 // The dialog works on one artifact at a time. The public link carries the

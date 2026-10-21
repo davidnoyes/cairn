@@ -38,6 +38,21 @@ test('folders: create, nest, move in and out, rename, open, and delete the tree'
   await settled(ownerPage);
   const crumbs = ownerPage.locator('#crumbs');
 
+  // New folder waits for a name, and creating one says so beside the form
+  // without moving the page.
+  const button = ownerPage.getByRole('button', { name: 'New folder', exact: true });
+  await expect(button).toBeDisabled();
+  await ownerPage.getByLabel('New folder name', { exact: true }).fill('   ');
+  await expect(button).toBeDisabled();
+  const scrolled = await ownerPage.evaluate(() => window.scrollY);
+  await ownerPage.getByLabel('New folder name', { exact: true }).fill(`scroll-${stamp}`);
+  await expect(button).toBeEnabled();
+  await button.click();
+  await expect(ownerPage.locator('#folder-status')).toHaveText('Folder created.', { timeout: 30_000 });
+  await settled(ownerPage);
+  await expect(button).toBeDisabled();
+  expect(await ownerPage.evaluate(() => window.scrollY), 'the page did not scroll').toBe(scrolled);
+
   // A folder at the top level, then one inside it.
   await newFolder(ownerPage, outer);
   const outerID = item(outer).id;
