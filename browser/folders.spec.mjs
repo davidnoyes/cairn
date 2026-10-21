@@ -44,6 +44,8 @@ test('folders: create, nest, move in and out, rename, open, and delete the tree'
   await expect(button).toBeDisabled();
   await ownerPage.getByLabel('New folder name', { exact: true }).fill('   ');
   await expect(button).toBeDisabled();
+  // A window shorter than the page, so a status line at the foot would scroll it.
+  await ownerPage.setViewportSize({ width: 1280, height: 320 });
   const scrolled = await ownerPage.evaluate(() => window.scrollY);
   await ownerPage.getByLabel('New folder name', { exact: true }).fill(`scroll-${stamp}`);
   await expect(button).toBeEnabled();
@@ -52,6 +54,11 @@ test('folders: create, nest, move in and out, rename, open, and delete the tree'
   await settled(ownerPage);
   await expect(button).toBeDisabled();
   expect(await ownerPage.evaluate(() => window.scrollY), 'the page did not scroll').toBe(scrolled);
+  await ownerPage.setViewportSize({ width: 1280, height: 720 });
+  // Typing clears what the last attempt said.
+  await ownerPage.getByLabel('New folder name', { exact: true }).fill('x');
+  await expect(ownerPage.locator('#folder-status')).toHaveText('');
+  await ownerPage.getByLabel('New folder name', { exact: true }).fill('');
 
   // A folder at the top level, then one inside it.
   await newFolder(ownerPage, outer);

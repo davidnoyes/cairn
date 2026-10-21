@@ -144,8 +144,11 @@ test("others' items: an editor makes a folder inside someone's folder, and takes
 
     // The editor's new folder is theirs, inside the owner's folder, and the
     // owner reads it as the folder's owner.
+    const here = ed.page.getByRole('button', { name: 'New folder here' });
+    await expect(here).toBeDisabled();
     await ed.page.getByLabel('New folder name in the shared folder').fill(sub);
-    await ed.page.getByRole('button', { name: 'New folder here' }).click();
+    await expect(here).toBeEnabled();
+    await here.click();
     await expect(ed.page.locator('#shared-folder-status')).toHaveText('Folder created.', { timeout: 60_000 });
     await settled(ed.page);
     await expect(ed.page.locator('#shared tr').filter({ hasText: sub })).toHaveCount(1);

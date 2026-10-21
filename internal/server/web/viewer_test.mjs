@@ -294,7 +294,30 @@ test('a keyring read that finished late does not lower the stored anchor or fail
   s.deps.fetch = inner;
   await updateKeyring(s.deps, caller, (kr) => { kr.epochs.a = { epoch: 1, seq: 1, head: 'a'.repeat(64), ack: 0 }; });
   release();
-  assert.equal((await late).rev, 1);
+  assert.equal((await late).rev, 2, 'the late read, older than the anchor, read again');
+  assert.equal(e2e.loadKeyringAnchor(s.deps.storage, U.editor.id, U.editor.fp).rev, 2);
+});
+
+test('a keyring read that finished late and is still older than the anchor is refused', async () => {
+  const s = await scene({ who: 'editor' });
+  const k = e2e.newKeyring();
+  k.rev = 1;
+  await seedKeyring(s.server, U.editor, k);
+  const caller = await signedInCaller(s.deps);
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const inner = s.deps.fetch;
+  s.deps.fetch = async (path, init = {}) => {
+    const res = await inner(path, init);
+    await held;
+    return res;
+  };
+  const late = readKeyring(s.deps, caller);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  // Another read stored a newer anchor, and the server keeps serving rev 1.
+  e2e.saveKeyringAnchor(s.deps.storage, U.editor.id, U.editor.fp, { rev: 2, hash: '0'.repeat(64) });
+  release();
+  await assert.rejects(late, e2e.KeyringRollbackError);
   assert.equal(e2e.loadKeyringAnchor(s.deps.storage, U.editor.id, U.editor.fp).rev, 2);
 });
 
@@ -317,6 +340,36 @@ test('a keyring read that finished late still refuses a fork of the anchor store
   e2e.saveKeyringAnchor(s.deps.storage, U.editor.id, U.editor.fp, { rev: 1, hash: 'f'.repeat(64) });
   release();
   await assert.rejects(late, e2e.KeyringForkError);
+});
+
+test('a keyring read that is older than the anchor twice over is refused, not read a third time', async () => {
+  const s = await scene({ who: 'editor' });
+  const k = e2e.newKeyring();
+  k.rev = 1;
+  await seedKeyring(s.server, U.editor, k);
+  const caller = await signedInCaller(s.deps);
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const inner = s.deps.fetch;
+  let fetches = 0;
+  s.deps.fetch = async (path, init = {}) => {
+    const res = await inner(path, init);
+    if (path !== '/api/me/keyring') return res;
+    fetches++;
+    if (fetches === 1) await held;
+    // The retry's answer is rev 2, and a third read stores rev 3 meanwhile.
+    if (fetches === 2) e2e.saveKeyringAnchor(s.deps.storage, U.editor.id, U.editor.fp, { rev: 3, hash: '0'.repeat(64) });
+    return res;
+  };
+  const late = readKeyring(s.deps, caller);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const k2 = e2e.newKeyring();
+  k2.rev = 2;
+  await seedKeyring(s.server, U.editor, k2);
+  e2e.saveKeyringAnchor(s.deps.storage, U.editor.id, U.editor.fp, await e2e.keyringAnchorOf(2, e2e.unb64(s.server.keyring.keyring)));
+  release();
+  await assert.rejects(late, e2e.KeyringRollbackError);
+  assert.equal(fetches, 2);
 });
 
 test('the keyring write gives up after five conflicts', async () => {

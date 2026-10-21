@@ -3300,6 +3300,10 @@ internal/server/web/viewer.mjs	if (!(err instanceof e2e.KeyringRollbackError)) t
 internal/server/web/viewer.mjs	if (!(err instanceof e2e.KeyringRollbackError)) throw err;	if (true) throw err;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	keyringUpdates = run.catch(() => {});	keyringUpdates = run;	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	const run = keyringUpdates.then(() => updateKeyringNow(deps, caller, change));	const run = updateKeyringNow(deps, caller, change);	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (stored && keyring.rev < stored.rev) {	if (false) {	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (stored && keyring.rev < stored.rev) {	if (stored && keyring.rev > stored.rev) {	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	if (!mayRetry) throw err;	if (false) throw err;	node --test internal/server/web/viewer_test.mjs
+internal/server/web/viewer.mjs	return readKeyringOnce(deps, caller, false);	return readKeyringOnce(deps, caller, true);	node --test internal/server/web/viewer_test.mjs
 internal/server/web/sharing_fixture.mjs	if (approver && approver.fp !==	if (false && approver.fp !==	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/sharing_fixture.mjs	if (!w || w.verified === false || w.active === false)	if (!w || w.active === false)	node --test internal/server/web/sharing_groups_test.mjs
 internal/server/web/sharing_fixture.mjs	if (!w || w.verified === false || w.active === false)	if (!w || w.verified === false)	node --test internal/server/web/sharing_groups_test.mjs

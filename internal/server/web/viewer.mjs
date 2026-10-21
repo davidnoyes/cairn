@@ -140,7 +140,11 @@ export function takeLink(location, history, artifact) {
 
 // readKeyring fetches the keyring, opens it against the stored anchor, and
 // stores the new anchor. Mirrors readKeyring and openKeyring in keyring.go.
-export async function readKeyring(deps, caller) {
+export function readKeyring(deps, caller) {
+  return readKeyringOnce(deps, caller, true);
+}
+
+async function readKeyringOnce(deps, caller, mayRetry) {
   const anchor = e2e.loadKeyringAnchor(deps.storage, caller.record.userId, caller.fp);
   const resp = await call(deps, null, 'GET', '/api/me/keyring');
   const { keyring, anchor: next } = await e2e.openKeyring(caller.record.mkSeal, resp.rev, e2e.unb64(resp.keyring), anchor);
@@ -151,6 +155,14 @@ export async function readKeyring(deps, caller) {
     // was in flight. This keyring was opened against the anchor stored before
     // the fetch, so a real rollback was refused above; the stored anchor stays.
     if (!(err instanceof e2e.KeyringRollbackError)) throw err;
+    // The keyring this call opened may still be older than that anchor: a
+    // server can answer one read with a genuine older keyring after another
+    // read stored a newer one. Read again once, then refuse.
+    const stored = e2e.loadKeyringAnchor(deps.storage, caller.record.userId, caller.fp);
+    if (stored && keyring.rev < stored.rev) {
+      if (!mayRetry) throw err;
+      return readKeyringOnce(deps, caller, false);
+    }
   }
   return keyring;
 }
@@ -160,6 +172,8 @@ export async function readKeyring(deps, caller) {
 // 409, up to five times. Mirrors UpdateKeyring in keyring.go. The page runs
 // one at a time, so pages loading several artifacts at once, each pinning the
 // same owner, do not write against each other: the later one reads the pin.
+// change must be synchronous and must not call updateKeyring: it runs inside
+// the queue, so a nested call would wait for itself and deadlock.
 let keyringUpdates = Promise.resolve();
 export function updateKeyring(deps, caller, change) {
   const run = keyringUpdates.then(() => updateKeyringNow(deps, caller, change));

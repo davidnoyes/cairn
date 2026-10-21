@@ -95,6 +95,22 @@ test('app: the owner lists their artifacts by name, and a viewer finds the share
   await openTab(ownerPage, 'Artifacts');
   await expect(ownerPage.locator(`#own tr[data-id="${plain}"] td.name`)).toHaveText('plain-doc');
   expect(await ownerPage.evaluate(() => window.__seen)).toEqual({ ids: [], loading: true });
+
+  // A later reload of the lists, here from creating a folder, redraws in
+  // place: no Loading row, and the list is never empty meanwhile.
+  await ownerPage.evaluate(() => {
+    const own = document.getElementById('own');
+    window.__reload = { loading: false, emptied: false };
+    new MutationObserver(() => {
+      if (own.querySelector('td.empty')?.textContent === 'Loading…') window.__reload.loading = true;
+      if (own.children.length === 0) window.__reload.emptied = true;
+    }).observe(own, { childList: true, subtree: true, characterData: true });
+  });
+  await ownerPage.getByLabel('New folder name', { exact: true }).fill(`reload-${Date.now().toString(36)}`);
+  await ownerPage.getByRole('button', { name: 'New folder', exact: true }).click();
+  await expect(ownerPage.locator('#folder-status')).toHaveText('Folder created.', { timeout: 30_000 });
+  await expect(ownerPage.locator('#own')).not.toHaveAttribute('aria-busy', 'true');
+  expect(await ownerPage.evaluate(() => window.__reload)).toEqual({ loading: false, emptied: false });
 });
 
 test('app: Account holds API keys, passkeys, and the successor, and only an admin has the Admin tab, with Users in it', async ({ ownerPage, browser }) => {

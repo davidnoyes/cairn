@@ -646,7 +646,7 @@ test('login goes to sign in and back to this page, carrying a public link but no
 test('the content token is renewed and posted to the frame', async () => {
   const p = await page({ who: 'viewer' });
   assert.equal(p.timers.filter((t) => t.ms !== REVEAL_MS).length, 1);
-  p.timers[0].fn();
+  p.timers.find((t) => t.ms !== REVEAL_MS).fn();
   await settle();
   const [msg, origin] = (await p.waitPosted()).at(-1);
   assert.equal(origin, CONTENT);

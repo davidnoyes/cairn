@@ -35,6 +35,10 @@ function status(id, msg, bad = false) {
   const el = $(id);
   el.textContent = msg;
   el.classList.toggle('bad', bad);
+  // A success message on the pinned line fades; an error stays until replaced.
+  if (msg && !bad && el.classList.contains('pinned')) {
+    setTimeout(() => { if (el.textContent === msg && !el.classList.contains('bad')) el.textContent = ''; }, 8000);
+  }
   // A message can sit below the fold of a long tab; bring it into view. A
   // pinned line is always in view, so the page does not move for it.
   if (msg && !el.classList.contains('pinned')) el.scrollIntoView({ block: 'nearest' });
@@ -46,7 +50,9 @@ function pinUnderHeader() {
   document.documentElement.style.setProperty('--header-h', `${document.querySelector('header').offsetHeight}px`);
 }
 pinUnderHeader();
-window.addEventListener('resize', pinUnderHeader);
+// The header changes height without a resize too: setUser fills #who and the
+// admin tab appears.
+new ResizeObserver(pinUnderHeader).observe(document.querySelector('header'));
 function failIn(id) {
   return (err) => { if (!(err instanceof UnauthenticatedError)) status(id, describeError(err), true); };
 }
@@ -546,10 +552,15 @@ async function removeFolder(id) {
 async function newFolder(form, name, parent) {
   const button = form.querySelector('button');
   const said = form.querySelector('.status-line').id;
+  const submitted = name.value;
+  // Clear the field only if it still holds what was submitted; text typed
+  // while the create ran is kept.
+  const clear = () => { if (name.value === submitted) name.value = ''; };
   button.disabled = true;
+  form.dataset.busy = '1';
   try {
-    await createFolder(deps, { name: name.value, parent });
-    name.value = '';
+    await createFolder(deps, { name: submitted, parent });
+    clear();
     status(said, 'Folder created.');
     await reloadArtifacts();
   } catch (err) {
@@ -557,10 +568,11 @@ async function newFolder(form, name, parent) {
     // The folder exists even though its name did not write: clear the name so
     // a retry does not make a second one.
     if (err instanceof FolderError && err.created) {
-      name.value = '';
+      clear();
       await reloadArtifacts();
     }
   } finally {
+    delete form.dataset.busy;
     button.disabled = name.value.trim() === '';
   }
 }
@@ -569,12 +581,12 @@ async function newFolder(form, name, parent) {
 // attempt said.
 for (const [form, name, parent] of [['folder-form', 'folder-name', () => viewFolder], ['shared-folder-form', 'shared-folder-name', () => sharedFolder]]) {
   $(name).addEventListener('input', () => {
-    $(form).querySelector('button').disabled = $(name).value.trim() === '';
+    $(form).querySelector('button').disabled = $(form).dataset.busy !== undefined || $(name).value.trim() === '';
     status($(form).querySelector('.status-line').id, '');
   });
   $(form).addEventListener('submit', (event) => {
     event.preventDefault();
-    if ($(name).value.trim() !== '') newFolder($(form), $(name), parent());
+    if ($(form).dataset.busy === undefined && $(name).value.trim() !== '') newFolder($(form), $(name), parent());
   });
 }
 
