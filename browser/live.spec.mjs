@@ -1,6 +1,6 @@
-// Live update in a real browser: an open shared page shows a new version, or
-// an overwritten one, by itself, and comes back to where it was scrolled. A
-// page that names a version stays on it.
+// Live update in a real browser: an open shared page swaps in a new version,
+// or an overwritten one, by itself and without reloading, at the position the
+// reader was at. A page that names a version stays on it.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { test, expect } from './test.mjs';
@@ -33,17 +33,21 @@ async function shows(page, text, timeout = 30_000) {
   return contentFrame(page);
 }
 
-test('live: an open page shows a new version, then an overwrite, with no navigation by the reader', async ({ ownerPage, browserName }) => {
+test('live: an open page swaps in a new version, then an overwrite, without reloading', async ({ ownerPage, browserName }) => {
   const slug = `live-follow-${browserName}`;
   const { id } = push(slug, 'first', ['--create']).artifact;
   await openShared(ownerPage, id);
   await shows(ownerPage, 'first');
+  await ownerPage.evaluate(() => { window.__notReloaded = true; });
 
   push(slug, 'second');
   await shows(ownerPage, 'second');
   push(slug, 'third', ['--overwrite', 'latest']);
   await shows(ownerPage, 'third');
   expect(new URL(ownerPage.url()).pathname, 'the page still follows the newest version').toBe(`/shared/${id}`);
+  expect(await ownerPage.evaluate(() => window.__notReloaded), 'the page was not reloaded').toBe(true);
+  await expect(ownerPage.locator('#frame-host iframe'), 'the old frames are gone').toHaveCount(1);
+  await expect(ownerPage.locator('#version option')).toHaveCount(2);
 });
 
 test('live: the page comes back to where it was scrolled, even when it renders its content late', async ({ ownerPage, browserName }) => {

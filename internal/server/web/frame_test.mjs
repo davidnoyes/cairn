@@ -563,6 +563,7 @@ test('scroll-to from the shell scrolls the page', () => {
   win.dispatchEvent(msg({ cairn: 'scroll-to', y: 640 }, win.parent, APP));
   assert.deepEqual(win.scrolled, [[0, 640]]);
   assert.deepEqual(controller.posted, [], 'it is not passed to the worker');
+  assert.deepEqual(win.parent.posted, [[{ cairn: 'scrolled' }, APP]], 'it tells the shell it is there');
 });
 
 test('scroll-to from another window or origin, or with a position that is not a number, is ignored', () => {
@@ -582,9 +583,11 @@ test('scroll-to on a page still too short tries again until it gets there', () =
   assert.equal(win.timers.length, 1);
   assert.equal(win.timers[0].ms, 100);
   win.height = 2000;
+  assert.deepEqual(win.parent.posted, [], 'not there yet');
   win.timers.shift().fn();
   assert.equal(win.scrollY, 640);
   assert.equal(win.timers.length, 0, 'it stops once it is there');
+  assert.deepEqual(win.parent.posted, [[{ cairn: 'scrolled' }, APP]]);
 });
 
 test('scroll-to gives up after about two seconds on a page that stays short', () => {
@@ -597,4 +600,5 @@ test('scroll-to gives up after about two seconds on a page that stays short', ()
   }
   assert.equal(tries, 20);
   assert.equal(win.scrolled.length, 21);
+  assert.deepEqual(win.parent.posted, [[{ cairn: 'scrolled' }, APP]], 'it says when it gives up, too');
 });

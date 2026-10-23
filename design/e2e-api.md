@@ -1295,6 +1295,7 @@ is an object with a `cairn` field naming its type:
 | Frame | Shell | `{"cairn": "login"}` |
 | Frame | Shell | `{"cairn": "scroll", "y"}` |
 | Shell | Frame | `{"cairn": "scroll-to", "y"}` |
+| Frame | Shell | `{"cairn": "scrolled"}` |
 
 - The shell sends to the content origin's exact origin, never `*`, and acts
   on a message only when its `source` is the frame's window and its `origin`
@@ -1435,31 +1436,51 @@ versions every 5 seconds, and once more each time the tab is shown again:
   and `manifestHash`. A new version or an overwrite in place changes one of
   them.
 - A page that names a version compares that version's `manifestHash`. It
-  ignores newer versions, and reloads when its own version is overwritten or
-  deleted.
-- A poll starts only after the one before it has finished. A failed poll is
-  tried again on the next, and a 401 stops the watch.
+  ignores newer versions, and updates when its own version is overwritten.
+- A poll starts only after the one before it, and the update it started,
+  have finished. A failed poll is tried again on the next, and a 401 stops
+  the watch.
 
-When the answer differs, the shell replaces its location with its own path,
-plus a public link's fragment, so the reload runs every check again. The
-reload returns to the shell's page, not to a page the frame went to since.
+When the answer differs, the shell swaps the new version in without leaving
+the page:
 
-The reading position comes back with it:
+1. Out of sight, it lists the versions, opens their sealed names, verifies
+   the version to frame, and builds the next `keys` context.
+2. It frames a second boot page, hidden over the frame in view, and answers
+   that frame's handshake as it answered the first. The frame in view is now
+   heard only for `scroll`.
+3. Once the new frame's version has loaded, the shell sends it `scroll-to`
+   with the old frame's last position, and waits for `scrolled`, or for 2.5
+   seconds.
+4. It then shows the new frame, removes the old one, and updates the header
+   and the version list, in one step. A newer update that overtakes this one
+   removes the older frame, and the overtaken frame changes nothing.
+
+If any step before the swap fails, for example a version that is not trusted,
+a key the opened artifact does not hold, or a failed request, the shell
+reloads instead. It saves the scroll position in `sessionStorage`, and
+replaces its location with its own path, plus a public link's fragment, so
+the reload runs every check again. The reloaded page reads the position once,
+and scrolls its first frame there before showing it. Either way the page
+returns to the shell's own page, not to a page the frame went to since.
+
+The scroll messages:
 
 - While the page scrolls, `frame.js` posts `scroll` with `scrollY` at most
   every 200 ms, and once more after scrolling stops.
-- The shell keeps the last value that is a finite number of 0 or more, and
-  forgets it at each frame load, since it belonged to the page before. On
-  reload it saves the value in `sessionStorage`. A value it cannot save is
-  dropped, and the reload goes ahead.
-- The reloaded shell reads the value once, and sends `scroll-to` after the
-  frame is shown.
+- The shell keeps each frame's last value that is a finite number of 0 or
+  more, and forgets it at that frame's next load, since it belonged to the
+  page before. A value it cannot save for a reload is dropped, and the
+  reload goes ahead.
 - `frame.js` scrolls only for a `scroll-to` from `parent` at the app origin.
   A page that builds its content from script may still be too short, so it
-  tries again every 100 ms, for up to 2 seconds.
+  tries again every 100 ms, for up to 2 seconds. It posts `scrolled` when it
+  gets there, or gives up.
+- A frame shown by the shell's 4-second timeout is not scrolled, since its
+  version may never have loaded.
 
 Only the page's own scroll position is kept, not one inside a scrolling
-element. A reload also drops anything typed into the page and not yet saved.
+element. An update also drops anything typed into the page and not yet saved.
 
 ### App pages in milestone 4
 

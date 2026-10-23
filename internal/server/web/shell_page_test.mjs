@@ -11,7 +11,7 @@ import {
   vouchFor,
 } from './viewer_fixture.mjs';
 import { UNTRUSTED_MESSAGE } from './viewer.mjs';
-import { REVEAL_MS, WATCH_MS, downloadName, revealGate, run, viewKey, watchVersions } from './shell.mjs';
+import { REVEAL_MS, SCROLL_WAIT_MS, WATCH_MS, downloadName, revealGate, run, viewKey, watchVersions } from './shell.mjs';
 import { ApiError } from './account.mjs';
 import { metaItem } from './sharing_fixture.mjs';
 
@@ -32,7 +32,11 @@ function fakeDom(dataset) {
       textContent: '',
       appendChild(c) {
         this.children.push(c);
+        c.parent = this;
         return c;
+      },
+      replaceChildren(...c) {
+        this.children = c;
       },
       setAttribute(k, v) {
         this.attrs[k] = v;
@@ -45,6 +49,9 @@ function fakeDom(dataset) {
       },
       remove() {
         this.removed = true;
+        // A frame leaves the page, so a test can see which frames are shown;
+        // a download's anchor stays listed, for its test to read back.
+        if (tag === 'iframe') this.parent.children = this.parent.children.filter((c) => c !== this);
       },
     };
     for (const sink of ['innerHTML', 'outerHTML']) {
@@ -139,6 +146,7 @@ async function page({ who = null, mode = 'shared', version = '', path = '/', isP
   const keyStore = fakeKeyStore(record !== undefined ? record : who ? await keyStoreRecord(U[who]) : null);
   const p = { world, server, dom, window, handlers, timers, assigned, replaced, reloaded, keyStore };
   p.frame = () => dom.els['frame-host'].children[0];
+  p.frames = () => dom.els['frame-host'].children;
   p.status = () => dom.els.status;
   p.start = () => run(window, dom.document, keyStore);
   if (!noRun) await p.start();
@@ -821,7 +829,7 @@ function watcher({ versions = [ver(V2, 'h2'), ver(V1, 'h1')], pinned = '', answe
       this.listeners[type] = fn;
     },
   };
-  watchVersions({
+  w.watch = watchVersions({
     versions,
     pinned,
     list: async () => {
@@ -917,7 +925,7 @@ test('a poll does not start while the one before it is still waiting', async () 
   assert.equal(w.changes, 1);
 });
 
-test('the shell reloads its own address when the newest version changes, and keeps a public link', async () => {
+test('an update that does not check out reloads the page at its own address, and keeps a public link', async () => {
   const p = await page({ isPublic: true, members: [], noRun: true });
   const hash = `#k=${e2e.b64(p.world.aks[1])}&e=1&o=${U.owner.fp}`;
   p.window.location.hash = hash;
@@ -942,7 +950,7 @@ test('a member\'s reload carries no fragment, and a pinned page ignores a new ve
   assert.deepEqual(p.reloaded, []);
 });
 
-test('the reload keeps the reading position, and the next page scrolls back to it once shown', async () => {
+test('the reload keeps the reading position, and the next page scrolls back to it before it is shown', async () => {
   const p = await page({ who: 'viewer' });
   await p.post({ cairn: 'scroll', y: 300 });
   await p.post({ cairn: 'scroll', y: 1250 });
@@ -960,9 +968,31 @@ test('the reload keeps the reading position, and the next page scrolls back to i
   f.listeners.load();
   await next.post({ cairn: 'ready', version: null, path: null });
   await next.waitPosted();
-  assert.equal(next.posted().some(([m]) => m.cairn === 'scroll-to'), false, 'not before the frame is shown');
+  assert.equal(next.posted().some(([m]) => m.cairn === 'scroll-to'), false, 'not before the version has loaded');
   f.listeners.load();
   assert.deepEqual(next.posted().at(-1), [{ cairn: 'scroll-to', y: 1250 }, CONTENT]);
+  assert.equal(f.className, 'pending', 'hidden while it scrolls');
+  await next.post({ cairn: 'scrolled' });
+  assert.equal(f.className, '');
+});
+
+test('a frame the timeout shows is not scrolled: the version never loaded', async () => {
+  const p = await page({ who: 'viewer', noRun: true });
+  p.window.sessionStorage.setItem(`cairn-scroll:${ARTIFACT}`, '900');
+  await p.start();
+  p.timers.find((t) => t.ms === REVEAL_MS).fn();
+  assert.equal(p.frame().className, '');
+  assert.deepEqual(p.posted(), []);
+});
+
+test('a frame waiting on its scroll is shown after a few seconds even with no answer', async () => {
+  const p = await page({ who: 'viewer', noRun: true });
+  p.window.sessionStorage.setItem(`cairn-scroll:${ARTIFACT}`, '900');
+  await p.start();
+  await handshake(p, p.frame());
+  assert.equal(p.frame().className, 'pending');
+  p.timers.find((t) => t.ms === SCROLL_WAIT_MS).fn();
+  assert.equal(p.frame().className, '');
 });
 
 test('with no saved position, showing the frame scrolls nothing', async () => {
@@ -1016,4 +1046,207 @@ test('a version id that is not a UUID, listed after the page opened, does not re
   p.server.versions.set('bad', { json: { id: '../evil', seq: 9, epoch: 1, name: '', manifestHash: '0'.repeat(64), vouch: null }, blob: new Uint8Array(0) });
   await p.timers.find((t) => t.ms === WATCH_MS).fn();
   assert.deepEqual(p.reloaded, []);
+  assert.equal(p.frames().length, 1, 'nor swaps anything in');
+});
+
+test('after a change, resume watches again from the versions it is given', async () => {
+  const V4 = '44444444-4444-4444-8444-444444444444';
+  const three = [ver(V3, 'h3'), ver(V2, 'h2'), ver(V1, 'h1')];
+  const w = watcher({ answers: [three, three, [ver(V4, 'h4'), ...three]] });
+  await w.tick();
+  assert.equal(w.changes, 1);
+  assert.equal(w.timers.length, 0);
+  w.watch.resume(three);
+  assert.equal(w.timers.length, 1);
+  await w.tick();
+  assert.equal(w.changes, 1, 'the versions it resumed from are not a change');
+  await w.tick();
+  assert.equal(w.changes, 2);
+});
+
+test('a poll waits for its change to be handled', async () => {
+  let handled;
+  const w = watcher({ answers: [[ver(V3, 'h3')]] });
+  const pending = new Promise((r) => { handled = r; });
+  w.watch = null;
+  const doc = w.document;
+  let lists = 0;
+  const watch = watchVersions({
+    versions: [ver(V2, 'h2')],
+    pinned: '',
+    list: async () => { lists++; return [ver(V3, 'h3')]; },
+    onChange: () => pending,
+    document: doc,
+    setTimeout: (fn) => w.timers.push({ fn, ms: WATCH_MS }),
+  });
+  const tick = w.timers.at(-1).fn();
+  await new Promise((r) => setTimeout(r, 10));
+  watch.resume([ver(V3, 'h3')]);
+  await doc.listeners.visibilitychange();
+  assert.equal(lists, 1, 'no poll while the change is being handled');
+  handled();
+  await tick;
+});
+
+// --- swapping in a new version ---
+
+// handshake answers frame f's boot page and loads the version, as the content
+// origin would.
+async function handshake(p, f) {
+  await p.post({ cairn: 'ready', version: null, path: null }, { source: f.contentWindow });
+  for (let i = 0; i < 2000 && !f.contentWindow.posted.some(([m]) => m.cairn === 'keys'); i++) await new Promise((r) => setTimeout(r, 5));
+  f.listeners.load();
+}
+
+// addVersion puts a version the owner signed on the server, a new one or one
+// that replaces vid in place.
+async function addVersion(p, vid, seq) {
+  p.server.versions.set(vid, await makeVersion(p.world, vid, { signer: { user: U.owner.id, seed: U.owner.ed.seed }, seq }));
+}
+
+// poll runs the newest watch timer, and waits for what it started.
+const poll = (p) => p.timers.filter((t) => t.ms === WATCH_MS).at(-1).fn();
+
+const keysTo = (f) => f.contentWindow.posted.filter(([m]) => m.cairn === 'keys').map(([m]) => m);
+
+test('a new version is swapped in without a reload: its frame loads hidden over the old one, then replaces it', async () => {
+  const p = await page({ who: 'viewer' });
+  const old = p.frame();
+  await handshake(p, old);
+  assert.equal(old.className, '');
+  await addVersion(p, V3, 3);
+  await poll(p);
+  assert.deepEqual(p.reloaded, []);
+  const options = () => p.dom.els.version.children.map((o) => [o.value, o.selected]);
+  assert.deepEqual(options(), [[V2, true], [V1, false]], 'the header waits for the new version to show');
+  assert.equal(p.frames().length, 2);
+  const next = p.frames()[1];
+  assert.equal(next.className, 'pending');
+  assert.equal(next.attrs.src, `${CONTENT}/_cairn/boot`);
+  assert.equal(next.attrs.sandbox, old.attrs.sandbox);
+  assert.equal(old.className, '', 'the old version stays in view');
+  await handshake(p, next);
+  const [keys] = keysTo(next);
+  assert.equal(keys.version, V3);
+  assert.deepEqual(keys.context.versions.map((v) => v.id), [V3, V2, V1]);
+  assert.equal(next.className, '');
+  assert.deepEqual(p.frames(), [next]);
+  assert.deepEqual(options(), [[V3, true], [V2, false], [V1, false]], 'and changes with it');
+  assert.equal(p.dom.els.fullscreen.href, `/full/${ARTIFACT}/${V3}`);
+  assert.equal(keysTo(old).length, 1, 'the old frame got nothing more');
+  assert.deepEqual(p.dom.violations, []);
+});
+
+test('the new frame is scrolled to where the reader is in the old one, and shown once it is there', async () => {
+  const p = await page({ who: 'viewer' });
+  const old = p.frame();
+  await handshake(p, old);
+  await p.post({ cairn: 'scroll', y: 1200 }, { source: old.contentWindow });
+  await addVersion(p, V3, 3);
+  await poll(p);
+  const next = p.frames()[1];
+  // The reader goes on reading the old frame while the new one boots.
+  await p.post({ cairn: 'scroll', y: 1500 }, { source: old.contentWindow });
+  await p.post({ cairn: 'navigate', href: '/', y: 10 }, { source: old.contentWindow });
+  await handshake(p, next);
+  assert.deepEqual(next.contentWindow.posted.at(-1), [{ cairn: 'scroll-to', y: 1500 }, CONTENT]);
+  assert.equal(next.className, 'pending', 'hidden while it scrolls');
+  assert.equal(p.frames().length, 2);
+  await p.post({ cairn: 'scrolled' }, { source: old.contentWindow });
+  assert.equal(next.className, 'pending', 'the old frame cannot show it');
+  await p.post({ cairn: 'scrolled' }, { source: next.contentWindow });
+  assert.equal(next.className, '');
+  assert.deepEqual(p.frames(), [next]);
+});
+
+test('a new frame waiting on its scroll is shown after a few seconds even with no answer', async () => {
+  const p = await page({ who: 'viewer' });
+  const old = p.frame();
+  await handshake(p, old);
+  await p.post({ cairn: 'scroll', y: 800 }, { source: old.contentWindow });
+  await addVersion(p, V3, 3);
+  await poll(p);
+  const next = p.frames()[1];
+  await handshake(p, next);
+  assert.equal(next.className, 'pending');
+  p.timers.filter((t) => t.ms === SCROLL_WAIT_MS).at(-1).fn();
+  assert.equal(next.className, '');
+  assert.deepEqual(p.frames(), [next]);
+});
+
+test('while it is being replaced, the old frame is heard only for its scroll position', async () => {
+  const p = await page({ who: 'viewer' });
+  const old = p.frame();
+  await handshake(p, old);
+  await addVersion(p, V3, 3);
+  await poll(p);
+  const next = p.frames()[1];
+  const before = old.contentWindow.posted.length;
+  const from = { source: old.contentWindow };
+  await p.post({ cairn: 'need-keys', version: V1 }, from);
+  await p.post({ cairn: 'ready', version: null, path: null }, from);
+  await p.post({ cairn: 'navigate', href: `/shared/${ARTIFACT}/${V1}` }, from);
+  await p.post({ cairn: 'login' }, from);
+  assert.equal(old.contentWindow.posted.length, before);
+  assert.deepEqual(p.assigned, []);
+  assert.equal(next.className, 'pending');
+  await p.post({ cairn: 'scroll', y: 700 }, { source: old.contentWindow, origin: ORIGIN });
+  await handshake(p, next);
+  assert.equal(next.contentWindow.posted.some(([m]) => m.cairn === 'scroll-to'), false, 'a position from another origin is not kept');
+});
+
+test('a pinned page swaps in its own version when it is overwritten, and keeps watching', async () => {
+  const p = await page({ who: 'viewer', version: V1 });
+  const old = p.frame();
+  await handshake(p, old);
+  const before = p.server.versions.get(V1).json.manifestHash;
+  await addVersion(p, V1, 1);
+  assert.notEqual(p.server.versions.get(V1).json.manifestHash, before);
+  await poll(p);
+  assert.deepEqual(p.reloaded, []);
+  const next = p.frames()[1];
+  await handshake(p, next);
+  assert.equal(keysTo(next)[0].version, V1);
+  assert.deepEqual(p.frames(), [next]);
+  await addVersion(p, V3, 3);
+  await poll(p);
+  assert.deepEqual(p.frames(), [next], 'a newer version leaves the pinned page alone');
+});
+
+test('after a swap the page keeps watching, and a swap that overtakes another drops the oldest frame', async () => {
+  const V4 = '44444444-4444-4444-8444-444444444444';
+  const p = await page({ who: 'viewer' });
+  const first = p.frame();
+  await handshake(p, first);
+  await addVersion(p, V3, 3);
+  await poll(p);
+  const second = p.frames()[1];
+  await addVersion(p, V4, 4);
+  await poll(p);
+  const third = p.frames().at(-1);
+  assert.deepEqual(p.frames(), [second, third]);
+  assert.equal(first.removed, true);
+  await handshake(p, third);
+  assert.equal(keysTo(third)[0].version, V4);
+  assert.deepEqual(p.frames(), [third]);
+  assert.equal(p.dom.els.version.children[0].value, V4);
+  // The overtaken frame's timeout, later, brings back nothing of its own.
+  for (const t of p.timers.filter((t) => t.ms === REVEAL_MS)) t.fn();
+  assert.equal(p.dom.els.version.children[0].value, V4);
+  assert.deepEqual(p.frames(), [third]);
+});
+
+test('an update that fails while another is swapping in saves the position of the frame in view', async () => {
+  const V4 = '44444444-4444-4444-8444-444444444444';
+  const p = await page({ who: 'viewer' });
+  const old = p.frame();
+  await handshake(p, old);
+  await addVersion(p, V3, 3);
+  await poll(p);
+  await p.post({ cairn: 'scroll', y: 900 }, { source: old.contentWindow });
+  await addVersion(p, V4, 4);
+  p.server.versions.get(V4).json.manifestHash = 'not-the-signed-one';
+  await poll(p);
+  assert.deepEqual(p.reloaded, [`/shared/${ARTIFACT}`]);
+  assert.equal(p.window.sessionStorage.getItem(`cairn-scroll:${ARTIFACT}`), '900');
 });

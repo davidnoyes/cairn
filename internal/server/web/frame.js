@@ -13,8 +13,9 @@
  *    without the artifact including it;
  *  - carries `keys` and `token` messages from the shell to the worker, and
  *    the worker's `need-keys` and `sign` requests to the shell;
- *  - reports the scroll position to the shell, and scrolls to the one it
- *    sends back after the shell reloads for a new version;
+ *  - reports the scroll position to the shell, and scrolls a new version's
+ *    page to the position the shell sends, saying `scrolled` when it is
+ *    there;
  *  - saves an `<a download>` of this origin or a blob: URL through the
  *    shell, clicked or clicked from script, because a sandboxed frame cannot
  *    start that download itself in every browser.
@@ -110,11 +111,14 @@
 
   // scrollToward scrolls to y, and tries again every SCROLL_RETRY_MS, up to
   // tries more times, while the page is too short to get there: one that
-  // builds its content from script is still short when the shell asks.
-  function scrollToward(win, y, tries) {
+  // builds its content from script is still short when the shell asks. It
+  // calls done when it is there, or gives up; the shell shows the page then.
+  function scrollToward(win, y, tries, done) {
     win.scrollTo(0, y);
     if (win.scrollY < y - 1 && tries > 0) {
-      win.setTimeout(function () { scrollToward(win, y, tries - 1); }, SCROLL_RETRY_MS);
+      win.setTimeout(function () { scrollToward(win, y, tries - 1, done); }, SCROLL_RETRY_MS);
+    } else {
+      done();
     }
   }
 
@@ -163,7 +167,9 @@
       var origin = appOrigin();
       if (!origin || event.source !== win.parent || event.origin !== origin) return;
       var data = event.data;
-      if (data && data.cairn === 'scroll-to' && typeof data.y === 'number' && isFinite(data.y)) scrollToward(win, data.y, SCROLL_TRIES);
+      if (data && data.cairn === 'scroll-to' && typeof data.y === 'number' && isFinite(data.y)) {
+        scrollToward(win, data.y, SCROLL_TRIES, function () { win.parent.postMessage({ cairn: 'scrolled' }, origin); });
+      }
       if (!data || (data.cairn !== 'keys' && data.cairn !== 'token')) return;
       sw.controller.postMessage(data);
     });
