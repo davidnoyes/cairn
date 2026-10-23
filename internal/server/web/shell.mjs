@@ -165,11 +165,13 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
   };
   const deps = { fetch: (...args) => window.fetch(...args), keyStore, storage: window.localStorage, origin: window.location.origin };
 
-  let frame = null;
-  // outgoing is the frame a new version's frame replaces. It stays in view,
-  // and is heard only for its scroll position, until the new one is shown.
-  let outgoing = null;
-  const send = (msg) => frame.contentWindow.postMessage(msg, contentOrigin);
+  // visible is the frame in view. While a new version's frame loads hidden
+  // over it, both are served, until it goes. mounts holds each frame's
+  // version, its reveal gate, and the step to run once frame.js has scrolled
+  // it.
+  let visible = null;
+  const mounts = new Map();
+  const post = (f, msg) => f.contentWindow.postMessage(msg, contentOrigin);
   // positions holds each frame's last scroll position, until it loads
   // another page. A reload the update falls back to leaves the position in
   // sessionStorage, for the next page to scroll back to.
@@ -178,8 +180,6 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
   const saved = window.sessionStorage.getItem(scrollKey);
   window.sessionStorage.removeItem(scrollKey);
   const validY = (y) => Number.isFinite(y) && y >= 0;
-  // scrolled shows the frame waiting for frame.js to scroll it.
-  let scrolled = null;
 
   try {
     let link = null;
@@ -194,7 +194,7 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
       if (!(err instanceof LinkError)) throw err;
       linkError = err;
     }
-    const opened = await openArtifact(deps, { artifact, link, linkError });
+    let opened = await openArtifact(deps, { artifact, link, linkError });
     // The owner's wrap of an epoch a manager started did not open: what was
     // sealed under it stays unreadable until a new epoch replaces it.
     if (opened.unreadable?.length) showStatus(unreadableMessage(opened.unreadable));
@@ -259,48 +259,49 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
     // Only a trusted version is framed.
     await verify(chosen);
     let context = await contextFor(view);
-    const writers = await writerKeys(deps, opened);
+    let writers = await writerKeys(deps, opened);
     const keeper = keepToken({
       mint: () => mintToken(deps, opened),
-      onToken: ({ token, tokenExpires }) => send({ cairn: 'token', token, tokenExpires }),
+      onToken: ({ token, tokenExpires }) => {
+        for (const f of mounts.keys()) post(f, { cairn: 'token', token, tokenExpires });
+      },
       onError: () => showStatus('Your access could not be renewed. Reload the page, or sign in again.'),
       setTimeout: (fn, ms) => window.setTimeout(fn, ms),
       clearTimeout: (id) => window.clearTimeout(id),
     });
     await keeper.start();
 
-    let gate = null;
-    // answer verifies a version of this artifact, then sends its keys. A
-    // version the frame names that the server does not have shows nothing:
-    // the frame runs the artifact's code, and it could name any version.
-    const answer = async (versionId, path) => {
+    // answer verifies a version of this artifact, then sends its keys to
+    // frame f, which asked, unless f has gone meanwhile. A version the frame
+    // names that the server does not have shows nothing: the frame runs the
+    // artifact's code, and it could name any version.
+    const answer = async (f, versionId, path) => {
       try {
         const { version, signer } = await verify(versionId);
         const { token, tokenExpires } = keeper.current();
-        send(keysMessage(opened, version, { signer, token, tokenExpires, path, context, writers }));
-        gate.answered();
+        if (!mounts.has(f)) return;
+        post(f, keysMessage(opened, version, { signer, token, tokenExpires, path, context, writers }));
+        mounts.get(f).gate.answered();
       } catch (err) {
-        if (err instanceof VersionGoneError && versionId !== chosen) return;
+        if (err instanceof VersionGoneError && versionId !== mounts.get(f)?.version) return;
         showStatus(describe(err));
       }
     };
     const validVersion = (v) => typeof v === 'string' && UUID_RE.test(v);
 
     window.addEventListener('message', (event) => {
-      if (outgoing && event.source === outgoing.contentWindow && event.origin === contentOrigin) {
-        if (event.data?.cairn === 'scroll' && validY(event.data.y)) positions.set(outgoing, event.data.y);
-        return;
-      }
-      if (event.source !== frame.contentWindow || event.origin !== contentOrigin) return;
+      const f = [...mounts.keys()].find((m) => event.source === m.contentWindow);
+      if (!f || event.origin !== contentOrigin) return;
       const msg = event.data;
       if (typeof msg !== 'object' || msg === null) return;
+      const mounted = mounts.get(f);
       if (msg.cairn === 'ready') {
         // A path that would take the frame out of the version gets no keys.
         if (msg.version === null) {
-          if (contentTarget(chosen, pagePath)) answer(chosen, pagePath);
-        } else if (validVersion(msg.version) && contentTarget(msg.version, msg.path)) answer(msg.version, msg.path);
+          if (contentTarget(mounted.version, pagePath)) answer(f, mounted.version, pagePath);
+        } else if (validVersion(msg.version) && contentTarget(msg.version, msg.path)) answer(f, msg.version, msg.path);
       } else if (msg.cairn === 'need-keys') {
-        if (validVersion(msg.version)) answer(msg.version, '/');
+        if (validVersion(msg.version)) answer(f, msg.version, '/');
       } else if (msg.cairn === 'login') {
         // A public link's key rides on the sign-in page's fragment, which
         // never reaches the server, and comes back with the person.
@@ -320,62 +321,17 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
       } else if (msg.cairn === 'download') {
         download(window, document, msg);
       } else if (msg.cairn === 'scroll') {
-        if (validY(msg.y)) positions.set(frame, msg.y);
+        if (validY(msg.y)) positions.set(f, msg.y);
       } else if (msg.cairn === 'scrolled') {
-        scrolled?.();
+        mounted.scrolled?.();
       }
     });
-
-    // mount frames the content origin's boot page for the chosen version,
-    // hidden over the frame it replaces, which stays in view. It is shown
-    // once its version has loaded, scrolled first to restore()'s position
-    // when that is not null; the old frame goes, and shown() runs, in the
-    // same step, unless a newer frame has taken its place. The frame is white
-    // until its document has loaded, against the dark page, so a first frame
-    // is out of sight until then too.
-    const mount = (restore, shown = () => {}) => {
-      if (outgoing) outgoing.remove();
-      outgoing = frame;
-      const old = frame;
-      const f = document.createElement('iframe');
-      frame = f;
-      // reveal may run twice, on scrolled and on the wait; each step can.
-      const reveal = () => {
-        f.className = '';
-        if (old) {
-          old.remove();
-          positions.delete(old);
-          if (outgoing === old) outgoing = null;
-        }
-        if (frame === f) shown();
-      };
-      const g = revealGate((late) => {
-        const y = late ? null : restore();
-        if (y === null) return reveal();
-        scrolled = reveal;
-        send({ cairn: 'scroll-to', y });
-        window.setTimeout(reveal, SCROLL_WAIT_MS);
-      });
-      gate = g;
-      f.setAttribute('src', `${contentOrigin}/_cairn/boot`);
-      f.setAttribute('title', view.name);
-      f.setAttribute('sandbox', SANDBOX);
-      f.className = 'pending';
-      // A load is a new page, and the position kept belonged to the last one.
-      f.addEventListener('load', () => {
-        positions.delete(f);
-        g.loaded();
-      });
-      window.setTimeout(g.timeout, REVEAL_MS);
-      $('frame-host').appendChild(f);
-    };
-    mount(() => (saved === null ? null : Number(saved)));
 
     // reload is the update's fallback: the whole page again, which shows
     // what went wrong.
     const reload = () => {
       try {
-        const y = positions.get(outgoing ?? frame);
+        const y = positions.get(visible);
         if (y !== undefined) window.sessionStorage.setItem(scrollKey, String(y));
       } catch {
         // The position is a convenience; the new version still loads.
@@ -383,31 +339,89 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
       window.location.replace(window.location.pathname + keep);
     };
 
+    // mount frames the content origin's boot page for the chosen version,
+    // hidden over the frame in view, which stays until it is replaced. The
+    // new frame is shown once its version has loaded, scrolled first to
+    // restore(old)'s position when that is not null; the old frame goes, and
+    // shown() runs, in the same step. A new version that never loads leaves
+    // the old one in view, and the page reloads. The frame is white until its
+    // document has loaded, against the dark page, so a first frame is out of
+    // sight until then too.
+    const mount = (restore, shown) => {
+      const old = visible;
+      const f = document.createElement('iframe');
+      // reveal runs on scrolled, or on the wait, whichever comes first.
+      const reveal = () => {
+        if (visible === f) return;
+        visible = f;
+        f.className = '';
+        if (old) {
+          if (document.activeElement === old) f.focus();
+          old.remove();
+          mounts.delete(old);
+          positions.delete(old);
+        }
+        shown();
+      };
+      const gate = revealGate((late) => {
+        if (late && old) return reload();
+        const y = late ? null : restore(old);
+        if (y === null) return reveal();
+        mounts.get(f).scrolled = reveal;
+        post(f, { cairn: 'scroll-to', y });
+        window.setTimeout(reveal, SCROLL_WAIT_MS);
+      });
+      mounts.set(f, { version: chosen, gate, scrolled: null });
+      f.setAttribute('src', `${contentOrigin}/_cairn/boot`);
+      f.setAttribute('title', view.name);
+      f.setAttribute('sandbox', SANDBOX);
+      f.className = 'pending';
+      // A load is a new page, and the position kept belonged to the last one.
+      f.addEventListener('load', () => {
+        positions.delete(f);
+        gate.loaded();
+      });
+      window.setTimeout(gate.timeout, REVEAL_MS);
+      $('frame-host').appendChild(f);
+    };
+
     // A page with no version in its address follows the newest; one that
     // names a version stays on it, and updates only if it is overwritten.
-    // An update is prepared and checked out of sight, then swapped in.
-    const watch = watchVersions({
-      versions: view.versions,
-      pinned: pageVersion,
-      list: async () => (await listVersions(deps, opened)).filter((v) => UUID_RE.test(v.id)),
-      onChange: async () => {
-        try {
-          const next = await prepare(await apiGet(deps, opened, `/api/artifacts/${artifact}`));
-          await verify(next.chosen);
-          const nextContext = await contextFor(next);
-          const old = frame;
-          view = next;
-          chosen = next.chosen;
-          context = nextContext;
-          mount(() => positions.get(old) ?? null, () => show(next));
-          watch.resume(next.versions);
-        } catch {
-          reload();
-        }
-      },
-      document,
-      setTimeout: (fn, ms) => window.setTimeout(fn, ms),
-    });
+    // An update opens the artifact again and checks the version out of
+    // sight, then swaps it in. The watch waits while a swap is in flight, and
+    // resumes once the new frame is shown, so one swap runs at a time.
+    let watch = null;
+    const watching = () => {
+      if (watch) {
+        watch.resume(view.versions);
+        return;
+      }
+      watch = watchVersions({
+        versions: view.versions,
+        pinned: pageVersion,
+        list: async () => (await listVersions(deps, opened)).filter((v) => UUID_RE.test(v.id)),
+        onChange: async () => {
+          try {
+            opened = await openArtifact(deps, { artifact, link, linkError });
+            const next = await prepare(await apiGet(deps, opened, `/api/artifacts/${artifact}`));
+            await verify(next.chosen);
+            context = await contextFor(next);
+            writers = await writerKeys(deps, opened);
+            view = next;
+            chosen = next.chosen;
+            mount((old) => positions.get(old) ?? null, () => {
+              show(next);
+              watching();
+            });
+          } catch {
+            reload();
+          }
+        },
+        document,
+        setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+      });
+    };
+    mount(() => (saved === null ? null : Number(saved)), watching);
   } catch (err) {
     if (err instanceof LockedError) {
       window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);

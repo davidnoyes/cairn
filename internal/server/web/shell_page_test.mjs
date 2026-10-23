@@ -47,6 +47,9 @@ function fakeDom(dataset) {
       click() {
         this.clicked = (this.clicked ?? 0) + 1;
       },
+      focus() {
+        this.focused = (this.focused ?? 0) + 1;
+      },
       remove() {
         this.removed = true;
         // A frame leaves the page, so a test can see which frames are shown;
@@ -930,6 +933,7 @@ test('an update that does not check out reloads the page at its own address, and
   const hash = `#k=${e2e.b64(p.world.aks[1])}&e=1&o=${U.owner.fp}`;
   p.window.location.hash = hash;
   await p.start();
+  await handshake(p, p.frame());
   const watch = p.timers.find((t) => t.ms === WATCH_MS);
   assert.ok(watch, 'the shell watches for updates');
   await watch.fn();
@@ -941,10 +945,12 @@ test('an update that does not check out reloads the page at its own address, and
 
 test('a member\'s reload carries no fragment, and a pinned page ignores a new version', async () => {
   let p = await page({ who: 'viewer', hash: '#section' });
+  await handshake(p, p.frame());
   p.server.versions.get(V2).json.manifestHash = 'overwritten';
   await p.timers.find((t) => t.ms === WATCH_MS).fn();
   assert.deepEqual(p.reloaded, [`/shared/${ARTIFACT}`]);
   p = await page({ who: 'viewer', version: V1 });
+  await handshake(p, p.frame());
   p.server.versions.get(V2).json.manifestHash = 'overwritten';
   await p.timers.find((t) => t.ms === WATCH_MS).fn();
   assert.deepEqual(p.reloaded, []);
@@ -952,6 +958,7 @@ test('a member\'s reload carries no fragment, and a pinned page ignores a new ve
 
 test('the reload keeps the reading position, and the next page scrolls back to it before it is shown', async () => {
   const p = await page({ who: 'viewer' });
+  await handshake(p, p.frame());
   await p.post({ cairn: 'scroll', y: 300 });
   await p.post({ cairn: 'scroll', y: 1250 });
   p.server.versions.get(V2).json.manifestHash = 'overwritten';
@@ -1005,6 +1012,7 @@ test('with no saved position, showing the frame scrolls nothing', async () => {
 
 test('a scroll position from another window or origin, or one that is not a position, is not kept', async () => {
   const p = await page({ who: 'viewer' });
+  await handshake(p, p.frame());
   await p.post({ cairn: 'scroll', y: 400 });
   await p.post({ cairn: 'scroll', y: 999 }, { source: {} });
   await p.post({ cairn: 'scroll', y: 999 }, { origin: ORIGIN });
@@ -1016,6 +1024,7 @@ test('a scroll position from another window or origin, or one that is not a posi
 
 test('a page never scrolled saves no position', async () => {
   const p = await page({ who: 'viewer' });
+  await handshake(p, p.frame());
   p.server.versions.get(V2).json.manifestHash = 'overwritten';
   await p.timers.find((t) => t.ms === WATCH_MS).fn();
   assert.equal(p.reloaded.length, 1);
@@ -1024,6 +1033,7 @@ test('a page never scrolled saves no position', async () => {
 
 test('a frame load forgets the position, which belonged to the page before it', async () => {
   const p = await page({ who: 'viewer' });
+  await handshake(p, p.frame());
   await p.post({ cairn: 'scroll', y: 2000 });
   p.frame().listeners.load();
   p.server.versions.get(V2).json.manifestHash = 'overwritten';
@@ -1034,6 +1044,7 @@ test('a frame load forgets the position, which belonged to the page before it', 
 
 test('a position that cannot be saved does not stop the reload', async () => {
   const p = await page({ who: 'viewer' });
+  await handshake(p, p.frame());
   p.window.sessionStorage.setItem = () => { throw new Error('QuotaExceededError'); };
   await p.post({ cairn: 'scroll', y: 400 });
   p.server.versions.get(V2).json.manifestHash = 'overwritten';
@@ -1043,6 +1054,7 @@ test('a position that cannot be saved does not stop the reload', async () => {
 
 test('a version id that is not a UUID, listed after the page opened, does not reload it', async () => {
   const p = await page({ who: 'viewer' });
+  await handshake(p, p.frame());
   p.server.versions.set('bad', { json: { id: '../evil', seq: 9, epoch: 1, name: '', manifestHash: '0'.repeat(64), vouch: null }, blob: new Uint8Array(0) });
   await p.timers.find((t) => t.ms === WATCH_MS).fn();
   assert.deepEqual(p.reloaded, []);
@@ -1147,7 +1159,7 @@ test('the new frame is scrolled to where the reader is in the old one, and shown
   const next = p.frames()[1];
   // The reader goes on reading the old frame while the new one boots.
   await p.post({ cairn: 'scroll', y: 1500 }, { source: old.contentWindow });
-  await p.post({ cairn: 'navigate', href: '/', y: 10 }, { source: old.contentWindow });
+  await p.post({ cairn: 'scrolled', y: 10 }, { source: old.contentWindow });
   await handshake(p, next);
   assert.deepEqual(next.contentWindow.posted.at(-1), [{ cairn: 'scroll-to', y: 1500 }, CONTENT]);
   assert.equal(next.className, 'pending', 'hidden while it scrolls');
@@ -1174,26 +1186,6 @@ test('a new frame waiting on its scroll is shown after a few seconds even with n
   assert.deepEqual(p.frames(), [next]);
 });
 
-test('while it is being replaced, the old frame is heard only for its scroll position', async () => {
-  const p = await page({ who: 'viewer' });
-  const old = p.frame();
-  await handshake(p, old);
-  await addVersion(p, V3, 3);
-  await poll(p);
-  const next = p.frames()[1];
-  const before = old.contentWindow.posted.length;
-  const from = { source: old.contentWindow };
-  await p.post({ cairn: 'need-keys', version: V1 }, from);
-  await p.post({ cairn: 'ready', version: null, path: null }, from);
-  await p.post({ cairn: 'navigate', href: `/shared/${ARTIFACT}/${V1}` }, from);
-  await p.post({ cairn: 'login' }, from);
-  assert.equal(old.contentWindow.posted.length, before);
-  assert.deepEqual(p.assigned, []);
-  assert.equal(next.className, 'pending');
-  await p.post({ cairn: 'scroll', y: 700 }, { source: old.contentWindow, origin: ORIGIN });
-  await handshake(p, next);
-  assert.equal(next.contentWindow.posted.some(([m]) => m.cairn === 'scroll-to'), false, 'a position from another origin is not kept');
-});
 
 test('a pinned page swaps in its own version when it is overwritten, and keeps watching', async () => {
   const p = await page({ who: 'viewer', version: V1 });
@@ -1213,40 +1205,153 @@ test('a pinned page swaps in its own version when it is overwritten, and keeps w
   assert.deepEqual(p.frames(), [next], 'a newer version leaves the pinned page alone');
 });
 
-test('after a swap the page keeps watching, and a swap that overtakes another drops the oldest frame', async () => {
-  const V4 = '44444444-4444-4444-8444-444444444444';
+
+
+test('until it is replaced, the old frame keeps working: its links are followed, and its keys go to it', async () => {
   const p = await page({ who: 'viewer' });
-  const first = p.frame();
-  await handshake(p, first);
+  const old = p.frame();
+  await handshake(p, old);
   await addVersion(p, V3, 3);
   await poll(p);
-  const second = p.frames()[1];
-  await addVersion(p, V4, 4);
-  await poll(p);
-  const third = p.frames().at(-1);
-  assert.deepEqual(p.frames(), [second, third]);
-  assert.equal(first.removed, true);
-  await handshake(p, third);
-  assert.equal(keysTo(third)[0].version, V4);
-  assert.deepEqual(p.frames(), [third]);
-  assert.equal(p.dom.els.version.children[0].value, V4);
-  // The overtaken frame's timeout, later, brings back nothing of its own.
-  for (const t of p.timers.filter((t) => t.ms === REVEAL_MS)) t.fn();
-  assert.equal(p.dom.els.version.children[0].value, V4);
-  assert.deepEqual(p.frames(), [third]);
+  const next = p.frames()[1];
+  const from = { source: old.contentWindow };
+  await p.post({ cairn: 'need-keys', version: V1 }, from);
+  for (let i = 0; i < 2000 && keysTo(old).length < 2; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.equal(keysTo(old)[1].version, V1, 'in-artifact navigation in the old frame still gets its keys');
+  assert.deepEqual(keysTo(next), [], 'nothing went to the new frame');
+  next.listeners.load();
+  assert.equal(next.className, 'pending', 'and the new frame was not marked answered');
+  await p.post({ cairn: 'navigate', href: `/shared/${ARTIFACT}/${V1}` }, from);
+  assert.deepEqual(p.assigned, [`/shared/${ARTIFACT}/${V1}`]);
 });
 
-test('an update that fails while another is swapping in saves the position of the frame in view', async () => {
+test('no update starts while a swap is in flight; watching resumes once the new frame is shown', async () => {
   const V4 = '44444444-4444-4444-8444-444444444444';
   const p = await page({ who: 'viewer' });
   const old = p.frame();
   await handshake(p, old);
   await addVersion(p, V3, 3);
   await poll(p);
-  await p.post({ cairn: 'scroll', y: 900 }, { source: old.contentWindow });
+  const next = p.frames()[1];
+  const watches = () => p.timers.filter((t) => t.ms === WATCH_MS).length;
+  const before = watches();
+  await p.post({ cairn: 'scroll', y: 600 }, { source: old.contentWindow });
   await addVersion(p, V4, 4);
-  p.server.versions.get(V4).json.manifestHash = 'not-the-signed-one';
   await poll(p);
+  assert.deepEqual(p.frames(), [old, next], 'no third frame');
+  assert.equal(watches(), before, 'nothing more is scheduled');
+  assert.equal(old.className, '', 'the old version stays in view');
+  await handshake(p, next);
+  await p.post({ cairn: 'scrolled' }, { source: next.contentWindow });
+  assert.equal(watches(), before + 1, 'showing the new frame resumes the watch, once');
+  p.timers.filter((t) => t.ms === SCROLL_WAIT_MS).at(-1).fn();
+  assert.equal(watches(), before + 1, 'and the wait running out later does not resume it twice');
+  await poll(p);
+  const third = p.frames().at(-1);
+  assert.deepEqual(p.frames(), [next, third]);
+  await handshake(p, third);
+  assert.equal(keysTo(third)[0].version, V4);
+  assert.deepEqual(p.frames(), [third]);
+});
+
+test('a new version that never loads leaves the old one in view, and the page reloads at the old position', async () => {
+  const p = await page({ who: 'viewer' });
+  const old = p.frame();
+  await handshake(p, old);
+  await p.post({ cairn: 'scroll', y: 900 }, { source: old.contentWindow });
+  await addVersion(p, V3, 3);
+  await poll(p);
+  const next = p.frames()[1];
+  p.timers.filter((t) => t.ms === REVEAL_MS).at(-1).fn();
   assert.deepEqual(p.reloaded, [`/shared/${ARTIFACT}`]);
   assert.equal(p.window.sessionStorage.getItem(`cairn-scroll:${ARTIFACT}`), '900');
+  assert.equal(old.className, '');
+  assert.equal(next.className, 'pending', 'the unloaded frame is never shown');
+  assert.deepEqual(p.frames(), [old, next]);
+});
+
+test('keys go to the frame that asked, and a frame removed while its version is checked gets nothing', async () => {
+  const p = await page({ who: 'viewer' });
+  const old = p.frame();
+  await handshake(p, old);
+  // Hold the old frame's check of V1 until the swap has finished.
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const base = p.server.fetch;
+  p.window.fetch = async (path, init) => {
+    if (String(path).endsWith(`/versions/${V1}`)) await held;
+    return base(path, init);
+  };
+  await p.post({ cairn: 'need-keys', version: V1 }, { source: old.contentWindow });
+  await addVersion(p, V3, 3);
+  await poll(p);
+  const next = p.frames()[1];
+  await handshake(p, next);
+  assert.deepEqual(p.frames(), [next]);
+  release();
+  await settle();
+  assert.equal(keysTo(old).length, 1, 'the removed frame got no keys');
+  assert.equal(keysTo(next).length, 1, 'nor did the frame that did not ask');
+  assert.equal(p.status().hidden, true, p.status().textContent);
+});
+
+test('focus in the old frame moves to the new one when it is shown', async () => {
+  const p = await page({ who: 'viewer' });
+  const old = p.frame();
+  await handshake(p, old);
+  p.dom.document.activeElement = old;
+  await addVersion(p, V3, 3);
+  await poll(p);
+  const next = p.frames()[1];
+  await handshake(p, next);
+  assert.equal(next.focused, 1);
+  // Focus elsewhere stays where it is.
+  p.dom.document.activeElement = p.dom.els.version;
+  await addVersion(p, '44444444-4444-4444-8444-444444444444', 4);
+  await poll(p);
+  const third = p.frames()[1];
+  await handshake(p, third);
+  assert.equal(third.focused, undefined);
+});
+
+test('a renewed token goes to every frame on the page, the old one and the one loading', async () => {
+  const p = await page({ who: 'viewer' });
+  const old = p.frame();
+  await handshake(p, old);
+  await addVersion(p, V3, 3);
+  await poll(p);
+  const next = p.frames()[1];
+  const renewal = (t) => ![REVEAL_MS, WATCH_MS, SCROLL_WAIT_MS].includes(t.ms);
+  p.timers.filter(renewal).at(-1).fn();
+  await settle();
+  const tokens = (f) => f.contentWindow.posted.filter(([m]) => m.cairn === 'token');
+  assert.equal(tokens(old).length, 1);
+  assert.equal(tokens(next).length, 1);
+});
+
+test('an update opens the artifact again, so its members and keys are current', async () => {
+  const p = await page({ who: 'viewer' });
+  await handshake(p, p.frame());
+  const membership = () => p.server.calls.filter((c) => c.path === `/api/artifacts/${ARTIFACT}/membership`).length;
+  const before = membership();
+  await addVersion(p, V3, 3);
+  await poll(p);
+  assert.equal(membership(), before + 1);
+});
+
+test('a public link visitor\'s page swaps in a new version too', async () => {
+  const p = await page({ isPublic: true, members: [], noRun: true });
+  p.window.location.hash = `#k=${e2e.b64(p.world.aks[1])}&e=1&o=${U.owner.fp}`;
+  await p.start();
+  const old = p.frame();
+  await handshake(p, old);
+  await addVersion(p, V3, 3);
+  await poll(p);
+  assert.deepEqual(p.reloaded, []);
+  const next = p.frames()[1];
+  await handshake(p, next);
+  const [keys] = keysTo(next);
+  assert.equal(keys.version, V3);
+  assert.equal(keys.linkToken, e2e.b64(await e2e.linkToken(p.world.aks[1], ARTIFACT, 1)));
+  assert.deepEqual(p.frames(), [next]);
 });

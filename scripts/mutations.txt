@@ -1196,9 +1196,9 @@ internal/server/web/viewer.mjs	(?:/(${UUID}))?/?$`	(?:/(${UUID}))?$`	node --test
 internal/server/web/viewer.mjs	const UUID = '[0-9a-f]{8}-	const UUID = '[0-9a-fA-F]{8}-	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	mode === 'full' ? 'full' : 'shared'	'shared'	node --test internal/server/web/viewer_test.mjs
 internal/server/web/viewer.mjs	${m[2] ? `/${m[2]}` : ''}	${''}	node --test internal/server/web/viewer_test.mjs
-internal/server/web/shell.mjs	if (event.source !== frame.contentWindow || event.origin !== contentOrigin) return;	if (event.origin !== contentOrigin) return;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	if (event.source !== frame.contentWindow || event.origin !== contentOrigin) return;	if (event.source !== frame.contentWindow) return;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	frame.contentWindow.postMessage(msg, contentOrigin)	frame.contentWindow.postMessage(msg, '*')	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (!f || event.origin !== contentOrigin) return;	if (event.origin !== contentOrigin) return;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (!f || event.origin !== contentOrigin) return;	if (!f) return;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	f.contentWindow.postMessage(msg, contentOrigin)	f.contentWindow.postMessage(msg, '*')	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	await verify(chosen);	void chosen;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	if (msg.version === null) {	if (true) {	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	typeof v === 'string' && UUID_RE.test(v)	true	node --test internal/server/web/shell_page_test.mjs
@@ -1207,7 +1207,7 @@ internal/server/web/shell.mjs	const versions = (await listVersions(deps, opened)
 internal/server/web/shell.mjs	pageMode === 'full' ? 'full' : 'shared'	'shared'	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	allow-downloads';	allow-downloads allow-top-navigation';	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	origin: window.location.origin, mode })	origin: window.location.origin, mode: 'shared' })	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	if (validVersion(msg.version)) answer(msg.version, '/');	answer(msg.version, '/');	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (validVersion(msg.version)) answer(f, msg.version, '/');	answer(f, msg.version, '/');	node --test internal/server/web/shell_page_test.mjs
 
 # M4 stage C browser fixes: WebKit drops a record holding an X25519
 # CryptoKey, so the key is stored wrapped and save reads the record back;
@@ -1314,11 +1314,11 @@ internal/server/web/cairn.js	return resp.ok ? true : failure(resp);	return true;
 internal/server/web/sw.js	if (self.registration.scope !== origin + '/') throw	if (false) throw	node --test internal/server/web/sw_test.mjs
 internal/server/web/shell.mjs	const keep = opened.mode === 'link' ? hash : '';	const keep = link ? hash : '';	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	const keep = opened.mode === 'link' ? hash : '';	const keep = hash;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	if (err instanceof VersionGoneError && versionId !== chosen) return;	if (false) return;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	if (err instanceof VersionGoneError && versionId !== chosen) return;	if (versionId !== chosen) return;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (err instanceof VersionGoneError && versionId !== mounts.get(f)?.version) return;	if (false) return;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (err instanceof VersionGoneError && versionId !== mounts.get(f)?.version) return;	if (versionId !== mounts.get(f)?.version) return;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	${picker.value}${keep}	${picker.value}	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	/full/${artifact}/${view.chosen}${keep}	/full/${artifact}/${view.chosen}	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	if (contentTarget(chosen, pagePath)) answer(chosen, pagePath);	answer(chosen, pagePath);	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (contentTarget(mounted.version, pagePath)) answer(f, mounted.version, pagePath);	answer(f, mounted.version, pagePath);	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	} else if (validVersion(msg.version) && contentTarget(msg.version, msg.path)) answer	} else if (validVersion(msg.version)) answer	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/sw.js	if (event.request.mode === 'navigate' && event.request.method !== 'GET') {	if (false) {	node --test internal/server/web/sw_test.mjs
 internal/server/web/sw.js	if (event.request.mode === 'navigate' && event.request.method !== 'GET') {	if (event.request.mode === 'navigate') {	node --test internal/server/web/sw_test.mjs
@@ -2948,10 +2948,10 @@ internal/server/web/shell.mjs	if (shown) return;	if (false) return;	node --test 
 internal/server/web/shell.mjs	loaded: () => { if (answered) reveal(false); },	loaded: () => { reveal(false); },	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	answered: () => { answered = true; },	answered: () => {},	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	timeout: () => reveal(true),	timeout: () => {},	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	        gate.answered();	        void gate;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	mounts.get(f).gate.answered();	void f;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	f.className = 'pending';	void f;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	g.loaded();	void g;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	window.setTimeout(g.timeout, REVEAL_MS);	void g;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	gate.loaded();	void gate;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	window.setTimeout(gate.timeout, REVEAL_MS);	void gate;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	f.className = '';	f.className = 'pending';	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/e2e.mjs	if (!UUID_RE.test(b.group)) throw ruled(	if (false) throw ruled(	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	if (!isHex64(m.fp)) {	if (false) {	node --test internal/server/web/e2e_test.mjs
@@ -3875,20 +3875,23 @@ internal/server/web/shell.mjs	await onChange();	onChange();	node --test internal
 internal/server/web/shell.mjs	key = viewKey(shown, pinned);	void shown;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	      done = false;	      void done;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	      setTimeout(tick, WATCH_MS);	      void tick;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	if (outgoing && event.source === outgoing.contentWindow && event.origin === contentOrigin) {	if (outgoing && event.source === outgoing.contentWindow) {	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	if (outgoing && event.source	if (false && event.source	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	if (event.data?.cairn === 'scroll' && validY(event.data.y)) positions.set(outgoing	if (validY(event.data.y)) positions.set(outgoing	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	if (validY(msg.y)) positions.set(frame, msg.y);	positions.set(frame, msg.y);	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	scrolled?.();	void scrolled;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	if (outgoing) outgoing.remove();	if (false) outgoing.remove();	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	const f = [...mounts.keys()].find((m) => event.source === m.contentWindow);	const f = [...mounts.keys()][0];	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (!mounts.has(f)) return;	if (false) return;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	for (const f of mounts.keys()) post(f, { cairn: 'token', token, tokenExpires });	post(visible, { cairn: 'token', token, tokenExpires });	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (validY(msg.y)) positions.set(f, msg.y);	positions.set(f, msg.y);	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (visible === f) return;	if (false) return;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	          old.remove();	          void old;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	if (frame === f) shown();	shown();	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	const y = late ? null : restore();	const y = restore();	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (document.activeElement === old) f.focus();	f.focus();	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	const y = late ? null : restore(old);	const y = restore(old);	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	window.setTimeout(reveal, SCROLL_WAIT_MS);	void reveal;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	const y = positions.get(outgoing ?? frame);	const y = positions.get(frame);	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	watch.resume(next.versions);	void watch;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	mount(() => positions.get(old) ?? null, () => show(next));	mount(() => null, () => show(next));	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	mount(() => positions.get(old) ?? null, () => show(next));	mount(() => positions.get(old) ?? null);	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	mount(() => (saved === null ? null : Number(saved)));	mount(() => null);	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (late && old) return reload();	if (false) return reload();	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	watch.resume(view.versions);	void watch;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	mount((old) => positions.get(old) ?? null, () => {	mount(() => null, () => {	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	watching();	void watching;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	mount(() => (saved === null ? null : Number(saved)), watching);	mount(() => null, watching);	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/frame.js	      done();	      void done;	node --test internal/server/web/frame_test.mjs
 internal/server/web/frame.js	{ cairn: 'scrolled' }, origin);	{ cairn: 'scrolled' }, '*');	node --test internal/server/web/frame_test.mjs
+internal/server/web/shell.mjs	            opened = await openArtifact(deps, { artifact, link, linkError });	            void link;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	          mounts.delete(old);	          void old;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	mounts.get(f).scrolled = reveal;	void reveal;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	mounted.scrolled?.();	void mounted;	node --test internal/server/web/shell_page_test.mjs

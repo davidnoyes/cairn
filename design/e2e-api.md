@@ -1437,32 +1437,38 @@ versions every 5 seconds, and once more each time the tab is shown again:
   them.
 - A page that names a version compares that version's `manifestHash`. It
   ignores newer versions, and updates when its own version is overwritten.
-- A poll starts only after the one before it, and the update it started,
-  have finished. A failed poll is tried again on the next, and a 401 stops
-  the watch.
+- A poll starts only after the one before it has finished. A failed poll is
+  tried again on the next, and a 401 stops the watch. Once a poll finds a
+  change, the watch waits until that update is on screen, so one update runs
+  at a time.
 
 When the answer differs, the shell swaps the new version in without leaving
 the page:
 
-1. Out of sight, it lists the versions, opens their sealed names, verifies
-   the version to frame, and builds the next `keys` context.
+1. Out of sight, it opens the artifact again, as on page load, so the
+   membership chain, epoch keys, and writers are current. It then lists the
+   versions, opens their sealed names, verifies the version to frame, and
+   builds the next `keys` context.
 2. It frames a second boot page, hidden over the frame in view, and answers
-   that frame's handshake as it answered the first. The frame in view is now
-   heard only for `scroll`.
+   that frame's handshake as it answered the first. The frame in view keeps
+   working until it goes: each frame's requests are answered, and its keys
+   are sent, to that frame alone. A renewed token goes to both.
 3. Once the new frame's version has loaded, the shell sends it `scroll-to`
    with the old frame's last position, and waits for `scrolled`, or for 2.5
    seconds.
 4. It then shows the new frame, removes the old one, and updates the header
-   and the version list, in one step. A newer update that overtakes this one
-   removes the older frame, and the overtaken frame changes nothing.
+   and the version list, in one step. Focus that was in the old frame moves
+   to the new one.
 
-If any step before the swap fails, for example a version that is not trusted,
-a key the opened artifact does not hold, or a failed request, the shell
-reloads instead. It saves the scroll position in `sessionStorage`, and
-replaces its location with its own path, plus a public link's fragment, so
-the reload runs every check again. The reloaded page reads the position once,
-and scrolls its first frame there before showing it. Either way the page
-returns to the shell's own page, not to a page the frame went to since.
+The shell reloads instead when a step before the swap fails, for example on a
+version that is not trusted or a failed request. It also reloads when the new
+frame's version has not loaded after 4 seconds; the old frame stays in view
+until then. A reload saves the position of the frame in view in
+`sessionStorage`, and replaces the location with the shell's own path, plus a
+public link's fragment, so the reload runs every check again. The reloaded
+page reads the position once, and scrolls its first frame there before
+showing it. Either way the page returns to the shell's own page, not to a page
+the frame went to since.
 
 The scroll messages:
 
@@ -1476,8 +1482,8 @@ The scroll messages:
   A page that builds its content from script may still be too short, so it
   tries again every 100 ms, for up to 2 seconds. It posts `scrolled` when it
   gets there, or gives up.
-- A frame shown by the shell's 4-second timeout is not scrolled, since its
-  version may never have loaded.
+- A first frame shown by the shell's 4-second timeout is not scrolled, since
+  its version may never have loaded.
 
 Only the page's own scroll position is kept, not one inside a scrolling
 element. An update also drops anything typed into the page and not yet saved.
