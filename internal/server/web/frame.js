@@ -13,6 +13,8 @@
  *    without the artifact including it;
  *  - carries `keys` and `token` messages from the shell to the worker, and
  *    the worker's `need-keys` and `sign` requests to the shell;
+ *  - reports the scroll position to the shell, and scrolls to the one it
+ *    sends back after the shell reloads for a new version;
  *  - saves an `<a download>` of this origin or a blob: URL through the
  *    shell, clicked or clicked from script, because a sandboxed frame cannot
  *    start that download itself in every browser.
@@ -26,6 +28,7 @@
 
   var UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
   var SHELL_PATH = new RegExp('^/shared/' + UUID + '(?:/' + UUID + ')?/?$');
+  var SCROLL_MS = 200;
 
   // appOriginFrom reads the app origin from a worker script URL, as sw.js
   // does, or returns null when it is missing or is not an http(s) origin.
@@ -148,9 +151,22 @@
       var origin = appOrigin();
       if (!origin || event.source !== win.parent || event.origin !== origin) return;
       var data = event.data;
+      if (data && data.cairn === 'scroll-to' && typeof data.y === 'number' && isFinite(data.y)) win.scrollTo(0, data.y);
       if (!data || (data.cairn !== 'keys' && data.cairn !== 'token')) return;
       sw.controller.postMessage(data);
     });
+
+    // The shell keeps the last position, so a reload for a new version can
+    // return to it. A burst of scrolling posts once, with where it stopped.
+    var scrollTimer = null;
+    win.addEventListener('scroll', function () {
+      if (scrollTimer) return;
+      scrollTimer = win.setTimeout(function () {
+        scrollTimer = null;
+        var origin = appOrigin();
+        if (origin) win.parent.postMessage({ cairn: 'scroll', y: win.scrollY }, origin);
+      }, SCROLL_MS);
+    }, { passive: true });
 
     // A click made from script on an anchor that is not in the document
     // reaches no listener, so the method itself is wrapped. An anchor in the

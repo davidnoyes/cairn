@@ -11,7 +11,8 @@ import {
   vouchFor,
 } from './viewer_fixture.mjs';
 import { UNTRUSTED_MESSAGE } from './viewer.mjs';
-import { REVEAL_MS, downloadName, revealGate, run } from './shell.mjs';
+import { REVEAL_MS, WATCH_MS, downloadName, revealGate, run, viewKey, watchVersions } from './shell.mjs';
+import { ApiError } from './account.mjs';
 import { metaItem } from './sharing_fixture.mjs';
 
 const CONTENT = `http://${ARTIFACT}.localhost:8080`;
@@ -68,6 +69,11 @@ function fakeDom(dataset) {
     els,
     document: {
       title: '',
+      visibilityState: 'visible',
+      listeners: {},
+      addEventListener(type, fn) {
+        this.listeners[type] = fn;
+      },
       body,
       getElementById: (id) => els[id],
       createElement: make,
@@ -102,11 +108,13 @@ async function page({ who = null, mode = 'shared', version = '', path = '/', isP
   const timers = [];
   const assigned = [];
   const replaced = [];
+  const reloaded = [];
   const window = {
-    location: { origin: ORIGIN, pathname: `/shared/${ARTIFACT}`, search: '', hash, assign: (p) => assigned.push(p) },
+    location: { origin: ORIGIN, pathname: `/shared/${ARTIFACT}`, search: '', hash, assign: (p) => assigned.push(p), replace: (p) => reloaded.push(p) },
     history: { replaceState: (...a) => replaced.push(a) },
     fetch: server.fetch,
     localStorage: fakeStorage(),
+    sessionStorage: fakeStorage(),
     addEventListener: (type, fn) => {
       handlers[type] = fn;
     },
@@ -129,7 +137,7 @@ async function page({ who = null, mode = 'shared', version = '', path = '/', isP
     },
   };
   const keyStore = fakeKeyStore(record !== undefined ? record : who ? await keyStoreRecord(U[who]) : null);
-  const p = { world, server, dom, window, handlers, timers, assigned, replaced, keyStore };
+  const p = { world, server, dom, window, handlers, timers, assigned, replaced, reloaded, keyStore };
   p.frame = () => dom.els['frame-host'].children[0];
   p.status = () => dom.els.status;
   p.start = () => run(window, dom.document, keyStore);
@@ -645,8 +653,9 @@ test('login goes to sign in and back to this page, carrying a public link but no
 
 test('the content token is renewed and posted to the frame', async () => {
   const p = await page({ who: 'viewer' });
-  assert.equal(p.timers.filter((t) => t.ms !== REVEAL_MS).length, 1);
-  p.timers.find((t) => t.ms !== REVEAL_MS).fn();
+  const renewal = (t) => t.ms !== REVEAL_MS && t.ms !== WATCH_MS;
+  assert.equal(p.timers.filter(renewal).length, 1);
+  p.timers.find(renewal).fn();
   await settle();
   const [msg, origin] = (await p.waitPosted()).at(-1);
   assert.equal(origin, CONTENT);
@@ -786,4 +795,199 @@ test('downloadName keeps the last segment, without control characters, or falls 
   assert.equal(downloadName('my report.txt'), 'my report.txt');
   assert.equal(downloadName('x'.repeat(300)).length, 200);
   for (const bad of ['', '/', 'a/', '.', '..', 'a/..', '\u0001', 5, null, undefined]) assert.equal(downloadName(bad), 'download', String(bad));
+});
+
+// --- live update ---
+
+const V3 = '33333333-3333-4333-8333-333333333333';
+const ver = (id, manifestHash) => ({ id, manifestHash });
+
+test('viewKey names the newest version, or the pinned one, with its manifest hash', () => {
+  const versions = [ver(V2, 'h2'), ver(V1, 'h1')];
+  assert.equal(viewKey(versions, ''), `${V2}:h2`);
+  assert.equal(viewKey(versions, V1), `${V1}:h1`);
+  assert.equal(viewKey(versions, V3), '', 'a pinned version that is gone');
+  assert.equal(viewKey([], ''), '', 'no versions at all');
+});
+
+// watcher runs watchVersions over fakes: answers is what each list() call
+// returns, in turn (a function throws instead). tick() runs the pending timer.
+function watcher({ versions = [ver(V2, 'h2'), ver(V1, 'h1')], pinned = '', answers = [], visible = true } = {}) {
+  const w = { changes: 0, lists: 0, timers: [], gate: null };
+  w.document = {
+    visibilityState: visible ? 'visible' : 'hidden',
+    listeners: {},
+    addEventListener(type, fn) {
+      this.listeners[type] = fn;
+    },
+  };
+  watchVersions({
+    versions,
+    pinned,
+    list: async () => {
+      const answer = answers[w.lists++] ?? versions;
+      if (w.gate) await w.gate;
+      if (typeof answer === 'function') return answer();
+      return answer;
+    },
+    onChange: () => w.changes++,
+    document: w.document,
+    setTimeout: (fn, ms) => w.timers.push({ fn, ms }),
+  });
+  w.tick = async () => {
+    const t = w.timers.shift();
+    assert.equal(t.ms, WATCH_MS);
+    await t.fn();
+  };
+  w.show = async () => {
+    w.document.visibilityState = 'visible';
+    await w.document.listeners.visibilitychange();
+  };
+  return w;
+}
+
+test('watchVersions polls every few seconds and calls nothing while the versions stay the same', async () => {
+  const w = watcher();
+  assert.equal(w.timers.length, 1, 'the first poll is scheduled');
+  await w.tick();
+  await w.tick();
+  assert.equal(w.lists, 2);
+  assert.equal(w.changes, 0);
+  assert.equal(w.timers.length, 1, 'the next poll is scheduled after each one');
+});
+
+test('a page that follows the newest version reloads for a new version, and for an overwrite', async () => {
+  let w = watcher({ answers: [[ver(V3, 'h3'), ver(V2, 'h2'), ver(V1, 'h1')]] });
+  await w.tick();
+  assert.equal(w.changes, 1);
+  assert.equal(w.timers.length, 0, 'nothing more is polled once it has changed');
+  w = watcher({ answers: [[ver(V2, 'h2-new'), ver(V1, 'h1')]] });
+  await w.tick();
+  assert.equal(w.changes, 1);
+});
+
+test('a pinned page ignores a new version, and reloads when its own version is overwritten or deleted', async () => {
+  let w = watcher({ pinned: V1, answers: [[ver(V3, 'h3'), ver(V2, 'h2'), ver(V1, 'h1')]] });
+  await w.tick();
+  assert.equal(w.changes, 0);
+  w = watcher({ pinned: V1, answers: [[ver(V2, 'h2'), ver(V1, 'h1-new')]] });
+  await w.tick();
+  assert.equal(w.changes, 1);
+  w = watcher({ pinned: V1, answers: [[ver(V2, 'h2')]] });
+  await w.tick();
+  assert.equal(w.changes, 1);
+});
+
+test('a hidden tab does not poll, and polls at once when it is shown again', async () => {
+  const w = watcher({ visible: false, answers: [[ver(V3, 'h3')]] });
+  await w.tick();
+  assert.equal(w.lists, 0);
+  assert.equal(w.timers.length, 1, 'it keeps its schedule while hidden');
+  await w.show();
+  assert.equal(w.lists, 1);
+  assert.equal(w.changes, 1);
+  const still = watcher();
+  still.document.visibilityState = 'hidden';
+  await still.document.listeners.visibilitychange();
+  assert.equal(still.lists, 0, 'being hidden polls nothing');
+});
+
+test('a failed poll keeps watching, and a 401 stops it', async () => {
+  let w = watcher({ answers: [() => { throw new TypeError('network down'); }, [ver(V3, 'h3')]] });
+  await w.tick();
+  assert.equal(w.changes, 0);
+  await w.tick();
+  assert.equal(w.changes, 1, 'the poll after the failure still sees the change');
+  w = watcher({ answers: [() => { throw new ApiError('session ended', 401); }] });
+  await w.tick();
+  assert.equal(w.timers.length, 0, 'nothing more is scheduled');
+  await w.show();
+  assert.equal(w.lists, 1, 'and showing the tab polls nothing');
+});
+
+test('a poll does not start while the one before it is still waiting', async () => {
+  const w = watcher({ answers: [[ver(V3, 'h3')]] });
+  let release;
+  w.gate = new Promise((r) => { release = r; });
+  const first = w.tick();
+  await w.show();
+  assert.equal(w.lists, 1, 'the tab being shown did not start a second poll');
+  release();
+  await first;
+  assert.equal(w.changes, 1);
+});
+
+test('the shell reloads its own address when the newest version changes, and keeps a public link', async () => {
+  const p = await page({ isPublic: true, members: [], noRun: true });
+  const hash = `#k=${e2e.b64(p.world.aks[1])}&e=1&o=${U.owner.fp}`;
+  p.window.location.hash = hash;
+  await p.start();
+  const watch = p.timers.find((t) => t.ms === WATCH_MS);
+  assert.ok(watch, 'the shell watches for updates');
+  await watch.fn();
+  assert.deepEqual(p.reloaded, [], 'nothing changed yet');
+  p.server.versions.get(V2).json.manifestHash = 'overwritten';
+  await p.timers.filter((t) => t.ms === WATCH_MS).at(-1).fn();
+  assert.deepEqual(p.reloaded, [`/shared/${ARTIFACT}${hash}`]);
+});
+
+test('a member\'s reload carries no fragment, and a pinned page ignores a new version', async () => {
+  let p = await page({ who: 'viewer', hash: '#section' });
+  p.server.versions.get(V2).json.manifestHash = 'overwritten';
+  await p.timers.find((t) => t.ms === WATCH_MS).fn();
+  assert.deepEqual(p.reloaded, [`/shared/${ARTIFACT}`]);
+  p = await page({ who: 'viewer', version: V1 });
+  p.server.versions.get(V2).json.manifestHash = 'overwritten';
+  await p.timers.find((t) => t.ms === WATCH_MS).fn();
+  assert.deepEqual(p.reloaded, []);
+});
+
+test('the reload keeps the reading position, and the next page scrolls back to it once shown', async () => {
+  const p = await page({ who: 'viewer' });
+  await p.post({ cairn: 'scroll', y: 300 });
+  await p.post({ cairn: 'scroll', y: 1250 });
+  p.server.versions.get(V2).json.manifestHash = 'overwritten';
+  await p.timers.find((t) => t.ms === WATCH_MS).fn();
+  const key = `cairn-scroll:${ARTIFACT}`;
+  assert.equal(p.window.sessionStorage.getItem(key), '1250');
+
+  // The reloaded page: same tab, so the same sessionStorage.
+  const next = await page({ who: 'viewer', noRun: true });
+  next.window.sessionStorage = p.window.sessionStorage;
+  await next.start();
+  assert.equal(next.window.sessionStorage.getItem(key), null, 'the position is used once');
+  const f = next.frame();
+  f.listeners.load();
+  await next.post({ cairn: 'ready', version: null, path: null });
+  await next.waitPosted();
+  assert.equal(next.posted().some(([m]) => m.cairn === 'scroll-to'), false, 'not before the frame is shown');
+  f.listeners.load();
+  assert.deepEqual(next.posted().at(-1), [{ cairn: 'scroll-to', y: 1250 }, CONTENT]);
+});
+
+test('with no saved position, showing the frame scrolls nothing', async () => {
+  const p = await page({ who: 'viewer' });
+  await p.post({ cairn: 'ready', version: null, path: null });
+  await p.waitPosted();
+  p.frame().listeners.load();
+  assert.equal(p.posted().some(([m]) => m.cairn === 'scroll-to'), false);
+});
+
+test('a scroll position from another window or origin, or one that is not a position, is not kept', async () => {
+  const p = await page({ who: 'viewer' });
+  await p.post({ cairn: 'scroll', y: 400 });
+  await p.post({ cairn: 'scroll', y: 999 }, { source: {} });
+  await p.post({ cairn: 'scroll', y: 999 }, { origin: ORIGIN });
+  for (const y of [-1, NaN, Infinity, '999', null]) await p.post({ cairn: 'scroll', y });
+  p.server.versions.get(V2).json.manifestHash = 'overwritten';
+  await p.timers.find((t) => t.ms === WATCH_MS).fn();
+  assert.equal(p.window.sessionStorage.getItem(`cairn-scroll:${ARTIFACT}`), '400');
+});
+
+test('a page never scrolled saves no position', async () => {
+  const p = await page({ who: 'viewer' });
+  p.server.versions.get(V2).json.manifestHash = 'overwritten';
+  await p.timers.find((t) => t.ms === WATCH_MS).fn();
+  assert.equal(p.reloaded.length, 1);
+  assert.equal(p.window.sessionStorage.getItem(`cairn-scroll:${ARTIFACT}`), null);
 });

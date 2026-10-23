@@ -67,6 +67,51 @@ export function revealGate(show) {
   };
 }
 
+// WATCH_MS is how often an open page asks for the artifact's versions, to
+// reload when the one it shows has changed.
+export const WATCH_MS = 5000;
+
+// viewKey identifies what a page shows: the newest version, or the pinned
+// one, with its manifest hash, which an overwrite in place changes. A pinned
+// version that is gone is ''.
+export function viewKey(versions, pinned) {
+  const v = pinned ? versions.find((x) => x.id === pinned) : versions[0];
+  return v ? `${v.id}:${v.manifestHash}` : '';
+}
+
+// watchVersions polls list() every WATCH_MS while document is visible, and
+// at once when it becomes visible again, and calls onChange once when the
+// answer's viewKey is not that of versions. One poll waits for the one
+// before it. A failed poll is tried again on the next; a 401, an ended
+// session, stops the watch.
+export function watchVersions({ versions, pinned, list, onChange, document, setTimeout }) {
+  const key = viewKey(versions, pinned);
+  let busy = false;
+  let done = false;
+  const poll = async () => {
+    if (busy || done) return;
+    busy = true;
+    try {
+      if (viewKey(await list(), pinned) !== key) {
+        done = true;
+        onChange();
+      }
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) done = true;
+    } finally {
+      busy = false;
+    }
+  };
+  const tick = async () => {
+    if (document.visibilityState === 'visible') await poll();
+    if (!done) setTimeout(tick, WATCH_MS);
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') return poll();
+  });
+  setTimeout(tick, WATCH_MS);
+}
+
 const MAX_NAME = 200;
 const REVOKE_MS = 60000;
 
@@ -110,6 +155,12 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
 
   let frame = null;
   const send = (msg) => frame.contentWindow.postMessage(msg, contentOrigin);
+  // A reload for a new version leaves the reading position here, for this
+  // page to scroll back to once the frame is shown.
+  const scrollKey = `cairn-scroll:${artifact}`;
+  const saved = window.sessionStorage.getItem(scrollKey);
+  window.sessionStorage.removeItem(scrollKey);
+  let scrollY = null;
 
   try {
     let link = null;
@@ -199,7 +250,10 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
     };
     // The frame is white until its document has loaded, against the dark page,
     // so it stays out of sight until then.
-    const gate = revealGate(() => { frame.className = ''; });
+    const gate = revealGate(() => {
+      frame.className = '';
+      if (saved !== null) send({ cairn: 'scroll-to', y: Number(saved) });
+    });
     const validVersion = (v) => typeof v === 'string' && UUID_RE.test(v);
 
     window.addEventListener('message', (event) => {
@@ -231,6 +285,8 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
         );
       } else if (msg.cairn === 'download') {
         download(window, document, msg);
+      } else if (msg.cairn === 'scroll') {
+        if (Number.isFinite(msg.y) && msg.y >= 0) scrollY = msg.y;
       }
     });
 
@@ -242,6 +298,20 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
     frame.addEventListener('load', gate.loaded);
     window.setTimeout(gate.timeout, REVEAL_MS);
     $('frame-host').appendChild(frame);
+
+    // A page with no version in its address follows the newest; one that
+    // names a version stays on it, and reloads only if it is overwritten.
+    watchVersions({
+      versions,
+      pinned: pageVersion,
+      list: async () => (await listVersions(deps, opened)).filter((v) => UUID_RE.test(v.id)),
+      onChange: () => {
+        if (scrollY !== null) window.sessionStorage.setItem(scrollKey, String(scrollY));
+        window.location.replace(window.location.pathname + keep);
+      },
+      document,
+      setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+    });
   } catch (err) {
     if (err instanceof LockedError) {
       window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);

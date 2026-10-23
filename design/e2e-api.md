@@ -1293,6 +1293,8 @@ is an object with a `cairn` field naming its type:
 | Frame | Shell | `{"cairn": "need-keys", "version"}` |
 | Frame | Shell | `{"cairn": "navigate", "href"}` |
 | Frame | Shell | `{"cairn": "login"}` |
+| Frame | Shell | `{"cairn": "scroll", "y"}` |
+| Shell | Frame | `{"cairn": "scroll-to", "y"}` |
 
 - The shell sends to the content origin's exact origin, never `*`, and acts
   on a message only when its `source` is the frame's window and its `origin`
@@ -1425,6 +1427,26 @@ Full screen is `/full/{id}` and `/full/{id}/{vid}`: the shell with its chrome
 hidden, until there is a status to show, such as a prompt to sign in. There,
 a `navigate` to `/shared/<uuid>/<uuid>` opens
 `/full/<uuid>/<uuid>`.
+
+An open shell watches for updates. While the tab is visible, it lists the
+versions every 5 seconds, and once more each time the tab is shown again:
+
+- A page with no version in its address compares the newest version's `id`
+  and `manifestHash`. A new version or an overwrite in place changes one of
+  them.
+- A page that names a version compares that version's `manifestHash`. It
+  ignores newer versions, and reloads when its own version is overwritten or
+  deleted.
+- A poll starts only after the one before it has finished. A failed poll is
+  tried again on the next, and a 401 stops the watch.
+
+When the answer differs, the shell replaces its location with its own path,
+plus a public link's fragment, so the reload runs every check again.
+`frame.js` posts `scroll` with `scrollY` 200 ms after the page stops
+scrolling. The shell keeps the last value that is a finite number of 0 or
+more, and saves it in `sessionStorage` for the reload. The reloaded shell
+reads it once and sends `scroll-to` after the frame is shown. `frame.js`
+scrolls only for a `scroll-to` from `parent` at the app origin.
 
 ### App pages in milestone 4
 

@@ -212,6 +212,11 @@ Because a version is always served under its own directory URL, relative paths i
 the SPA (`./app.js`, `fetch('data.json')`) just work; extension-less paths
 fall back to `index.html` for client-side routing, missing assets 404.
 
+An open shell page updates itself. `/shared/{id}` follows the newest version,
+so a new push, or an overwrite with `--overwrite latest`, appears within a few
+seconds, at the same scroll position. A page that names a version stays on it,
+and reloads only when that version is overwritten.
+
 ## Writing an artifact
 
 A version is a directory with an `index.html`. Include the client library with

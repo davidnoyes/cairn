@@ -509,3 +509,65 @@ test('sign from the shell side is not passed to the worker', () => {
   win.dispatchEvent(msg({ cairn: 'download', name: 'a', bytes: new ArrayBuffer(1) }, win.parent, APP));
   assert.deepEqual(controller.posted, []);
 });
+
+// --- scroll position ---
+
+// scrollWin is a window whose timers run when the test says, and which
+// records where it was scrolled to.
+function scrollWin() {
+  const timers = [];
+  return {
+    timers,
+    scrollY: 0,
+    scrolled: [],
+    setTimeout(fn, ms) {
+      timers.push({ fn, ms });
+      return timers.length;
+    },
+    scrollTo(x, y) {
+      this.scrolled.push([x, y]);
+    },
+  };
+}
+
+test('scrolling posts the position to the shell at most once every 200 ms, with the latest value', () => {
+  const { win } = setup({ win: scrollWin() });
+  win.scrollY = 120;
+  win.dispatchEvent(new Event('scroll'));
+  win.scrollY = 480;
+  win.dispatchEvent(new Event('scroll'));
+  assert.equal(win.timers.length, 1, 'one timer for a burst of scrolling');
+  assert.equal(win.timers[0].ms, 200);
+  assert.deepEqual(win.parent.posted, [], 'nothing is posted before the timer runs');
+  win.timers[0].fn();
+  assert.deepEqual(win.parent.posted, [[{ cairn: 'scroll', y: 480 }, APP]]);
+  win.scrollY = 900;
+  win.dispatchEvent(new Event('scroll'));
+  assert.equal(win.timers.length, 2, 'the next scroll starts a new timer');
+  win.timers[1].fn();
+  assert.deepEqual(win.parent.posted.at(-1), [{ cairn: 'scroll', y: 900 }, APP]);
+});
+
+test('with no controller, scrolling posts nothing', () => {
+  const { win } = setup({ sw: null, win: scrollWin() });
+  win.dispatchEvent(new Event('scroll'));
+  win.timers.forEach((t) => t.fn());
+  assert.deepEqual(win.parent.posted, []);
+});
+
+test('scroll-to from the shell scrolls the page', () => {
+  const { win, controller } = setup({ win: scrollWin() });
+  win.dispatchEvent(msg({ cairn: 'scroll-to', y: 640 }, win.parent, APP));
+  assert.deepEqual(win.scrolled, [[0, 640]]);
+  assert.deepEqual(controller.posted, [], 'it is not passed to the worker');
+});
+
+test('scroll-to from another window or origin, or with a position that is not a number, is ignored', () => {
+  const { win } = setup({ win: scrollWin() });
+  win.dispatchEvent(msg({ cairn: 'scroll-to', y: 640 }, {}, APP));
+  win.dispatchEvent(msg({ cairn: 'scroll-to', y: 640 }, win.parent, 'https://evil.example'));
+  for (const y of ['640', NaN, Infinity, null, undefined]) {
+    win.dispatchEvent(msg({ cairn: 'scroll-to', y }, win.parent, APP));
+  }
+  assert.deepEqual(win.scrolled, []);
+});
