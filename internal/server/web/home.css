@@ -213,10 +213,11 @@ dialog::backdrop{background:rgb(0 0 0 / .6)}
   color:var(--text); font-size:14px; overflow-wrap:anywhere;
 }
 .warning .actions{justify-content:flex-start; margin-top:.6rem}
-.public{display:flex; flex-wrap:wrap; gap:.6rem 1.2rem; align-items:center; margin-top:1rem}
-.public label{font-family:var(--mono); font-size:12.5px; color:var(--muted); display:flex; gap:.4rem; align-items:center}
-.public input[type=checkbox]{accent-color:var(--accent)}
-.public .hint{flex-basis:100%; margin:0}
+/* div: the artifact lists' visibility cell is a td.public, and must stay a table cell */
+div.public{display:flex; flex-wrap:wrap; gap:.6rem 1.2rem; align-items:center; margin-top:1rem}
+div.public label{font-family:var(--mono); font-size:12.5px; color:var(--muted); display:flex; gap:.4rem; align-items:center}
+div.public input[type=checkbox]{accent-color:var(--accent)}
+div.public .hint{flex-basis:100%; margin:0}
 td.fp{word-break:break-all; min-width:12rem}
 td select.role{
   font-family:var(--mono); font-size:12px; background:var(--bg); color:var(--text);

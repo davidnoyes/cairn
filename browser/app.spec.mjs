@@ -65,6 +65,13 @@ test('app: the owner lists their artifacts by name, and a viewer finds the share
   await expect(own.locator('td.name')).toHaveText('plain-doc');
   await expect(own.getByRole('button', { name: 'Share' })).toBeVisible();
   await expect(own.locator('td.public')).toHaveText(/public/i);
+  // The visibility cell fills the row like its neighbors, so its dividing
+  // line and hover background line up with theirs.
+  const edges = async (cls) => {
+    const b = await own.locator(`td.${cls}`).boundingBox();
+    return [Math.round(b.y), Math.round(b.y + b.height)];
+  };
+  expect(await edges('public')).toEqual(await edges('access'));
   await expect(ownerPage.getByRole('tab', { name: 'Admin' })).toBeVisible();
 
   const { context, page } = await signedInContext(browser, 'viewer');
