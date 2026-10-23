@@ -991,3 +991,22 @@ test('a page never scrolled saves no position', async () => {
   assert.equal(p.reloaded.length, 1);
   assert.equal(p.window.sessionStorage.getItem(`cairn-scroll:${ARTIFACT}`), null);
 });
+
+test('a frame load forgets the position, which belonged to the page before it', async () => {
+  const p = await page({ who: 'viewer' });
+  await p.post({ cairn: 'scroll', y: 2000 });
+  p.frame().listeners.load();
+  p.server.versions.get(V2).json.manifestHash = 'overwritten';
+  await p.timers.find((t) => t.ms === WATCH_MS).fn();
+  assert.equal(p.reloaded.length, 1);
+  assert.equal(p.window.sessionStorage.getItem(`cairn-scroll:${ARTIFACT}`), null);
+});
+
+test('a position that cannot be saved does not stop the reload', async () => {
+  const p = await page({ who: 'viewer' });
+  p.window.sessionStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+  await p.post({ cairn: 'scroll', y: 400 });
+  p.server.versions.get(V2).json.manifestHash = 'overwritten';
+  await p.timers.find((t) => t.ms === WATCH_MS).fn();
+  assert.deepEqual(p.reloaded, [`/shared/${ARTIFACT}`]);
+});

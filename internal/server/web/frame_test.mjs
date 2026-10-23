@@ -514,10 +514,12 @@ test('sign from the shell side is not passed to the worker', () => {
 
 // scrollWin is a window whose timers run when the test says, and which
 // records where it was scrolled to.
-function scrollWin() {
+// height is how far the page can scroll, as a page still rendering limits it.
+function scrollWin(height = Infinity) {
   const timers = [];
   return {
     timers,
+    height,
     scrollY: 0,
     scrolled: [],
     setTimeout(fn, ms) {
@@ -526,6 +528,7 @@ function scrollWin() {
     },
     scrollTo(x, y) {
       this.scrolled.push([x, y]);
+      this.scrollY = Math.min(y, this.height);
     },
   };
 }
@@ -570,4 +573,28 @@ test('scroll-to from another window or origin, or with a position that is not a 
     win.dispatchEvent(msg({ cairn: 'scroll-to', y }, win.parent, APP));
   }
   assert.deepEqual(win.scrolled, []);
+});
+
+test('scroll-to on a page still too short tries again until it gets there', () => {
+  const { win } = setup({ win: scrollWin(300) });
+  win.dispatchEvent(msg({ cairn: 'scroll-to', y: 640 }, win.parent, APP));
+  assert.equal(win.scrollY, 300);
+  assert.equal(win.timers.length, 1);
+  assert.equal(win.timers[0].ms, 100);
+  win.height = 2000;
+  win.timers.shift().fn();
+  assert.equal(win.scrollY, 640);
+  assert.equal(win.timers.length, 0, 'it stops once it is there');
+});
+
+test('scroll-to gives up after about two seconds on a page that stays short', () => {
+  const { win } = setup({ win: scrollWin(300) });
+  win.dispatchEvent(msg({ cairn: 'scroll-to', y: 640 }, win.parent, APP));
+  let tries = 0;
+  while (win.timers.length && tries < 100) {
+    win.timers.shift().fn();
+    tries++;
+  }
+  assert.equal(tries, 20);
+  assert.equal(win.scrolled.length, 21);
 });

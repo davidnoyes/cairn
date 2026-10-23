@@ -215,7 +215,8 @@ fall back to `index.html` for client-side routing, missing assets 404.
 An open shell page updates itself. `/shared/{id}` follows the newest version,
 so a new push, or an overwrite with `--overwrite latest`, appears within a few
 seconds, at the same scroll position. A page that names a version stays on it,
-and reloads only when that version is overwritten.
+and reloads only when that version is overwritten. The reload drops anything
+typed into the page and not yet saved.
 
 ## Writing an artifact
 

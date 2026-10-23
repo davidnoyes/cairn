@@ -295,7 +295,11 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
     frame.setAttribute('title', name);
     frame.setAttribute('sandbox', SANDBOX);
     frame.className = 'pending';
-    frame.addEventListener('load', gate.loaded);
+    // A load is a new page, and the position kept belonged to the last one.
+    frame.addEventListener('load', () => {
+      scrollY = null;
+      gate.loaded();
+    });
     window.setTimeout(gate.timeout, REVEAL_MS);
     $('frame-host').appendChild(frame);
 
@@ -306,7 +310,11 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
       pinned: pageVersion,
       list: async () => (await listVersions(deps, opened)).filter((v) => UUID_RE.test(v.id)),
       onChange: () => {
-        if (scrollY !== null) window.sessionStorage.setItem(scrollKey, String(scrollY));
+        try {
+          if (scrollY !== null) window.sessionStorage.setItem(scrollKey, String(scrollY));
+        } catch {
+          // The position is a convenience; the new version still loads.
+        }
         window.location.replace(window.location.pathname + keep);
       },
       document,

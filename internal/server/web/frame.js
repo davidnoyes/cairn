@@ -29,6 +29,8 @@
   var UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
   var SHELL_PATH = new RegExp('^/shared/' + UUID + '(?:/' + UUID + ')?/?$');
   var SCROLL_MS = 200;
+  var SCROLL_TRIES = 20;
+  var SCROLL_RETRY_MS = 100;
 
   // appOriginFrom reads the app origin from a worker script URL, as sw.js
   // does, or returns null when it is missing or is not an http(s) origin.
@@ -106,6 +108,16 @@
     });
   }
 
+  // scrollToward scrolls to y, and tries again every SCROLL_RETRY_MS, up to
+  // tries more times, while the page is too short to get there: one that
+  // builds its content from script is still short when the shell asks.
+  function scrollToward(win, y, tries) {
+    win.scrollTo(0, y);
+    if (win.scrollY < y - 1 && tries > 0) {
+      win.setTimeout(function () { scrollToward(win, y, tries - 1); }, SCROLL_RETRY_MS);
+    }
+  }
+
   // addMermaid adds /_cairn/mermaid.js to a page with diagrams that has not
   // loaded Mermaid itself. mermaid-boot.js guards against running twice.
   function addMermaid(win, doc) {
@@ -151,13 +163,14 @@
       var origin = appOrigin();
       if (!origin || event.source !== win.parent || event.origin !== origin) return;
       var data = event.data;
-      if (data && data.cairn === 'scroll-to' && typeof data.y === 'number' && isFinite(data.y)) win.scrollTo(0, data.y);
+      if (data && data.cairn === 'scroll-to' && typeof data.y === 'number' && isFinite(data.y)) scrollToward(win, data.y, SCROLL_TRIES);
       if (!data || (data.cairn !== 'keys' && data.cairn !== 'token')) return;
       sw.controller.postMessage(data);
     });
 
     // The shell keeps the last position, so a reload for a new version can
-    // return to it. A burst of scrolling posts once, with where it stopped.
+    // return to it. Scrolling posts at most every SCROLL_MS, and once more
+    // after it stops.
     var scrollTimer = null;
     win.addEventListener('scroll', function () {
       if (scrollTimer) return;

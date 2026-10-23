@@ -1441,12 +1441,25 @@ versions every 5 seconds, and once more each time the tab is shown again:
   tried again on the next, and a 401 stops the watch.
 
 When the answer differs, the shell replaces its location with its own path,
-plus a public link's fragment, so the reload runs every check again.
-`frame.js` posts `scroll` with `scrollY` 200 ms after the page stops
-scrolling. The shell keeps the last value that is a finite number of 0 or
-more, and saves it in `sessionStorage` for the reload. The reloaded shell
-reads it once and sends `scroll-to` after the frame is shown. `frame.js`
-scrolls only for a `scroll-to` from `parent` at the app origin.
+plus a public link's fragment, so the reload runs every check again. The
+reload returns to the shell's page, not to a page the frame went to since.
+
+The reading position comes back with it:
+
+- While the page scrolls, `frame.js` posts `scroll` with `scrollY` at most
+  every 200 ms, and once more after scrolling stops.
+- The shell keeps the last value that is a finite number of 0 or more, and
+  forgets it at each frame load, since it belonged to the page before. On
+  reload it saves the value in `sessionStorage`. A value it cannot save is
+  dropped, and the reload goes ahead.
+- The reloaded shell reads the value once, and sends `scroll-to` after the
+  frame is shown.
+- `frame.js` scrolls only for a `scroll-to` from `parent` at the app origin.
+  A page that builds its content from script may still be too short, so it
+  tries again every 100 ms, for up to 2 seconds.
+
+Only the page's own scroll position is kept, not one inside a scrolling
+element. A reload also drops anything typed into the page and not yet saved.
 
 ### App pages in milestone 4
 
