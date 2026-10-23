@@ -1429,8 +1429,9 @@ hidden, until there is a status to show, such as a prompt to sign in. There,
 a `navigate` to `/shared/<uuid>/<uuid>` opens
 `/full/<uuid>/<uuid>`.
 
-An open shell watches for updates. While the tab is visible, it lists the
-versions every 5 seconds, and once more each time the tab is shown again:
+An open shell watches for updates from the moment its first frame is shown.
+While the tab is visible, it lists the versions every 5 seconds, and once more
+each time the tab is shown again:
 
 - A page with no version in its address compares the newest version's `id`
   and `manifestHash`. A new version or an overwrite in place changes one of

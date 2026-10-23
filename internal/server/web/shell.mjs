@@ -107,19 +107,27 @@ export function watchVersions({ versions, pinned, list, onChange, document, setT
       busy = false;
     }
   };
-  const tick = async () => {
+  // Each schedule starts a new generation, and a tick of an older one ends:
+  // resume() may schedule while a tick from before the change is pending.
+  let generation = 0;
+  const schedule = () => {
+    const mine = ++generation;
+    setTimeout(() => tick(mine), WATCH_MS);
+  };
+  const tick = async (mine) => {
+    if (mine !== generation) return;
     if (document.visibilityState === 'visible') await poll();
-    if (!done) setTimeout(tick, WATCH_MS);
+    if (!done) schedule();
   };
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') return poll();
   });
-  setTimeout(tick, WATCH_MS);
+  schedule();
   return {
     resume: (shown) => {
       key = viewKey(shown, pinned);
       done = false;
-      setTimeout(tick, WATCH_MS);
+      schedule();
     },
   };
 }
@@ -295,6 +303,8 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
       const msg = event.data;
       if (typeof msg !== 'object' || msg === null) return;
       const mounted = mounts.get(f);
+      // The old frame, during a swap, is answered with the new context and
+      // writers: the same artifact and members, so nothing it may not see.
       if (msg.cairn === 'ready') {
         // A path that would take the frame out of the version gets no keys.
         if (msg.version === null) {
@@ -421,7 +431,8 @@ export async function run(window, document, keyStore = createKeyStore(window.ind
         setTimeout: (fn, ms) => window.setTimeout(fn, ms),
       });
     };
-    mount(() => (saved === null ? null : Number(saved)), watching);
+    // A position this page cannot read is no position.
+    mount(() => (saved !== null && validY(Number(saved)) ? Number(saved) : null), watching);
   } catch (err) {
     if (err instanceof LockedError) {
       window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);

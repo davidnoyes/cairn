@@ -3852,7 +3852,7 @@ internal/server/web/shell.mjs	if (busy || done) return;	if (done) return;	node -
 internal/server/web/shell.mjs	if (document.visibilityState === 'visible') await poll();	await poll();	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	if (document.visibilityState === 'visible') return poll();	return poll();	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	if (err instanceof ApiError && err.status === 401) done = true;	void err;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	if (!done) setTimeout(tick, WATCH_MS);	setTimeout(tick, WATCH_MS);	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (!done) schedule();	schedule();	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	window.location.replace(window.location.pathname + keep);	window.location.replace(window.location.pathname);	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	const validY = (y) => Number.isFinite(y) && y >= 0;	const validY = (y) => y >= 0;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	const validY = (y) => Number.isFinite(y) && y >= 0;	const validY = (y) => Number.isFinite(y);	node --test internal/server/web/shell_page_test.mjs
@@ -3874,7 +3874,6 @@ internal/server/web/frame.js	if (origin) win.parent.postMessage({ cairn: 'scroll
 internal/server/web/shell.mjs	await onChange();	onChange();	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	key = viewKey(shown, pinned);	void shown;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	      done = false;	      void done;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	      setTimeout(tick, WATCH_MS);	      void tick;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	const f = [...mounts.keys()].find((m) => event.source === m.contentWindow);	const f = [...mounts.keys()][0];	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	if (!mounts.has(f)) return;	if (false) return;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	for (const f of mounts.keys()) post(f, { cairn: 'token', token, tokenExpires });	post(visible, { cairn: 'token', token, tokenExpires });	node --test internal/server/web/shell_page_test.mjs
@@ -3888,10 +3887,13 @@ internal/server/web/shell.mjs	if (late && old) return reload();	if (false) retur
 internal/server/web/shell.mjs	watch.resume(view.versions);	void watch;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	mount((old) => positions.get(old) ?? null, () => {	mount(() => null, () => {	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	watching();	void watching;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	mount(() => (saved === null ? null : Number(saved)), watching);	mount(() => null, watching);	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	mount(() => (saved !== null && validY(Number(saved)) ? Number(saved) : null), watching);	mount(() => null, watching);	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/frame.js	      done();	      void done;	node --test internal/server/web/frame_test.mjs
 internal/server/web/frame.js	{ cairn: 'scrolled' }, origin);	{ cairn: 'scrolled' }, '*');	node --test internal/server/web/frame_test.mjs
 internal/server/web/shell.mjs	            opened = await openArtifact(deps, { artifact, link, linkError });	            void link;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	          mounts.delete(old);	          void old;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	mounts.get(f).scrolled = reveal;	void reveal;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	mounted.scrolled?.();	void mounted;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (mine !== generation) return;	if (false) return;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	saved !== null && validY(Number(saved))	saved !== null	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	      schedule();	      void schedule;	node --test internal/server/web/shell_page_test.mjs

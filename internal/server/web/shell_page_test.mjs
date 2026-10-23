@@ -1355,3 +1355,28 @@ test('a public link visitor\'s page swaps in a new version too', async () => {
   assert.equal(keys.linkToken, e2e.b64(await e2e.linkToken(p.world.aks[1], ARTIFACT, 1)));
   assert.deepEqual(p.frames(), [next]);
 });
+
+test('resuming after a change the tab being shown found leaves one poll loop, not two', async () => {
+  const three = [ver(V3, 'h3'), ver(V2, 'h2'), ver(V1, 'h1')];
+  const w = watcher({ answers: [three, three, three, three] });
+  assert.equal(w.timers.length, 1, 'a tick is pending');
+  await w.show();
+  assert.equal(w.changes, 1);
+  w.watch.resume(three);
+  assert.equal(w.timers.length, 2);
+  await w.tick();
+  assert.equal(w.lists, 1, 'the tick from before the change polls nothing');
+  assert.equal(w.timers.length, 1, 'and schedules nothing');
+  await w.tick();
+  assert.equal(w.lists, 2);
+  assert.equal(w.timers.length, 1, 'one loop goes on');
+});
+
+test('a saved position that is not a position scrolls nothing, and the first frame shows at once', async () => {
+  const p = await page({ who: 'viewer', noRun: true });
+  p.window.sessionStorage.setItem(`cairn-scroll:${ARTIFACT}`, 'nonsense');
+  await p.start();
+  await handshake(p, p.frame());
+  assert.equal(p.frame().className, '');
+  assert.equal(p.posted().some(([m]) => m.cairn === 'scroll-to'), false);
+});
