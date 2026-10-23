@@ -1010,3 +1010,10 @@ test('a position that cannot be saved does not stop the reload', async () => {
   await p.timers.find((t) => t.ms === WATCH_MS).fn();
   assert.deepEqual(p.reloaded, [`/shared/${ARTIFACT}`]);
 });
+
+test('a version id that is not a UUID, listed after the page opened, does not reload it', async () => {
+  const p = await page({ who: 'viewer' });
+  p.server.versions.set('bad', { json: { id: '../evil', seq: 9, epoch: 1, name: '', manifestHash: '0'.repeat(64), vouch: null }, blob: new Uint8Array(0) });
+  await p.timers.find((t) => t.ms === WATCH_MS).fn();
+  assert.deepEqual(p.reloaded, []);
+});

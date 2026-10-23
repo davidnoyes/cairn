@@ -1203,7 +1203,7 @@ internal/server/web/shell.mjs	await verify(chosen);	void chosen;	node --test int
 internal/server/web/shell.mjs	if (msg.version === null) {	if (true) {	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	typeof v === 'string' && UUID_RE.test(v)	true	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	typeof msg.href === 'string' ?	true ?	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	.filter((v) => UUID_RE.test(v.id))	.filter(() => true)	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	const versions = (await listVersions(deps, opened)).filter((v) => UUID_RE.test(v.id));	const versions = (await listVersions(deps, opened)).filter(() => true);	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	pageMode === 'full' ? 'full' : 'shared'	'shared'	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	allow-downloads';	allow-downloads allow-top-navigation';	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	origin: window.location.origin, mode })	origin: window.location.origin, mode: 'shared' })	node --test internal/server/web/shell_page_test.mjs
@@ -2950,9 +2950,9 @@ internal/server/web/shell.mjs	answered: () => { answered = true; },	answered: ()
 internal/server/web/shell.mjs	timeout: reveal,	timeout: () => {},	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	        gate.answered();	        void gate;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	frame.className = 'pending';	void frame;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	frame.addEventListener('load', gate.loaded);	void gate;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	gate.loaded();	void gate;	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/shell.mjs	window.setTimeout(gate.timeout, REVEAL_MS);	void gate;	node --test internal/server/web/shell_page_test.mjs
-internal/server/web/shell.mjs	revealGate(() => { frame.className = ''; })	revealGate(() => { frame.className = 'pending'; })	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	frame.className = '';	frame.className = 'pending';	node --test internal/server/web/shell_page_test.mjs
 internal/server/web/e2e.mjs	if (!UUID_RE.test(b.group)) throw ruled(	if (false) throw ruled(	node --test internal/server/web/e2e_test.mjs
 internal/server/web/e2e.mjs	if (!isHex64(m.fp)) {	if (false) {	node --test internal/server/web/e2e_test.mjs
 internal/server/web/groups.mjs	for (const pair of [b.old, b.new]) {	for (const pair of [b.new]) {	node --test internal/server/web/groups_test.mjs
@@ -3847,3 +3847,27 @@ internal/server/web/sharing.mjs	applyNote(res, describe, 'Reload the page to try
 internal/server/web/sharing.mjs	describe, retry).trim()	describe).trim()	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/sharing.mjs	note += ` ${retry}`;	note += ' Choose Finish sharing to try again.';	node --test internal/server/web/sharing_others_test.mjs
 internal/server/web/sharing.mjs	retry = 'Choose Finish sharing to try again.') {	retry = 'Reload the page to try again.') {	node --test internal/server/web/sharing_others_test.mjs
+internal/server/web/shell.mjs	return v ? `${v.id}:${v.manifestHash}` : '';	return v ? `${v.id}` : '';	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (busy || done) return;	if (done) return;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (document.visibilityState === 'visible') await poll();	await poll();	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (document.visibilityState === 'visible') return poll();	return poll();	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (err instanceof ApiError && err.status === 401) done = true;	void err;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (!done) setTimeout(tick, WATCH_MS);	setTimeout(tick, WATCH_MS);	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	window.location.replace(window.location.pathname + keep);	window.location.replace(window.location.pathname);	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (Number.isFinite(msg.y) && msg.y >= 0) scrollY = msg.y;	if (Number.isFinite(msg.y)) scrollY = msg.y;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (Number.isFinite(msg.y) && msg.y >= 0) scrollY = msg.y;	if (msg.y >= 0) scrollY = msg.y;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	window.sessionStorage.removeItem(scrollKey);	void scrollKey;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (saved !== null) send(	if (true) send(	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	if (scrollY !== null) window.sessionStorage.setItem	if (true) window.sessionStorage.setItem	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	pinned: pageVersion,	pinned: '',	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	list: async () => (await listVersions(deps, opened)).filter((v) => UUID_RE.test(v.id)),	list: async () => (await listVersions(deps, opened)).filter(() => true),	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/shell.mjs	      scrollY = null;	      void scrollY;	node --test internal/server/web/shell_page_test.mjs
+internal/server/web/frame.js	&& typeof data.y === 'number' && isFinite(data.y)) scrollToward	) scrollToward	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	&& typeof data.y === 'number' && isFinite(data.y)) scrollToward	&& isFinite(data.y)) scrollToward	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	scrollToward(win, data.y, SCROLL_TRIES)	win.scrollTo(0, data.y)	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	if (win.scrollY < y - 1 && tries > 0)	if (tries > 0)	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	if (win.scrollY < y - 1 && tries > 0)	if (win.scrollY < y - 1)	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	var SCROLL_RETRY_MS = 100;	var SCROLL_RETRY_MS = 200;	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	if (scrollTimer) return;	if (false) return;	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	        scrollTimer = null;	        void scrollTimer;	node --test internal/server/web/frame_test.mjs
+internal/server/web/frame.js	if (origin) win.parent.postMessage({ cairn: 'scroll', y: win.scrollY }, origin);	win.parent.postMessage({ cairn: 'scroll', y: win.scrollY }, origin);	node --test internal/server/web/frame_test.mjs
