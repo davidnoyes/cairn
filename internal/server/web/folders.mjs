@@ -251,6 +251,25 @@ export function breadcrumb(items, folder) {
   return [{ id: null, name: 'Top' }, ...pathOf(items, folder).map((f) => ({ id: f.id, name: f.name }))];
 }
 
+// foldersInAddress reads the folders in view from the page address's query
+// (location.search): folder for the caller's own tree, shared for Shared with
+// you. A folder that is absent, or empty, is the top level.
+export function foldersInAddress(search) {
+  const q = new URLSearchParams(search);
+  return { own: q.get('folder') || null, shared: q.get('shared') || null };
+}
+
+// addressFor is the query that names the folders in view, own and shared,
+// keeping every other parameter in search. It is '' at the top level of both.
+export function addressFor(search, { own, shared }) {
+  const q = new URLSearchParams(search);
+  for (const [key, id] of [['folder', own], ['shared', shared]]) {
+    if (id) q.set(key, id); else q.delete(key);
+  }
+  const s = q.toString();
+  return s ? `?${s}` : '';
+}
+
 // canMoveInto says whether item may go into target (a folder ID or null): not
 // into itself, and not into a folder inside it.
 export function canMoveInto(items, id, target) {

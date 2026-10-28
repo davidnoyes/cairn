@@ -2545,6 +2545,12 @@ elsewhere.
 - **Your artifacts** becomes a tree of the caller's own items: folders first,
   then artifacts, each sorted by name. A breadcrumb over it shows the folder
   in view, and clicking a folder opens it.
+- The page's address names the folders in view: `?folder=` for **Your
+  artifacts** and `?shared=` for **Shared with you**, with neither at the top
+  level. Opening a folder adds a history entry, so Back and Forward step
+  through folders on the Artifacts tab. A reload, or Back from an artifact,
+  opens the folder the address names. A folder that is gone shows the top
+  level, and the address stops naming it.
 - **New folder** creates a folder in the one in view.
 - Each own item has **Move to…**, which offers the top level and every own
   folder it can move into, and it can be dragged onto a folder row or a

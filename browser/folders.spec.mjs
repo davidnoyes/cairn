@@ -166,3 +166,62 @@ test('folders: drag onto a folder row, move a folder, and delete a folder that h
   await expect(boxRow).toHaveCount(0, { timeout: 30_000 });
   for (const name of [box, sub, doc]) expect(item(name)).toBeUndefined();
 });
+
+test('folders: Back and Forward step through folders, and an artifact opened in one comes back to it', async ({ ownerPage, browserName }) => {
+  const s = loadState();
+  const stamp = `${browserName}-${Date.now()}`;
+  const outer = `back-outer-${stamp}`;
+  const inner = `back-inner-${stamp}`;
+  const doc = `back-doc-${stamp}`;
+  cli('owner', ['folder', 'create', outer]);
+  cli('owner', ['folder', 'create', inner, '--in', outer]);
+  cli('owner', ['push', path.join(s.fixturesDir, 'marker'), '--artifact', doc, '--create', '--in', inner]);
+
+  await ownerPage.goto(`${s.appOrigin}/app`);
+  await ownerPage.getByRole('tab', { name: 'Artifacts' }).click();
+  await settled(ownerPage);
+  const here = ownerPage.locator('#crumbs [aria-current=page]');
+  const row = (name) => ownerPage.locator('#own tr').filter({ hasText: name });
+  await row(outer).getByRole('button', { name: outer }).click();
+  await row(inner).getByRole('button', { name: inner }).click();
+  await expect(here).toHaveText(inner);
+
+  // Back from an artifact comes back to the folder it was opened from.
+  await row(doc).getByRole('link', { name: doc }).click();
+  await ownerPage.waitForURL(/\/shared\//);
+  await ownerPage.goBack();
+  await expect(here).toHaveText(inner, { timeout: 60_000 });
+  await expect(row(doc)).toHaveCount(1);
+
+  // Then out through each folder to the top level, and Forward goes in again.
+  await ownerPage.goBack();
+  await expect(here).toHaveText(outer);
+  await ownerPage.goBack();
+  await expect(here).toHaveText('Top');
+  await ownerPage.goForward();
+  await expect(here).toHaveText(outer);
+
+  // Back from another tab shows the Artifacts tab, where the folder changed.
+  await ownerPage.getByRole('tab', { name: 'Account' }).click();
+  await ownerPage.goBack();
+  await expect(ownerPage.getByRole('tab', { name: 'Artifacts' })).toHaveAttribute('aria-selected', 'true');
+  await expect(here).toHaveText('Top');
+  await ownerPage.goForward();
+  await expect(here).toHaveText(outer);
+
+  // A reload keeps the folder in view, and the breadcrumb is a step Back undoes.
+  await ownerPage.reload();
+  await expect(here).toHaveText(outer, { timeout: 60_000 });
+  await settled(ownerPage);
+  await ownerPage.locator('#crumbs').getByRole('button', { name: 'Top' }).click();
+  await expect(here).toHaveText('Top');
+  await ownerPage.goBack();
+  await expect(here).toHaveText(outer);
+
+  // A folder the address names that is not there shows the top level, and
+  // the address stops naming it.
+  await ownerPage.goto(`${s.appOrigin}/app?folder=00000000-0000-4000-8000-000000000000`);
+  await settled(ownerPage);
+  await expect(here).toHaveText('Top');
+  expect(new URL(ownerPage.url()).search).toBe('');
+});

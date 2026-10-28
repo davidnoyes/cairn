@@ -6,7 +6,7 @@
 import { changePassword, createApiKey, enrollPasskey, listPasskeys, newRecoveryCode, passkeysAvailable, removePasskey, signOut } from './account.mjs';
 import { UnauthenticatedError, startApp } from './app-init.mjs';
 import { createGroupsTab } from './groups-tab.mjs';
-import { FolderError, breadcrumb, canEdit, childrenOf, createFolder, deleteSummary, deleteTree, DESCRIBE_LIMIT, describeList, isStub, makeDraggable, makeDropTarget, mapLimit, moveAndPlace, moveTargets, nextAttempt, removeFromFolder, renameFolder, rowActions, splitTrees, stubLabel, subtree } from './folders.mjs';
+import { FolderError, addressFor, breadcrumb, canEdit, childrenOf, createFolder, deleteSummary, deleteTree, DESCRIBE_LIMIT, describeList, foldersInAddress, isStub, makeDraggable, makeDropTarget, mapLimit, moveAndPlace, moveTargets, nextAttempt, removeFromFolder, renameFolder, rowActions, splitTrees, stubLabel, subtree } from './folders.mjs';
 import { listGroups, verifiedGroup } from './groups.mjs';
 import { describeArtifact } from './meta.mjs';
 import { GroupKeyChangedError, KeyChangedError, apply, autoApplyNote, approvableCount, approve, canShare, directory, fanOut, fanOutNote, memberControls, members, offersFinishSharing, pin, publicLinkFor, setPublic, setTeam, share, shareGroup, unshare, unshareGroup, waiting } from './sharing.mjs';
@@ -163,14 +163,16 @@ $('signout').addEventListener('click', async (event) => {
 // read has no parent in the list the server serves, so it stays at the top.
 // A stub is an item in a folder the caller reads that they cannot read yet:
 // the row says whose it is, and nothing in it is opened or decrypted.
+// The page's address names both folders in view (saveFolders), so the page
+// starts in them.
 let myId = '';
 let ownIds = new Set();
 let own = [];
 let ownRows = new Map();
-let viewFolder = null;
+let viewFolder = foldersInAddress(location.search).own;
 let shared = [];
 let sharedRows = new Map();
-let sharedFolder = null;
+let sharedFolder = foldersInAddress(location.search).shared;
 // The directory as the last list read it, which names the owners of other
 // people's items for a folder's Delete.
 let ownerDir = [];
@@ -366,7 +368,10 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 // renderOwn lays out the folder in view: its breadcrumb, and its items as
 // rows, folders first. A folder in view that is gone shows the top level.
 function renderOwn() {
-  if (viewFolder !== null && !own.some((i) => i.id === viewFolder && i.kind === 'folder')) viewFolder = null;
+  if (viewFolder !== null && !own.some((i) => i.id === viewFolder && i.kind === 'folder')) {
+    viewFolder = null;
+    saveFolders(false);
+  }
   renderCrumbs($('crumbs'), own, viewFolder, openFolder, moveTo);
   const kids = childrenOf(own, viewFolder);
   if (kids.length === 0) {
@@ -379,7 +384,29 @@ function renderOwn() {
 function openFolder(id) {
   viewFolder = id;
   renderOwn();
+  saveFolders(true);
 }
+
+// saveFolders puts the folders in view in the page's address, so Back and
+// Forward step through the folders opened, and a reload, or Back from an
+// artifact, returns to the folder it was opened from. Opening a folder adds a
+// step (push); dropping one that is gone replaces the step it was on.
+function saveFolders(push) {
+  const url = location.pathname + addressFor(location.search, { own: viewFolder, shared: sharedFolder });
+  if (url === location.pathname + location.search) return;
+  if (push) history.pushState(null, '', url); else history.replaceState(null, '', url);
+}
+
+// Back and Forward show the folders the address names, on the Artifacts tab,
+// where they are. Before the first draw there is nothing to redraw: it reads
+// them.
+window.addEventListener('popstate', () => {
+  ({ own: viewFolder, shared: sharedFolder } = foldersInAddress(location.search));
+  selectTab($('tab-artifacts'));
+  if (!artifactsDrawn) return;
+  renderOwn();
+  renderShared();
+});
 
 // renderShared lays out the shared folder in view the same way: the items the
 // caller can read inside it, and the stubs of those they cannot read yet,
@@ -387,7 +414,10 @@ function openFolder(id) {
 // only put in order here. A folder the caller may edit takes a dropped row, and
 // has a form to create a folder inside it.
 function renderShared() {
-  if (sharedFolder !== null && !shared.some((i) => i.id === sharedFolder && i.kind === 'folder')) sharedFolder = null;
+  if (sharedFolder !== null && !shared.some((i) => i.id === sharedFolder && i.kind === 'folder')) {
+    sharedFolder = null;
+    saveFolders(false);
+  }
   renderCrumbs($('shared-crumbs'), shared, sharedFolder, openSharedFolder, moveTo, (id) => id !== null && canEdit(shared.find((i) => i.id === id)));
   $('shared-folder-form').hidden = !(sharedFolder !== null && canEdit(shared.find((i) => i.id === sharedFolder)));
   const kids = childrenOf(shared, sharedFolder);
@@ -401,6 +431,7 @@ function renderShared() {
 function openSharedFolder(id) {
   sharedFolder = id;
   renderShared();
+  saveFolders(true);
 }
 
 // renderCrumbs shows Top, then each folder down to the one in view, in the

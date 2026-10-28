@@ -82,6 +82,15 @@ test('shared folder: share a tree, browse it as the reader, move an artifact in,
     await expect(page.locator('#shared-crumbs')).toContainText(inner);
     await expect(sharedRow(ids[deep])).toHaveCount(1);
     await reads(page, ids[deep], true);
+    // Back retraces the way in: the folder the item was opened from, each
+    // folder above it, then the top level.
+    const here = page.locator('#shared-crumbs [aria-current=page]');
+    await page.goBack();
+    await expect(here).toHaveText(inner, { timeout: 60_000 });
+    await page.goBack();
+    await expect(here).toHaveText(top);
+    await page.goBack();
+    await expect(here).toHaveText('Top');
 
     // The owner sees the reader on an item inside, inherited from the folder.
     dialog = await openDialog(ownerPage, ids[doc], [ids[top], top]);

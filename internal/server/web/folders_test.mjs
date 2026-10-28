@@ -9,8 +9,8 @@ import { ORIGIN, fakeKeyStore, fakeStorage, keyStoreRecord, makeUser } from './v
 import { openArtifact } from './viewer.mjs';
 import { readMeta } from './meta.mjs';
 import {
-  FolderError, applicable, breadcrumb, canEdit, canMoveInto, canPlaceIn, canRemoveFromFolder, childrenOf, createFolder, deleteSummary, deleteTree,
-  DESCRIBE_LIMIT, describeList, isStub, makeDraggable, makeDropTarget, mapLimit, moveItem, moveTargets, nextAttempt, removeFromFolder, renameFolder, rowActions, splitTrees, stubLabel, subtree,
+  FolderError, addressFor, applicable, breadcrumb, canEdit, canMoveInto, canPlaceIn, canRemoveFromFolder, childrenOf, createFolder, deleteSummary, deleteTree,
+  DESCRIBE_LIMIT, describeList, foldersInAddress, isStub, makeDraggable, makeDropTarget, mapLimit, moveItem, moveTargets, nextAttempt, removeFromFolder, renameFolder, rowActions, splitTrees, stubLabel, subtree,
 } from './folders.mjs';
 
 const owner = await makeUser('owner');
@@ -661,4 +661,26 @@ test('deleteTree deletes the owner\'s own items, artifacts first, then folders d
 test('an item whose parent is not a folder is not removed from anything', () => {
   const list = [...folderTree('editor'), ...them([{ id: 'art', kind: 'artifact', parent: null, name: 'art', access: 'editor' }, { id: 'odd', kind: 'artifact', parent: 'art', name: 'odd', access: 'editor' }])];
   assert.equal(canRemoveFromFolder(list, 'odd', ME), false);
+});
+
+test('the address names the folders in view, and none means the top level', () => {
+  assert.deepEqual(foldersInAddress(''), { own: null, shared: null });
+  assert.deepEqual(foldersInAddress('?folder=F'), { own: 'F', shared: null });
+  assert.deepEqual(foldersInAddress('?shared=S'), { own: null, shared: 'S' });
+  assert.deepEqual(foldersInAddress('?folder=F&shared=S'), { own: 'F', shared: 'S' });
+  assert.deepEqual(foldersInAddress('?folder='), { own: null, shared: null }, 'empty is the top level');
+});
+
+test('the address for the folders in view keeps every other parameter', () => {
+  assert.equal(addressFor('', { own: null, shared: null }), '');
+  assert.equal(addressFor('', { own: 'F', shared: null }), '?folder=F');
+  assert.equal(addressFor('?folder=F', { own: 'G', shared: 'S' }), '?folder=G&shared=S');
+  assert.equal(addressFor('?folder=F&shared=S', { own: null, shared: null }), '');
+  assert.equal(addressFor('?x=1&folder=F', { own: null, shared: 'S' }), '?x=1&shared=S');
+});
+
+test('an address read back gives the folders it was made for', () => {
+  for (const view of [{ own: null, shared: null }, { own: 'F', shared: null }, { own: null, shared: 'S' }, { own: 'F', shared: 'S' }]) {
+    assert.deepEqual(foldersInAddress(addressFor('?x=1', view)), view);
+  }
 });
