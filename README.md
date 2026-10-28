@@ -558,7 +558,8 @@ shared with you open the same way under **Shared with you**. A share that
 stopped part way shows as pending, with **Finish sharing** in the dialog.
 The page's address names the folder you are in, so the browser's Back and
 Forward step through the folders you opened. Back from an artifact returns
-to the folder you opened it from.
+to the folder you opened it from, and so does signing in again after a
+session ends.
 
 A folder can hold items that other people own, as in Google Drive:
 

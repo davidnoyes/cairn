@@ -2937,6 +2937,8 @@ internal/server/web/folders.mjs	at = items.find((i) => i.id === placeOf(items, a
 internal/server/web/folders.mjs	folders.push(f);	folders.unshift(f);	node --test internal/server/web/folders_test.mjs
 internal/server/web/folders.mjs	if (id) q.set(key, id); else q.delete(key);	if (id) q.set(key, id);	node --test internal/server/web/folders_test.mjs
 internal/server/web/folders.mjs	shared: q.get('shared') || null	shared: q.get('folder') || null	node --test internal/server/web/folders_test.mjs
+internal/server/web/shell.mjs	tab.href = `/app?folder=${encodeURIComponent(info.id)}`;	tab.href = '/app';	node --test internal/server/web/shell_page_test.mjs
+internal/server/serving.go	"/login?next="+url.QueryEscape(r.URL.RequestURI())	"/login?next="+url.QueryEscape(r.URL.Path)	go test ./internal/server -run TestAppPageIsTheSignedInHome
 internal/server/web/folders.mjs	const all = [...artifacts, ...folders];	const all = [...folders, ...artifacts];	node --test internal/server/web/folders_test.mjs
 internal/server/web/folders.mjs	if (err.status !== 404) throw err;	if (err.status !== 409) throw err;	node --test internal/server/web/folders_test.mjs
 internal/server/web/folders.mjs	if (err.status !== 404) throw err;	if (false) throw err;	node --test internal/server/web/folders_test.mjs

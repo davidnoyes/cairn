@@ -4,7 +4,7 @@
 // the tree. The command-line tool reads the same tree at each step.
 import path from 'node:path';
 import { test, expect } from './test.mjs';
-import { cli, cliJson, loadState } from './helpers.mjs';
+import { cli, cliJson, loadState, settle, signIn } from './helpers.mjs';
 
 // item finds one of the owner's items by its decrypted name.
 function item(name) {
@@ -224,4 +224,46 @@ test('folders: Back and Forward step through folders, and an artifact opened in 
   await settled(ownerPage);
   await expect(here).toHaveText('Top');
   expect(new URL(ownerPage.url()).search).toBe('');
+});
+
+test("folders: a folder's own page, and signing in again, both open the folder", async ({ browser, browserName }) => {
+  const s = loadState();
+  const owner = s.users.owner;
+  const folder = `link-${browserName}-${Date.now()}`;
+  cli('owner', ['folder', 'create', folder]);
+  const id = item(folder).id;
+  // A context of its own: the test ends its session, which the shared owner
+  // context must keep.
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  try {
+    await signIn(page, owner.email, owner.password);
+    const here = page.locator('#crumbs [aria-current=page]');
+    const next = () => new URL(page.url()).searchParams.get('next');
+
+    // The folder's own address links to it on the Artifacts tab.
+    await page.goto(`${s.appOrigin}/shared/${id}`);
+    await page.getByRole('link', { name: 'Open it on the Artifacts tab' }).click();
+    await expect(here).toHaveText(folder, { timeout: 60_000 });
+    await settle(page);
+
+    // A session that ends with the folder open goes to sign in and back to
+    // the folder: from the page, when it next asks the server...
+    await ctx.clearCookies();
+    await page.getByRole('tab', { name: 'Groups' }).click();
+    await page.waitForURL(/\/login\?/);
+    expect(next()).toBe(`/app?folder=${id}`);
+    // ...and from the server, when the page loads.
+    await page.goto(`${s.appOrigin}/app?folder=${id}`);
+    await page.waitForURL(/\/login\?/);
+    expect(next()).toBe(`/app?folder=${id}`);
+
+    await page.locator('#email').fill(owner.email);
+    await page.locator('#password').fill(owner.password);
+    await page.locator('#submit').click();
+    await expect(here).toHaveText(folder, { timeout: 60_000 });
+    await settle(page);
+  } finally {
+    await ctx.close();
+  }
 });

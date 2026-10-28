@@ -541,7 +541,7 @@ test('an artifact with no versions says so and is not framed', async () => {
   assert.match(p.status().textContent, /no versions/);
 });
 
-test('a folder says so, links to the Artifacts tab, and asks for no versions', async () => {
+test('a folder says so, links to it on the Artifacts tab, and asks for no versions', async () => {
   const p = await page({
     who: 'owner',
     build: async ({ world, server }) => {
@@ -554,7 +554,7 @@ test('a folder says so, links to the Artifacts tab, and asks for no versions', a
   assert.match(p.status().textContent, /folder/);
   const [link] = p.status().children;
   assert.equal(link.tag, 'a');
-  assert.equal(link.href, '/app');
+  assert.equal(link.href, `/app?folder=${ARTIFACT}`);
   assert.match(link.textContent, /Artifacts tab/);
   assert.equal(p.server.calls.some((c) => c.path.includes('/versions')), false);
   assert.deepEqual(p.dom.violations, []);

@@ -276,7 +276,9 @@ func TestAppPageIsTheSignedInHome(t *testing.T) {
 		{"/", user, http.StatusFound, "/app"},
 		{"/admin", "", http.StatusFound, "/app"},
 		{"/admin", user, http.StatusFound, "/app"},
-		{"/app", "", http.StatusFound, "/login?next=/app"},
+		{"/app", "", http.StatusFound, "/login?next=%2Fapp"},
+		// Back to the folders the address names, not only to /app.
+		{"/app?folder=F&shared=S", "", http.StatusFound, "/login?next=%2Fapp%3Ffolder%3DF%26shared%3DS"},
 		{"/app", user, http.StatusOK, ""},
 	}
 	for _, c := range cases {

@@ -2551,6 +2551,11 @@ elsewhere.
   through folders on the Artifacts tab. A reload, or Back from an artifact,
   opens the folder the address names. A folder that is gone shows the top
   level, and the address stops naming it.
+- Sign-in keeps the address: `/app` with no session, and a page whose
+  session has ended, send `next` as the whole path and query.
+- A folder's own page, `/shared/{id}`, links to `/app?folder={id}`. A
+  `folder=` that names a folder under **Shared with you** opens it there,
+  and the address changes to `?shared=`.
 - **New folder** creates a folder in the one in view.
 - Each own item has **Move to…**, which offers the top level and every own
   folder it can move into, and it can be dragged onto a folder row or a

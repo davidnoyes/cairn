@@ -202,10 +202,11 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 
 // handleAppPage serves the signed-in home; the page itself talks to the JSON
 // APIs, and shows the Admin tab to an administrator. A visitor with no session
-// is sent to sign in, and back.
+// is sent to sign in, and back to the same address, which names the folders
+// in view.
 func (s *Server) handleAppPage(w http.ResponseWriter, r *http.Request) {
 	if u, err := s.currentUser(r); err != nil || u == nil {
-		http.Redirect(w, r, "/login?next=/app", http.StatusFound)
+		http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
 		return
 	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")

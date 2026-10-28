@@ -91,6 +91,12 @@ test('shared folder: share a tree, browse it as the reader, move an artifact in,
     await expect(here).toHaveText(top);
     await page.goBack();
     await expect(here).toHaveText('Top');
+    // The folder's own page links to it, and it opens under Shared with you.
+    await page.goto(`${s.appOrigin}/shared/${ids[top]}`);
+    await page.getByRole('link', { name: 'Open it on the Artifacts tab' }).click();
+    await expect(here).toHaveText(top, { timeout: 60_000 });
+    await expect(page.locator('#crumbs [aria-current=page]')).toHaveText('Top');
+    expect(new URL(page.url()).search).toBe(`?shared=${ids[top]}`);
 
     // The owner sees the reader on an item inside, inherited from the folder.
     dialog = await openDialog(ownerPage, ids[doc], [ids[top], top]);

@@ -17,7 +17,8 @@ const $ = (id) => document.getElementById(id);
 // viewer.mjs and sharing.mjs also need the keyring anchor's storage and the
 // origin a public link names.
 const deps = { ...pageDeps(), storage: localStorage, origin: location.origin };
-const toLogin = () => { location.href = '/login?next=/app'; };
+// Back after signing in to this address, which names the folders in view.
+const toLogin = () => { location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`; };
 
 async function api(path, options) {
   const resp = await fetch(path, options);
@@ -369,6 +370,9 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 // rows, folders first. A folder in view that is gone shows the top level.
 function renderOwn() {
   if (viewFolder !== null && !own.some((i) => i.id === viewFolder && i.kind === 'folder')) {
+    // A folder's own page links to it as folder=, not knowing which tree it
+    // is in: one under Shared with you opens there.
+    if (shared.some((i) => i.id === viewFolder && i.kind === 'folder')) sharedFolder = viewFolder;
     viewFolder = null;
     saveFolders(false);
   }
