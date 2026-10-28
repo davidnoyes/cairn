@@ -97,6 +97,24 @@ test('shared folder: share a tree, browse it as the reader, move an artifact in,
     await expect(here).toHaveText(top, { timeout: 60_000 });
     await expect(page.locator('#crumbs [aria-current=page]')).toHaveText('Top');
     expect(new URL(page.url()).search).toBe(`?shared=${ids[top]}`);
+    // With a folder open in each tree, Back closes the one opened last and
+    // leaves the other where it is; Forward opens it again.
+    const mine = `mine-${stamp}`;
+    const ownHere = page.locator('#crumbs [aria-current=page]');
+    await settled(page);
+    await page.getByLabel('New folder name', { exact: true }).fill(mine);
+    await page.getByRole('button', { name: 'New folder', exact: true }).click();
+    const mineRow = page.locator('#own tr').filter({ hasText: mine });
+    await expect(mineRow).toHaveCount(1, { timeout: 30_000 });
+    await settled(page);
+    await mineRow.getByRole('button', { name: mine }).click();
+    await expect(ownHere).toHaveText(mine);
+    await page.goBack();
+    await expect(ownHere).toHaveText('Top');
+    await expect(here).toHaveText(top);
+    await page.goForward();
+    await expect(ownHere).toHaveText(mine);
+    await expect(here).toHaveText(top);
 
     // The owner sees the reader on an item inside, inherited from the folder.
     dialog = await openDialog(ownerPage, ids[doc], [ids[top], top]);
